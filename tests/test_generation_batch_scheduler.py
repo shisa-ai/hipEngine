@@ -8542,6 +8542,85 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
             c_sweep.validate_sweep_summary(tampered_optional_script)
 
+        tampered_optional_missing_status = json.loads(json.dumps(summary))
+        del tampered_optional_missing_status["commands"][index]["status"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned, passed, skipped, or failed"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_status)
+
+        tampered_optional_unknown_status = json.loads(json.dumps(summary))
+        tampered_optional_unknown_status["commands"][index]["status"] = "blocked"
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned, passed, skipped, or failed"):
+            c_sweep.validate_sweep_summary(tampered_optional_unknown_status)
+
+        tampered_optional_executed_status = json.loads(json.dumps(summary))
+        tampered_optional_executed_status["commands"][index]["status"] = "passed"
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
+            c_sweep.validate_sweep_summary(tampered_optional_executed_status)
+
+        tampered_optional_missing_returncode = json.loads(json.dumps(summary))
+        del tampered_optional_missing_returncode["commands"][index]["returncode"]
+        with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_returncode)
+
+        for bad_returncode in (0, "0", True):
+            tampered_optional_returncode = json.loads(json.dumps(summary))
+            tampered_optional_returncode["commands"][index]["returncode"] = bad_returncode
+            with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be null for planned/skipped rows"):
+                c_sweep.validate_sweep_summary(tampered_optional_returncode)
+
+        tampered_optional_missing_duration = json.loads(json.dumps(summary))
+        del tampered_optional_missing_duration["commands"][index]["duration_seconds"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_duration)
+
+        for bad_duration in ("0", True, -0.001):
+            tampered_optional_duration = json.loads(json.dumps(summary))
+            tampered_optional_duration["commands"][index]["duration_seconds"] = bad_duration
+            with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
+                c_sweep.validate_sweep_summary(tampered_optional_duration)
+
+        tampered_optional_infinite_duration = json.loads(json.dumps(summary))
+        tampered_optional_infinite_duration["commands"][index]["duration_seconds"] = float("inf")
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be finite"):
+            c_sweep.validate_sweep_summary(tampered_optional_infinite_duration)
+
+        tampered_optional_nonzero_duration = json.loads(json.dumps(summary))
+        tampered_optional_nonzero_duration["commands"][index]["duration_seconds"] = 0.001
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for planned rows"):
+            c_sweep.validate_sweep_summary(tampered_optional_nonzero_duration)
+
+        tampered_optional_output_tail = json.loads(json.dumps(summary))
+        tampered_optional_output_tail["commands"][index]["output_tail"] = "planned optional row must stay dry-run only"
+        with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be absent for planned rows"):
+            c_sweep.validate_sweep_summary(tampered_optional_output_tail)
+
+        for condition_field in ("preconditions", "precondition", "postconditions", "postcondition"):
+            tampered_optional_conditions = json.loads(json.dumps(summary))
+            tampered_optional_conditions["commands"][index][condition_field] = [] if condition_field.endswith("s") else {}
+            with pytest.raises(ValueError, match=r"commands\[\]\.conditions must be absent for planned rows"):
+                c_sweep.validate_sweep_summary(tampered_optional_conditions)
+
+        tampered_optional_unknown_key = json.loads(json.dumps(summary))
+        tampered_optional_unknown_key["commands"][index]["unexpected"] = "field"
+        with pytest.raises(ValueError, match=r"commands\[\] must contain only c-sweep schema keys"):
+            c_sweep.validate_sweep_summary(tampered_optional_unknown_key)
+
+        tampered_optional_missing_git_dirty = json.loads(json.dumps(summary))
+        del tampered_optional_missing_git_dirty["commands"][index]["git_dirty"]
+        with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_git_dirty)
+
+        for bad_git_dirty in ("false", 0, None):
+            tampered_optional_bad_git_dirty = json.loads(json.dumps(summary))
+            tampered_optional_bad_git_dirty["commands"][index]["git_dirty"] = bad_git_dirty
+            with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must be a bool"):
+                c_sweep.validate_sweep_summary(tampered_optional_bad_git_dirty)
+
+        tampered_optional_git_dirty = json.loads(json.dumps(summary))
+        tampered_optional_git_dirty["commands"][index]["git_dirty"] = not summary["git"]["dirty"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git\.dirty"):
+            c_sweep.validate_sweep_summary(tampered_optional_git_dirty)
+
     for index in optional_entry_indices:
         tampered_optional_artifact_c = json.loads(json.dumps(summary))
         entry = tampered_optional_artifact_c["commands"][index]
