@@ -21513,6 +21513,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="profiler.trace_kernel_names must be a non-empty string list"):
         validate_cn_diagnostic_artifact_payload(profiler_missing_trace_kernel_names)
 
+    profiler_padded_kernel_names = json.loads(json.dumps(accepted))
+    profiler = profiler_padded_kernel_names["profiler"]
+    profiler["trace_kernel_names"] = [f" {kernel_name} " for kernel_name in profiler["trace_kernel_names"]]
+    profiler["expected_kernel_names"] = [f" {kernel_name} " for kernel_name in profiler["expected_kernel_names"]]
+    profiler["kernel_durations_ns"] = {
+        f" {kernel_name} ": duration_ns
+        for kernel_name, duration_ns in profiler["kernel_durations_ns"].items()
+    }
+    profiler["kernel_duration_shares"] = {
+        f" {kernel_name} ": share
+        for kernel_name, share in profiler["kernel_duration_shares"].items()
+    }
+    with pytest.raises(ValueError) as padded_kernel_error:
+        validate_cn_diagnostic_artifact_payload(profiler_padded_kernel_names)
+    padded_kernel_message = str(padded_kernel_error.value)
+    assert "profiler.trace_kernel_names must be a non-empty string list" in padded_kernel_message
+    assert "profiler.expected_kernel_names must be a non-empty string list" in padded_kernel_message
+    assert "profiler.kernel_durations_ns keys must be non-empty strings" in padded_kernel_message
+    assert "profiler.kernel_duration_shares keys must be non-empty strings" in padded_kernel_message
+
     profiler_trace_kernel_names_missing_duration = json.loads(json.dumps(accepted))
     profiler_trace_kernel_names_missing_duration["profiler"]["trace_kernel_names"] = ["qwen35_batch_prefill"]
     with pytest.raises(ValueError, match="profiler.trace_kernel_names must include profiler.kernel_durations_ns keys"):

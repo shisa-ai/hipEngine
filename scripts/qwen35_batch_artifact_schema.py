@@ -2195,7 +2195,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append("profiler.trace_files must include a kernel-trace CSV path for accepted artifacts")
     _validate_profiler_synthesized_fields(profiler, errors)
     profiler_trace_kernel_names = profiler.get("trace_kernel_names")
-    profiler_trace_kernel_names_valid = _is_nonempty_string_list(profiler_trace_kernel_names)
+    profiler_trace_kernel_names_valid = _is_stripped_nonempty_string_list(profiler_trace_kernel_names)
     if not profiler_trace_kernel_names_valid:
         errors.append("profiler.trace_kernel_names must be a non-empty string list for accepted artifacts")
     elif isinstance(profiler_trace_kernel_names, list):
@@ -2206,7 +2206,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if profiler.get("expected_kernels_present") is not True:
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
     expected_kernel_names = profiler.get("expected_kernel_names")
-    if not _is_nonempty_string_list(expected_kernel_names):
+    if not _is_stripped_nonempty_string_list(expected_kernel_names):
         errors.append("profiler.expected_kernel_names must be a non-empty string list for accepted artifacts")
     elif isinstance(expected_kernel_names, list):
         _validate_expected_profiler_kernel_names(expected_kernel_names, errors)
@@ -2215,17 +2215,19 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("profiler.kernel_durations_ns must be a non-empty object for accepted artifacts")
     else:
         for kernel_name, duration_ns in kernel_durations.items():
-            if isinstance(kernel_name, str) and _has_disallowed_profiler_kernel_fragment(kernel_name):
+            if not _is_stripped_nonempty_string(kernel_name):
+                errors.append("profiler.kernel_durations_ns keys must be non-empty strings for accepted artifacts")
+                break
+            if _has_disallowed_profiler_kernel_fragment(kernel_name):
                 errors.append("profiler.kernel_durations_ns must not include serial/per-row/fallback kernel names for accepted artifacts")
                 break
-            if isinstance(kernel_name, str) and kernel_name and not _is_positive_number(duration_ns):
+            if not _is_positive_number(duration_ns):
                 errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
         if profiler_trace_kernel_names_valid and isinstance(profiler_trace_kernel_names, list):
             missing_duration_names = sorted(
                 kernel_name
                 for kernel_name in kernel_durations
-                if isinstance(kernel_name, str)
-                and kernel_name
+                if _is_stripped_nonempty_string(kernel_name)
                 and not _has_disallowed_profiler_kernel_fragment(kernel_name)
                 and kernel_name not in profiler_trace_kernel_names
             )
@@ -2240,7 +2242,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         _validate_graph_histogram_profiler_coverage(payload, kernel_durations, errors)
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
-                if not isinstance(kernel_name, str) or not kernel_name:
+                if not _is_stripped_nonempty_string(kernel_name):
                     continue
                 if not _is_positive_number(kernel_durations.get(kernel_name)):
                     errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
@@ -2379,7 +2381,7 @@ def _validate_profiler_kernel_duration_total(
     duration_sum = sum(
         float(duration_ns)
         for kernel_name, duration_ns in kernel_durations.items()
-        if isinstance(kernel_name, str) and kernel_name and _is_positive_number(duration_ns)
+        if _is_stripped_nonempty_string(kernel_name) and _is_positive_number(duration_ns)
     )
     tolerance = max(1.0, duration_sum * 1e-6)
     if duration_sum > 0.0 and abs(float(total_duration) - duration_sum) > tolerance:
@@ -2398,13 +2400,15 @@ def _validate_profiler_kernel_duration_shares(
     duration_keys = {
         kernel_name
         for kernel_name, duration_ns in kernel_durations.items()
-        if isinstance(kernel_name, str) and kernel_name and _is_positive_number(duration_ns)
+        if _is_stripped_nonempty_string(kernel_name) and _is_positive_number(duration_ns)
     }
     share_keys = {
         kernel_name
         for kernel_name, duration_share in kernel_duration_shares.items()
-        if isinstance(kernel_name, str) and kernel_name and _is_positive_number(duration_share)
+        if _is_stripped_nonempty_string(kernel_name) and _is_positive_number(duration_share)
     }
+    if any(not _is_stripped_nonempty_string(kernel_name) for kernel_name in kernel_duration_shares):
+        errors.append("profiler.kernel_duration_shares keys must be non-empty strings for accepted artifacts")
     if duration_keys != share_keys:
         errors.append("profiler.kernel_duration_shares keys must match profiler.kernel_durations_ns for accepted artifacts")
     total_duration = profiler.get("total_kernel_duration_ns")
@@ -2415,7 +2419,7 @@ def _validate_profiler_kernel_duration_shares(
         if isinstance(kernel_name, str) and _has_disallowed_profiler_kernel_fragment(kernel_name):
             errors.append("profiler.kernel_duration_shares must not include serial/per-row/fallback kernel names for accepted artifacts")
             break
-        if not isinstance(kernel_name, str) or not kernel_name or not _is_positive_number(duration_share):
+        if not _is_stripped_nonempty_string(kernel_name) or not _is_positive_number(duration_share):
             errors.append(f"profiler.kernel_duration_shares.{kernel_name} must be positive numeric for accepted artifacts")
             continue
         share_sum += float(duration_share)
@@ -3891,6 +3895,14 @@ def _is_nonnegative_number(value: Any) -> bool:
 
 def _is_nonempty_string_list(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(item, str) and bool(item) for item in value)
+
+
+def _is_stripped_nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value) and value == value.strip()
+
+
+def _is_stripped_nonempty_string_list(value: Any) -> bool:
+    return isinstance(value, list) and bool(value) and all(_is_stripped_nonempty_string(item) for item in value)
 
 
 def _load_json_value(path: Path) -> Any:
