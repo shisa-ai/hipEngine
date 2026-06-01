@@ -673,8 +673,9 @@ reporting.
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
   checks those embedded hashes/sizes plus the embedded digest/schema-version
   integrity fields before a handoff is trusted, can be combined with
-  `--source-artifact-failures-only` to emit only stale source record names, and
-  can be combined with
+  `--source-artifact-failures-only` to emit only stale source record names,
+  `--verification-failures-only` to emit both source-record and status-integrity
+  failure lists, and can be combined with
   `--status-integrity-only` or `--status-integrity-failures-only` to emit just
   the embedded integrity payload or failing check names from a persisted status
   artifact; without `--verify-source-artifacts`, those compact integrity modes

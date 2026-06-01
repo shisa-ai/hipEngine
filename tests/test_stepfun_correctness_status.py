@@ -3472,6 +3472,114 @@ def test_stepfun_correctness_status_verify_source_artifact_failures_only_detects
     assert json.loads(failures_output.read_text()) == ["prompt"]
 
 
+def test_stepfun_correctness_status_verify_failures_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    failures_output = tmp_path / "verification-failures.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--verification-failures-only",
+            "--output",
+            str(failures_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(failures_output.read_text()) == {
+        "source_artifact_failed_records": [],
+        "status_integrity_failed_checks": [],
+    }
+
+
+def test_stepfun_correctness_status_verify_failures_only_detects_source_and_status_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    failures_output = tmp_path / "verification-failures.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    prompt.write_text(prompt.read_text() + "\n")
+    status_payload = json.loads(status_output.read_text())
+    status_payload["next_action_commands_sha256"] = "stale"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--verification-failures-only",
+            "--output",
+            str(failures_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(failures_output.read_text()) == {
+        "source_artifact_failed_records": ["prompt"],
+        "status_integrity_failed_checks": ["next_action_commands_sha256"],
+    }
+
+
 def test_stepfun_correctness_status_source_artifact_verify_detects_stale_inputs(
     capsys,
     tmp_path: Path,

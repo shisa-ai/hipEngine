@@ -146,6 +146,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help=(
+            "With --verify-source-artifacts, emit only verification_failures for compact "
+            "source/status failure routing."
+        ),
+    )
+    parser.add_argument(
         "--next-action-commands-sha-only",
         action="store_true",
         help=(
@@ -461,15 +469,21 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
     status = _load(status_artifact)
     source_artifacts = status.get("source_artifacts", {})
     if not isinstance(source_artifacts, dict) or not source_artifacts:
+        status_integrity = _status_integrity(status)
+        source_artifact_failed_records: list[str] = []
         return {
             "status": "missing_source_artifacts",
             "status_artifact": str(status_artifact),
             "all_match": False,
             "source_artifacts_all_match": False,
-            "source_artifact_failed_records": [],
+            "source_artifact_failed_records": source_artifact_failed_records,
+            "verification_failures": {
+                "source_artifact_failed_records": source_artifact_failed_records,
+                "status_integrity_failed_checks": status_integrity["failed_checks"],
+            },
             "checked_count": 0,
             "records": {},
-            "status_integrity": _status_integrity(status),
+            "status_integrity": status_integrity,
         }
     records: dict[str, object] = {}
     source_artifacts_all_match = True
@@ -495,6 +509,10 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         name for name, record in records.items() if record["match"] is not True
     ]
     status_integrity = _status_integrity(status)
+    verification_failures = {
+        "source_artifact_failed_records": source_artifact_failed_records,
+        "status_integrity_failed_checks": status_integrity["failed_checks"],
+    }
     all_match = source_artifacts_all_match and status_integrity["all_match"] is True
     return {
         "status": "match" if all_match else "mismatch",
@@ -502,6 +520,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         "all_match": all_match,
         "source_artifacts_all_match": source_artifacts_all_match,
         "source_artifact_failed_records": source_artifact_failed_records,
+        "verification_failures": verification_failures,
         "checked_count": len(records),
         "records": records,
         "status_integrity": status_integrity,
@@ -1874,7 +1893,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.verify_source_artifacts is not None:
         verification = _verify_source_artifacts(args.verify_source_artifacts)
-        if args.source_artifact_failures_only:
+        if args.verification_failures_only:
+            result = verification["verification_failures"]
+        elif args.source_artifact_failures_only:
             result = verification["source_artifact_failed_records"]
         elif args.status_integrity_failures_only:
             result = verification["status_integrity"]["failed_checks"]
