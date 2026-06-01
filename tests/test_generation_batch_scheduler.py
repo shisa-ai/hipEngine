@@ -7366,6 +7366,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             ):
                 c_sweep.validate_sweep_summary(tampered_planned_compiler)
 
+        if summary["commands"][index]["category"] == "native_diagnostic" and summary["commands"][index]["batch_size"] != 1:
+            for gate_flag in ("--c1-baseline-json", "--serial-bridge-json", "--primitive-correctness-json", "--profiler-json"):
+                tampered_planned_gate = json.loads(json.dumps(summary))
+                planned_gate_entry = tampered_planned_gate["commands"][index]
+                planned_gate_argv = planned_gate_entry["argv"]
+                planned_gate_argv[planned_gate_argv.index(gate_flag) + 1] = str(
+                    tmp_path / "artifacts" / f"stale-{gate_flag.removeprefix('--')}.json"
+                )
+                planned_gate_entry["command"] = shlex.join(planned_gate_argv)
+                with pytest.raises(
+                    ValueError,
+                    match=r"commands\[\]\.argv retained native gate artifact paths must match output_dir filenames",
+                ):
+                    c_sweep.validate_sweep_summary(tampered_planned_gate)
+
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
