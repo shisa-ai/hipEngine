@@ -739,6 +739,30 @@ def _kv_backed_decode_gap_report(
     streaming_runner_blockers = (
         run_plan_streaming_runner_blockers or launch_schedule_streaming_runner_blockers
     )
+    launch_schedule_streaming_runner_blocker_names = list(
+        launch_schedule.get("streaming_runner_blocker_names", [])
+    )
+    run_plan_streaming_runner_blocker_names = list(
+        run_plan.get("streaming_runner_blocker_names", [])
+    )
+    streaming_runner_blocker_names = (
+        run_plan_streaming_runner_blocker_names
+        or launch_schedule_streaming_runner_blocker_names
+        or [str(blocker.get("name")) for blocker in streaming_runner_blockers]
+    )
+    streaming_runner_blocker_names_sha256 = run_plan.get(
+        "streaming_runner_blocker_names_sha256"
+    ) or launch_schedule.get("streaming_runner_blocker_names_sha256")
+    computed_streaming_runner_blocker_names_sha256 = (
+        _stable_json_sha256(streaming_runner_blocker_names)
+        if streaming_runner_blocker_names
+        else None
+    )
+    streaming_runner_blocker_names_sha256_match = (
+        streaming_runner_blocker_names_sha256 == computed_streaming_runner_blocker_names_sha256
+        if streaming_runner_blocker_names_sha256 is not None
+        else None
+    )
     first_streaming_runner_blocker = run_plan.get(
         "first_streaming_runner_blocker"
     ) or launch_schedule.get("first_streaming_runner_blocker")
@@ -791,6 +815,10 @@ def _kv_backed_decode_gap_report(
                 ),
                 "run_plan_streaming_runner_ready": run_plan.get("streaming_runner_ready"),
                 "streaming_runner_blocker_count": streaming_runner_blocker_count,
+                "streaming_runner_blocker_names": streaming_runner_blocker_names,
+                "streaming_runner_blocker_names_sha256": streaming_runner_blocker_names_sha256,
+                "computed_streaming_runner_blocker_names_sha256": computed_streaming_runner_blocker_names_sha256,
+                "streaming_runner_blocker_names_sha256_match": streaming_runner_blocker_names_sha256_match,
                 "first_streaming_runner_blocker": first_streaming_runner_blocker,
                 "streaming_runner_blockers": streaming_runner_blockers,
                 "launch_schedule_streaming_runner_blocker_count": launch_schedule.get(
@@ -844,6 +872,10 @@ def _kv_backed_decode_gap_report(
         "remaining_evidence": remaining_evidence,
         "operation_count": launch_schedule.get("operation_count"),
         "streaming_runner_blocker_count": streaming_runner_blocker_count,
+        "streaming_runner_blocker_names": streaming_runner_blocker_names,
+        "streaming_runner_blocker_names_sha256": streaming_runner_blocker_names_sha256,
+        "computed_streaming_runner_blocker_names_sha256": computed_streaming_runner_blocker_names_sha256,
+        "streaming_runner_blocker_names_sha256_match": streaming_runner_blocker_names_sha256_match,
         "first_streaming_runner_blocker": first_streaming_runner_blocker,
         "streaming_runner_blockers": streaming_runner_blockers,
         "upload_entry_count": decode_input_upload_plan.get("entry_count"),
@@ -1005,6 +1037,15 @@ def _next_action_commands(
             "first_missing_evidence": kv_backed_decode_gap_report.get("first_missing_evidence"),
             "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
                 "streaming_runner_blocker_count"
+            ),
+            "streaming_runner_blocker_names": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_names"
+            ),
+            "streaming_runner_blocker_names_sha256": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_names_sha256"
+            ),
+            "streaming_runner_blocker_names_sha256_match": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_names_sha256_match"
             ),
             "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
                 "first_streaming_runner_blocker"
@@ -1286,6 +1327,15 @@ def _handoff_summary(
                     "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
                         "streaming_runner_blocker_count"
                     ),
+                    "streaming_runner_blocker_names": kv_backed_decode_gap_report.get(
+                        "streaming_runner_blocker_names"
+                    ),
+                    "streaming_runner_blocker_names_sha256": kv_backed_decode_gap_report.get(
+                        "streaming_runner_blocker_names_sha256"
+                    ),
+                    "streaming_runner_blocker_names_sha256_match": kv_backed_decode_gap_report.get(
+                        "streaming_runner_blocker_names_sha256_match"
+                    ),
                     "first_missing_evidence": kv_backed_decode_gap_report.get(
                         "first_missing_evidence"
                     ),
@@ -1451,6 +1501,15 @@ def _handoff_summary(
             "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
                 "streaming_runner_blocker_count"
             ),
+            "streaming_runner_blocker_names": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_names"
+            ),
+            "streaming_runner_blocker_names_sha256": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_names_sha256"
+            ),
+            "streaming_runner_blocker_names_sha256_match": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_names_sha256_match"
+            ),
             "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
                 "first_streaming_runner_blocker"
             ),
@@ -1557,6 +1616,15 @@ def build_status(
                 "missing_evidence": list(kv_backed_decode_gap_report.get("missing_evidence", [])),
                 "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
                     "streaming_runner_blocker_count"
+                ),
+                "streaming_runner_blocker_names": kv_backed_decode_gap_report.get(
+                    "streaming_runner_blocker_names"
+                ),
+                "streaming_runner_blocker_names_sha256": kv_backed_decode_gap_report.get(
+                    "streaming_runner_blocker_names_sha256"
+                ),
+                "streaming_runner_blocker_names_sha256_match": kv_backed_decode_gap_report.get(
+                    "streaming_runner_blocker_names_sha256_match"
                 ),
                 "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
                     "first_streaming_runner_blocker"

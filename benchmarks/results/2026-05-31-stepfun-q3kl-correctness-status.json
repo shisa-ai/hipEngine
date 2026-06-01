@@ -47,7 +47,14 @@
         "kv_backed_next_token_artifact"
       ],
       "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "streaming_runner_blocker_count": 3
+      "streaming_runner_blocker_count": 3,
+      "streaming_runner_blocker_names": [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing"
+      ],
+      "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+      "streaming_runner_blocker_names_sha256_match": true
     }
   ],
   "docs_checklist": {
@@ -119,6 +126,13 @@
         "primary_command_sha256": "c60294d60eda320d281299f48bc8f488d21aa35977f0e71498990cddd2518e30",
         "queue_index": 1,
         "streaming_runner_blocker_count": 3,
+        "streaming_runner_blocker_names": [
+          "streaming_decode_loop_not_wired",
+          "kv_kernel_trace_artifact_missing",
+          "kv_backed_next_token_artifact_missing"
+        ],
+        "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+        "streaming_runner_blocker_names_sha256_match": true,
         "work_item_schema_version": 1
       }
     ],
@@ -129,10 +143,10 @@
       "first_work_item_schema_version": 1,
       "first_work_item_sha256": "8c5a2cfe6f5b1b7939bb041118ee622bc90a8be6fb3472c7079706d78aacfed3",
       "schema_version": 1,
-      "sha256": "400dd2ba3c938f03fb0556816766ff0de4863988c7f48e59f94927b60aef80f4"
+      "sha256": "48d702ce39c5d0d581f978be5e35012bdd295d96e84a92bf0ece22a6871779d8"
     },
     "blocker_work_queue_schema_version": 1,
-    "blocker_work_queue_sha256": "400dd2ba3c938f03fb0556816766ff0de4863988c7f48e59f94927b60aef80f4",
+    "blocker_work_queue_sha256": "48d702ce39c5d0d581f978be5e35012bdd295d96e84a92bf0ece22a6871779d8",
     "compact_output_modes": {
       "blocked_gates_only": "blocked_gates",
       "blocked_gates_sha_only": "blocked_gates_sha256",
@@ -209,6 +223,13 @@
       "precondition_count": 5,
       "status": "blocked",
       "streaming_runner_blocker_count": 3,
+      "streaming_runner_blocker_names": [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing"
+      ],
+      "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+      "streaming_runner_blocker_names_sha256_match": true,
       "upload_total_nbytes": 484,
       "validated_precondition_count": 5
     },
@@ -280,8 +301,9 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "403d88c45b4b353598162db8af29bd9f79eacd722092514c822f3330529a81ee",
+  "handoff_summary_sha256": "eccde74e44ce52dc2193439d63db488b3786c48afd70679b0542d3f8f46b65b9",
   "kv_backed_decode_gap_report": {
+    "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
     "first_missing_precondition": null,
     "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -326,12 +348,20 @@
     "remaining_evidence": [
       {
         "current": {
+          "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
           "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
           "launch_schedule_streaming_runner_blocker_count": 3,
           "launch_schedule_streaming_runner_ready": false,
           "run_plan_streaming_runner_blocker_count": 3,
           "run_plan_streaming_runner_ready": false,
           "streaming_runner_blocker_count": 3,
+          "streaming_runner_blocker_names": [
+            "streaming_decode_loop_not_wired",
+            "kv_kernel_trace_artifact_missing",
+            "kv_backed_next_token_artifact_missing"
+          ],
+          "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+          "streaming_runner_blocker_names_sha256_match": true,
           "streaming_runner_blockers": [
             {
               "name": "streaming_decode_loop_not_wired",
@@ -370,6 +400,13 @@
     "source": "kv_decode_dispatch_progress",
     "status": "blocked",
     "streaming_runner_blocker_count": 3,
+    "streaming_runner_blocker_names": [
+      "streaming_decode_loop_not_wired",
+      "kv_kernel_trace_artifact_missing",
+      "kv_backed_next_token_artifact_missing"
+    ],
+    "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+    "streaming_runner_blocker_names_sha256_match": true,
     "streaming_runner_blockers": [
       {
         "name": "streaming_decode_loop_not_wired",
@@ -482,6 +519,12 @@
         }
       ],
       "streaming_runner_blocker_count": 3,
+      "streaming_runner_blocker_names": [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing"
+      ],
+      "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
       "streaming_runner_blockers": [
         {
           "name": "streaming_decode_loop_not_wired",
@@ -992,6 +1035,12 @@
         128007
       ],
       "streaming_runner_blocker_count": 3,
+      "streaming_runner_blocker_names": [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing"
+      ],
+      "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
       "streaming_runner_blockers": [
         {
           "name": "streaming_decode_loop_not_wired",
@@ -1080,6 +1129,13 @@
       "status_refresh_command_nchars": 431,
       "status_refresh_command_sha256": "39b2253556baabf33c43a51b0dfef3b47742bd950d6d4a7538525169c5ca24a3",
       "streaming_runner_blocker_count": 3,
+      "streaming_runner_blocker_names": [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing"
+      ],
+      "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+      "streaming_runner_blocker_names_sha256_match": true,
       "success_criteria": [
         "kv_backed_decode_gap_report.status is ready",
         "kv_backed_decode_gap_report.missing_evidence is empty",
@@ -1114,7 +1170,7 @@
       ]
     }
   },
-  "next_action_commands_sha256": "1e27ca8833b336ecd85b9439d662ab9ed9e8b5d55f414f7d10cb8119a0654ba3",
+  "next_action_commands_sha256": "23883be38d8afed578f914c07c8df498eb57c262956da8854a5a800cbcf14755",
   "next_actions": [
     {
       "action": "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison.",
@@ -1324,6 +1380,7 @@
       },
       "dispatch_ready": true,
       "gap_report": {
+        "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
         "first_missing_evidence": "streaming_runner_ready_flags",
         "first_missing_precondition": null,
         "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1368,12 +1425,20 @@
         "remaining_evidence": [
           {
             "current": {
+              "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
               "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
               "launch_schedule_streaming_runner_blocker_count": 3,
               "launch_schedule_streaming_runner_ready": false,
               "run_plan_streaming_runner_blocker_count": 3,
               "run_plan_streaming_runner_ready": false,
               "streaming_runner_blocker_count": 3,
+              "streaming_runner_blocker_names": [
+                "streaming_decode_loop_not_wired",
+                "kv_kernel_trace_artifact_missing",
+                "kv_backed_next_token_artifact_missing"
+              ],
+              "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+              "streaming_runner_blocker_names_sha256_match": true,
               "streaming_runner_blockers": [
                 {
                   "name": "streaming_decode_loop_not_wired",
@@ -1412,6 +1477,13 @@
         "source": "kv_decode_dispatch_progress",
         "status": "blocked",
         "streaming_runner_blocker_count": 3,
+        "streaming_runner_blocker_names": [
+          "streaming_decode_loop_not_wired",
+          "kv_kernel_trace_artifact_missing",
+          "kv_backed_next_token_artifact_missing"
+        ],
+        "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+        "streaming_runner_blocker_names_sha256_match": true,
         "streaming_runner_blockers": [
           {
             "name": "streaming_decode_loop_not_wired",
@@ -1534,31 +1606,31 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
-  "readiness_gates_sha256": "4cc632d119cbb0edc67b560f23f4d6cefbcf614e73f3685f80b95133aad5fc89",
+  "readiness_gates_sha256": "870a83850e6973f145e93d7cca98573f34b5d8c24c9cd64090053afa56748d54",
   "readiness_summary": {
     "blocked_gates_sha256": "5442237ae2416bd189f0635665bf630d6061793d9f5e1c52e038ae4d86804120",
     "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
     "blocker_work_queue_count": 2,
-    "blocker_work_queue_sha256": "400dd2ba3c938f03fb0556816766ff0de4863988c7f48e59f94927b60aef80f4",
+    "blocker_work_queue_sha256": "48d702ce39c5d0d581f978be5e35012bdd295d96e84a92bf0ece22a6871779d8",
     "e2e_inference_claim_allowed": false,
     "e2e_inference_ready": false,
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "8c5a2cfe6f5b1b7939bb041118ee622bc90a8be6fb3472c7079706d78aacfed3",
-    "handoff_summary_sha256": "403d88c45b4b353598162db8af29bd9f79eacd722092514c822f3330529a81ee",
+    "handoff_summary_sha256": "eccde74e44ce52dc2193439d63db488b3786c48afd70679b0542d3f8f46b65b9",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
-    "next_action_commands_sha256": "1e27ca8833b336ecd85b9439d662ab9ed9e8b5d55f414f7d10cb8119a0654ba3",
+    "next_action_commands_sha256": "23883be38d8afed578f914c07c8df498eb57c262956da8854a5a800cbcf14755",
     "open_blocker_count": 2,
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
-    "readiness_gates_sha256": "4cc632d119cbb0edc67b560f23f4d6cefbcf614e73f3685f80b95133aad5fc89",
+    "readiness_gates_sha256": "870a83850e6973f145e93d7cca98573f34b5d8c24c9cd64090053afa56748d54",
     "schema_version": 1,
-    "source_artifacts_sha256": "ead769bd2fab58783b86e0bdf6645db4117fb22b2e23fd31fb3b59c324a9e1f6",
+    "source_artifacts_sha256": "c40e02e4d925e401da6076102df1b20ec3bfa09fff474577ca029bdfcdc5d05f",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "c72d9ab3bcb94ebe502bbe4536e36395fcd9adfaca2606bb76fe42c21a672195",
+  "readiness_summary_sha256": "22a690a93543ae676fbd65f1058dc442038439dc56fa8fc58a175c57a6405c58",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -1571,8 +1643,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "08d6423c399dcf8b482fe21bb768aaa4efd4dc8e9565cc38feea688fad4664ce",
-      "size_bytes": 55758
+      "sha256": "15d0412e87bbc5d36c190aeaf820fafd8b5691f8bb11e19d66eace0397c8b4b7",
+      "size_bytes": 55823
     },
     "oracle": {
       "exists": true,
@@ -1589,11 +1661,11 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "0b64ca0bfaa03ab84fa41ddaeda52ab7abdf00d4cc30a39994081fbed513334b",
-      "size_bytes": 45925
+      "sha256": "f9c53da5e3a0c146df317203d09ceff8c2410557ac945cce9ab5924fb10b252c",
+      "size_bytes": 46515
     }
   },
-  "source_artifacts_sha256": "ead769bd2fab58783b86e0bdf6645db4117fb22b2e23fd31fb3b59c324a9e1f6",
+  "source_artifacts_sha256": "c40e02e4d925e401da6076102df1b20ec3bfa09fff474577ca029bdfcdc5d05f",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"

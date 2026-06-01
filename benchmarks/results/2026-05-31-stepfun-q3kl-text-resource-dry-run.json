@@ -474,6 +474,12 @@
       128007
     ],
     "streaming_runner_blocker_count": 3,
+    "streaming_runner_blocker_names": [
+      "streaming_decode_loop_not_wired",
+      "kv_kernel_trace_artifact_missing",
+      "kv_backed_next_token_artifact_missing"
+    ],
+    "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "streaming_runner_blockers": [
       {
         "name": "streaming_decode_loop_not_wired",
@@ -628,6 +634,12 @@
         }
       ],
       "streaming_runner_blocker_count": 3,
+      "streaming_runner_blocker_names": [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing"
+      ],
+      "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
       "streaming_runner_blockers": [
         {
           "name": "streaming_decode_loop_not_wired",
