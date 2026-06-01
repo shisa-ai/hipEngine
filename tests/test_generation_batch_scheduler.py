@@ -7397,6 +7397,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
             c_sweep.validate_sweep_summary(tampered_missing_duration)
 
+        for bad_duration in ("0", True, -0.001):
+            tampered_bad_duration = json.loads(json.dumps(summary))
+            tampered_bad_duration["commands"][index]["duration_seconds"] = bad_duration
+            with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
+                c_sweep.validate_sweep_summary(tampered_bad_duration)
+
+        tampered_infinite_duration = json.loads(json.dumps(summary))
+        tampered_infinite_duration["commands"][index]["duration_seconds"] = float("inf")
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be finite"):
+            c_sweep.validate_sweep_summary(tampered_infinite_duration)
+
         tampered_duration = json.loads(json.dumps(summary))
         tampered_duration["commands"][index]["duration_seconds"] = 0.001
         with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for planned rows"):
