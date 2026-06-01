@@ -2851,6 +2851,23 @@ def test_batch_c_sweep_rejects_unsafe_summary_json_before_creating_artifacts(tmp
         run_sweep(args)
     assert not output_dir.exists()
 
+    summary_parent_file = tmp_path / "summary-parent-file"
+    summary_parent_file.write_text("not a directory")
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--summary-json",
+            str(summary_parent_file / "summary.json"),
+        ]
+    )
+    with pytest.raises(ValueError, match="--summary-json parent directories must be directories"):
+        run_sweep(args)
+    assert not output_dir.exists()
+
     if hasattr(os, "symlink"):
         target = tmp_path / "summary-real.json"
         target.write_text("{}\n")
@@ -2882,6 +2899,12 @@ def test_batch_c_sweep_validate_summary_rejects_unsafe_input_path(tmp_path: Path
     assert c_sweep.main(["--validate-summary-json", str(parent_component_summary)]) == 1
     captured = capsys.readouterr()
     assert "--validate-summary-json must not contain parent-directory components" in captured.err
+
+    summary_parent_file = tmp_path / "summary-parent-file"
+    summary_parent_file.write_text("not a directory")
+    assert c_sweep.main(["--validate-summary-json", str(summary_parent_file / "summary.json")]) == 1
+    captured = capsys.readouterr()
+    assert "--validate-summary-json parent directories must be directories" in captured.err
 
     if hasattr(os, "symlink"):
         target = tmp_path / "summary-real.json"
