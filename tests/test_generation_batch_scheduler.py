@@ -1015,6 +1015,43 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_dir_path_traversal(tm
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_symlink_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    actual_trace_dir = output_dir / "actual-profile-c2"
+    actual_trace_dir.mkdir()
+    trace_dir.symlink_to(actual_trace_dir, target_is_directory=True)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_dir is a symlink",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1084,6 +1121,44 @@ def test_batch_c_sweep_profiler_precondition_rejects_duplicate_trace_files(tmp_p
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler.trace_files contains duplicates",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_symlink_trace_file(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    trace_dir.mkdir()
+    target_trace_file = trace_dir / "actual_kernel_trace.csv"
+    target_trace_file.write_text("Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_decode,0,1\n")
+    (trace_dir / "hipengine_kernel_trace.csv").symlink_to(target_trace_file)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contains a symlink",
     }
 
 

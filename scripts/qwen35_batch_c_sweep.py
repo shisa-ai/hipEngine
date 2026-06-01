@@ -1470,8 +1470,13 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         raw_trace_dir = profiler.get("trace_dir")
         if isinstance(raw_trace_dir, str) and raw_trace_dir:
             profiler_trace_dir = raw_trace_dir
+            trace_dir_check_path = Path(raw_trace_dir)
+            if not trace_dir_check_path.is_absolute():
+                trace_dir_check_path = REPO_ROOT / trace_dir_check_path
             if _path_has_parent_directory_component(raw_trace_dir):
                 reasons.append("profiler.trace_dir contains parent-directory components")
+            if trace_dir_check_path.is_symlink():
+                reasons.append("profiler.trace_dir is a symlink")
         raw_trace_files = profiler.get("trace_files")
         if not isinstance(raw_trace_files, list) or not raw_trace_files:
             reasons.append("profiler.trace_files is missing or empty")
@@ -1485,6 +1490,13 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append("profiler.trace_files contains a non-CSV trace file")
             if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files does not include a kernel-trace CSV")
+            trace_file_check_paths = [Path(trace_file) for trace_file in profiler_trace_files]
+            trace_file_check_paths = [
+                trace_file_path if trace_file_path.is_absolute() else REPO_ROOT / trace_file_path
+                for trace_file_path in trace_file_check_paths
+            ]
+            if any(trace_file_path.is_symlink() for trace_file_path in trace_file_check_paths):
+                reasons.append("profiler.trace_files contains a symlink")
             if any(_path_has_parent_directory_component(trace_file) for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains parent-directory components")
             elif profiler_trace_dir is not None:
