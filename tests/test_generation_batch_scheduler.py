@@ -3212,6 +3212,47 @@ def test_batch_c_sweep_records_visible_hip_device_env_in_commands(
     c_sweep.validate_sweep_summary(persisted)
 
 
+def test_batch_c_sweep_omits_blank_visible_hip_device_env_from_commands(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "   ")
+    summary_path = tmp_path / "summary.json"
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "1,2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--summary-json",
+            str(summary_path),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+
+    planned = build_sweep_commands(args)
+    summary = run_sweep(args)
+    persisted = json.loads(summary_path.read_text())
+
+    assert all(item.argv[0] != "env" for item in planned)
+    assert all(entry["argv"][0] != "env" for entry in persisted["commands"])
+    assert all(not entry["command"].startswith("env HIP_VISIBLE_DEVICES=") for entry in persisted["commands"])
+    assert summary["status"] == "planned"
+    c_sweep.validate_sweep_summary(persisted)
+
+
 def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)
@@ -5229,6 +5270,55 @@ def test_batch_c_sweep_scaling_reference_rejects_mismatched_visible_device_env(
 
     assert precondition["passed"] is False
     assert "hardware.visible_device.env.HIP_VISIBLE_DEVICES does not match retained command env" in precondition["reason"]
+
+
+def test_batch_c_sweep_scaling_reference_rejects_blank_visible_device_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    reference_path = output_dir / "serial-bridge-c2.json"
+    reference_path.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(reference_path),
+                "schema": 2,
+                "status": "blocked",
+                "hardware": {"visible_device": {"env": {"HIP_VISIBLE_DEVICES": "   "}}},
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert precondition["passed"] is False
+    assert "hardware.visible_device.env.HIP_VISIBLE_DEVICES is not a non-blank string when present" in precondition["reason"]
 
 
 def test_batch_c_sweep_scaling_reference_rejects_mismatched_visible_device_name(

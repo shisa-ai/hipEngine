@@ -131,7 +131,7 @@ def _command_env_prefix_parts() -> tuple[str, ...]:
     assignments = tuple(
         f"{key}={value}"
         for key in _COMMAND_ENV_KEYS
-        if (value := os.environ.get(key))
+        if (value := os.environ.get(key)) is not None and value.strip()
     )
     return ("env", *assignments) if assignments else ()
 
@@ -1188,6 +1188,8 @@ def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[st
             continue
         if not isinstance(value, str) or not value:
             reasons.append(f"hardware.visible_device.env.{key} is not a non-empty string when present")
+        elif not value.strip():
+            reasons.append(f"hardware.visible_device.env.{key} is not a non-blank string when present")
         else:
             assignments[key] = value
     return assignments, reasons
