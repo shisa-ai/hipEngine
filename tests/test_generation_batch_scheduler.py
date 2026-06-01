@@ -7269,6 +7269,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_summary_extra_key["unexpected_summary_key"] = True
     with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
         c_sweep.validate_sweep_summary(tampered_summary_extra_key)
+    tampered_summary_missing_key = json.loads(json.dumps(summary))
+    tampered_summary_missing_key.pop("failed_postconditions")
+    with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_summary_missing_key)
     assert summary["status"] == "planned"
     tampered_summary_status_type = json.loads(json.dumps(summary))
     tampered_summary_status_type["status"] = 0
