@@ -659,15 +659,16 @@ reporting.
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
   checks those embedded hashes/sizes against the current files before a handoff is
   trusted, and `source_artifacts_sha256` gives readiness pollers a compact digest
-  of the same prompt/oracle/resource/docs provenance. The status also includes
-  `next_action_commands` for rerunning the oracle command shell, regenerating
-  the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
+  of the same prompt/oracle/resource/docs provenance. The status also exposes
+  `handoff_summary_sha256` so pollers can detect blocker-summary or
+  compact-output metadata drift before trusting the remaining handoff queue. The
+  status also includes `next_action_commands` for rerunning the oracle command
+  shell, regenerating the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
   and refreshing the resource/status artifacts; `next_action_commands_sha256`
   gives handoff pollers a compact digest of that command bundle, with
   length/SHA-256 metadata for the helper/resource/status refresh commands plus
   a compact source-artifact verification command for rechecking embedded
-  prompt/oracle/resource/docs
-  hashes before blocker handoff; the oracle helper refresh command
+  prompt/oracle/resource/docs hashes before blocker handoff; the oracle helper
   preserves the recorded `diagnostic_logs=true` setting so reruns keep llama.cpp
   load/error logs enabled for the canonical timeout artifact, and the blocker
   work queue now exposes that boolean directly for handoff consumers. Remaining

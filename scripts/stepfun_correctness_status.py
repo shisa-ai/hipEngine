@@ -63,6 +63,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--handoff-summary-sha-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary_sha256 for blocker handoff drift polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--source-artifacts-sha-only",
         action="store_true",
         help=(
@@ -1200,6 +1208,7 @@ def _handoff_summary(
         },
         "compact_output_modes": {
             "summary_only": "handoff_summary",
+            "handoff_summary_sha_only": "handoff_summary_sha256",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
@@ -1439,6 +1448,7 @@ def build_status(
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
+    handoff_summary_sha256 = _stable_json_sha256(handoff_summary)
     source_artifacts = _source_artifacts(
         prompt_artifact=prompt_artifact,
         oracle_artifact=oracle_artifact,
@@ -1455,6 +1465,7 @@ def build_status(
         "e2e_inference_ready": e2e_inference_ready,
         "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
         "open_blocker_count": handoff_summary["open_blocker_count"],
+        "handoff_summary_sha256": handoff_summary_sha256,
         "source_artifacts_sha256": source_artifacts_sha256,
         "next_action_commands_sha256": next_action_commands_sha256,
         "first_blocker_kind": handoff_summary["blocker_work_queue_meta"]["first_blocker_kind"],
@@ -1507,6 +1518,7 @@ def build_status(
         "readiness_summary": readiness_summary,
         "readiness_summary_sha256": readiness_summary_sha256,
         "handoff_summary": handoff_summary,
+        "handoff_summary_sha256": handoff_summary_sha256,
         "blockers": blockers,
         "next_actions": next_actions,
         "next_action_commands": next_action_commands,
@@ -1584,6 +1596,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["kv_backed_decode_not_wired"].get(
             "resource_plan_refresh_command"
         )
+    elif args.handoff_summary_sha_only:
+        result = status["handoff_summary_sha256"]
     elif args.readiness_summary_sha_only:
         result = status["readiness_summary_sha256"]
     elif args.readiness_summary_only:
