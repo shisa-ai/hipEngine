@@ -20391,7 +20391,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 },
             }
         ],
-        "decision": {"accepted": True},
+        "decision": {"accepted": True, "reason": "correctness/protocol passed"},
     }
 
     artifact_root = tmp_path / "artifact-repo"
@@ -20491,6 +20491,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     rejected_decision["decision"]["accepted"] = False
     with pytest.raises(ValueError, match="accepted retained artifact must set decision.accepted=true"):
         validate_cn_diagnostic_artifact_payload(rejected_decision)
+
+    missing_decision_reason = json.loads(json.dumps(accepted))
+    missing_decision_reason["decision"].pop("reason")
+    with pytest.raises(ValueError, match="accepted retained artifact decision.reason must be correctness/protocol passed"):
+        validate_cn_diagnostic_artifact_payload(missing_decision_reason)
+
+    mismatched_decision_reason = json.loads(json.dumps(accepted))
+    mismatched_decision_reason["decision"]["reason"] = "blocked"
+    with pytest.raises(ValueError, match="accepted retained artifact decision.reason must be correctness/protocol passed"):
+        validate_cn_diagnostic_artifact_payload(mismatched_decision_reason)
 
     missing_timestamp = json.loads(json.dumps(accepted))
     missing_timestamp.pop("timestamp")

@@ -1265,6 +1265,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     decision = payload.get("decision")
     if not isinstance(decision, Mapping) or decision.get("accepted") is not True:
         errors.append("accepted retained artifact must set decision.accepted=true")
+    elif decision.get("reason") != "correctness/protocol passed":
+        errors.append("accepted retained artifact decision.reason must be correctness/protocol passed")
 
     observability = _mapping_at(payload, "observability", errors)
     workload = _mapping_at(payload, "workload", errors)
