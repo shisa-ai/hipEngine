@@ -356,6 +356,16 @@ def test_qwen35_passed_validation_summary_requires_accepted_claim_consistency() 
     with pytest.raises(ValueError, match="summary.status must be a non-empty string or null"):
         validate_cn_diagnostic_validation_summary(blank_status)
 
+    leading_space_status = dict(summary)
+    leading_space_status["status"] = " blocked"
+    with pytest.raises(ValueError, match="summary.status must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(leading_space_status)
+
+    trailing_space_status = dict(summary)
+    trailing_space_status["status"] = "blocked "
+    with pytest.raises(ValueError, match="summary.status must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(trailing_space_status)
+
     missing_claim = dict(summary)
     missing_claim["performance_claim"] = None
     with pytest.raises(ValueError, match="passed validation summary.performance_claim must be a bool"):

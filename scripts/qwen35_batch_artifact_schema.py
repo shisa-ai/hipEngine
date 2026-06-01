@@ -4351,8 +4351,11 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             if _benchmark_results_relative_path(artifact_path) != artifact_path.replace("\\", "/"):
                 errors.append("summary.artifact_path must be a repo-relative benchmarks/results path or null")
     status = summary.get("status")
-    if status is not None and (not isinstance(status, str) or not status.strip()):
-        errors.append("summary.status must be a non-empty string or null")
+    if status is not None:
+        if not isinstance(status, str) or not status.strip():
+            errors.append("summary.status must be a non-empty string or null")
+        elif status.strip() != status:
+            errors.append("summary.status must not contain leading or trailing whitespace")
     performance_claim = summary.get("performance_claim")
     if performance_claim is not None and not isinstance(performance_claim, bool):
         errors.append("summary.performance_claim must be a bool or null")
