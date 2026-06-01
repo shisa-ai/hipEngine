@@ -2678,6 +2678,7 @@ def test_qwen35_resident_linear_batch_decode_uses_state_indices_for_c2_slots() -
     assert kwargs["state_indices"] is state_indices
     assert kwargs["segments"] == 2
     assert kwargs["tokens"] == 2
+    assert kwargs["force_batch_gemv_linear_projections"] is True
     assert runtime.copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
 
 
@@ -3055,7 +3056,7 @@ def test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native(
     assert kwargs["force_batch_gemv_linear_out"] is expected_batch_gemv
     assert kwargs["force_selected_c1_moe"] is False
     assert kwargs["force_selected_c1_linear_projections"] is False
-    assert kwargs["force_batch_gemv_linear_projections"] is False
+    assert kwargs["force_batch_gemv_linear_projections"] is True
     assert kwargs["force_selected_c1_linear_state"] is False
     assert kwargs["selected_c1_linear_state_pairs"] is None
     assert kwargs["conv_state"] is conv

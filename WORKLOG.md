@@ -63197,3 +63197,30 @@ Controls:
 - `--batch-decode-moe-path selected_c1 --batch-decode-full-attn-path per_row` → `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-selected-moe-full-per-row-gpu1.json`: token green, hidden red at step 4 / generated index 5, row 0, dim 1269, `max_abs=0.001220703125`.
 
 Full c=2 512/128 diagnostic retained bench with `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS=1 HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE=1` improved the min equal-prefix from the default 82 to 119 (`[119, 137]`) but remained `rejected_correctness`; the selected-MoE-only control without batch-GEMV projection stayed at 82 (`[82, 104]`). This points to a compound blocker: fix native QKV/Z projection numerics first, then audit grouped compact MoE parity under the projection-fixed path. No performance claim.
+
+## 2026-06-02 — CONCURRENCY default native decode uses batch-GEMV QKV/Z projection
+
+Changed native c>1 linear-attention decode to use the row-major batch-GEMV QKV/Z projection path by default for `rows > 1`, unless selected-c1 projection diagnostics are explicitly active. This keeps decode execution metadata as `linear_attention_projection_path=native_batch` / `native_caware_decode=true` because the promoted path is a batched rows>1 kernel path, not a serial decode bridge. Added unit coverage in `tests/test_qwen35_resident_batch_layout.py` to assert default c=2 linear batch decode passes `force_batch_gemv_linear_projections=True` while diagnostic selected-c1 paths still override it.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py
+pytest -q tests/test_qwen35_resident_batch_layout.py -q
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-native-batch-gemv-default-gpu1.json
+bash -lc '<native c=2 512/128 retained verifier>'
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && \
+  HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && \
+  HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && \
+  HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json
+```
+
+Result: targeted layout tests passed; guard passed (`396 passed`, primitive c=2/c=8 green on GPU1 / RX 7900 XTX). The reduced L8 hidden-bisect artifact now has `first_token_mismatch=null`, `token_passed=true`, and decode metadata `linear_attention_projection_path=native_batch`, `native_caware_decode=true`, `blockers=[]`. Hidden remains red at decode step 10 / generated index 11, row 1, dim 1269, `max_abs=0.00146484375`. Full native c=2 512/128 retained verifier still rejects correctness with min equal-prefix `82` (`[82, 137]`) and `performance_claim=false`; next target is the remaining grouped-compact MoE / full-attention hidden parity blocker.

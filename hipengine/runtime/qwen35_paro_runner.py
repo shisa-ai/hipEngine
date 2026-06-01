@@ -3969,6 +3969,11 @@ class Qwen35ParoResidentSession:
             and not force_selected_c1_qkv_z_linear_projections
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS")
         )
+        use_batch_gemv_linear_projections = (
+            rows > 1
+            and not force_selected_c1_linear_projections
+            and not force_selected_c1_qkv_z_linear_projections
+        )
         force_selected_c1_linear_state = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"
         )
@@ -4134,7 +4139,7 @@ class Qwen35ParoResidentSession:
                             force_selected_c1_linear_projections=force_selected_c1_linear_projections,
                             force_selected_c1_qkv_z_linear_projections=force_selected_c1_qkv_z_linear_projections,
                             force_selected_c1_ab_linear_projections=force_selected_c1_ab_linear_projections,
-                            force_batch_gemv_linear_projections=force_batch_gemv_linear_projections,
+                            force_batch_gemv_linear_projections=use_batch_gemv_linear_projections,
                             force_selected_c1_linear_state=force_selected_c1_linear_state,
                             selected_c1_linear_state_pairs=selected_c1_linear_state_pairs,
                             force_selected_c1_linear_out=force_selected_c1_linear_out,
