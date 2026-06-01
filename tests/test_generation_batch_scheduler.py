@@ -21017,6 +21017,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert validate_cn_diagnostic_artifact_main([str(missing_artifact_path_artifact_file), "--summary-json", str(missing_artifact_path_summary_file)]) == 1
     failed_schema_summary = json.loads(missing_artifact_path_summary_file.read_text())
     assert failed_schema_summary["artifact_path"] is None
+    stale_failed_schema_source = dict(failed_schema_summary)
+    stale_failed_schema_source["source_artifact_path"] = "benchmarks/results/other-missing-artifact-path.json"
+    with pytest.raises(ValueError, match="summary.source_artifact_path must match summary.artifact_json"):
+        validate_cn_diagnostic_validation_summary(stale_failed_schema_source)
     assert validate_cn_diagnostic_artifact_main([str(missing_artifact_path_summary_file), "--validation-summary"]) == 0
     wrong_named_missing_artifact_path_summary_file = rollup_root / "benchmarks" / "results" / "other-missing-artifact-path-schema-check.json"
     assert validate_cn_diagnostic_artifact_main([str(missing_artifact_path_artifact_file), "--summary-json", str(wrong_named_missing_artifact_path_summary_file)]) == 1
@@ -21083,6 +21087,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert failed_summary["performance_claim"] is None
     assert failed_summary["benchmark_rollup"] is None
     assert "benchmark_rollup must be an object" in failed_summary["error"]
+    stale_failed_summary_source = dict(failed_summary)
+    stale_failed_summary_source["source_artifact_path"] = "benchmarks/results/other-accepted-c2-missing-rollup.json"
+    with pytest.raises(ValueError, match="summary.source_artifact_path must match summary.artifact_json"):
+        validate_cn_diagnostic_validation_summary(stale_failed_summary_source)
     validate_cn_diagnostic_validation_summary(failed_summary)
     failed_summary_success_status = dict(failed_summary)
     failed_summary_success_status["status"] = "accepted"
