@@ -8590,6 +8590,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_int8_artifact["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
         c_sweep.validate_sweep_summary(tampered_int8_artifact)
+    tampered_int8_artifact_path_only = json.loads(json.dumps(summary))
+    tampered_int8_artifact_path_only["commands"][int8_entry_indices[-1]]["artifact_path"] = stale_int8_artifact_path
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+        c_sweep.validate_sweep_summary(tampered_int8_artifact_path_only)
+    tampered_int8_artifact_argv_only = json.loads(json.dumps(summary))
+    int8_artifact_argv_only = tampered_int8_artifact_argv_only["commands"][int8_entry_indices[-1]]["argv"]
+    int8_artifact_argv_only[int8_artifact_argv_only.index("--json") + 1] = stale_int8_artifact_path
+    tampered_int8_artifact_argv_only["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_argv_only)
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+        c_sweep.validate_sweep_summary(tampered_int8_artifact_argv_only)
     tampered_int8_artifact_output_dir = json.loads(json.dumps(summary))
     outside_int8_artifact_path = str(
         tmp_path / "outside" / Path(tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["artifact_path"]).name
@@ -8663,6 +8673,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_gguf_artifact["commands"][gguf_c8_index]["command"] = shlex.join(gguf_artifact_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
         c_sweep.validate_sweep_summary(tampered_gguf_artifact)
+    tampered_gguf_artifact_path_only = json.loads(json.dumps(summary))
+    tampered_gguf_artifact_path_only["commands"][gguf_c8_index]["artifact_path"] = stale_gguf_artifact_path
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+        c_sweep.validate_sweep_summary(tampered_gguf_artifact_path_only)
+    tampered_gguf_artifact_argv_only = json.loads(json.dumps(summary))
+    gguf_artifact_argv_only = tampered_gguf_artifact_argv_only["commands"][gguf_c8_index]["argv"]
+    gguf_artifact_argv_only[gguf_artifact_argv_only.index("--json") + 1] = stale_gguf_artifact_path
+    tampered_gguf_artifact_argv_only["commands"][gguf_c8_index]["command"] = shlex.join(gguf_artifact_argv_only)
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+        c_sweep.validate_sweep_summary(tampered_gguf_artifact_argv_only)
     tampered_gguf_artifact_output_dir = json.loads(json.dumps(summary))
     outside_gguf_artifact_path = str(
         tmp_path / "outside" / Path(tampered_gguf_artifact_output_dir["commands"][gguf_c8_index]["artifact_path"]).name
