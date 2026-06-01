@@ -63064,3 +63064,79 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --jso
 ```
 
 Result: pytest bundle `396 passed`; primitive c=2/c=8 JSONs passed with zero append/A-A mismatches, `attn_batch_vs_c1_max_abs=0.0`, and `device.env.HIP_VISIBLE_DEVICES=1` / `device_name=AMD Radeon RX 7900 XTX`.
+
+## 2026-06-02 — CONCURRENCY native c2 current hidden-bisect refresh
+
+Refreshed the new `concurrency-e2e/native-c2-e2e` loop's focused C2.3 evidence on GPU1 / RX 7900 XTX after unblocking `scripts/qwen35_batch_retained_bench.py`. No code changed in this diagnostic iteration, and no retained c>N performance claim is made.
+
+Focused hidden-bisect command:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-current-gpu1.json
+```
+
+Result: `/tmp/hipengine-e2e-hidden-L8-512-16-current-gpu1.json` reports `status=mismatch_found`. L8 first token mismatch remains row 0 index 13. First tolerance hidden mismatch is decode step 11 / generated index 12, row 0, hidden dim 1543, `max_abs=0.010465621948242188`, after layer 7 full attention with `full_attention_decode_path=native_batch` and `moe_decode_path=grouped_compact`. Trace summaries show:
+
+- `decode_linear_stages.first_mismatch`: layer 0 `qkv`, decode step 0, row 0, `max_abs=0.0078125`.
+- `decode_full_attention.first_mismatch`: layer 3 `attn_input_pre_qkv`, decode step 0, row 0, `max_abs=0.0078125`.
+- `decode_full_kv_samples.first_mismatch`: layer 3 current key sample, decode step 0, row 0, `max_abs=0.015625`.
+
+Native c=2 512/128 verifier rerun:
+
+```bash
+bash -lc 'set -euo pipefail
+OUT=/tmp/hipengine-e2e-native-c2-512-128.json
+LOG=/tmp/hipengine-e2e-native-c2-512-128.log
+rm -f "$OUT" "$LOG"
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 128 \
+  --warmup-decode-tokens 8 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build --json "$OUT" >"$LOG" 2>&1 || true
+python3 - <<PY
+import json
+p = "$OUT"
+try:
+    d = json.load(open(p))
+    eq = d.get("correctness", {}).get("generated_token_equality", {})
+    batch = eq.get("batch_sequences") or []
+    c1 = eq.get("c1_sequences") or []
+    if not batch or not c1 or len(batch) != len(c1):
+        print(0)
+    else:
+        prefixes = []
+        for b, r in zip(batch, c1):
+            n = 0
+            for x, y in zip(b, r):
+                if x != y:
+                    break
+                n += 1
+            prefixes.append(n)
+        print(min(prefixes) if prefixes else 0)
+except Exception:
+    print(0)
+PY'
+```
+
+Result: `/tmp/hipengine-e2e-native-c2-512-128.json` remains `status=rejected_correctness`, `correctness.generated_token_equality.passed=false`, `performance_claim=false`. This run's min equal-prefix metric was `82` tokens with row prefixes `[82, 137]`; row 0 first mismatch at prefix 82 (`batch=8204`, `c1=27502`). Diagnostic decode was `76.803` aggregate / `38.401` per-request tok/s.
+
+Guard reran unchanged:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && \
+HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && \
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && \
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json
+```
+
+Result: pytest bundle `396 passed`; primitive c=2/c=8 passed with zero append/A-A mismatches, `attn_batch_vs_c1_max_abs=0.0`, and GPU1/XTX provenance. Next implementation target remains native projection/full-attention parity, especially the earliest `qkv` and full-attention input/current-KV mismatches; do not spend further iterations on schema-only work.
