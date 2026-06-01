@@ -2183,6 +2183,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if not _is_nonempty_string_list(profiler_trace_files):
         errors.append("profiler.trace_files must be a non-empty string list for accepted artifacts")
     elif isinstance(profiler_trace_files, list) and isinstance(profiler_trace_dir, str) and profiler_trace_dir:
+        if len(set(profiler_trace_files)) != len(profiler_trace_files):
+            errors.append("profiler.trace_files entries must be unique for accepted artifacts")
         for trace_file in profiler_trace_files:
             trace_path = Path(trace_file)
             if trace_path.suffix.lower() != ".csv":

@@ -21493,6 +21493,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="profiler.trace_files must include a kernel-trace CSV path"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_file_without_kernel_trace_csv)
 
+    profiler_duplicate_trace_files = json.loads(json.dumps(accepted))
+    profiler_duplicate_trace_files["profiler"]["trace_files"].append(profiler_duplicate_trace_files["profiler"]["trace_files"][0])
+    with pytest.raises(ValueError, match="profiler.trace_files entries must be unique"):
+        validate_cn_diagnostic_artifact_payload(profiler_duplicate_trace_files)
+
     profiler_missing_synthesized_fields = json.loads(json.dumps(accepted))
     profiler_missing_synthesized_fields["profiler"].pop("synthesized_fields")
     with pytest.raises(ValueError, match="profiler.synthesized_fields must be a string list"):
