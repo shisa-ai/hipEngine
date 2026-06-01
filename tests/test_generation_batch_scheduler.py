@@ -20487,6 +20487,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="run_tag must match qwen35-paro-c<workload.concurrency>-native-retained"):
         validate_cn_diagnostic_artifact_payload(mismatched_run_tag)
 
+    rejected_decision = json.loads(json.dumps(accepted))
+    rejected_decision["decision"]["accepted"] = False
+    with pytest.raises(ValueError, match="accepted retained artifact must set decision.accepted=true"):
+        validate_cn_diagnostic_artifact_payload(rejected_decision)
+
     missing_timestamp = json.loads(json.dumps(accepted))
     missing_timestamp.pop("timestamp")
     with pytest.raises(ValueError, match="timestamp must be a non-empty ISO-8601 string for accepted artifacts"):

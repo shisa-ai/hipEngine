@@ -1262,6 +1262,9 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         errors.append("summary must be Qwen3.5/PARO scheduler compact native c>N benchmark for accepted artifacts")
     if payload.get("performance_claim") is not True:
         errors.append("accepted retained artifact must set performance_claim=true")
+    decision = payload.get("decision")
+    if not isinstance(decision, Mapping) or decision.get("accepted") is not True:
+        errors.append("accepted retained artifact must set decision.accepted=true")
 
     observability = _mapping_at(payload, "observability", errors)
     workload = _mapping_at(payload, "workload", errors)
