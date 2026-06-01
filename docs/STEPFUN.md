@@ -722,7 +722,10 @@ reporting.
   `--oracle-helper-long-timeout-command-sha-only` and
   `--first-blocker-recommended-command-only` /
   `--first-blocker-recommended-command-sha-only` outputs expose the rerun
-  command/digests directly, so the remaining oracle next action is a concrete
+  command/digests directly. The blocker queue also records a compact
+  `blocker_recommended_commands` list plus SHA so automation can inspect both
+  the front oracle rerun and the queued KV resource refresh without parsing full
+  work-item payloads. The remaining oracle next action is therefore a concrete
   longer-timeout rerun instead of only the prior 60 s replay. Remaining
   implementation task: run a longer/faster StepFun-capable llama.cpp oracle and
   review/record the parsed result; KV-backed decode parity remains open too.

@@ -279,6 +279,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--blocker-recommended-commands-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.blocker_recommended_commands for generic blocker-command "
+            "routing. Overrides --summary-only and blocker-work-queue compact modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-recommended-commands-sha-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.blocker_recommended_commands_sha256 for recommended-command "
+            "queue drift polling. Overrides --summary-only and blocker-work-queue compact modes."
+        ),
+    )
+    parser.add_argument(
         "--status-refresh-command-only",
         action="store_true",
         help=(
@@ -1916,6 +1932,21 @@ def _handoff_summary(
                 }
             )
     blocker_work_queue_sha256 = _stable_json_sha256(blocker_work_queue)
+    blocker_recommended_commands = [
+        {
+            "blocker_kind": item.get("blocker_kind"),
+            "queue_index": item.get("queue_index"),
+            "recommended_command_kind": item.get("recommended_command_kind"),
+            "recommended_command": item.get("recommended_command"),
+            "recommended_command_nchars": item.get("recommended_command_nchars"),
+            "recommended_command_sha256": item.get("recommended_command_sha256"),
+            "recommended_command_reason": item.get("recommended_command_reason"),
+        }
+        for item in blocker_work_queue
+    ]
+    blocker_recommended_commands_sha256 = _stable_json_sha256(
+        blocker_recommended_commands
+    )
     first_blocker_work_item = blocker_work_queue[0] if blocker_work_queue else None
     first_blocker_work_item_sha256 = (
         _stable_json_sha256(first_blocker_work_item)
@@ -1941,6 +1972,7 @@ def _handoff_summary(
             if first_blocker_work_item
             else None
         ),
+        "recommended_commands_sha256": blocker_recommended_commands_sha256,
     }
     return {
         "schema_version": HANDOFF_SUMMARY_SCHEMA_VERSION,
@@ -1953,6 +1985,8 @@ def _handoff_summary(
         "blocker_work_queue_sha256": blocker_work_queue_meta["sha256"],
         "blocker_work_queue_meta": blocker_work_queue_meta,
         "blocker_work_queue": blocker_work_queue,
+        "blocker_recommended_commands": blocker_recommended_commands,
+        "blocker_recommended_commands_sha256": blocker_recommended_commands_sha256,
         "first_blocker_work_item": first_blocker_work_item,
         "first_blocker_work_item_sha256": first_blocker_work_item_sha256,
         "exit_codes": {
@@ -2050,6 +2084,8 @@ def _handoff_summary(
             "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
             "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
+            "blocker_recommended_commands_only": "handoff_summary.blocker_recommended_commands",
+            "blocker_recommended_commands_sha_only": "handoff_summary.blocker_recommended_commands_sha256",
             "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
             "first_blocker_only": "handoff_summary.first_blocker_work_item",
             "first_blocker_recommended_command_only": (
@@ -2593,6 +2629,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["readiness_summary_sha256"]
     elif args.readiness_summary_only:
         result = status["readiness_summary"]
+    elif args.blocker_recommended_commands_sha_only:
+        result = status["handoff_summary"]["blocker_recommended_commands_sha256"]
+    elif args.blocker_recommended_commands_only:
+        result = status["handoff_summary"]["blocker_recommended_commands"]
     elif args.blocker_work_queue_sha_only:
         result = status["handoff_summary"]["blocker_work_queue_sha256"]
     elif args.blocker_work_queue_meta_only:

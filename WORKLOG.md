@@ -31212,3 +31212,46 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`102 passed`); compact persisted KV streaming blueprint SHA output returned expected blocked exit code 2 with stable JSON SHA `862d4a752dbee26a51141d007586be9d32ec3588fad22c69586657db8456a1d4`; source/status verification returned `match` with the new KV blueprint digest and mirror integrity checks true; the full StepFun guard passed (`206` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun blocker recommended command queue
+
+Added a compact blocker recommended-command queue to the StepFun correctness handoff. `handoff_summary.blocker_recommended_commands` now lists each blocker with its queue index, recommended command kind/text/SHA, and reason; the current queue is `oracle_parity_blocked -> oracle_helper_long_timeout_command` followed by `kv_backed_decode_not_wired -> resource_plan_refresh_command`. `handoff_summary.blocker_recommended_commands_sha256` records the stable list digest and `blocker_work_queue_meta.recommended_commands_sha256` mirrors it. Compact `--blocker-recommended-commands-only` / `--blocker-recommended-commands-sha-only` modes expose the queue and digest directly. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). This is handoff metadata only; no oracle run, KV kernel launch, performance claim, or e2e correctness claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --blocker-recommended-commands-only --fail-on-blocked --pretty > /tmp/stepfun-blocker-recommended-commands.json; rc_cmds=$?; printf '%s' "$rc_cmds" > /tmp/stepfun-blocker-recommended-commands.rc
+python3 scripts/stepfun_correctness_status.py --blocker-recommended-commands-sha-only --fail-on-blocked --pretty > /tmp/stepfun-blocker-recommended-commands-sha.json; rc_sha=$?; printf '%s' "$rc_sha" > /tmp/stepfun-blocker-recommended-commands-sha.rc
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-blocker-recommended-commands.json
+python3 - <<'PY'
+import hashlib, json
+stable=lambda v: hashlib.sha256(json.dumps(v, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+assert open('/tmp/stepfun-blocker-recommended-commands.rc').read() == '2'
+assert open('/tmp/stepfun-blocker-recommended-commands-sha.rc').read() == '2'
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+commands=json.load(open('/tmp/stepfun-blocker-recommended-commands.json'))
+sha=json.load(open('/tmp/stepfun-blocker-recommended-commands-sha.json'))
+expected=s['handoff_summary']['blocker_recommended_commands']
+assert commands == expected
+assert len(commands) == 2
+assert commands[0]['blocker_kind'] == 'oracle_parity_blocked'
+assert commands[0]['recommended_command_kind'] == 'oracle_helper_long_timeout_command'
+assert commands[1]['blocker_kind'] == 'kv_backed_decode_not_wired'
+assert commands[1]['recommended_command_kind'] == 'resource_plan_refresh_command'
+assert sha == s['handoff_summary']['blocker_recommended_commands_sha256'] == stable(expected)
+assert s['handoff_summary']['blocker_work_queue_meta']['recommended_commands_sha256'] == sha
+assert s['handoff_summary']['compact_output_modes']['blocker_recommended_commands_only'] == 'handoff_summary.blocker_recommended_commands'
+assert s['handoff_summary']['compact_output_modes']['blocker_recommended_commands_sha_only'] == 'handoff_summary.blocker_recommended_commands_sha256'
+v=json.load(open('/tmp/stepfun-source-verify-blocker-recommended-commands.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['all_match'] is True
+print('blocker recommended commands ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`104 passed`); compact blocker recommended-command queue/SHA outputs returned expected blocked exit code 2 with stable JSON SHA `2cf047b2a8ccd95d9a14f62d5dc432108423b22b725bf3c381885a034f46a7b5`; source/status verification returned `match`; the full StepFun guard passed (`208` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

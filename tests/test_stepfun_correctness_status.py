@@ -1209,6 +1209,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "first_recommended_command_sha256": hashlib.sha256(
             _oracle_helper_command(prompt, oracle, timeout_s=900.0).encode()
         ).hexdigest(),
+        "recommended_commands_sha256": _stable_json_sha256(
+            handoff["blocker_recommended_commands"]
+        ),
     }
     assert handoff["first_blocker_work_item"] == handoff["blocker_work_queue"][0]
     assert handoff["first_blocker_work_item_sha256"] == _stable_json_sha256(
@@ -1307,6 +1310,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
+        "blocker_recommended_commands_only": "handoff_summary.blocker_recommended_commands",
+        "blocker_recommended_commands_sha_only": "handoff_summary.blocker_recommended_commands_sha256",
         "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
         "first_blocker_only": "handoff_summary.first_blocker_work_item",
         "first_blocker_recommended_command_only": (
@@ -1830,6 +1835,9 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "first_recommended_command_sha256": hashlib.sha256(
             _oracle_helper_command(prompt, oracle, timeout_s=900.0).encode()
         ).hexdigest(),
+        "recommended_commands_sha256": _stable_json_sha256(
+            payload["handoff_summary"]["blocker_recommended_commands"]
+        ),
     }
     assert payload["handoff_summary"]["first_blocker_work_item_sha256"] == _stable_json_sha256(
         payload["handoff_summary"]["first_blocker_work_item"]
@@ -2928,6 +2936,9 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "first_recommended_command_sha256": hashlib.sha256(
             _oracle_helper_command(prompt, oracle, timeout_s=900.0).encode()
         ).hexdigest(),
+        "recommended_commands_sha256": _stable_json_sha256(
+            payload["blocker_recommended_commands"]
+        ),
     }
     assert payload["first_blocker_work_item"] == payload["blocker_work_queue"][0]
     assert payload["first_blocker_work_item_sha256"] == _stable_json_sha256(
@@ -3026,6 +3037,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
+        "blocker_recommended_commands_only": "handoff_summary.blocker_recommended_commands",
+        "blocker_recommended_commands_sha_only": "handoff_summary.blocker_recommended_commands_sha256",
         "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
         "first_blocker_only": "handoff_summary.first_blocker_work_item",
         "first_blocker_recommended_command_only": (
@@ -3285,6 +3298,97 @@ def test_stepfun_correctness_status_blocker_work_queue_sha_only(capsys, tmp_path
     assert captured.err == ""
     assert json.loads(output.read_text()) == status["handoff_summary"][
         "blocker_work_queue_sha256"
+    ]
+
+
+def test_stepfun_correctness_status_blocker_recommended_commands_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "blocker-recommended-commands.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--blocker-recommended-commands-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["handoff_summary"]["blocker_recommended_commands"]
+    assert payload[0]["blocker_kind"] == "oracle_parity_blocked"
+    assert payload[0]["recommended_command_kind"] == "oracle_helper_long_timeout_command"
+    assert payload[1]["blocker_kind"] == "kv_backed_decode_not_wired"
+    assert payload[1]["recommended_command_kind"] == "resource_plan_refresh_command"
+
+
+def test_stepfun_correctness_status_blocker_recommended_commands_sha_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "blocker-recommended-commands-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-recommended-commands-only",
+            "--blocker-recommended-commands-sha-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(output.read_text()) == status["handoff_summary"][
+        "blocker_recommended_commands_sha256"
     ]
 
 
