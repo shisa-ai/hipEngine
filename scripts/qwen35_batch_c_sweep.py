@@ -3462,6 +3462,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _path_has_symlink_parent(source_check_path):
                         errors.append("commands[].postconditions[].profiler_source_artifact_path parent directories must not be symlinks when source check failed")
                         break
+                    if _path_has_non_directory_parent(source_check_path):
+                        errors.append("commands[].postconditions[].profiler_source_artifact_path parent directories must be directories when source check failed")
+                        break
                     if source_check_path.suffix.lower() != ".json":
                         errors.append("commands[].postconditions[].profiler_source_artifact_path must be a JSON artifact path when source check failed")
                         break

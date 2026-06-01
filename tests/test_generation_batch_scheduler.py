@@ -6957,6 +6957,24 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
             with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path parent directories must not be symlinks when source check failed"):
                 c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_parent_symlink)
             symlink_parent_link.unlink()
+    parent_file_source = output_dir / "profiler-source-parent-file"
+    try:
+        parent_file_source.write_text("not a directory")
+        tampered_failed_postcondition_source_parent_file = json.loads(json.dumps(summary))
+        tampered_failed_postcondition_source_parent_file["commands"][-1]["postconditions"][0]["reason"] = source_mismatch_reason
+        tampered_failed_postcondition_source_parent_file["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(
+            parent_file_source / "linked-profiler.json"
+        )
+        tampered_failed_postcondition_source_parent_file["commands"][-1]["output_tail"] = source_mismatch_reason
+        tampered_failed_postcondition_source_parent_file["commands"][-1]["postcondition"] = tampered_failed_postcondition_source_parent_file["commands"][-1]["postconditions"][0]
+        with pytest.raises(
+            ValueError,
+            match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path parent directories must be directories when source check failed",
+        ):
+            c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_parent_file)
+    finally:
+        if parent_file_source.exists():
+            parent_file_source.unlink()
     tampered_failed_postcondition_source_suffix = json.loads(json.dumps(summary))
     tampered_failed_postcondition_source_suffix["commands"][-1]["postconditions"][0]["reason"] = source_mismatch_reason
     tampered_failed_postcondition_source_suffix["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(output_dir / "stale-profiler.txt")
