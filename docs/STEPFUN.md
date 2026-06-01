@@ -661,8 +661,10 @@ reporting.
   trusted. The status also includes `next_action_commands` for rerunning the
   oracle command shell, regenerating the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
   and refreshing the resource/status artifacts, with length/SHA-256 metadata for
-  the KV resource-plan refresh command and the shared status-refresh command.
-  Remaining implementation task: run a longer/faster
+  the helper/resource/status refresh commands; the oracle helper refresh command
+  preserves the recorded `diagnostic_logs=true` setting so reruns keep llama.cpp
+  load/error logs enabled for the canonical timeout artifact. Remaining
+  implementation task: run a longer/faster
   StepFun-capable llama.cpp oracle and review/record the parsed result;
   KV-backed decode parity remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short

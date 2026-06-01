@@ -25,19 +25,31 @@ def _stable_json_sha256(value: object) -> str:
 
 
 
-def _oracle_helper_command(prompt: Path, oracle: Path) -> str:
+def _oracle_helper_command(
+    prompt: Path,
+    oracle: Path,
+    *,
+    diagnostic_logs: bool = False,
+) -> str:
+    diagnostic_logs_arg = "--diagnostic-logs " if diagnostic_logs else ""
     return (
         "python3 scripts/stepfun_llamacpp_oracle.py "
         f"--artifact {prompt} --llama-cli /tmp/llama-cli "
         "--model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf "
-        "--n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none "
+        f"--n-predict 1 --timeout-s 60.0 {diagnostic_logs_arg}"
+        "--llama-arg=--device --llama-arg=none "
         f"--llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output {oracle}"
     )
 
 
 
-def _oracle_helper_fields(prompt: Path, oracle: Path) -> dict[str, object]:
-    command = _oracle_helper_command(prompt, oracle)
+def _oracle_helper_fields(
+    prompt: Path,
+    oracle: Path,
+    *,
+    diagnostic_logs: bool = False,
+) -> dict[str, object]:
+    command = _oracle_helper_command(prompt, oracle, diagnostic_logs=diagnostic_logs)
     return {
         "helper_command_kind": "oracle_helper_refresh_command",
         "helper_command": command,
@@ -129,7 +141,7 @@ def _write_prompt_artifact(path: Path) -> None:
     )
 
 
-def _write_oracle_artifact(path: Path) -> None:
+def _write_oracle_artifact(path: Path, *, diagnostic_logs: bool = False) -> None:
     path.write_text(
         json.dumps(
             {
@@ -146,6 +158,7 @@ def _write_oracle_artifact(path: Path) -> None:
                 "prompt_length": 23,
                 "n_predict": 1,
                 "timeout_s": 60.0,
+                "diagnostic_logs": diagnostic_logs,
                 "extra_llama_args": ["--device", "none", "--gpu-layers", "0"],
                 "command_shell": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
                 "expected_next_token_id": 369,
@@ -636,6 +649,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert oracle_progress["prompt_length"] == 23
     assert oracle_progress["n_predict"] == 1
     assert oracle_progress["timeout_s"] == 60.0
+    assert oracle_progress["diagnostic_logs"] is False
     assert oracle_progress["elapsed_s"] == 62.4
     assert oracle_progress["extra_llama_args"] == ["--device", "none", "--gpu-layers", "0"]
     assert oracle_progress["command_shell"].startswith("/tmp/llama-cli")
@@ -2140,6 +2154,59 @@ def test_stepfun_correctness_status_oracle_helper_command_only(capsys, tmp_path:
         "oracle_helper_refresh_command"
     ]
     assert payload == _oracle_helper_command(prompt, oracle)
+
+
+
+def test_stepfun_correctness_status_oracle_helper_command_preserves_diagnostic_logs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "oracle-helper-command-diagnostic.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle, diagnostic_logs=True)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--oracle-helper-command-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    expected = _oracle_helper_command(prompt, oracle, diagnostic_logs=True)
+    assert status["oracle_progress"]["diagnostic_logs"] is True
+    assert payload == status["next_action_commands"]["oracle_parity_blocked"][
+        "oracle_helper_refresh_command"
+    ]
+    assert payload == expected
+    assert "--diagnostic-logs" in payload
+    assert hashlib.sha256(payload.encode()).hexdigest() == status["next_action_commands"][
+        "oracle_parity_blocked"
+    ]["oracle_helper_refresh_command_sha256"]
 
 
 

@@ -78,10 +78,10 @@
         "first_missing_precondition": null,
         "gap_report_status": "blocked",
         "gate": "oracle_parity",
-        "helper_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "helper_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --diagnostic-logs --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
         "helper_command_kind": "oracle_helper_refresh_command",
-        "helper_command_nchars": 478,
-        "helper_command_sha256": "c535c06e68d7f2785e2312abcd6be19fb752fd5754a37e02f698e57405cdfa74",
+        "helper_command_nchars": 496,
+        "helper_command_sha256": "f6ee3671ef093684b6f10476f795d98350aca1de80a560d3c488ca42f8c1dfab",
         "is_first": true,
         "oracle_blocker_kind": "llama_cpp_oracle_timeout",
         "primary_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
@@ -115,12 +115,12 @@
       "count": 2,
       "first_blocker_kind": "oracle_parity_blocked",
       "first_work_item_schema_version": 1,
-      "first_work_item_sha256": "c9dd4de7fb76d6ff5d6a9deb0cfae87410010765c0a22de4b9ee7034e9d7e7aa",
+      "first_work_item_sha256": "ab6ab8f17aff0212fe02c074e80c94e6dd84cda7781abf268f51b78d73a72a73",
       "schema_version": 1,
-      "sha256": "4a3aa96f0d7b2b33b9324aa18eaec72868af879d901c762c2a428ceccf666dba"
+      "sha256": "c660dbf2dac0120ca8b043656ec2aae3e02e04c3ad0089f1f9a83b62bd4b24a4"
     },
     "blocker_work_queue_schema_version": 1,
-    "blocker_work_queue_sha256": "4a3aa96f0d7b2b33b9324aa18eaec72868af879d901c762c2a428ceccf666dba",
+    "blocker_work_queue_sha256": "c660dbf2dac0120ca8b043656ec2aae3e02e04c3ad0089f1f9a83b62bd4b24a4",
     "compact_output_modes": {
       "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
       "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
@@ -154,10 +154,10 @@
       "first_missing_precondition": null,
       "gap_report_status": "blocked",
       "gate": "oracle_parity",
-      "helper_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "helper_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --diagnostic-logs --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "helper_command_kind": "oracle_helper_refresh_command",
-      "helper_command_nchars": 478,
-      "helper_command_sha256": "c535c06e68d7f2785e2312abcd6be19fb752fd5754a37e02f698e57405cdfa74",
+      "helper_command_nchars": 496,
+      "helper_command_sha256": "f6ee3671ef093684b6f10476f795d98350aca1de80a560d3c488ca42f8c1dfab",
       "is_first": true,
       "oracle_blocker_kind": "llama_cpp_oracle_timeout",
       "primary_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
@@ -168,7 +168,7 @@
       "timeout_s": 60.0,
       "work_item_schema_version": 1
     },
-    "first_blocker_work_item_sha256": "c9dd4de7fb76d6ff5d6a9deb0cfae87410010765c0a22de4b9ee7034e9d7e7aa",
+    "first_blocker_work_item_sha256": "ab6ab8f17aff0212fe02c074e80c94e6dd84cda7781abf268f51b78d73a72a73",
     "kv_backed_decode_gap_report": {
       "first_missing_evidence": "streaming_runner_ready_flags",
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1060,9 +1060,9 @@
         "oracle_exact_text_match"
       ],
       "missing_preconditions": [],
-      "oracle_helper_refresh_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
-      "oracle_helper_refresh_command_nchars": 478,
-      "oracle_helper_refresh_command_sha256": "c535c06e68d7f2785e2312abcd6be19fb752fd5754a37e02f698e57405cdfa74",
+      "oracle_helper_refresh_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --diagnostic-logs --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "oracle_helper_refresh_command_nchars": 496,
+      "oracle_helper_refresh_command_sha256": "f6ee3671ef093684b6f10476f795d98350aca1de80a560d3c488ca42f8c1dfab",
       "rerun_command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
       "status_refresh_command_nchars": 431,
@@ -1181,6 +1181,7 @@
       "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
       "stripped_text_match_field": "text_matches_expected_stripped"
     },
+    "diagnostic_logs": true,
     "elapsed_s": 62.44178174599074,
     "expected_next_token_id": 369,
     "expected_next_token_logit": 19.158626556396484,
@@ -1496,12 +1497,12 @@
   },
   "readiness_summary": {
     "blocker_work_queue_count": 2,
-    "blocker_work_queue_sha256": "4a3aa96f0d7b2b33b9324aa18eaec72868af879d901c762c2a428ceccf666dba",
+    "blocker_work_queue_sha256": "c660dbf2dac0120ca8b043656ec2aae3e02e04c3ad0089f1f9a83b62bd4b24a4",
     "e2e_inference_claim_allowed": false,
     "e2e_inference_ready": false,
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
-    "first_blocker_work_item_sha256": "c9dd4de7fb76d6ff5d6a9deb0cfae87410010765c0a22de4b9ee7034e9d7e7aa",
+    "first_blocker_work_item_sha256": "ab6ab8f17aff0212fe02c074e80c94e6dd84cda7781abf268f51b78d73a72a73",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "open_blocker_count": 2,
@@ -1511,13 +1512,13 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "readiness_summary_sha256": "af0b0ecc3e8ca84b8d9b8750c1e4a2814af936599b25a2d966a8937123e02c31",
+  "readiness_summary_sha256": "81c3289d716425a1d0fa9b62df39b15494f34c2e1e7e1f6d87293d5211dccd52",
   "source_artifacts": {
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "98b09bb633822b2ee0f558be7d818456846ed2a2b6e6b933182887d29473a49a",
-      "size_bytes": 54195
+      "sha256": "509d34132da5408a5a934305fe6a7893864e950e35315443e4f5557217984873",
+      "size_bytes": 54341
     },
     "oracle": {
       "exists": true,

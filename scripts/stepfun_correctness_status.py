@@ -381,6 +381,7 @@ def _oracle_progress(oracle: dict[str, object]) -> dict[str, object]:
         "prompt_length": oracle.get("prompt_length"),
         "n_predict": oracle.get("n_predict"),
         "timeout_s": oracle.get("timeout_s"),
+        "diagnostic_logs": oracle.get("diagnostic_logs") is True,
         "elapsed_s": oracle.get("elapsed_s"),
         "extra_llama_args": list(oracle.get("extra_llama_args", [])),
         "command_shell": oracle.get("command_shell"),
@@ -731,6 +732,8 @@ def _oracle_helper_refresh_command(
     timeout_s = oracle_progress.get("timeout_s")
     if timeout_s is not None:
         command.extend(["--timeout-s", str(timeout_s)])
+    if oracle_progress.get("diagnostic_logs") is True:
+        command.append("--diagnostic-logs")
     for extra_arg in oracle_progress.get("extra_llama_args", []):
         command.append(f"--llama-arg={extra_arg}")
     command.extend(["--execute", "--pretty", "--output", str(oracle_artifact)])

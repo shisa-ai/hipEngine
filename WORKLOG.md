@@ -29922,3 +29922,32 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`33 passed`), compact KV resource command/SHA fail-on-blocked outputs returned exit code 2 and matched the status artifact, source-artifact verification returned `match`, and the full StepFun guard passed (`137` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports, this logical unit only changes tests/docs/status artifact handoff metadata rather than engine dispatch, no engine-wide backend or quant special-casing was added, and no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun oracle helper preserves diagnostic logs
+
+Updated `scripts/stepfun_correctness_status.py` so the oracle helper refresh command preserves `diagnostic_logs=true` from the canonical llama.cpp oracle artifact. This keeps reruns of `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json` aligned with the recorded timeout artifact instead of silently adding llama.cpp `--log-disable`. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --oracle-helper-command-only --fail-on-blocked --pretty > /tmp/stepfun-oracle-helper-command-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty
+python3 - <<'PY'
+import hashlib, json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+cmd=json.load(open('/tmp/stepfun-oracle-helper-command-fail.json'))
+expected=s['next_action_commands']['oracle_parity_blocked']['oracle_helper_refresh_command']
+assert cmd == expected
+assert '--diagnostic-logs' in cmd
+assert s['oracle_progress']['diagnostic_logs'] is True
+assert s['next_action_commands']['oracle_parity_blocked']['oracle_helper_refresh_command_sha256'] == hashlib.sha256(cmd.encode()).hexdigest()
+assert s['status'] == 'blocked'
+print('oracle helper diagnostic refresh command revalidated')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`34 passed`), the compact oracle helper command returned expected blocked exit code 2 and now includes `--diagnostic-logs`, source-artifact verification returned `match`, and the full StepFun guard passed (`138` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the logical unit changes status-helper metadata/tests/docs only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
