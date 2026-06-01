@@ -682,9 +682,11 @@ reporting.
   the pre-run upload order, points at the same first blocker, and has a matching
   loop-status summary. The KV gap report now persists the validated blueprint and
   loop-status summary digests, and compact `--kv-streaming-blueprint-only` /
-  `--kv-streaming-blueprint-sha-only` plus
-  `--kv-streaming-loop-status-only` / `--kv-streaming-loop-status-sha-only`
-  outputs expose those recorded summaries/digests directly for handoff automation;
+  `--kv-streaming-blueprint-sha-only`, `--kv-streaming-loop-status-only` /
+  `--kv-streaming-loop-status-sha-only`, and
+  `--kv-streaming-loop-next-action-only` /
+  `--kv-streaming-loop-next-action-sha-only` outputs expose the recorded
+  summaries/digests plus the direct `wire_streaming_decode_loop` handoff target;
   status integrity also
   cross-checks the mirrored blueprint digest, the mirrored loop-status digest,
   the mirrored first KV blocker digest, and the full KV streaming blocker names/SHA across the gap report,

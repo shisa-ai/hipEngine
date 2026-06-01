@@ -297,6 +297,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-streaming-loop-next-action-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.streaming_decode_loop_status.next_action "
+            "for direct KV loop wiring handoff. Overrides --summary-only and readiness "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-streaming-loop-next-action-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the stable SHA-256 digest of kv_backed_decode_gap_report."
+            "streaming_decode_loop_status.next_action for KV loop wiring drift polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -2244,6 +2262,12 @@ def _handoff_summary(
             "kv_streaming_loop_status_sha_only": (
                 "kv_backed_decode_gap_report.streaming_decode_loop_status_sha256"
             ),
+            "kv_streaming_loop_next_action_only": (
+                "kv_backed_decode_gap_report.streaming_decode_loop_status.next_action"
+            ),
+            "kv_streaming_loop_next_action_sha_only": (
+                "sha256(kv_backed_decode_gap_report.streaming_decode_loop_status.next_action)"
+            ),
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -2775,6 +2799,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["blocked_gates_sha256"]
     elif args.blocked_gates_only:
         result = status["blocked_gates"]
+    elif args.kv_streaming_loop_next_action_sha_only:
+        loop_status = status["kv_backed_decode_gap_report"].get(
+            "streaming_decode_loop_status", {}
+        )
+        result = _stable_json_sha256(
+            loop_status.get("next_action") if isinstance(loop_status, dict) else None
+        )
+    elif args.kv_streaming_loop_next_action_only:
+        loop_status = status["kv_backed_decode_gap_report"].get(
+            "streaming_decode_loop_status", {}
+        )
+        result = loop_status.get("next_action") if isinstance(loop_status, dict) else None
     elif args.kv_streaming_loop_status_sha_only:
         result = status["kv_backed_decode_gap_report"].get(
             "streaming_decode_loop_status_sha256"
