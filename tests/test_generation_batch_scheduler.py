@@ -7274,6 +7274,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="status must match commands"):
         c_sweep.validate_sweep_summary(tampered_summary_status)
     assert summary["dry_run"] is True
+    tampered_dry_run_type = json.loads(json.dumps(summary))
+    tampered_dry_run_type["dry_run"] = "yes"
+    with pytest.raises(ValueError, match="dry_run must be a bool"):
+        c_sweep.validate_sweep_summary(tampered_dry_run_type)
     tampered_dry_run_mode = json.loads(json.dumps(summary))
     tampered_dry_run_mode["dry_run"] = False
     with pytest.raises(ValueError, match=r"commands\[\]\.status cannot be planned for executed summaries"):
