@@ -8701,34 +8701,28 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             tampered["commands"][index]["command"] = shlex.join(argv)
             with pytest.raises(ValueError, match=expected_error):
                 c_sweep.validate_sweep_summary(tampered)
-    for flag, stale_value, expected_error in (
+    for flag, _stale_value, expected_error in (
         ("--fixture", "tests/fixtures/gguf/other.json", r"commands\[\]\.argv GGUF --fixture must match the template fixture"),
         ("--backend", "cpu_reference", r"commands\[\]\.argv GGUF --backend must match the template backend"),
         ("--max-new-tokens", "8", r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"),
         ("--quant", "gguf_q2_bad", r"commands\[\]\.argv GGUF --quant must be one of the template quants"),
     ):
-        tampered = json.loads(json.dumps(summary))
-        argv = tampered["commands"][gguf_c8_index]["argv"]
-        argv[argv.index(flag) + 1] = stale_value
-        tampered["commands"][gguf_c8_index]["command"] = shlex.join(argv)
-        with pytest.raises(ValueError, match=expected_error):
-            c_sweep.validate_sweep_summary(tampered)
+        for index in gguf_entry_indices:
+            tampered_missing = json.loads(json.dumps(summary))
+            missing_argv = tampered_missing["commands"][index]["argv"]
+            missing_index = missing_argv.index(flag)
+            del missing_argv[missing_index : missing_index + 2]
+            tampered_missing["commands"][index]["command"] = shlex.join(missing_argv)
+            with pytest.raises(ValueError, match=expected_error):
+                c_sweep.validate_sweep_summary(tampered_missing)
 
-        tampered_missing = json.loads(json.dumps(summary))
-        missing_argv = tampered_missing["commands"][gguf_c8_index]["argv"]
-        missing_index = missing_argv.index(flag)
-        del missing_argv[missing_index : missing_index + 2]
-        tampered_missing["commands"][gguf_c8_index]["command"] = shlex.join(missing_argv)
-        with pytest.raises(ValueError, match=expected_error):
-            c_sweep.validate_sweep_summary(tampered_missing)
-
-        tampered_blank = json.loads(json.dumps(summary))
-        blank_argv = tampered_blank["commands"][gguf_c8_index]["argv"]
-        blank_index = blank_argv.index(flag)
-        blank_argv[blank_index : blank_index + 2] = [f"{flag}="]
-        tampered_blank["commands"][gguf_c8_index]["command"] = shlex.join(blank_argv)
-        with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
-            c_sweep.validate_sweep_summary(tampered_blank)
+            tampered_blank = json.loads(json.dumps(summary))
+            blank_argv = tampered_blank["commands"][index]["argv"]
+            blank_index = blank_argv.index(flag)
+            blank_argv[blank_index : blank_index + 2] = [f"{flag}="]
+            tampered_blank["commands"][index]["command"] = shlex.join(blank_argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+                c_sweep.validate_sweep_summary(tampered_blank)
     tampered_gguf_rows = json.loads(json.dumps(summary))
     gguf_rows_argv = tampered_gguf_rows["commands"][gguf_c8_index]["argv"]
     gguf_rows_argv[gguf_rows_argv.index("--rows") + 1] = "4"
