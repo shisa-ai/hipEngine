@@ -692,8 +692,8 @@ reporting.
   and refreshing the resource/status artifacts; `next_action_commands_sha256`
   gives handoff pollers a compact digest of that command bundle, with
   length/SHA-256 metadata for the helper/resource/status refresh commands plus
-  compact source-artifact verification, verification-status, and
-  verification-failure commands for rechecking embedded
+  compact source-artifact verification, verification-status, verification
+  exit-code, and verification-failure commands for rechecking embedded
   prompt/oracle/resource/docs hashes before blocker handoff; the oracle helper
   preserves the recorded `diagnostic_logs=true` setting so reruns keep llama.cpp
   load/error logs enabled for the canonical timeout artifact, and the blocker

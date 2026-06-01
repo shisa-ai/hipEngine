@@ -306,6 +306,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--verification-exit-code-command-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.verification_exit_code_command "
+            "for compact persisted verification exit-code checks. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--verification-exit-code-command-sha-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.verification_exit_code_command_sha256 "
+            "for compact persisted verification exit-code command drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--verification-failures-command-only",
         action="store_true",
         help=(
@@ -1169,6 +1185,9 @@ def _next_action_commands(
     verification_status = _source_artifacts_verify_command(
         extra_args=("--verification-status-only",)
     )
+    verification_exit_code = _source_artifacts_verify_command(
+        extra_args=("--verification-exit-code-only",)
+    )
     verification_failures = _source_artifacts_verify_command(
         extra_args=("--verification-failures-only",)
     )
@@ -1183,6 +1202,11 @@ def _next_action_commands(
             **_command_length_hash(
                 "verification_status_command",
                 verification_status,
+            ),
+            "verification_exit_code_command": verification_exit_code,
+            **_command_length_hash(
+                "verification_exit_code_command",
+                verification_exit_code,
             ),
             "verification_failures_command": verification_failures,
             **_command_length_hash(
@@ -1621,6 +1645,12 @@ def _handoff_summary(
             "verification_status_command_sha_only": (
                 "next_action_commands.handoff_integrity.verification_status_command_sha256"
             ),
+            "verification_exit_code_command_only": (
+                "next_action_commands.handoff_integrity.verification_exit_code_command"
+            ),
+            "verification_exit_code_command_sha_only": (
+                "next_action_commands.handoff_integrity.verification_exit_code_command_sha256"
+            ),
             "verification_failures_command_only": (
                 "next_action_commands.handoff_integrity.verification_failures_command"
             ),
@@ -2057,6 +2087,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.verification_status_command_only:
         result = status["next_action_commands"]["handoff_integrity"].get(
             "verification_status_command"
+        )
+    elif args.verification_exit_code_command_sha_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "verification_exit_code_command_sha256"
+        )
+    elif args.verification_exit_code_command_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "verification_exit_code_command"
         )
     elif args.verification_failures_command_sha_only:
         result = status["next_action_commands"]["handoff_integrity"].get(
