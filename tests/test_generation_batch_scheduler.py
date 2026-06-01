@@ -8477,6 +8477,27 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     ]
     assert [item.artifact_path.name for item in optional_planned] == expected_optional_artifact_names
     assert [Path(entry["artifact_path"]).name for entry in optional_entries] == expected_optional_artifact_names
+    optional_entry_indices = [
+        index
+        for index, entry in enumerate(summary["commands"])
+        if entry["category"] in {"int8_native_diagnostic", "gguf_native_diagnostic"}
+    ]
+    for index in optional_entry_indices:
+        tampered_optional_artifact_c = json.loads(json.dumps(summary))
+        entry = tampered_optional_artifact_c["commands"][index]
+        argv = entry["argv"]
+        wrong_c = 2 if entry["batch_size"] != 2 else 8
+        if entry["category"] == "int8_native_diagnostic":
+            wrong_optional_name = f"int8-native-diagnostic-c{wrong_c}.json"
+        else:
+            quant = argv[argv.index("--quant") + 1]
+            wrong_optional_name = f"gguf-native-diagnostic-c{wrong_c}-{quant}.json"
+        wrong_optional_path = str(tmp_path / "artifacts" / wrong_optional_name)
+        entry["artifact_path"] = wrong_optional_path
+        argv[argv.index("--json") + 1] = wrong_optional_path
+        entry["command"] = shlex.join(argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
+            c_sweep.validate_sweep_summary(tampered_optional_artifact_c)
     assert all(tuple(entry["argv"][:2]) == ("env", "HIP_VISIBLE_DEVICES=1") for entry in optional_entries)
     int8_entries = [entry for entry in optional_entries if entry["category"] == "int8_native_diagnostic"]
     gguf_entries = [entry for entry in optional_entries if entry["category"] == "gguf_native_diagnostic"]
