@@ -7326,6 +7326,25 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=fixture_error):
                 c_sweep.validate_sweep_summary(tampered_planned_fixture)
 
+        for shape_flag, shape_option, stale_value in (
+            ("--prompt-length", "prompt_length", "513"),
+            ("--decode-tokens", "decode_tokens", "129"),
+            ("--warmup-decode-tokens", "warmup_decode_tokens", "9"),
+            ("--max-layers", "max_layers", "41"),
+        ):
+            if shape_flag not in summary["commands"][index]["argv"]:
+                continue
+            tampered_planned_shape = json.loads(json.dumps(summary))
+            planned_shape_entry = tampered_planned_shape["commands"][index]
+            planned_shape_argv = planned_shape_entry["argv"]
+            planned_shape_argv[planned_shape_argv.index(shape_flag) + 1] = stale_value
+            planned_shape_entry["command"] = shlex.join(planned_shape_argv)
+            with pytest.raises(
+                ValueError,
+                match=rf"commands\[\]\.argv {shape_flag} must match options\.{shape_option}",
+            ):
+                c_sweep.validate_sweep_summary(tampered_planned_shape)
+
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
