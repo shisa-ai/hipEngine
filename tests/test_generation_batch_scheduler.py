@@ -7572,6 +7572,22 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_extra_planned_key["commands"][index]["unexpected"] = "field"
         with pytest.raises(ValueError, match=r"commands\[\] must contain only c-sweep schema keys"):
             c_sweep.validate_sweep_summary(tampered_extra_planned_key)
+
+        tampered_planned_missing_git_dirty = json.loads(json.dumps(summary))
+        del tampered_planned_missing_git_dirty["commands"][index]["git_dirty"]
+        with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_git_dirty)
+
+        for bad_git_dirty in ("false", 0, None):
+            tampered_planned_bad_git_dirty = json.loads(json.dumps(summary))
+            tampered_planned_bad_git_dirty["commands"][index]["git_dirty"] = bad_git_dirty
+            with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must be a bool"):
+                c_sweep.validate_sweep_summary(tampered_planned_bad_git_dirty)
+
+        tampered_planned_git_dirty = json.loads(json.dumps(summary))
+        tampered_planned_git_dirty["commands"][index]["git_dirty"] = not summary["git"]["dirty"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git\.dirty"):
+            c_sweep.validate_sweep_summary(tampered_planned_git_dirty)
     assert summary["schema"] == 1
     for stale_schema in (True, "1", 2):
         tampered_summary_schema = json.loads(json.dumps(summary))
