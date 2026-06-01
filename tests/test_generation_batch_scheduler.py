@@ -5288,6 +5288,22 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if gate_parent_link.is_symlink():
                     gate_parent_link.unlink()
 
+            gate_parent_file = output_dir / "gate-parent-file"
+            try:
+                gate_parent_file.write_text("not a directory")
+                parent_file_gate_summary = json.loads(json.dumps(persisted))
+                retained_argv = parent_file_gate_summary["commands"][-1]["argv"]
+                retained_argv[retained_argv.index("--serial-bridge-json") + 1] = str(gate_parent_file / "serial-bridge-c2.json")
+                parent_file_gate_summary["commands"][-1]["command"] = shlex.join(retained_argv)
+                with pytest.raises(
+                    ValueError,
+                    match=r"commands\[\]\.argv retained native gate artifact path parent directories must be directories",
+                ):
+                    c_sweep.validate_sweep_summary(parent_file_gate_summary)
+            finally:
+                if gate_parent_file.exists():
+                    gate_parent_file.unlink()
+
             compiler_symlink_path = output_dir / "hipcc-version-link.txt"
             try:
                 compiler_symlink_path.symlink_to(output_dir / "hipcc-version.txt")

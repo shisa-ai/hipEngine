@@ -2627,6 +2627,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             errors.append("commands[].argv retained native gate artifact path parent directories must not be symlinks")
                             retained_gate_path_error = True
                             break
+                        if _path_has_non_directory_parent(gate_check_path):
+                            errors.append("commands[].argv retained native gate artifact path parent directories must be directories")
+                            retained_gate_path_error = True
+                            break
                         gate_abs = gate_check_path.resolve()
                         if gate_abs != (output_dir_abs / expected_name).resolve():
                             errors.append("commands[].argv retained native gate artifact paths must match output_dir filenames")
