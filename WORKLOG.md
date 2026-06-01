@@ -63351,3 +63351,33 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
 Result: the combined diagnostic makes early linear layers exact far enough to isolate the full-attention handoff. Step 0 layers 0, 1, and 2 are green; their `attn_input`, `qkv`, `z`, `conv_out`, `recurrent_out`, `out_proj`, `residual`, `mlp_input`, and `output` stages all report `max_abs=0` / `bit_mismatch=0` where exactness matters for the handoff. Full-attention layer 3 input/QKV/context is green (`input`, `attn_input_pre_qkv`, and `attn_context` pass), and the first full-attention mismatch moves to layer 3 `mlp_input` (`max_abs=0.00390625`, 11 elements over atol on row 0). The first linear-stage mismatch moves later to layer 4 `attn_input` (`max_abs=0.0078125`, 22 elements over atol). L8 generated tokens stay green (`first_token_mismatch=null`), but hidden remains red at decode step 6 / generated index 7, row 0, dim 1269, `max_abs=0.027587890625`.
 
 Clean-default retained verifier remains unchanged: full native c=2 512/128 is `rejected_correctness` with min equal-prefix `82` (`[82, 137]`) and no performance claim. Guard passed with the required pytest bundle (`397 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX. Next target is the full-attention layer-3 post-attention/MLP handoff or a native grouped-compact MoE path that matches the per-row diagnostics without fallbacks.
+
+## 2026-06-02 — CONCURRENCY full-attention output/context diagnostic closes L8 hidden probe
+
+Added diagnostic controls for full-attention decode: `--batch-decode-full-attn-output-path per_row` replays the O projection with token-1 row kernels, and `--batch-decode-full-attn-moe-path per_row_c1` replays full-attention MoE with token-1 row kernels. Both set non-native blocker metadata and leave default retained decode unchanged.
+
+Focused controls on GPU1 / RX 7900 XTX showed the full-attention layer-3 `mlp_input` blocker needed the O projection plus the existing per-row context control, not MoE alone:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --batch-prefill-linear-path per_segment \
+  --batch-decode-linear-projection-path selected_c1 \
+  --batch-decode-linear-state-path selected_c1 \
+  --batch-decode-linear-moe-path per_row_c1 \
+  --batch-decode-linear-output-path selected_c1 \
+  --batch-decode-attn-context-path per_row \
+  --batch-decode-full-attn-output-path per_row \
+  --batch-decode-full-attn-moe-path per_row_c1 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-all-per-row-full-context-output-moe-gpu1.json
+```
+
+Result: `/tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-all-per-row-full-context-output-moe-gpu1.json` is `status=eq_ok`; L8 hidden and generated-token checks are both green (`first_token_mismatch=null`, `hidden_passed=true`, `token_passed=true`). The prior partial control without per-row full-attention context was still red at layer-3 `mlp_input` (`/tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-all-per-row-full-output-moe-gpu1.json`: max abs `0.001953125`, one element over atol), so the next retained work should make the native full-attention context/O path match row replay before removing the diagnostic fallbacks.
+
+Clean-default retained verifier remains unchanged: full native c=2 512/128 is `rejected_correctness` with min equal-prefix `82` (`[82, 137]`) and no performance claim. Guard passed with the required pytest bundle (`398 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

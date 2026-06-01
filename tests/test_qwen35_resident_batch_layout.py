@@ -1971,6 +1971,84 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
     }
 
 
+def test_qwen35_resident_full_attention_batch_decode_can_force_per_row_output_and_moe_probes(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE", "1")
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.layer_limit = 1
+    session.config = SimpleNamespace(hidden_size=8, layer_types=("full_attention",), num_experts=4)
+    session.batch_hidden = Tensor.from_handle(0x1000, (2, 8), DType.FP16, device)
+    session.batch_next_hidden = Tensor.from_handle(0x2000, (2, 8), DType.FP16, device)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.decode_chunk_size = 512
+    session.max_sequence_length = 1024
+    session.cos = Tensor.from_handle(0xA000, (1,), DType.BF16, device)
+    session.sin = Tensor.from_handle(0xB000, (1,), DType.BF16, device)
+    session.libraries = {}
+    session._batch_decode_segment_metadata = lambda *, rows, slots: (
+        Tensor.from_handle(0x3000, (rows + 1,), DType.INT32, device),
+        Tensor.from_handle(0x4000, (rows,), DType.INT64, device),
+        (),
+    )
+    session._full_cache_all_slots = lambda layer_id: (
+        Tensor.from_handle(0x5000, (1,), DType.BF16, device),
+        Tensor.from_handle(0x6000, (1,), DType.BF16, device),
+    )
+    session._batch_full_spans = lambda layer_id, *, rows, positions, slots: (
+        Tensor.from_handle(0x7000, (rows,), DType.INT64, device),
+        SimpleNamespace(rows=rows, slots=slots, span="append"),
+        SimpleNamespace(rows=rows, slots=slots, span="decode"),
+    )
+    session._ensure_full_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(name="attention", rows=rows)
+    force_flags: list[bool] = []
+
+    def fake_moe_scratch(layer_id, rows, *, force_selected_c1_moe=False):
+        force_flags.append(bool(force_selected_c1_moe))
+        return SimpleNamespace(name="moe", rows=rows, force_selected_c1_moe=force_selected_c1_moe)
+
+    session._ensure_moe_decode_batch_scratch = fake_moe_scratch
+    copies: list[tuple[int, int, int, int]] = []
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_full_attention_moe_decode_batch_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9000, (kwargs["tokens"], 8), DType.FP16, device)
+
+    state = FakeState()
+    session.runtime = FakeRuntime()
+    session.states = [state]
+
+    out = session._run_layers_batch_decode(rows=2, positions=(4, 7), slots=(0, 2), stream=5)
+
+    assert out.ptr == 0x2000
+    assert force_flags == [True]
+    assert len(state.calls) == 1
+    _hidden, kwargs = state.calls[0]
+    assert kwargs["force_selected_c1_moe"] is False
+    assert kwargs["force_per_row_output"] is True
+    assert kwargs["force_per_row_moe"] is True
+    assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
+    execution = session.last_batch_decode_execution
+    assert execution["native_caware_decode"] is False
+    assert execution["moe_decode_path"] == "selected_c1_per_row_moe_fallback"
+    assert execution["moe_grouped_compact_layers"] == 0
+    assert execution["moe_selected_c1_fallback_layers"] == 1
+    assert execution["layer_executions"][0]["native_caware_decode"] is False
+    assert execution["layer_executions"][0]["moe_decode_path"] == "selected_c1_per_row_moe_fallback"
+    assert execution["layer_executions"][0]["full_attention_output_decode_path"] == "per_row_o_projection_fallback"
+    assert "full-attention O projection forced to per-row diagnostic path" in execution["blockers"]
+    assert "full-attention MoE forced to per-row selected-c1 diagnostic path" in execution["blockers"]
+
+
 def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context(monkeypatch) -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)

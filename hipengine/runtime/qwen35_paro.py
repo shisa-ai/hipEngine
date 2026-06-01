@@ -3699,6 +3699,31 @@ class Qwen35ParoDecodeState:
         )
         return scratch.o_proj
 
+    def project_full_attention_o_rows_fp16(
+        self,
+        gated_attn: Tensor,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay full-attention O projection with token-1 kernels per row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        for row in range(tokens):
+            self.project_full_attention_o_fp16(
+                self._row_tensor_view(gated_attn, row),
+                self._decode_row_full_attention_scratch(scratch, row),
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return scratch.o_proj
+
     def project_full_attention_o_bf16_attn_gate_fp16(
         self,
         attn_bf16: Tensor,
@@ -3916,7 +3941,9 @@ class Qwen35ParoDecodeState:
         force_per_row_input_rmsnorm: bool = False,
         force_per_row_context: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
+        force_per_row_output: bool = False,
         force_per_row_post_attention: bool = False,
+        force_per_row_moe: bool = False,
         post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
         input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
         qkv_tensor_trace: Callable[[str, int, Tensor], None] | None = None,
@@ -3937,7 +3964,7 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        elif tokens > 1 and not force_selected_c1_moe:
+        elif tokens > 1 and not (force_selected_c1_moe or force_per_row_moe):
             if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
                 moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
@@ -4016,7 +4043,12 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        attn_out = self.project_full_attention_o_fp16(
+        project_o_fn = (
+            self.project_full_attention_o_rows_fp16
+            if force_per_row_output and tokens > 1
+            else self.project_full_attention_o_fp16
+        )
+        attn_out = project_o_fn(
             gated,
             attention_scratch,
             tokens=tokens,
@@ -4039,6 +4071,16 @@ class Qwen35ParoDecodeState:
         )
         if dense_mlp:
             return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if force_per_row_moe and tokens > 1:
+            return self.run_moe_c1_rows_fp16(
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
