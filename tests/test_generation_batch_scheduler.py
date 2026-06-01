@@ -7960,6 +7960,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_primitive_category_status_count["category_status_counts"]["primitive"]["planned"] = stale_primitive_category_status_count
         with pytest.raises(ValueError, match="category_status_counts must match commands"):
             c_sweep.validate_sweep_summary(tampered_primitive_category_status_count)
+    for optional_category, stale_optional_category_counts in (
+        ("int8_native_diagnostic", (2, 4)),
+        ("gguf_native_diagnostic", (11, 13)),
+    ):
+        for stale_optional_category_count in stale_optional_category_counts:
+            tampered_optional_category_status_count = json.loads(json.dumps(summary))
+            tampered_optional_category_status_count["category_status_counts"][optional_category][
+                "planned"
+            ] = stale_optional_category_count
+            with pytest.raises(ValueError, match="category_status_counts must match commands"):
+                c_sweep.validate_sweep_summary(tampered_optional_category_status_count)
     assert summary["retained_precondition_counts"] == {}
     tampered_precondition_count_object = json.loads(json.dumps(summary))
     tampered_precondition_count_object["retained_precondition_counts"] = []
