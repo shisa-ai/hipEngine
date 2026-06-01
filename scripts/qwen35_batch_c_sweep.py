@@ -1507,9 +1507,14 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             if any(Path(trace_file).suffix.lower() != ".csv" for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains a non-CSV trace file")
                 trace_files_have_path_error = True
-            if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
-                reasons.append("profiler.trace_files does not include a kernel-trace CSV")
-                trace_files_have_path_error = True
+            if not trace_files_have_path_error:
+                kernel_trace_csv_count = sum(1 for trace_file in profiler_trace_files if _is_kernel_trace_csv_path(trace_file))
+                if kernel_trace_csv_count == 0:
+                    reasons.append("profiler.trace_files does not include a kernel-trace CSV")
+                    trace_files_have_path_error = True
+                elif kernel_trace_csv_count > 1:
+                    reasons.append("profiler.trace_files must include exactly one kernel-trace CSV")
+                    trace_files_have_path_error = True
             trace_file_check_paths = [Path(trace_file) for trace_file in profiler_trace_files]
             trace_file_check_paths = [
                 trace_file_path if trace_file_path.is_absolute() else REPO_ROOT / trace_file_path
@@ -3374,6 +3379,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if len(set(profiler_trace_files)) != len(profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be unique when passed")
+                        break
+                    if sum(1 for trace_file in profiler_trace_files if _is_kernel_trace_csv_path(trace_file)) != 1:
+                        errors.append("commands[].preconditions[].profiler_trace_files must include exactly one kernel-trace CSV when passed")
                         break
                     trace_file_check_paths = [
                         trace_file_path if trace_file_path.is_absolute() else REPO_ROOT / trace_file_path

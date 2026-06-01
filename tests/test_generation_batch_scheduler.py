@@ -1741,6 +1741,45 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_files_without_kernel_
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_multiple_kernel_trace_csvs(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    second_trace = trace_dir / "hipengine_extra_kernel_trace.csv"
+    second_trace.write_text("Kernel_Name,DurationNs\nqwen35_batch_decode,1\n")
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"].append(str(second_trace))
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files must include exactly one kernel-trace CSV",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -7331,6 +7370,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     trace_precondition["profiler_trace_files"].append(trace_precondition["profiler_trace_files"][0])
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must be unique when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_file_duplicate)
+    tampered_profiler_precondition_multiple_kernel_traces = json.loads(json.dumps(persisted))
+    trace_precondition = tampered_profiler_precondition_multiple_kernel_traces["commands"][-1]["preconditions"][-1]
+    trace_precondition["profiler_trace_files"].append(str(output_dir / "profile-c2" / "hipengine_extra_kernel_trace.csv"))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must include exactly one kernel-trace CSV when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_multiple_kernel_traces)
     tampered_profiler_precondition_kernel_names = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_kernel_names["commands"][-1]["preconditions"][-1]["profiler_trace_kernel_names"] = ["serial_lm_head"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must include native batch kernels only when passed"):
