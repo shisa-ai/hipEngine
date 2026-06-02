@@ -64645,3 +64645,26 @@ Validation:
 - Narrow grouped-MoE tests passed with the temporary patch: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py && pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_linear_attention_moe_layer_chain -q`.
 - Required guard passed with the temporary patch: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Patch reverted after `multiloop_measure`/`multiloop_decide(action=log)`. Next grouped-MoE work should preserve this lane-map clue but still needs a green hidden/generated artifact before code retention.
+
+## 2026-06-02 — CONCURRENCY grouped-compact small-GEMV MoE green
+
+Cleared the grouped-compact MoE correctness blocker for the c<=8 decode shape. The retained change keeps grouped metadata/scatter, but for `tokens <= 8` routes compact sorted expert rows through selected AWQ GEMV for grouped gate/up/down instead of compact WMMA, forces the FP16 W4 shared expert through row-aware GEMV for c<=8, and clears `lane_to_row` before `weighted_lanes_sum_out_*` rebuilds the inverse map. This is correctness evidence only; no c>N throughput/scaling claim is made.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Focused all-grouped hidden oracle is green: `/tmp/hipengine-hidden-all-grouped-nativec1-l40-d1-iter77-compact-gemv-shared-gemv-lane-reset.json` reports `status=eq_ok`, `hidden_passed=true`, `token_passed=true` vs independent c=1 `native_batch`.
+- Focused c=2 generated probes are green:
+  - Linear grouped MoE: `/tmp/hipengine-e2e-native-c2-512-128-linear-grouped-iter77-compact-gemv.json` -> prefixes `[137,137]`.
+  - All grouped MoE: `/tmp/hipengine-e2e-native-c2-512-128-all-grouped-iter77-compact-gemv.json` -> prefixes `[137,137]`.
+- All-grouped c=2/c=4/c=8 matrix is green: `/tmp/hipengine-e2e-native-c2-c4-c8-all-grouped-iter77-compact-gemv-matrix.json` reports `status=passed` with prefixes:
+  - c=2 `[137,137]`
+  - c=4 `[137,137,137,137]`
+  - c=8 `[137,137,137,137,137,137,137,137]`
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-small-gemv-matrix/summary.json` (`performance_claim=false`, `retained_ready=false`).
+- Primary verifier stayed green/unchanged: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137` with prefixes `[137,137]`.
+
+Validation:
+
+- Narrow unit suite passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py && pytest -q tests/test_qwen35_decode_state.py -q` (`57 passed`).
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Prompt verifier passed: the all-grouped hidden blocker is green and all-grouped c=2/c=4/c=8 generated-token equality passes vs independent c=1.

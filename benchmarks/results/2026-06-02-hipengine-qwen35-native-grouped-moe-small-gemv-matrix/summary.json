@@ -1,0 +1,165 @@
+{
+  "change": "For grouped-compact decode batches with tokens<=8, use selected AWQ GEMV on compact sorted expert rows for selected gate/up/down and the row-aware shared-expert GEMV path; clear lane_to_row before rebuilding the inverse map.",
+  "created_at": "2026-06-02T14:38:11.833909Z",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "focused_c2_probes": {
+    "all_grouped": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-all-grouped-iter77-compact-gemv.json",
+      "status": "blocked"
+    },
+    "linear_grouped": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-linear-grouped-iter77-compact-gemv.json",
+      "status": "blocked"
+    },
+    "primary_default": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "status": "blocked"
+    }
+  },
+  "focused_hidden_oracle": {
+    "batch_decode_moe_path": "grouped_compact",
+    "failure_modes": [],
+    "hidden_passed": true,
+    "passed": true,
+    "source_artifact_path": "/tmp/hipengine-hidden-all-grouped-nativec1-l40-d1-iter77-compact-gemv-shared-gemv-lane-reset.json",
+    "status": "eq_ok",
+    "token_passed": true
+  },
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "matrix": {
+    "rows": [
+      {
+        "artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-all-grouped-iter77-compact-gemv-matrix/native-equality-c2-p512-d128.json",
+        "batch_size": 2,
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "selected_c1_qkv_z",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      {
+        "artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-all-grouped-iter77-compact-gemv-matrix/native-equality-c4-p512-d128.json",
+        "batch_size": 4,
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "selected_c1_qkv_z",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      {
+        "artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-all-grouped-iter77-compact-gemv-matrix/native-equality-c8-p512-d128.json",
+        "batch_size": 8,
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "selected_c1_qkv_z",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      }
+    ],
+    "source_artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-all-grouped-iter77-compact-gemv-matrix.json"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "notes": [
+    "Correctness-only artifact; no retained/scaling throughput claim.",
+    "Retained benchmark status remains blocked until native projection/metadata/profiler/scaling gates pass."
+  ],
+  "performance_claim": false,
+  "primitive_guards": {
+    "c2": {
+      "passed": true,
+      "source_artifact_path": "/tmp/hipengine-e2e-primitive-c2.json"
+    },
+    "c8": {
+      "passed": true,
+      "source_artifact_path": "/tmp/hipengine-e2e-primitive-c8.json"
+    }
+  },
+  "retained_ready": false,
+  "schema": 1,
+  "status": "passed",
+  "workload": {
+    "batch_sizes": [
+      2,
+      4,
+      8
+    ],
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

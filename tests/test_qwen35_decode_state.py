@@ -1517,9 +1517,9 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "tile_map",
         "scatter_gather",
         "rotate1",
-        "gate_up_wmma",
+        "gate_up",
         "silu_rotate",
-        "down_wmma",
+        "down",
         "weighted_lanes",
         # Shared expert W4 PARO (BF16 prefill: no fused W4 prefill kernel exists,
         # falls back to the batched dual/single GEMV path, with fused rotate2 and silu+rotate).
@@ -2056,11 +2056,11 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_bf16(monkeypatch) -> Non
     assert down_args[4] == scratch.shared_out.ptr
 
 
-def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_w4(monkeypatch) -> None:
+def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_large_prefill_uses_fused_w4(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
-    scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
-    hidden = _tensor(0xCA00, (2, 4096), "fp16")
+    scratch = state.reserve_moe_c1_scratch(tokens=16, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (16, 4096), "fp16")
     calls = []
 
     def record(label):
@@ -2073,12 +2073,12 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_
     monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_dual_fp16", record("fusedw4_dual"))
     monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", record("fusedw4_single"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_separate_out_fp16", record("silu_separate"))
-    # tokens=1 path symbols must NOT be called for prefill.
+    # Small decode batches use the GEMV path; larger prefill still uses fused W4.
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", record("unexpected_dual_gemv"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", record("unexpected_single_gemv"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_fp16", record("unexpected_silu_dual"))
 
-    out = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
+    out = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=16)
 
     assert out is scratch.shared_out
     labels = [label for label, _a, _k in calls]
@@ -2099,7 +2099,7 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_
         scratch.shared_gate_out.ptr,
         scratch.shared_up_out.ptr,
         scratch.shared_intermediate.ptr,
-        2,
+        16,
         768,
     )
 
@@ -2142,14 +2142,18 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(m
         ("qwen35_router_topk_shared_out_fp16", "router"),
         ("paro_rotate1_fp16", "rotate1"),
         ("paro_rotate2_fp16", "rotate2"),
-        ("gemm_awq_selected_dual_pack8_wmma_compact_fp16", "gate_up_wmma"),
+        ("gemm_awq_selected_dual_pack8_wmma_compact_fp16", "unexpected_gate_up_wmma"),
+        ("gemv_awq_selected_dual_pack8_transposed_fp16", "gate_up_gemv"),
         ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
-        ("gemm_awq_selected_pack8_wmma_compact_fp16", "down_wmma"),
+        ("gemm_awq_selected_pack8_wmma_compact_fp16", "unexpected_down_wmma"),
+        ("gemv_awq_selected_pack8_transposed_fp16", "down_gemv"),
         ("weighted_lanes_sum_out_fp16_f32w", "weighted_lanes"),
-        # Shared expert W4 PARO prefill: fused W4 dual + silu_separate + fused W4 single.
-        ("awq_fusedw4_prefill_dual_fp16", "shared_fusedw4_dual"),
-        ("silu_mul_separate_out_fp16", "shared_silu_separate"),
-        ("awq_fusedw4_prefill_fp16", "shared_fusedw4_single"),
+        # Shared expert W4 PARO small-batch decode: GEMV dual + fused silu/rotate + GEMV single.
+        ("gemv_awq_dual_pack8_transposed_fp16", "shared_dual_gemv"),
+        ("awq_fusedw4_prefill_dual_fp16", "unexpected_shared_fusedw4_dual"),
+        ("silu_mul_separate_out_fp16", "unexpected_shared_silu_separate"),
+        ("awq_fusedw4_prefill_fp16", "unexpected_shared_fusedw4_single"),
+        ("gemv_awq_pack8_transposed_fp16", "shared_single_gemv"),
         # Split combine (no fused W8A16+combine).
         ("shared_gate_combine_residual_batch_out_fp16", "shared_combine_batch"),
     ]:
@@ -2161,16 +2165,15 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(m
     assert [kind for kind, _args, _kwargs in calls] == [
         "router",
         "rotate1",  # routed gate_up rotate
-        "gate_up_wmma",
+        "gate_up_gemv",
         "silu_rotate",
-        "down_wmma",
+        "down_gemv",
         "weighted_lanes",
-        # Shared expert W4 PARO chain (prefill uses fused W4 + silu_separate).
+        # Shared expert W4 PARO chain (small decode batches use GEMV).
         "rotate2",  # shared_expert gate/up input rotations
-        "shared_fusedw4_dual",
-        "shared_silu_separate",
-        "rotate1",  # shared_expert.down_proj input rotation
-        "shared_fusedw4_single",
+        "shared_dual_gemv",
+        "silu_rotate",  # shared_expert fused silu + down input rotation
+        "shared_single_gemv",
         "shared_combine_batch",
     ]
     shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
@@ -2318,9 +2321,11 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_com
     for name, label in [
         ("qwen35_router_topk_shared_out_fp16", "router"),
         ("paro_rotate1_fp16", "rotate1"),
-        ("gemm_awq_selected_dual_pack8_wmma_compact_fp16", "gate_up_wmma"),
+        ("gemm_awq_selected_dual_pack8_wmma_compact_fp16", "unexpected_gate_up_wmma"),
+        ("gemv_awq_selected_dual_pack8_transposed_fp16", "gate_up_gemv"),
         ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
-        ("gemm_awq_selected_pack8_wmma_compact_fp16", "down_wmma"),
+        ("gemm_awq_selected_pack8_wmma_compact_fp16", "unexpected_down_wmma"),
+        ("gemv_awq_selected_pack8_transposed_fp16", "down_gemv"),
         ("weighted_lanes_sum_out_fp16_f32w", "weighted_lanes"),
         ("w8a16_shared_gate_up_silu_fp16", "legacy_gate_up_silu"),
         ("w8a16_shared_gate_sigmoid_fp32", "legacy_shared_gate_sigmoid"),
@@ -2337,9 +2342,9 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_com
     assert [kind for kind, _args, _kwargs in calls] == [
         "router",
         "rotate1",
-        "gate_up_wmma",
+        "gate_up_gemv",
         "silu_rotate",
-        "down_wmma",
+        "down_gemv",
         "weighted_lanes",
         "legacy_gate_up_silu",
         "legacy_shared_gate_sigmoid",

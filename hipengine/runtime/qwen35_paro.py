@@ -6706,9 +6706,7 @@ class Qwen35ParoDecodeState:
 
         gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
-        use_batch_gemv = tokens == 1 or (
-            tokens <= 8 and _env_flag("HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV", False)
-        )
+        use_batch_gemv = tokens <= 8 or _env_flag("HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV", False)
         if use_batch_gemv:
             gemv_awq_dual_pack8_transposed_fp16(
                 scratch.shared_gate_input.ptr,
@@ -7238,30 +7236,54 @@ class Qwen35ParoDecodeState:
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
         up_scales = self.tensor(f"{prefix}.stacked_up_scales")
-        wmma_total_rows = scratch.tile_expert.numel * 16
-        gemm_awq_selected_dual_pack8_wmma_compact_fp16(
-            scratch.packed_gate_up_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            gate_qweight.ptr,
-            gate_qzeros.ptr,
-            gate_scales.ptr,
-            up_qweight.ptr,
-            up_qzeros.ptr,
-            up_scales.ptr,
-            scratch.gate_up.ptr,
-            total_lanes,
-            cfg.hidden_size,
-            _out_packed_from_transposed_qweight(gate_qweight),
-            _out_packed_from_transposed_qweight(up_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        use_decode_gemv = tokens <= 8
+        if use_decode_gemv:
+            gemv_awq_selected_dual_pack8_transposed_fp16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.sorted_experts.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            wmma_total_rows = scratch.tile_expert.numel * 16
+            gemm_awq_selected_dual_pack8_wmma_compact_fp16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
         pairs = self.tensor(f"{prefix}.down_weight_pairs")
         silu_mul_dual_rotate_out_fp16(
             scratch.gate_up.ptr,
@@ -7278,25 +7300,44 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
-        gemm_awq_selected_pack8_wmma_compact_fp16(
-            scratch.down_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            down_qweight.ptr,
-            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
-            self.tensor(f"{prefix}.stacked_down_scales").ptr,
-            scratch.down_out.ptr,
-            total_lanes,
-            cfg.moe_intermediate_size,
-            _out_packed_from_transposed_qweight(down_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        if use_decode_gemv:
+            gemv_awq_selected_pack8_transposed_fp16(
+                scratch.down_input.ptr,
+                scratch.sorted_experts.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            gemm_awq_selected_pack8_wmma_compact_fp16(
+                scratch.down_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
+        self._memset_tensor(scratch.lane_to_row, value=0xFF, stream=stream, runtime=self.runtime)
         weighted_lanes_sum_out_fp16_f32w(
             scratch.down_out.ptr,
             scratch.sorted_weights.ptr,
@@ -7863,30 +7904,54 @@ class Qwen35ParoDecodeState:
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
         up_scales = self.tensor(f"{prefix}.stacked_up_scales")
-        wmma_total_rows = scratch.tile_expert.numel * 16
-        gemm_awq_selected_dual_pack8_wmma_compact_bf16(
-            scratch.packed_gate_up_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            gate_qweight.ptr,
-            gate_qzeros.ptr,
-            gate_scales.ptr,
-            up_qweight.ptr,
-            up_qzeros.ptr,
-            up_scales.ptr,
-            scratch.gate_up.ptr,
-            total_lanes,
-            cfg.hidden_size,
-            _out_packed_from_transposed_qweight(gate_qweight),
-            _out_packed_from_transposed_qweight(up_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        use_decode_gemv = tokens <= 8
+        if use_decode_gemv:
+            gemv_awq_selected_dual_pack8_transposed_bf16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.sorted_experts.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            wmma_total_rows = scratch.tile_expert.numel * 16
+            gemm_awq_selected_dual_pack8_wmma_compact_bf16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
         pairs = self.tensor(f"{prefix}.down_weight_pairs")
         silu_mul_dual_rotate_out_bf16(
             scratch.gate_up.ptr,
@@ -7903,25 +7968,44 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
-        gemm_awq_selected_pack8_wmma_compact_bf16(
-            scratch.down_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            down_qweight.ptr,
-            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
-            self.tensor(f"{prefix}.stacked_down_scales").ptr,
-            scratch.down_out.ptr,
-            total_lanes,
-            cfg.moe_intermediate_size,
-            _out_packed_from_transposed_qweight(down_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        if use_decode_gemv:
+            gemv_awq_selected_pack8_transposed_bf16(
+                scratch.down_input.ptr,
+                scratch.sorted_experts.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            gemm_awq_selected_pack8_wmma_compact_bf16(
+                scratch.down_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
+        self._memset_tensor(scratch.lane_to_row, value=0xFF, stream=stream, runtime=self.runtime)
         weighted_lanes_sum_out_bf16_f32w(
             scratch.down_out.ptr,
             scratch.sorted_weights.ptr,
