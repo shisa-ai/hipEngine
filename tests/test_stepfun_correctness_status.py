@@ -3731,6 +3731,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
             "handoff_integrity_command_metadata": True,
+            "handoff_integrity_compact_output_modes": True,
             "oracle_compact_output_modes": True,
             "blocker_kinds_sha256": True,
             "blocker_kinds_mirror_handoff": True,
@@ -6118,6 +6119,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
             "handoff_integrity_command_metadata": True,
+            "handoff_integrity_compact_output_modes": True,
             "oracle_compact_output_modes": True,
             "blocker_kinds_sha256": True,
             "blocker_kinds_mirror_handoff": True,
@@ -8001,7 +8003,83 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_oracle_compac
     assert checks["readiness_summary_sha256"] is True
     assert checks["oracle_compact_output_modes"] is False
     assert checks["handoff_integrity_command_metadata"] is True
+    assert checks["handoff_integrity_compact_output_modes"] is True
     assert checks["schema_versions_compact_output_modes"] is True
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_handoff_integrity_compact_mode_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    compact_modes = status_payload["handoff_summary"]["compact_output_modes"]
+    compact_modes["verification_failures_sha_command_sha_only"] = (
+        "stale.verification.failures.sha.command.sha"
+    )
+    status_payload["handoff_summary_sha256"] = _stable_json_sha256(
+        status_payload["handoff_summary"]
+    )
+    status_payload["readiness_summary"]["handoff_summary_sha256"] = status_payload[
+        "handoff_summary_sha256"
+    ]
+    status_payload["readiness_summary_sha256"] = _stable_json_sha256(
+        status_payload["readiness_summary"]
+    )
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["failed_checks"] == [
+        "handoff_integrity_compact_output_modes"
+    ]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["handoff_summary_sha256"] is True
+    assert checks["readiness_summary_sha256"] is True
+    assert checks["handoff_integrity_command_metadata"] is True
+    assert checks["handoff_integrity_compact_output_modes"] is False
+    assert checks["oracle_compact_output_modes"] is True
+    assert checks["status_compact_output_modes"] is True
 
 
 def test_stepfun_correctness_status_source_artifact_verify_detects_handoff_integrity_command_metadata_drift(
@@ -8139,6 +8217,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": False,
         "handoff_integrity_command_metadata": True,
+        "handoff_integrity_compact_output_modes": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -8260,6 +8339,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "handoff_integrity_command_metadata": True,
+        "handoff_integrity_compact_output_modes": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -8513,6 +8593,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "handoff_integrity_command_metadata": True,
+        "handoff_integrity_compact_output_modes": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9073,6 +9154,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "handoff_integrity_command_metadata": True,
+        "handoff_integrity_compact_output_modes": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9193,6 +9275,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "handoff_integrity_command_metadata": True,
+        "handoff_integrity_compact_output_modes": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9314,6 +9397,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "handoff_integrity_command_metadata": True,
+        "handoff_integrity_compact_output_modes": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9434,6 +9518,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "handoff_integrity_command_metadata": True,
+        "handoff_integrity_compact_output_modes": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,

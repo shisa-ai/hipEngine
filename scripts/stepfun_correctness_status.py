@@ -1588,6 +1588,29 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             and status.get("next_action_commands_sha256") == _stable_json_sha256(next_action_commands)
         ),
         "handoff_integrity_command_metadata": handoff_integrity_command_metadata,
+        "handoff_integrity_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("source_verify_command_only")
+            == "next_action_commands.handoff_integrity.source_artifacts_verify_command"
+            and compact_output_modes.get("source_verify_command_sha_only")
+            == "next_action_commands.handoff_integrity.source_artifacts_verify_command_sha256"
+            and compact_output_modes.get("verification_status_command_only")
+            == "next_action_commands.handoff_integrity.verification_status_command"
+            and compact_output_modes.get("verification_status_command_sha_only")
+            == "next_action_commands.handoff_integrity.verification_status_command_sha256"
+            and compact_output_modes.get("verification_exit_code_command_only")
+            == "next_action_commands.handoff_integrity.verification_exit_code_command"
+            and compact_output_modes.get("verification_exit_code_command_sha_only")
+            == "next_action_commands.handoff_integrity.verification_exit_code_command_sha256"
+            and compact_output_modes.get("verification_failures_command_only")
+            == "next_action_commands.handoff_integrity.verification_failures_command"
+            and compact_output_modes.get("verification_failures_command_sha_only")
+            == "next_action_commands.handoff_integrity.verification_failures_command_sha256"
+            and compact_output_modes.get("verification_failures_sha_command_only")
+            == "next_action_commands.handoff_integrity.verification_failures_sha_command"
+            and compact_output_modes.get("verification_failures_sha_command_sha_only")
+            == "next_action_commands.handoff_integrity.verification_failures_sha_command_sha256"
+        ),
         "oracle_compact_output_modes": (
             isinstance(compact_output_modes, dict)
             and compact_output_modes.get("oracle_helper_command_only")
