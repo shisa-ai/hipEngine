@@ -243,7 +243,14 @@ What is still not green:
   and `native_caware_decode=true`
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-auto-batch-projection-default-matrix/summary.json`).
   Retained/scaling claims are still blocked by projection-dispatch evidence,
-  graph-replay profiler data, c1/serial baselines, and benchmark gates.
+  graph-replay profiler data, c1/serial baselines, and benchmark gates. A focused
+  L8 hidden-state isolation rerun with the no-selected `batch` projection default
+  still fails at decode step 11 when full attention is fully native, but forcing
+  only full-attention decode to the per-row diagnostic path makes the same
+  projection/state/output/MoE controls hidden-green; this moves the remaining
+  hidden-only blocker from linear QKV/Z projection to native full-attention decode
+  evidence
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-hidden-isolation/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

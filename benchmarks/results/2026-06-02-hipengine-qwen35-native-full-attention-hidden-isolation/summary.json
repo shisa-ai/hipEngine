@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "purpose": "Focused C2.3 hidden-state probe after the 128-thread QKV/Z fix and c<=8 no-selected batch projection default: isolate whether the remaining L8 hidden-only drift is in native full-attention or linear projection/state/output/MoE.",
+  "created_at": "2026-06-02T17:16:56.953794Z",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "workload": {
+    "concurrency": 2,
+    "prompt_tokens_per_request": 512,
+    "decode_tokens": 16,
+    "max_layers": 8,
+    "layer_limits": [
+      8
+    ],
+    "hidden_atol": 0.002,
+    "state_atol": 1e-06,
+    "focus_hidden_flat_indices": [
+      1269
+    ]
+  },
+  "performance_claim": false,
+  "retained_ready": false,
+  "rows": [
+    {
+      "name": "native_full_attention_hidden_red",
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "hidden_passed": false,
+      "token_passed": null,
+      "first_hidden_mismatch": {
+        "decode_step": 11,
+        "generated_index": 12,
+        "row": 0,
+        "max_abs": 0.010427474975585938,
+        "max_abs_flat_index": 1543,
+        "last_layer_index": 7,
+        "last_layer_type": "full_attention"
+      },
+      "first_token_mismatch": null,
+      "workload_paths": {
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_decode_full_attention_path": "native_batch",
+        "native_caware_decode": false
+      },
+      "decode_execution": {
+        "native_caware_decode": true,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "moe_grouped_compact_layers": 8,
+        "moe_selected_c1_fallback_layers": 0,
+        "blockers": []
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-default-threads128-iter88.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-default-threads128-iter88.json",
+      "source_size_bytes": 18644907,
+      "source_sha256": "f70d84f92905030ab8448f658d0410a18080b100ee6a6503c523dd155f1d4e2b"
+    },
+    {
+      "name": "per_row_full_attention_hidden_green",
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "hidden_passed": true,
+      "token_passed": null,
+      "first_hidden_mismatch": null,
+      "first_token_mismatch": null,
+      "workload_paths": {
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_decode_full_attention_path": "per_row",
+        "native_caware_decode": false
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "moe_grouped_compact_layers": 6,
+        "moe_selected_c1_fallback_layers": 2,
+        "blockers": [
+          "full-attention decode used a per-row fallback"
+        ]
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-full-attn-path per_row --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-proj-native-state-batch-out-perrow-full-threads128-iter88.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-proj-native-state-batch-out-perrow-full-threads128-iter88.json",
+      "source_size_bytes": 6104998,
+      "source_sha256": "32c603cf4616c5a4ec301641bfd547982cff39da2362e56978ebc5086bfb4a49"
+    }
+  ],
+  "result": "The current no-selected native/full-attention path remains hidden red at L8 decode step 11 with no first-token mismatch reported; forcing only full-attention decode to the per-row diagnostic path clears hidden parity with the same batch projection/native state/batch-GEMV output/grouped-MoE controls. This moves the focused hidden blocker from linear QKV/Z projection to native full-attention decode evidence.",
+  "full_attention_blocker_eliminated_by_per_row_probe": true,
+  "native_projection_path_under_probe": "native_batch"
+}
