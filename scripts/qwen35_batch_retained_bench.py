@@ -3738,7 +3738,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         getattr(args, "batch_decode_linear_output_path", "batch_gemv")
     )
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
-        "0" if getattr(args, "batch_decode_full_attn_path", "per_row") == "per_row" else "1"
+        "0" if getattr(args, "batch_decode_full_attn_path", "native_batch") == "per_row" else "1"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
@@ -3768,19 +3768,19 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_attn_suffix_order", "phased") == "interleaved" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] = (
-        "1" if getattr(args, "batch_decode_full_attn_output_path", "batch") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_full_attn_output_path", "per_row") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] = (
-        "1" if getattr(args, "batch_decode_full_attn_output_path", "batch") == "batch_gemv" else "0"
+        "1" if getattr(args, "batch_decode_full_attn_output_path", "per_row") == "batch_gemv" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] = (
-        "1" if getattr(args, "batch_decode_full_attn_layer_copy", "batch") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_full_attn_layer_copy", "per_row") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
-        "1" if getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact") == "per_row_c1" else "0"
+        "1" if getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1") == "per_row_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] = (
-        "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_post_attn_path", "per_row") == "per_row" else "0"
     )
     projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
     if projection_dispatch_artifact is not None:
@@ -4212,7 +4212,7 @@ def _build_payload(
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "per_row_c1")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
-            "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "per_row")),
+            "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "native_batch")),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -4220,10 +4220,10 @@ def _build_payload(
             "batch_decode_full_attention_kv_append_path": str(getattr(args, "batch_decode_full_attn_kv_append_path", "batch")),
             "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
             "batch_decode_attention_suffix_order": str(getattr(args, "batch_decode_attn_suffix_order", "phased")),
-            "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
-            "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "batch")),
-            "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
-            "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
+            "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "per_row")),
+            "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "per_row")),
+            "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1")),
+            "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "per_row")),
         },
         "benchmark_rollup": {
             "artifact_path": str(args.json) if args.json is not None else None,
@@ -4348,8 +4348,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-full-attn-path",
         choices=("native_batch", "per_row"),
-        default="per_row",
-        help="Full-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and native_batch remains opt-in until generated equality is green.",
+        default="native_batch",
+        help="Full-attention decode path for c>N batch decode; native_batch is the correctness-first default when paired with per-row output/MoE/post-attention diagnostics, while per_row remains the broad full-attention fallback.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
@@ -4396,26 +4396,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-full-attn-output-path",
         choices=("batch", "batch_gemv", "per_row"),
-        default="batch",
-        help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv forces one batched GEMV kernel and per_row forces token-1 O projection kernels.",
+        default="per_row",
+        help="Diagnostic full-attention O projection path for c>N batch decode; per_row is the correctness-first default with native context, batch_gemv forces one batched GEMV kernel, and batch is the native fused path.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-layer-copy",
         choices=("batch", "per_row"),
-        default="batch",
-        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row copies rows independently and blocks retained claims.",
+        default="per_row",
+        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row is the correctness-first default and blocks retained claims.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="grouped_compact",
-        help="Diagnostic MoE path for full-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row and blocks retained claims.",
+        default="per_row_c1",
+        help="Diagnostic MoE path for full-attention c>N batch decode; per_row_c1 is the correctness-first default and replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-post-attn-path",
         choices=("batch", "per_row"),
-        default="batch",
-        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row forces token-1 row kernels and blocks retained claims.",
+        default="per_row",
+        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row is the correctness-first default and forces token-1 row kernels.",
     )
     parser.add_argument(_RETAINED_GATE_FLAGS[0], type=Path, help="c=1 baseline artifact used for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")

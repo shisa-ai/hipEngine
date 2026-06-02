@@ -5725,8 +5725,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-full-attn-path",
         choices=("native_batch", "per_row"),
-        default="per_row",
-        help="Full-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and native_batch remains opt-in until generated equality is green.",
+        default="native_batch",
+        help="Full-attention decode path for c>N batch decode; native_batch is the correctness-first default when paired with per-row output/MoE/post-attention diagnostics, while per_row remains the broad full-attention fallback.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
@@ -5773,26 +5773,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-full-attn-output-path",
         choices=("batch", "batch_gemv", "per_row"),
-        default="batch",
-        help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv forces one batched GEMV kernel and per_row forces token-1 O projection kernels.",
+        default="per_row",
+        help="Diagnostic full-attention O projection path for c>N batch decode; per_row is the correctness-first default with native context, batch_gemv forces one batched GEMV kernel, and batch is the native fused path.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-layer-copy",
         choices=("batch", "per_row"),
-        default="batch",
-        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row copies rows independently and blocks retained claims.",
+        default="per_row",
+        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row is the correctness-first default and blocks retained claims.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="grouped_compact",
-        help="Diagnostic MoE path for full-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row.",
+        default="per_row_c1",
+        help="Diagnostic MoE path for full-attention c>N batch decode; per_row_c1 is the correctness-first default and replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-post-attn-path",
         choices=("batch", "per_row"),
-        default="batch",
-        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row forces token-1 row kernels and blocks retained claims.",
+        default="per_row",
+        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row is the correctness-first default and forces token-1 row kernels.",
     )
     parser.add_argument(
         "--batch-prefill-linear-path",

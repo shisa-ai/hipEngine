@@ -175,6 +175,12 @@ from scripts.qwen35_batch_int8_diagnostic import build_parser as build_int8_diag
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
+def _clear_qwen35_batch_env() -> None:
+    for key in list(os.environ):
+        if key.startswith("HIPENGINE_QWEN35_BATCH_"):
+            os.environ.pop(key, None)
+
+
 def test_qwen35_validation_summary_path_rejects_traversal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo_root = tmp_path / "repo"
     (repo_root / "benchmarks" / "results").mkdir(parents=True)
@@ -3460,6 +3466,7 @@ def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: P
 
     assert os.environ[retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV] == "benchmarks/results/projection-candidates.json"
     assert candidates == [candidate]
+    _clear_qwen35_batch_env()
 
 
 def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3509,7 +3516,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
 
     defaults = SimpleNamespace(projection_dispatch_artifact=None)
     retained_bench._apply_runtime_env_args(defaults)
-    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] == "1"
@@ -3527,8 +3534,11 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_APPEND_CONTEXT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SUFFIX"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "1"
 
     retained_bench._apply_runtime_env_args(
         SimpleNamespace(projection_dispatch_artifact=None, batch_decode_linear_projection_path="selected_qkv")
@@ -3555,6 +3565,8 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
             batch_decode_linear_output_path="auto",
         )
     )
+
+    _clear_qwen35_batch_env()
 
 
 def test_qwen35_batch_equality_matrix_dry_run_records_c2_c4_c8(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -12147,7 +12159,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_linear_state_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_linear_moe_path"] == "per_row_c1"
     assert payload["workload"]["batch_decode_linear_output_path"] == "batch_gemv"
-    assert payload["workload"]["batch_decode_full_attention_path"] == "per_row"
+    assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
     assert payload["workload"]["batch_decode_attention_input_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_qkv_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_scratch_path"] == "batch"
@@ -12155,8 +12167,10 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_full_attention_kv_append_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_append_context_order"] == "phased"
     assert payload["workload"]["batch_decode_attention_suffix_order"] == "phased"
-    assert payload["workload"]["batch_decode_full_attention_layer_copy"] == "batch"
-    assert payload["workload"]["batch_decode_post_attention_path"] == "batch"
+    assert payload["workload"]["batch_decode_full_attention_output_path"] == "per_row"
+    assert payload["workload"]["batch_decode_full_attention_layer_copy"] == "per_row"
+    assert payload["workload"]["batch_decode_full_attention_moe_path"] == "per_row_c1"
+    assert payload["workload"]["batch_decode_post_attention_path"] == "per_row"
     assert payload["workload"]["native_caware_decode"] is False
     assert payload["workload"]["layer_limits"] == [1, 4, 8]
     assert len(payload["commands"]) == 3
