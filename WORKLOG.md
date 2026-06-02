@@ -64248,3 +64248,23 @@ Evidence:
 - Retained promotion remains blocked by non-full-native projection/MoE/full-attention paths and missing graph-replay profiler evidence; no c>N throughput/scaling claim is made.
 
 Validation is recorded in the active loop measurement: primary c=2 verifier remains at metric `137`, required guard passes, c=4 profiler preflight JSON validates, and `git diff --check` passes.
+
+## 2026-06-02 — CONCURRENCY c=8 retained profiler preflight
+
+Extended the retained profiler/scaling preflight from c=4 to c=8 under `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/` on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. This is diagnostic runtime evidence only (`performance_claim=false`); it keeps the c=8 generated-token equality gate green and completes the c=2/c=4/c=8 sampler-provenance-matched compact profiler preflight set without promoting a c>N throughput claim.
+
+Commands / artifacts:
+
+- Baseline/precondition run: `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_c_sweep.py --batch-sizes 1,8 --output-dir benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight --summary-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/summary.json --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact-template 'benchmarks/results/2026-06-02-hipengine-qwen35-c{c}-native-batch-sampler-equality.json'`.
+- Profiler capture used `rocprofv3 --kernel-trace --output-format csv -d benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/profile-c8 -- env HIP_VISIBLE_DEVICES=1 ... scripts/qwen35_batch_retained_bench.py --batch-size 8 ... --batch-sample-mode batched_lm_head --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 ... --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/profiler-c8.json`.
+- Raw rocprof output was reduced to the compact `profile-c8/hipengine_kernel_trace.csv` and the raw `epyc/` dump was removed before staging.
+
+Evidence:
+
+- `summary.json` validates and reports `status=passed`, `status_counts={'passed': 6}`; primitive c=1/c=8, serial bridge c=1/c=8, c=1 native baseline, and c=8 native diagnostic all passed their pre/postconditions.
+- `native-diagnostic-c8.json` is `status=blocked`, `performance_claim=false`, with generated-token equality prefixes `[137,137,137,137,137,137,137,137]` and no mismatches.
+- c=1 native scaling reference: `133.52925510526705 tok/s`; c=8 serial bridge: `103.66579673835398 tok/s` aggregate / `12.958224592294247 tok/s` per request; c=8 native diagnostic: `108.12456261851884 tok/s` aggregate / `13.515570327314855 tok/s` per request; c=8 native diagnostic allocator peak `20.499 GiB`.
+- Compact profiler evidence: total selected native-batch kernel time `3024994228 ns`; native batch attention+KV write `3003855668 ns`; sampler category `10717451 ns` via `batch_argmax_stage1_kernel` and `batch_argmax_stage2_kernel`.
+- Retained promotion remains blocked by non-full-native projection/MoE/full-attention paths and missing graph-replay profiler evidence; no c>N throughput/scaling claim is made.
+
+Validation is recorded in the active loop measurement: the primary c=2 verifier produced one transient `82` followed by a rerun at `137` without code changes, required guard passes, c=8 profiler preflight JSON validates, and `git diff --check` passes.
