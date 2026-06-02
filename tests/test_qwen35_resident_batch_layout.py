@@ -1929,6 +1929,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
 
 def test_qwen35_resident_full_attention_native_branch_can_use_persistent_c1_scratch(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PERSISTENT_SCRATCH", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SKIP_BATCH_SETUP", "1")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
@@ -1947,14 +1948,11 @@ def test_qwen35_resident_full_attention_native_branch_can_use_persistent_c1_scra
         Tensor.from_handle(0x4000, (rows,), DType.INT64, device),
         (),
     )
-    session._full_cache_all_slots = lambda layer_id: (
-        Tensor.from_handle(0x5000, (1,), DType.BF16, device),
-        Tensor.from_handle(0x6000, (1,), DType.BF16, device),
+    session._full_cache_all_slots = lambda layer_id: pytest.fail(
+        "persistent c1 skip-batch-setup path must not use all-slot cache"
     )
-    session._batch_full_spans = lambda layer_id, *, rows, positions, slots: (
-        Tensor.from_handle(0x7000, (rows,), DType.INT64, device),
-        SimpleNamespace(rows=rows, slots=slots, span="append"),
-        SimpleNamespace(rows=rows, slots=slots, span="decode"),
+    session._batch_full_spans = lambda layer_id, *, rows, positions, slots: pytest.fail(
+        "persistent c1 skip-batch-setup path must not build batch full-attention spans"
     )
     session._slot_full_cache = lambda layer_id, slot: (
         Tensor.from_handle(0x5100 + int(slot) * 0x100, (1,), DType.BF16, device),
@@ -2021,7 +2019,10 @@ def test_qwen35_resident_full_attention_native_branch_can_use_persistent_c1_scra
     assert execution["moe_decode_path"] == "selected_c1_per_row_moe_fallback"
     assert execution["moe_selected_c1_fallback_layers"] == 1
     assert execution["layer_executions"][0]["full_attention_scratch_decode_path"] == "persistent_c1_scratch_fallback"
+    assert execution["layer_executions"][0]["full_attention_batch_setup_decode_path"] == "skipped_for_persistent_c1"
+    assert "full_attention_segment_metadata" not in execution["layer_executions"][0]
     assert "full-attention layer forced to persistent c1 scratch diagnostic path" in execution["blockers"]
+    assert "full-attention native batch setup skipped for persistent c1 diagnostic path" in execution["blockers"]
 
 def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")

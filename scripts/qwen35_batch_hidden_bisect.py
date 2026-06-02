@@ -5729,9 +5729,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--batch-decode-attn-scratch-path",
-        choices=("batch", "per_row", "persistent_c1"),
+        choices=("batch", "per_row", "persistent_c1", "persistent_c1_no_batch_setup"),
         default="batch",
-        help="Diagnostic full-attention scratch path for c>N batch decode; per_row runs each row on an independent token-1 attention scratch, persistent_c1 reuses the session token-1 c1 scratch, and both block retained claims.",
+        help="Diagnostic full-attention scratch path for c>N batch decode; per_row runs each row on an independent token-1 attention scratch, persistent_c1 reuses the session token-1 c1 scratch, persistent_c1_no_batch_setup also skips native batch span/scratch setup, and all non-batch choices block retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-context-path",
@@ -5975,7 +5975,10 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         "1" if args.batch_decode_attn_scratch_path == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PERSISTENT_SCRATCH"] = (
-        "1" if args.batch_decode_attn_scratch_path == "persistent_c1" else "0"
+        "1" if args.batch_decode_attn_scratch_path in {"persistent_c1", "persistent_c1_no_batch_setup"} else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SKIP_BATCH_SETUP"] = (
+        "1" if args.batch_decode_attn_scratch_path == "persistent_c1_no_batch_setup" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
         "1" if args.batch_decode_attn_context_path == "per_row" else "0"

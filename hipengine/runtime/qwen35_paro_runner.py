@@ -4036,6 +4036,10 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_persistent_scratch = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PERSISTENT_SCRATCH"
         )
+        force_per_row_full_attention_skip_batch_setup = (
+            force_per_row_full_attention_persistent_scratch
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SKIP_BATCH_SETUP")
+        )
         force_per_row_full_attention_context = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"
         )
@@ -4281,15 +4285,20 @@ class Qwen35ParoResidentSession:
                     if native_full:
                         full_attention_decode_path = "native_batch"
                         native_full_attention_layers += 1
-                        key_cache, value_cache = self._full_cache_all_slots(layer_id)
-                        position_tensor, append_spans, decode_spans = self._batch_full_spans(
-                            layer_id,
-                            rows=rows,
-                            positions=positions,
-                            slots=slots,
-                        )
                         persistent_attention_scratch = self.full_scratch[layer_id] if force_per_row_full_attention_persistent_scratch else None
                         persistent_moe_scratch = self.moe_scratch[layer_id] if force_per_row_full_attention_persistent_scratch else None
+                        batch_full_spans_metadata = None
+                        if force_per_row_full_attention_skip_batch_setup:
+                            key_cache = value_cache = position_tensor = append_spans = decode_spans = None
+                        else:
+                            key_cache, value_cache = self._full_cache_all_slots(layer_id)
+                            position_tensor, append_spans, decode_spans = self._batch_full_spans(
+                                layer_id,
+                                rows=rows,
+                                positions=positions,
+                                slots=slots,
+                            )
+                            batch_full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
                         attention_scratch = (
                             persistent_attention_scratch
                             if force_per_row_full_attention_persistent_scratch
@@ -4521,6 +4530,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_qkv
                                 or force_per_row_full_attention_scratch
                                 or force_per_row_full_attention_persistent_scratch
+                                or force_per_row_full_attention_skip_batch_setup
                                 or force_per_row_full_attention_output
                                 or force_batch_gemv_full_attention_output
                                 or force_per_row_full_attention_layer_copy
@@ -4554,7 +4564,9 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_layer_copy_decode_path"] = full_attention_layer_copy_decode_path
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = post_attention_decode_path
-                        full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
+                        if force_per_row_full_attention_skip_batch_setup:
+                            layer_execution["full_attention_batch_setup_decode_path"] = "skipped_for_persistent_c1"
+                        full_spans_metadata = batch_full_spans_metadata
                         if isinstance(full_spans_metadata, dict):
                             layer_execution["full_attention_segment_metadata"] = full_spans_metadata
                         layer_executions.append(layer_execution)
@@ -4687,6 +4699,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention layer forced to independent per-row scratch diagnostic path")
             if force_per_row_full_attention_persistent_scratch:
                 decode_blockers.append("full-attention layer forced to persistent c1 scratch diagnostic path")
+            if force_per_row_full_attention_skip_batch_setup:
+                decode_blockers.append("full-attention native batch setup skipped for persistent c1 diagnostic path")
             if force_per_row_full_attention_context:
                 decode_blockers.append("full-attention context/gate forced to per-row diagnostic path")
             if force_per_row_full_attention_kv_append:
@@ -4738,6 +4752,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_qkv
                 and not force_per_row_full_attention_scratch
                 and not force_per_row_full_attention_persistent_scratch
+                and not force_per_row_full_attention_skip_batch_setup
                 and not force_per_row_full_attention_context
                 and not force_per_row_full_attention_kv_append
                 and not force_per_row_full_attention_append_context

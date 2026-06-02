@@ -63734,3 +63734,23 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: persistent token-1 full/MoE scratch lifetime is not the sole remaining difference. The only known green path remains the outer `--batch-decode-full-attn-path per_row` branch; the likely discriminator is now code in the native branch before/around full-attention dispatch (for example `_batch_full_spans` / batch metadata side effects or branch-level state mutation), not the c1 layer orchestrator or scratch allocation itself.
 
 Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention skip-batch-setup diagnostic
+
+Added a native-branch full-attention persistent c1 diagnostic that skips the remaining native full-attention batch setup:
+
+- Runtime env: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SKIP_BATCH_SETUP=1`.
+- Retained/hidden scripts: `--batch-decode-attn-scratch-path persistent_c1_no_batch_setup`.
+- Runtime path: when the native branch delegates each row to the persistent token-1 c1 full-attention scratch, it can now avoid `_full_cache_all_slots`, `_batch_full_spans`, batch full-attention scratch allocation, and batch MoE scratch allocation; row output is copied directly to `next_hidden`.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention branch with linear diagnostics plus persistent c1 scratch/orchestrator and skipped native batch setup:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-persistent-c1-no-batch-setup.json`
+  - `batch_decode_full_attention_path=native_batch`, `batch_decode_attention_scratch_path=persistent_c1_no_batch_setup`, `full_attention_batch_setup_decode_path=skipped_for_persistent_c1`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, no performance claim.
+
+Conclusion: `_full_cache_all_slots`, `_batch_full_spans`, and native full-attention batch scratch/MoE scratch allocation are not the sole remaining difference. The branch can run row c1 full-attention with persistent c1 scratch and no native batch setup yet still diverges from the outer `--batch-decode-full-attn-path per_row` fallback, so the remaining discriminator is likely another branch-level control-flow difference or interaction with the full-attention diagnostic env flags.
+
+Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
