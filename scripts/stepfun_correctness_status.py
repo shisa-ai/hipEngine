@@ -304,6 +304,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--docs-checklist-only",
+        action="store_true",
+        help=(
+            "Emit only docs_checklist for compact P0-P12 checklist metric polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--docs-checklist-sha-only",
+        action="store_true",
+        help=(
+            "Emit only docs_checklist_sha256 for P0-P12 checklist drift polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-kinds-only",
         action="store_true",
         help=(
@@ -740,6 +756,8 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     source_artifacts = status.get("source_artifacts", {})
     handoff_summary = status.get("handoff_summary", {})
     readiness_summary = status.get("readiness_summary", {})
+    docs_checklist = status.get("docs_checklist", {})
+    docs_checklist_sha256 = status.get("docs_checklist_sha256")
     readiness_gates = status.get("readiness_gates", {})
     next_action_commands = status.get("next_action_commands", {})
     blocker_kinds = status.get("blocker_kinds", [])
@@ -1347,6 +1365,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "readiness_summary_sha256": (
             isinstance(readiness_summary, dict)
             and status.get("readiness_summary_sha256") == _stable_json_sha256(readiness_summary)
+        ),
+        "docs_checklist_sha256": (
+            isinstance(docs_checklist, dict)
+            and docs_checklist_sha256 == _stable_json_sha256(docs_checklist)
         ),
         "readiness_gates_sha256": (
             isinstance(readiness_gates, dict)
@@ -3362,6 +3384,8 @@ def _handoff_summary(
             "persisted_status_integrity_failures_only": (
                 "persisted_status_integrity.failed_checks"
             ),
+            "docs_checklist_only": "docs_checklist",
+            "docs_checklist_sha_only": "docs_checklist_sha256",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "readiness_gates_only": "readiness_gates",
@@ -3630,6 +3654,7 @@ def build_status(
     oracle = _load(oracle_artifact)
     resource = _load(resource_artifact)
     docs_status = _docs_checklist_status(docs_path)
+    docs_checklist_sha256 = _stable_json_sha256(docs_status)
     all_layer_prompt_smoke = (
         prompt.get("status") == "partial_prompt_smoke"
         and prompt.get("execution_mode") == "chunked"
@@ -3889,6 +3914,7 @@ def build_status(
         "next_action_commands": next_action_commands,
         "next_action_commands_sha256": next_action_commands_sha256,
         "docs_checklist": docs_status,
+        "docs_checklist_sha256": docs_checklist_sha256,
         "note": (
             "Host-composed all-layer prompt smoke is present; true e2e inference still needs "
             "oracle parity and KV-backed decode."
@@ -4032,6 +4058,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["readiness_gates_sha256"]
     elif args.readiness_gates_only:
         result = status["readiness_gates"]
+    elif args.docs_checklist_sha_only:
+        result = status["docs_checklist_sha256"]
+    elif args.docs_checklist_only:
+        result = status["docs_checklist"]
     elif args.blocker_kinds_sha_only:
         result = status["blocker_kinds_sha256"]
     elif args.blocker_kinds_only:

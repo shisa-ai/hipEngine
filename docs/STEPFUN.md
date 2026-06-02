@@ -595,7 +595,9 @@ reporting.
   oracle/KV evidence item plus the first source KV runner blocker, an ordered blocker work queue,
   and the no-performance/no-e2e-claim policy. `scripts/stepfun_correctness_status.py --readiness-summary-only`
   emits a tiny top-level readiness/blocker digest for scheduler polling, `--readiness-summary-sha-only`
-  emits just that readiness-summary digest for drift polling, `--status-refresh-command-only`
+  emits just that readiness-summary digest for drift polling, `--docs-checklist-only` /
+  `--docs-checklist-sha-only` expose the exact P0-P12 open/partial checklist payload
+  and digest used by the loop metric, `--status-refresh-command-only`
   / `--status-refresh-command-sha-only` emit the consolidated status refresh command or digest,
   `--kv-resource-command-only` / `--kv-resource-command-sha-only` emit the KV resource
   refresh command or digest, `--oracle-helper-command-only` emits just the oracle JSON refresh command,
