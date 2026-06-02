@@ -275,6 +275,8 @@
       "readiness_gates_sha_only": "readiness_gates_sha256",
       "readiness_summary_only": "readiness_summary",
       "readiness_summary_sha_only": "readiness_summary_sha256",
+      "remaining_blockers_report_only": "remaining_blockers_report",
+      "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
       "schema_versions_only": "schema_versions",
       "source_artifacts_sha_only": "source_artifacts_sha256",
       "source_verify_command_only": "next_action_commands.handoff_integrity.source_artifacts_verify_command",
@@ -464,7 +466,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "5ac80dd0a979d23c6a55d6bde45af91c1bd639325c65bee9636c3e96527cbda1",
+  "handoff_summary_sha256": "0c34513bf02ab1412dbb4531372e8478d82b4a663f90cb781c7ff7e264666d80",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -2115,7 +2117,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "07a6fb2fde62f86f8b87f7f714c1f63e84d46e1a12ef743b26d93ca1b798b1a8",
-    "handoff_summary_sha256": "5ac80dd0a979d23c6a55d6bde45af91c1bd639325c65bee9636c3e96527cbda1",
+    "handoff_summary_sha256": "0c34513bf02ab1412dbb4531372e8478d82b4a663f90cb781c7ff7e264666d80",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "b2ffb1b9892c802788deb70c20c0aa0da9102125f72e60ed3a2e255e31bcd7ba",
@@ -2125,10 +2127,105 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "88f1e753c19aaf908d7405ea5dec7718f6750d0d95f3e3b723b5f8c2296cc59e",
     "schema_version": 1,
-    "source_artifacts_sha256": "40f4adc8eba17b13d4fdf466b7aa68c55c9b9bdad54a6bb84aa03dea67e14698",
+    "source_artifacts_sha256": "5efb9ea163cba2b9fe9c1990928c439bdcca8504d2666f196911ec162610e52c",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "ab5f6a787e6edd4b553909add4c509cc55ca01ed593f0d4d16bfd91d884fe7aa",
+  "readiness_summary_sha256": "7e58e70bbe817400c9b2ff702a3cf36f68be170526a3f4c008084345173fc1be",
+  "remaining_blockers_report": {
+    "blocked_gates": [
+      "oracle_parity",
+      "kv_backed_decode",
+      "e2e_inference"
+    ],
+    "items": [
+      {
+        "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "blocker_kind": "oracle_parity_blocked",
+        "checklist_item": "P11 llama.cpp greedy next-token/logit comparison",
+        "first_missing_evidence": "oracle_completed_successfully",
+        "first_missing_precondition": null,
+        "first_streaming_runner_blocker": null,
+        "gap_report_status": "blocked",
+        "gate_blocked_by": "llama_cpp_oracle_timeout",
+        "gate_ready": false,
+        "missing_evidence": [
+          "oracle_completed_successfully",
+          "oracle_generated_comparable_text",
+          "oracle_exact_text_match"
+        ],
+        "queue_index": 0,
+        "readiness_gate": "oracle_parity",
+        "recommended_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 900.0 --diagnostic-logs --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "recommended_command_kind": "oracle_helper_long_timeout_command",
+        "recommended_command_reason": "oracle_timeout_retry_with_longer_timeout",
+        "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+        "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress.",
+        "resource_artifact": null,
+        "streaming_runner_blocker_names": null,
+        "success_criteria": [
+          "oracle_gap_report.status is ready",
+          "oracle_gap_report.missing_preconditions is empty",
+          "oracle_gap_report.missing_evidence is empty",
+          "oracle_parity is true",
+          "readiness_gates.oracle_parity.ready is true"
+        ]
+      },
+      {
+        "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+        "blocker_kind": "kv_backed_decode_not_wired",
+        "checklist_item": "P11 text-only c=1 KV-backed decode runner",
+        "first_missing_evidence": null,
+        "first_missing_precondition": null,
+        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+        "gap_report_status": "blocked",
+        "gate_blocked_by": "kv_backed_decode_not_wired",
+        "gate_ready": false,
+        "missing_evidence": [
+          "streaming_runner_ready_flags",
+          "kv_kernel_launch_trace",
+          "kv_backed_next_token_artifact"
+        ],
+        "queue_index": 1,
+        "readiness_gate": "kv_backed_decode",
+        "recommended_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+        "recommended_command_kind": "resource_plan_refresh_command",
+        "recommended_command_reason": "refresh_kv_resource_and_run_plan_artifact",
+        "recommended_command_sha256": "c60294d60eda320d281299f48bc8f488d21aa35977f0e71498990cddd2518e30",
+        "required_evidence": "A streaming runner must materialize prompt KV rows, launch one-token decode KV write and gated paged attention from the resident cache, then feed final logits without host-composed layer outputs.",
+        "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+        "streaming_runner_blocker_names": [
+          "streaming_decode_loop_not_wired",
+          "kv_kernel_trace_artifact_missing",
+          "kv_backed_next_token_artifact_missing"
+        ],
+        "success_criteria": [
+          "kv_backed_decode_gap_report.status is ready",
+          "kv_backed_decode_gap_report.missing_evidence is empty",
+          "kv_backed_decode_ready is true",
+          "readiness_gates.kv_backed_decode.ready is true",
+          "e2e_inference_ready is true only after oracle_parity is also true"
+        ]
+      }
+    ],
+    "next_commands_available_for": [
+      "oracle_parity_blocked",
+      "kv_backed_decode_not_wired"
+    ],
+    "no_claim_policy": {
+      "e2e_inference_claim_allowed": false,
+      "performance_claim_allowed": false,
+      "reason": "StepFun performance or e2e readiness claims require oracle_parity and kv_backed_decode readiness gates to pass first."
+    },
+    "open_or_partial_items_p0_p12": 2,
+    "remaining_blocker_count": 2,
+    "remaining_blocker_kinds": [
+      "oracle_parity_blocked",
+      "kv_backed_decode_not_wired"
+    ],
+    "schema_version": 1,
+    "status": "blocked"
+  },
+  "remaining_blockers_report_sha256": "de093cff4fabd7b21b5a6f8d211583dc3c219fc93eefe868c1ea7dc4b5856a22",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -2141,8 +2238,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "e65f71f1b81ba6d798d9a737e9c0930e8dbfb46c9bcad1a06acc2a591073fc5a",
-      "size_bytes": 61105
+      "sha256": "1951840f698f7575c85576d08b1285c26528dea8cc8077197118d6d7fe54189a",
+      "size_bytes": 61355
     },
     "oracle": {
       "exists": true,
@@ -2169,7 +2266,7 @@
       "size_bytes": 50044
     }
   },
-  "source_artifacts_sha256": "40f4adc8eba17b13d4fdf466b7aa68c55c9b9bdad54a6bb84aa03dea67e14698",
+  "source_artifacts_sha256": "5efb9ea163cba2b9fe9c1990928c439bdcca8504d2666f196911ec162610e52c",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

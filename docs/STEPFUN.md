@@ -732,8 +732,11 @@ reporting.
   shell, regenerating the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
   and refreshing the resource/status artifacts; compact
   `--next-action-commands-only` emits that command bundle directly, while
-  `next_action_commands_sha256` gives handoff pollers a compact digest of it, with
-  length/SHA-256 metadata for the helper/resource/status refresh commands plus
+  `--remaining-blockers-report-only` / `--remaining-blockers-report-sha-only`
+  emits/digests a compact report joining the two P11 partial checklist items to
+  their readiness gates, missing evidence, and recommended commands.
+  `next_action_commands_sha256` gives handoff pollers a compact digest of the
+  command bundle itself, with length/SHA-256 metadata for the helper/resource/status refresh commands plus
   compact source-artifact verification, verification-status, verification
   exit-code, and verification-failure commands for rechecking embedded
   prompt/oracle/resource/docs hashes before blocker handoff; the oracle helper

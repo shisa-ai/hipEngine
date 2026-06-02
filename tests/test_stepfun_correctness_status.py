@@ -1292,6 +1292,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "readiness_gates_sha_only": "readiness_gates_sha256",
         "blocked_gates_only": "blocked_gates",
         "blocked_gates_sha_only": "blocked_gates_sha256",
+        "remaining_blockers_report_only": "remaining_blockers_report",
+        "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
         "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
         "oracle_wrapper_timeout_source_sha_only": (
@@ -2247,6 +2249,111 @@ def test_stepfun_correctness_status_blocked_gates_only(capsys, tmp_path: Path) -
     payload = json.loads(output.read_text())
     assert payload == status["blocked_gates"]
     assert payload == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
+
+
+def test_stepfun_correctness_status_remaining_blockers_report_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    report_output = tmp_path / "remaining-blockers-report.json"
+    sha_output = tmp_path / "remaining-blockers-report-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(report_output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--blocked-gates-only",
+            "--remaining-blockers-report-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    report = json.loads(report_output.read_text())
+    assert report == status["remaining_blockers_report"]
+    assert report["schema_version"] == 1
+    assert report["status"] == "blocked"
+    assert report["open_or_partial_items_p0_p12"] == 2
+    assert report["remaining_blocker_count"] == 2
+    assert report["remaining_blocker_kinds"] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert report["blocked_gates"] == [
+        "oracle_parity",
+        "kv_backed_decode",
+        "e2e_inference",
+    ]
+    assert report["no_claim_policy"]["performance_claim_allowed"] is False
+    assert report["items"][0]["checklist_item"] == (
+        "P11 llama.cpp greedy next-token/logit comparison"
+    )
+    assert report["items"][0]["readiness_gate"] == "oracle_parity"
+    assert report["items"][0]["gate_ready"] is False
+    assert report["items"][0]["recommended_command_kind"] == (
+        "oracle_helper_long_timeout_command"
+    )
+    assert "oracle_parity is true" in report["items"][0]["success_criteria"]
+    assert report["items"][1]["checklist_item"] == (
+        "P11 text-only c=1 KV-backed decode runner"
+    )
+    assert report["items"][1]["readiness_gate"] == "kv_backed_decode"
+    assert report["items"][1]["gate_ready"] is False
+    assert report["items"][1]["first_streaming_runner_blocker"] == (
+        "streaming_decode_loop_not_wired"
+    )
+    assert report["items"][1]["recommended_command_kind"] == (
+        "resource_plan_refresh_command"
+    )
+    assert "kv_backed_decode_ready is true" in report["items"][1]["success_criteria"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--remaining-blockers-report-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(sha_output.read_text()) == status["remaining_blockers_report_sha256"]
+    assert json.loads(sha_output.read_text()) == _stable_json_sha256(
+        status["remaining_blockers_report"]
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_stepfun_correctness_status_kv_streaming_blockers_sha_only(
@@ -3538,6 +3645,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "readiness_gates_sha_only": "readiness_gates_sha256",
         "blocked_gates_only": "blocked_gates",
         "blocked_gates_sha_only": "blocked_gates_sha256",
+        "remaining_blockers_report_only": "remaining_blockers_report",
+        "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
         "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
         "oracle_wrapper_timeout_source_sha_only": (

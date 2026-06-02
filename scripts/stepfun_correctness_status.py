@@ -102,6 +102,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--remaining-blockers-report-only",
+        action="store_true",
+        help=(
+            "Emit only remaining_blockers_report for compact final-blocker routing. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--remaining-blockers-report-sha-only",
+        action="store_true",
+        help=(
+            "Emit only remaining_blockers_report_sha256 for compact final-blocker drift polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--handoff-summary-sha-only",
         action="store_true",
         help=(
@@ -1850,6 +1866,82 @@ def _next_action_commands(
     }
 
 
+def _remaining_blockers_report(
+    *,
+    docs_status: dict[str, object],
+    blockers: Sequence[dict[str, object]],
+    readiness_gates: dict[str, object],
+    handoff_summary: dict[str, object],
+    next_action_commands: dict[str, object],
+) -> dict[str, object]:
+    """Return a compact report joining P11 partial items to evidence gaps."""
+
+    checklist_labels = {
+        "oracle_parity_blocked": "P11 llama.cpp greedy next-token/logit comparison",
+        "kv_backed_decode_not_wired": "P11 text-only c=1 KV-backed decode runner",
+    }
+    gate_by_kind = {
+        "oracle_parity_blocked": "oracle_parity",
+        "kv_backed_decode_not_wired": "kv_backed_decode",
+    }
+    work_items_by_kind = {
+        str(item.get("blocker_kind")): item
+        for item in handoff_summary.get("blocker_work_queue", [])
+        if isinstance(item, dict)
+    }
+    items: list[dict[str, object]] = []
+    for index, blocker in enumerate(blockers):
+        kind = str(blocker.get("kind"))
+        gate_name = gate_by_kind.get(kind)
+        gate = readiness_gates.get(gate_name, {}) if gate_name is not None else {}
+        gate_record = gate if isinstance(gate, dict) else {}
+        work_item = work_items_by_kind.get(kind, {})
+        work_record = work_item if isinstance(work_item, dict) else {}
+        next_action = next_action_commands.get(kind, {})
+        next_action_record = next_action if isinstance(next_action, dict) else {}
+        items.append(
+            {
+                "blocker_kind": kind,
+                "checklist_item": checklist_labels.get(kind),
+                "queue_index": work_record.get("queue_index", index),
+                "readiness_gate": gate_name,
+                "gate_ready": gate_record.get("ready") is True,
+                "gate_blocked_by": gate_record.get("blocked_by"),
+                "required_evidence": gate_record.get("required_evidence"),
+                "gap_report_status": blocker.get("gap_report_status"),
+                "first_missing_precondition": blocker.get("first_missing_precondition"),
+                "first_missing_evidence": blocker.get("first_missing_evidence"),
+                "missing_evidence": list(blocker.get("missing_evidence", [])),
+                "recommended_command_kind": work_record.get("recommended_command_kind"),
+                "recommended_command": work_record.get("recommended_command"),
+                "recommended_command_sha256": work_record.get("recommended_command_sha256"),
+                "recommended_command_reason": work_record.get("recommended_command_reason"),
+                "success_criteria": list(next_action_record.get("success_criteria", [])),
+                "artifact": blocker.get("artifact"),
+                "resource_artifact": blocker.get("resource_artifact"),
+                "streaming_runner_blocker_names": blocker.get(
+                    "streaming_runner_blocker_names"
+                ),
+                "first_streaming_runner_blocker": blocker.get(
+                    "first_streaming_runner_blocker"
+                ),
+            }
+        )
+    return {
+        "schema_version": 1,
+        "status": "blocked" if items else "ready",
+        "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
+        "remaining_blocker_count": len(items),
+        "remaining_blocker_kinds": [item["blocker_kind"] for item in items],
+        "items": items,
+        "blocked_gates": list(handoff_summary.get("blocked_gates", [])),
+        "next_commands_available_for": list(
+            handoff_summary.get("next_commands_available_for", [])
+        ),
+        "no_claim_policy": dict(handoff_summary.get("no_claim_policy", {})),
+    }
+
+
 def _primary_command_metadata(kind: str | None, command: object) -> dict[str, object]:
     """Return stable metadata for a blocker primary command."""
 
@@ -2311,6 +2403,8 @@ def _handoff_summary(
             "readiness_gates_sha_only": "readiness_gates_sha256",
             "blocked_gates_only": "blocked_gates",
             "blocked_gates_sha_only": "blocked_gates_sha256",
+            "remaining_blockers_report_only": "remaining_blockers_report",
+            "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
             "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
             "oracle_wrapper_timeout_source_sha_only": (
@@ -2675,6 +2769,14 @@ def build_status(
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
     handoff_summary_sha256 = _stable_json_sha256(handoff_summary)
+    remaining_blockers_report = _remaining_blockers_report(
+        docs_status=docs_status,
+        blockers=blockers,
+        readiness_gates=readiness_gates,
+        handoff_summary=handoff_summary,
+        next_action_commands=next_action_commands,
+    )
+    remaining_blockers_report_sha256 = _stable_json_sha256(remaining_blockers_report)
     blocker_kinds = list(handoff_summary["open_blockers"])
     blocker_kinds_sha256 = _stable_json_sha256(blocker_kinds)
     blocked_gates = list(handoff_summary["blocked_gates"])
@@ -2764,6 +2866,8 @@ def build_status(
         "readiness_summary_sha256": readiness_summary_sha256,
         "handoff_summary": handoff_summary,
         "handoff_summary_sha256": handoff_summary_sha256,
+        "remaining_blockers_report": remaining_blockers_report,
+        "remaining_blockers_report_sha256": remaining_blockers_report_sha256,
         "blocker_kinds": blocker_kinds,
         "blocker_kinds_sha256": blocker_kinds_sha256,
         "blocked_gates": blocked_gates,
@@ -2889,6 +2993,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["blocker_kinds_sha256"]
     elif args.blocker_kinds_only:
         result = status["blocker_kinds"]
+    elif args.remaining_blockers_report_sha_only:
+        result = status["remaining_blockers_report_sha256"]
+    elif args.remaining_blockers_report_only:
+        result = status["remaining_blockers_report"]
     elif args.blocked_gates_sha_only:
         result = status["blocked_gates_sha256"]
     elif args.blocked_gates_only:
