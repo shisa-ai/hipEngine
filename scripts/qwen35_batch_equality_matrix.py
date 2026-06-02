@@ -68,6 +68,14 @@ def _parse_positive_int(value: str) -> int:
     return parsed
 
 
+def _format_batch_template(value: str | Path, *, batch_size: int, option: str) -> str:
+    text = str(value)
+    try:
+        return text.format(batch_size=batch_size, c=batch_size)
+    except (IndexError, KeyError, ValueError) as exc:
+        raise ValueError(f"{option} supports only {{batch_size}}/{{c}} placeholders") from exc
+
+
 def _command_env_prefix_parts() -> tuple[str, ...]:
     value = os.environ.get("HIP_VISIBLE_DEVICES")
     if value is None or not value.strip():
@@ -130,6 +138,9 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
     decode_execution = batch_execution.get("decode_execution", {})
     if not isinstance(decode_execution, dict):
         decode_execution = {}
+    sampler_execution = decode_execution.get("sampler_execution", {})
+    if not isinstance(sampler_execution, dict):
+        sampler_execution = {}
     blockers: list[str] = []
     for blocker in _string_list(batch_execution.get("blockers")):
         _append_unique(blockers, blocker)
@@ -166,6 +177,10 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
             "batch_decode_full_attention_layer_copy": workload.get("batch_decode_full_attention_layer_copy"),
             "batch_decode_full_attention_moe_path": workload.get("batch_decode_full_attention_moe_path"),
             "batch_decode_post_attention_path": workload.get("batch_decode_post_attention_path"),
+            "batch_sample_mode": workload.get("batch_sample_mode"),
+            "batch_sample_eq_ok": workload.get("batch_sample_eq_ok"),
+            "batch_sample_eq_artifact": workload.get("batch_sample_eq_artifact"),
+            "batch_sample_eq_rows": workload.get("batch_sample_eq_rows"),
             "native_caware_decode": workload.get("native_caware_decode"),
         },
         "decode_execution": {
@@ -178,6 +193,15 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
             "full_attention_output_path": decode_execution.get("full_attention_output_path"),
             "post_attention_decode_path": decode_execution.get("post_attention_decode_path"),
             "moe_decode_path": decode_execution.get("moe_decode_path"),
+        },
+        "sampler_execution": {
+            "rows": sampler_execution.get("rows"),
+            "requested_mode": sampler_execution.get("requested_mode"),
+            "mode": sampler_execution.get("mode"),
+            "native_row_aware_lm_head": sampler_execution.get("native_row_aware_lm_head"),
+            "equality_artifact": sampler_execution.get("equality_artifact"),
+            "equality_rows": sampler_execution.get("equality_rows"),
+            "blockers": sampler_execution.get("blockers"),
         },
     }
 
@@ -227,6 +251,34 @@ def _retained_command(args: argparse.Namespace, batch_size: int, artifact_path: 
         argv.extend(("--batch-decode-full-attn-moe-path", str(args.batch_decode_full_attn_moe_path)))
     if args.batch_decode_post_attn_path != "default":
         argv.extend(("--batch-decode-post-attn-path", str(args.batch_decode_post_attn_path)))
+    if args.batch_sample_mode != "default":
+        argv.extend(("--batch-sample-mode", str(args.batch_sample_mode)))
+    if args.batch_sample_eq_ok:
+        argv.append("--batch-sample-eq-ok")
+    if args.batch_sample_eq_artifact_template is not None:
+        argv.extend(
+            (
+                "--batch-sample-eq-artifact",
+                _format_batch_template(
+                    args.batch_sample_eq_artifact_template,
+                    batch_size=batch_size,
+                    option="--batch-sample-eq-artifact-template",
+                ),
+            )
+        )
+    if args.batch_sample_eq_rows is not None:
+        argv.extend(
+            (
+                "--batch-sample-eq-rows",
+                _format_batch_template(
+                    args.batch_sample_eq_rows,
+                    batch_size=batch_size,
+                    option="--batch-sample-eq-rows",
+                ),
+            )
+        )
+    elif args.batch_sample_eq_ok:
+        argv.extend(("--batch-sample-eq-rows", str(batch_size)))
     return argv
 
 
@@ -293,6 +345,10 @@ def _build_summary(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
             "batch_decode_full_attn_layer_copy": args.batch_decode_full_attn_layer_copy,
             "batch_decode_full_attn_moe_path": args.batch_decode_full_attn_moe_path,
             "batch_decode_post_attn_path": args.batch_decode_post_attn_path,
+            "batch_sample_mode": args.batch_sample_mode,
+            "batch_sample_eq_ok": args.batch_sample_eq_ok,
+            "batch_sample_eq_artifact_template": str(args.batch_sample_eq_artifact_template or ""),
+            "batch_sample_eq_rows": args.batch_sample_eq_rows,
         },
         "commands": rows,
         "notes": (
@@ -367,6 +423,21 @@ def build_parser() -> argparse.ArgumentParser:
         default="default",
     )
     parser.add_argument("--batch-decode-post-attn-path", choices=("default", "batch", "per_row"), default="default")
+    parser.add_argument(
+        "--batch-sample-mode",
+        choices=("default", "serial_lm_head", "batched_lm_head"),
+        default="default",
+        help="Retained-bench sampler/LM-head path to pass through; default leaves retained-bench defaults unchanged.",
+    )
+    parser.add_argument("--batch-sample-eq-ok", action="store_true")
+    parser.add_argument(
+        "--batch-sample-eq-artifact-template",
+        help="Template for --batch-sample-eq-artifact; supports {batch_size} or {c} placeholders.",
+    )
+    parser.add_argument(
+        "--batch-sample-eq-rows",
+        help="Template/value for --batch-sample-eq-rows; defaults to the current batch size when --batch-sample-eq-ok is set.",
+    )
     return parser
 
 

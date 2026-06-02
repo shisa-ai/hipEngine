@@ -3749,6 +3749,38 @@ def test_qwen35_batch_equality_matrix_dry_run_records_linear_diagnostics(tmp_pat
     assert split_payload["workload"]["batch_decode_linear_projection_path"] == "selected_qkv_z_input"
     assert "--batch-decode-linear-projection-path selected_qkv_z_input" in split_command
 
+    sampler_summary = tmp_path / "sampler-summary.json"
+    sampler_dir = tmp_path / "sampler-artifacts"
+    rc = equality_matrix.main(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2,4",
+            "--batch-sample-mode",
+            "batched_lm_head",
+            "--batch-sample-eq-ok",
+            "--batch-sample-eq-artifact-template",
+            "benchmarks/results/sampler-c{batch_size}.json",
+            "--output-dir",
+            str(sampler_dir),
+            "--json",
+            str(sampler_summary),
+        ]
+    )
+
+    assert rc == 0
+    sampler_payload = json.loads(sampler_summary.read_text(encoding="utf-8"))
+    assert sampler_payload["workload"]["batch_sample_mode"] == "batched_lm_head"
+    assert sampler_payload["workload"]["batch_sample_eq_ok"] is True
+    assert sampler_payload["workload"]["batch_sample_eq_artifact_template"] == "benchmarks/results/sampler-c{batch_size}.json"
+    sampler_commands = [row["command"] for row in sampler_payload["commands"]]
+    assert "--batch-sample-mode batched_lm_head" in sampler_commands[0]
+    assert "--batch-sample-eq-ok" in sampler_commands[0]
+    assert "--batch-sample-eq-artifact benchmarks/results/sampler-c2.json" in sampler_commands[0]
+    assert "--batch-sample-eq-rows 2" in sampler_commands[0]
+    assert "--batch-sample-eq-artifact benchmarks/results/sampler-c4.json" in sampler_commands[1]
+    assert "--batch-sample-eq-rows 4" in sampler_commands[1]
+
 
 def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_path: Path) -> None:
     artifact_path = tmp_path / "native-equality-c2.json"
@@ -3763,6 +3795,10 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
                     "batch_decode_full_attention_layer_copy": "batch",
                     "batch_decode_full_attention_moe_path": "per_row_c1",
                     "batch_decode_post_attention_path": "batch",
+                    "batch_sample_mode": "batched_lm_head",
+                    "batch_sample_eq_ok": True,
+                    "batch_sample_eq_artifact": "benchmarks/results/sampler-c2.json",
+                    "batch_sample_eq_rows": 2,
                     "native_caware_decode": False,
                 },
                 "performance_claim": False,
@@ -3778,6 +3814,15 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
                             "post_attention_decode_path": "native_batch",
                             "linear_attention_projection_path": "native_batch",
                             "moe_decode_path": "mixed_grouped_compact_with_per_row_linear_and_full_attention_fallback",
+                            "sampler_execution": {
+                                "rows": 2,
+                                "requested_mode": "batched_lm_head",
+                                "mode": "batched_lm_head",
+                                "native_row_aware_lm_head": True,
+                                "equality_artifact": "benchmarks/results/sampler-c2.json",
+                                "equality_rows": 2,
+                                "blockers": [],
+                            },
                             "blockers": ["linear-attention decode forced to per-row diagnostic path"],
                         },
                     }
@@ -3805,6 +3850,12 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
     assert summary["workload"]["batch_decode_linear_path"] == "per_row"
     assert summary["workload"]["batch_decode_full_attention_path"] == "native_batch"
     assert summary["workload"]["batch_decode_full_attention_output_path"] == "batch_gemv"
+    assert summary["workload"]["batch_sample_mode"] == "batched_lm_head"
+    assert summary["workload"]["batch_sample_eq_ok"] is True
+    assert summary["workload"]["batch_sample_eq_artifact"] == "benchmarks/results/sampler-c2.json"
+    assert summary["workload"]["batch_sample_eq_rows"] == 2
+    assert summary["sampler_execution"]["mode"] == "batched_lm_head"
+    assert summary["sampler_execution"]["native_row_aware_lm_head"] is True
     assert summary["workload"]["batch_decode_full_attention_layer_copy"] == "batch"
     assert summary["workload"]["batch_decode_full_attention_moe_path"] == "per_row_c1"
     assert summary["workload"]["batch_decode_post_attention_path"] == "batch"
