@@ -9,6 +9,7 @@ import os
 import shlex
 import signal
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Sequence
@@ -60,13 +61,36 @@ def _llama_version(llama_cli: Path) -> str | None:
     return (completed.stdout + completed.stderr).strip() or None
 
 
+def _write_text_atomic(output: Path, text: str) -> None:
+    """Atomically write text by replacing the destination with a flushed temp file."""
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(text)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_path, output)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
 def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) -> None:
     text = json.dumps(result, indent=2 if pretty else None, sort_keys=True) + "\n"
     if output is None:
         print(text, end="")
         return
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(text)
+    _write_text_atomic(output, text)
 
 
 def _as_text(value: str | bytes | None) -> str:

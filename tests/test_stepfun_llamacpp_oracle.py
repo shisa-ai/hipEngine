@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from scripts.stepfun_llamacpp_oracle import main
+from scripts import stepfun_llamacpp_oracle
+
+main = stepfun_llamacpp_oracle.main
 
 
 def _write_artifact(path: Path) -> None:
@@ -21,6 +24,39 @@ def _write_artifact(path: Path) -> None:
             }
         )
     )
+
+
+def test_stepfun_llamacpp_oracle_emit_json_replaces_output_atomically(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "oracle.json"
+    output.write_text('{"status":"old"}\n')
+    observed: dict[str, object] = {}
+    real_replace = os.replace
+
+    def spy_replace(src: object, dst: object) -> None:
+        observed["destination_before_replace"] = output.read_text()
+        observed["temp_payload"] = Path(src).read_text()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(stepfun_llamacpp_oracle.os, "replace", spy_replace)
+
+    stepfun_llamacpp_oracle._emit_json(
+        {"status": "running", "partial_artifact": True},
+        pretty=True,
+        output=output,
+    )
+
+    assert observed == {
+        "destination_before_replace": '{"status":"old"}\n',
+        "temp_payload": '{\n  "partial_artifact": true,\n  "status": "running"\n}\n',
+    }
+    assert json.loads(output.read_text()) == {
+        "partial_artifact": True,
+        "status": "running",
+    }
+    assert not list(tmp_path.glob(".oracle.json.*.tmp"))
 
 
 def test_stepfun_llamacpp_oracle_dry_run_builds_command(
