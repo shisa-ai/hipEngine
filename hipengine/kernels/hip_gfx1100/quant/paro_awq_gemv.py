@@ -43,6 +43,21 @@ _ARGTYPES_SELECTED_DUAL = (
     # x_rows, rows, in_features, out_packed_a, out_packed_b, num_experts, group_size, threads
     ctypes.c_void_p,                                                                       # stream
 )
+_ARGTYPES_SELECTED_DUAL_ROTATE_STAGED = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # x, rotated, selected
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # pairs, theta, channel_scales
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight_a, qzeros_a, scales_a
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight_b, qzeros_b, scales_b
+    ctypes.c_void_p, ctypes.c_void_p,                                                      # out, barrier
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,        # x_rows, rows, in_features, out_packed_a, out_packed_b
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,                        # num_experts, group_size, krot, threads
+    ctypes.c_void_p,                                                                       # stream
+)
+_ARGTYPES_SELECTED_DUAL_ROTATE_STAGED_KEYED = (
+    *_ARGTYPES_SELECTED_DUAL_ROTATE_STAGED[:-1],
+    ctypes.c_int64, ctypes.c_int64,                                                        # barrier_count_target, barrier_ready_value
+    ctypes.c_void_p,
+)
 _ARGTYPES_SELECTED_SINGLE = (
     ctypes.c_void_p, ctypes.c_void_p,                                                      # x, selected
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight, qzeros, scales
@@ -117,6 +132,8 @@ _SYMBOL_SELECTED_STRIDED = "hipengine_gemv_awq_selected_pack8_strided_bf16"
 _SYMBOL_SELECTED_TRANSPOSED = "hipengine_gemv_awq_selected_pack8_transposed_bf16"
 _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_fp16"
 _SYMBOL_SELECTED_DUAL_ROTATE_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16"
+_SYMBOL_SELECTED_DUAL_ROTATE_STAGED_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_transposed_rotate_staged_fp16"
+_SYMBOL_SELECTED_DUAL_ROTATE_STAGED_KEYED_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16"
 _SYMBOL_SELECTED_DUAL_STRIDED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_strided_fp16"
 _SYMBOL_SELECTED_DUAL_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_transposed_fp16"
 _SYMBOL_SELECTED_STRIDED_FP16 = "hipengine_gemv_awq_selected_pack8_strided_fp16"
@@ -1492,6 +1509,141 @@ def gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16(
     )
 
 
+def gemv_awq_selected_dual_pack8_transposed_rotate_staged_fp16(
+    x_ptr: int,
+    rotated_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch HBM-staged selected gate/up rotate + transposed dual GEMV.
+
+    The staged kernel rotates each verifier x-row once into ``rotated_ptr`` and
+    then runs the selected ids-tensor GEMV after an in-kernel barrier.  This is
+    bit-exact with ``paro_rotate1_fp16`` +
+    ``gemv_awq_selected_dual_pack8_transposed_fp16`` because the GEMV consumes
+    the same FP16 staged buffer the unfused chain would have written.
+    """
+
+    _launch_selected_dual_rotate_staged(
+        _SYMBOL_SELECTED_DUAL_ROTATE_STAGED_TRANSPOSED_FP16,
+        x_ptr,
+        rotated_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        barrier_ptr,
+        x_rows,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        num_experts,
+        group_size,
+        krot,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16(
+    x_ptr: int,
+    rotated_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    barrier_count_target: int,
+    barrier_ready_value: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Keyed-barrier HBM-staged selected rotate + transposed dual GEMV."""
+
+    _launch_selected_dual_rotate_staged(
+        _SYMBOL_SELECTED_DUAL_ROTATE_STAGED_KEYED_TRANSPOSED_FP16,
+        x_ptr,
+        rotated_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        barrier_ptr,
+        x_rows,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        num_experts,
+        group_size,
+        krot,
+        barrier_count_target=barrier_count_target,
+        barrier_ready_value=barrier_ready_value,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gemv_awq_selected_dual_pack8_strided_fp16(
     x_ptr: int,
     selected_ptr: int,
@@ -1784,6 +1936,16 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "rotate+selected_dual_pack8_gemv", "w4_paro", "transposed_staged_fp16"),
+        gemv_awq_selected_dual_pack8_transposed_rotate_staged_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "rotate+selected_dual_pack8_gemv", "w4_paro", "transposed_staged_keyed_fp16"),
+        gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "selected_dual_pack8_gemv", "w4_paro", "strided_fp16"),
         gemv_awq_selected_dual_pack8_strided_fp16,
         replace=replace,
@@ -2022,6 +2184,87 @@ def _launch_pack8_dual_rotate_staged(
         err = fn(*common_args, stream)
     _check_launch(runtime, err)
 
+
+
+def _launch_selected_dual_rotate_staged(
+    symbol: str,
+    x_ptr: int,
+    rotated_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    *,
+    barrier_count_target: int | None = None,
+    barrier_ready_value: int | None = None,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_selected_dual_shape(x_rows, rows, in_features, out_packed_a, out_packed_b, num_experts, group_size, threads)
+    if krot < 0:
+        raise ValueError("krot must be non-negative")
+    if group_size % 8 != 0:
+        raise ValueError("group_size must be divisible by 8 for staged rotation")
+    keyed = barrier_count_target is not None or barrier_ready_value is not None
+    if keyed:
+        if barrier_count_target is None or barrier_ready_value is None:
+            raise ValueError("keyed selected rotate-staged GEMV requires both barrier target values")
+        if barrier_count_target <= 0 or barrier_ready_value <= 0:
+            raise ValueError("keyed selected rotate-staged barrier targets must be positive")
+        if barrier_count_target > 0x7FFFFFFF or barrier_ready_value > 0x7FFFFFFF:
+            raise ValueError("keyed selected rotate-staged barrier targets must fit int32")
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    argtypes = _ARGTYPES_SELECTED_DUAL_ROTATE_STAGED_KEYED if keyed else _ARGTYPES_SELECTED_DUAL_ROTATE_STAGED
+    fn = signed_kernel_fn(library, symbol, argtypes, ctypes.c_int)
+    common_args = (
+        x_ptr,
+        rotated_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        barrier_ptr,
+        x_rows,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        num_experts,
+        group_size,
+        krot,
+        threads,
+    )
+    if keyed:
+        err = fn(*common_args, barrier_count_target, barrier_ready_value, stream)
+    else:
+        err = fn(*common_args, stream)
+    _check_launch(runtime, err)
 
 
 def _launch_selected_dual_rotate(

@@ -130,6 +130,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_dual_pack8_transposed_fp16,
     gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16,
+    gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16,
     gemv_awq_selected_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_fp16,
 )
@@ -4908,6 +4909,48 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
             return scratch.gate_up
+        if tokens > 1 and _selected_moe_staged_rotate_enabled() and hasattr(scratch, "shared_rotate_fuse_barrier"):
+            runtime = self.runtime or get_hip_runtime()
+            barrier_target, barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
+                scratch.shared_rotate_fuse_barrier,
+                rows=tokens,
+                in_features=self.config.hidden_size,
+                group_size=group_size,
+                rotations=1,
+                stream=stream,
+                runtime=runtime,
+            )
+            gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16(
+                hidden.ptr,
+                scratch.gate_up_input.ptr,
+                scratch.selected_experts.ptr,
+                gate_up_pairs.ptr,
+                self.tensor(f"{prefix}.gate_up_weight_theta").ptr,
+                self.tensor(f"{prefix}.gate_up_weight_channel_scales").ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_gate_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_gate_scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_up_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_up_scales").ptr,
+                scratch.gate_up.ptr,
+                scratch.shared_rotate_fuse_barrier.ptr,
+                tokens,
+                rows,
+                hidden.shape[-1],
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                self.config.num_experts,
+                group_size,
+                _rotation_krot(gate_up_pairs),
+                barrier_target,
+                barrier_epoch,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=runtime,
+            )
+            return scratch.gate_up
         paro_rotate1_fp16(
             hidden.ptr,
             scratch.gate_up_input.ptr,
@@ -6235,6 +6278,21 @@ class Qwen35ParoDecodeState:
             return None
 
         target_out = out if out is not None else scratch.moe_out
+        selected_barrier_target = 0
+        selected_barrier_epoch = 0
+        selected_barrier = None
+        if _selected_moe_staged_rotate_enabled() and hasattr(scratch, "shared_rotate_fuse_barrier"):
+            runtime = self.runtime or get_hip_runtime()
+            selected_barrier = scratch.shared_rotate_fuse_barrier
+            selected_barrier_target, selected_barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
+                selected_barrier,
+                rows=tokens,
+                in_features=self.config.hidden_size,
+                group_size=group_size,
+                stream=stream,
+                runtime=runtime,
+                rotations=1,
+            )
         cache.dispatch(
             hidden=hidden,
             residual=residual,
@@ -6243,6 +6301,9 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             stream=stream,
+            selected_rotate_fuse_barrier=selected_barrier,
+            selected_rotate_barrier_target=selected_barrier_target,
+            selected_rotate_barrier_epoch=selected_barrier_epoch,
         )
         return target_out
 
@@ -7023,6 +7084,7 @@ class Qwen35ParoDecodeState:
         group_size: int,
         stream: int,
         runtime,
+        rotations: int = 2,
     ) -> tuple[int, int]:
         """Return cumulative barrier target/epoch for a keyed staged rotate GEMV.
 
@@ -7032,9 +7094,9 @@ class Qwen35ParoDecodeState:
         preserves stream ordering while avoiding M13.B.2's per-launch memset.
         """
 
-        if rows <= 0 or in_features <= 0 or group_size <= 0 or in_features % group_size:
-            raise ValueError("invalid keyed shared-rotate barrier shape")
-        rotate_blocks = (in_features // group_size) * 2 * rows
+        if rows <= 0 or in_features <= 0 or group_size <= 0 or rotations <= 0 or in_features % group_size:
+            raise ValueError("invalid keyed staged-rotate barrier shape")
+        rotate_blocks = (in_features // group_size) * rotations * rows
         ptr = int(barrier.ptr)
         count, epoch = self._shared_rotate_fuse_barrier_state.get(ptr, (0, 0))
         if count == 0 and epoch == 0:
@@ -7223,6 +7285,23 @@ def _moe_fused_rotate_enabled() -> bool:
     """
 
     return _env_enabled("HIPENGINE_MOE_FUSED_ROTATE", default=False)
+
+
+def _selected_moe_staged_rotate_enabled() -> bool:
+    """Gate for HBM-staged selected-MoE rotate + ids-tensor dual GEMV.
+
+    This replaces the verifier's ``paro_rotate1_fp16`` +
+    ``gemv_awq_selected_dual_pack8_transposed_fp16`` pair with one staged
+    kernel for ``tokens > 1``.  The staged kernel rotates each verifier x-row
+    exactly once into the existing ``gate_up_input`` scratch, then the selected
+    GEMV phase reads that FP16 buffer after an in-kernel barrier, preserving the
+    unfused path's numerics while cutting one launch per MoE layer.
+
+    Default remains off after the W7900 diagnostic: launch count dropped, but
+    staged-kernel duration and verifier economics regressed.
+    """
+
+    return _env_enabled("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", default=False)
 
 
 def _shared_expert_fused_rotate_enabled() -> bool:

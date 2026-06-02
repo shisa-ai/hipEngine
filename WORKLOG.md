@@ -25151,3 +25151,81 @@ python3 scripts/dflash_chain_e2e_bench.py \
 DFlash exactness gate passed (`all_exact_match_ar=true`, finite logits true) but
 speed is far below AR on this tiny diagnostic, so it is correctness evidence
 only.  The diagnostic artifact records both the MTP and DFlash rows.
+
+## 2026-06-03 kernel(mtp): selected-MoE staged rotate diagnostic default-off
+
+Task #30 follow-up: implemented the exact HBM-staged version of the selected
+MoE gate/up path that M13.B.1 was missing.  The new
+`gemv_awq_selected_dual_pack8_transposed_rotate_staged{,_keyed}_fp16` kernel
+rotates each verifier x-row once into the existing `gate_up_input` scratch and
+then runs the selected ids-tensor dual GEMV after an in-kernel barrier.  The C
+MoE dispatcher can pass keyed barrier target/epoch values so the path removes
+the standalone `paro_rotate1_fp16` launch without reintroducing a per-launch
+barrier memset.  It is gated by `HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1` and is
+**default-off** after measurement.
+
+Validation / correctness:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py \
+  hipengine/kernels/hip_gfx1100/quant/__init__.py \
+  hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py \
+  hipengine/runtime/moe_c1_dispatch.py hipengine/runtime/qwen35_paro.py \
+  tests/test_qwen35_decode_state.py
+PYTHONPATH=. pytest -q \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier \
+  tests/test_paro_awq_gemv_plan.py
+# ..... [100%]
+```
+
+A direct tiny FP16 GPU comparison of the new staged transposed kernel against
+the unfused `paro_rotate1_fp16 + gemv_awq_selected_dual_pack8_transposed_fp16`
+path produced `out_equal=True`, `rot_equal=True`, `max_abs=0.0`.
+
+Exact smoke gates with the staged path enabled:
+
+```bash
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1 PYTHONPATH=. \
+python3 scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+  --json /tmp/mtp_smoke_selected_staged_d4.json
+# status=passed exact_ar_match=true accepted=[0,0,0]
+
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1 PYTHONPATH=. \
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --max-prompts 1 --decode-tokens 4 --draft-budgets 3 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --verifier-graph off --tree-mode chain \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/dflash_chain_selected_staged_35b_1p4t.json
+# all_correctness_passed=true rows=1 speedup_vs_ar=0.240 (diagnostic only)
+```
+
+Rocprof MTP verifier window, B=3/decode4, `chain_attn_mode=batched`, comparing
+`HIPENGINE_SELECTED_MOE_STAGED_ROTATE=0` vs `=1`:
+
+| Metric | staged off | staged on | delta |
+| --- | ---: | ---: | ---: |
+| kernel_calls/pass | 1019.00 | 989.33 | -29.67 |
+| kernel_time_ms/pass | 15.344 | 15.611 | +0.268 |
+| total kernel calls | 3057 | 2968 | -89 |
+| total kernel ms | 46.031 | 46.834 | +0.803 |
+| `moe_paro_rotate_in` calls/pass | 190 | 150 | -40 |
+| `moe_gate_up_dual_gemv` ms/pass | 1.554 | 1.974 | +0.420 |
+
+Economics sanity check at decode8/B=3 also regressed with staged on
+(`cycle_cost_ar_tokens 4.32 -> 5.15`, exact true).  Conclusion: the ids-tensor
+staged primitive is correctness-safe and reduces launch count, but the in-kernel
+barrier + staged rotation lengthens the selected gate/up kernel enough to lose
+wall time.  It remains default-off and Task #30 stays open; the next viable
+attempt needs a true time-reducing selected-MoE consolidation (not just launch
+removal), likely a different down/combine fuse or a larger verifier-layer
+primitive with a cost model that beats the barrier overhead.

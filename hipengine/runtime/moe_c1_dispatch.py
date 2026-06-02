@@ -172,6 +172,9 @@ class MoeC1DispatchCache:
         tokens: int,
         group_size: int,
         stream: int,
+        selected_rotate_fuse_barrier: Tensor | None = None,
+        selected_rotate_barrier_target: int = 0,
+        selected_rotate_barrier_epoch: int = 0,
     ) -> Tensor:
         """Update per-call args and invoke the C dispatcher.  Returns ``out``."""
 
@@ -182,6 +185,8 @@ class MoeC1DispatchCache:
         args.out = out.ptr
         args.tokens = tokens
         args.stream = stream
+        args.selected_rotate_barrier_target = int(selected_rotate_barrier_target)
+        args.selected_rotate_barrier_epoch = int(selected_rotate_barrier_epoch)
         # ---- Scratch pointers (may change if scratch instance differs across
         # calls; the verifier reuses a persistent scratch so this is usually
         # the same address each time, but we refresh defensively) ----
@@ -189,6 +194,7 @@ class MoeC1DispatchCache:
         args.selected_experts = scratch.selected_experts.ptr
         args.routing_weights = scratch.routing_weights.ptr
         args.gate_up_input = scratch.gate_up_input.ptr
+        args.selected_rotate_fuse_barrier = 0 if selected_rotate_fuse_barrier is None else selected_rotate_fuse_barrier.ptr
         args.gate_up = scratch.gate_up.ptr
         args.down_input = scratch.down_input.ptr
         args.down_out = scratch.down_out.ptr
@@ -252,6 +258,9 @@ def _build_fns_table() -> MoeC1Fns:
     fns.paro_rotate2_fp16 = addr(rotate_lib, "hipengine_paro_rotate2_fp16")
     fns.gemv_awq_selected_dual_pack8_transposed_fp16 = addr(
         awq_lib, "hipengine_gemv_awq_selected_dual_pack8_transposed_fp16",
+    )
+    fns.gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16 = addr(
+        awq_lib, "hipengine_gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16",
     )
     fns.gemv_awq_selected_pack8_transposed_fp16 = addr(
         awq_lib, "hipengine_gemv_awq_selected_pack8_transposed_fp16",

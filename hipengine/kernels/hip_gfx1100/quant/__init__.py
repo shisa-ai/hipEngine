@@ -27,6 +27,8 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_dual_pack8_strided_rotate_out_bf16,
     gemv_awq_selected_dual_pack8_strided_rotate_out_fp16,
     gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16,
+    gemv_awq_selected_dual_pack8_transposed_rotate_staged_fp16,
+    gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16,
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_dual_pack8_transposed_fp16,
     gemv_awq_selected_pack8_strided_bf16,
@@ -74,7 +76,8 @@ __all__ = [
     "gemv_awq_selected_dual_pack8_strided_rotate_out_bf16",
     "gemv_awq_selected_dual_pack8_strided_rotate_out_fp16",
     "gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16",
-
+    "gemv_awq_selected_dual_pack8_transposed_rotate_staged_fp16",
+    "gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16",
     "gemv_awq_selected_dual_pack8_transposed_bf16",
     "gemv_awq_selected_dual_pack8_transposed_fp16",
     "gemv_awq_selected_pack8_strided_bf16",
