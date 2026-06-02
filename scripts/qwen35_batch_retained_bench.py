@@ -345,6 +345,11 @@ def _graph_replay_stats_blockers(scheduler_metadata: Mapping[str, Any]) -> list[
             blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.{field} is unavailable or non-integer")
             continue
         integer_fields[field] = int(value)
+    replay_kernel_hits = graph_stats.get("replay_kernel_hits", 0)
+    if isinstance(replay_kernel_hits, bool) or not isinstance(replay_kernel_hits, int) or replay_kernel_hits < 0:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.replay_kernel_hits must be a non-negative int")
+    elif "hits" in integer_fields and int(replay_kernel_hits) > integer_fields["hits"]:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.replay_kernel_hits must not exceed hits")
     entries = integer_fields.get("entries")
     hits = integer_fields.get("hits")
     misses = integer_fields.get("misses")
@@ -438,9 +443,16 @@ def _graph_replay_profiler_evidence_blockers(
     scheduler_metadata: Mapping[str, Any], profiler: Mapping[str, Any]
 ) -> list[str]:
     graph_stats = scheduler_metadata.get("graph_bucket_stats")
-    hits = graph_stats.get("hits") if isinstance(graph_stats, Mapping) else None
-    if not isinstance(hits, int) or isinstance(hits, bool) or hits <= 0:
+    if not isinstance(graph_stats, Mapping):
         return []
+    replay_kernel_hits = graph_stats.get("replay_kernel_hits")
+    if isinstance(replay_kernel_hits, int) and not isinstance(replay_kernel_hits, bool):
+        if replay_kernel_hits <= 0:
+            return []
+    else:
+        hits = graph_stats.get("hits")
+        if not isinstance(hits, int) or isinstance(hits, bool) or hits <= 0:
+            return []
     blockers: list[str] = []
     duration_categories = profiler.get("kernel_duration_categories_ns")
     graph_replay_duration = duration_categories.get("graph_replay") if isinstance(duration_categories, Mapping) else None

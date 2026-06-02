@@ -2,14 +2,14 @@
   "schema": 1,
   "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json",
   "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
-  "source_sha256": "beecdbffd1fecbeff5790cecdaad6ec2d52ef2acf1f0f1ba9cd2b0019dfd8a55",
-  "source_size_bytes": 405805,
+  "source_sha256": "342b5a26cb91ee37c3f9dea0715f64fd616d36925cc518ec47cbd4700fe08f13",
+  "source_size_bytes": 405378,
   "profiler_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiler-c8.json",
   "profiler_sha256": "c49d211014a9ee104e2ed46b5fa25b46dec63f7bb075ab70f7bead40be9fab49",
-  "created_at": "2026-06-02T19:34:43.500438Z",
+  "created_at": "2026-06-02T19:45:44.562929Z",
   "status": "blocked",
   "performance_claim": false,
-  "summary": "Exact-command rocprof c=8 retained validation with all available evidence. Command/profiler path mismatches are removed; remaining profiler blocker is graph-replay observability because the raw trace has no graph/replay kernel despite graph_bucket_stats.hits=1.",
+  "summary": "Exact-command rocprof c=8 retained validation with graph bucket lookup hits separated from actual replay-kernel hits. Profiler provenance and graph-replay profiler blockers are removed; remaining blockers are batch eligibility, stable-block-id audit, and per-request bucket context-axis labels.",
   "hardware": {
     "device_name": "AMD Radeon RX 7900 XTX",
     "env": {
@@ -53,6 +53,23 @@
       "accepted": true
     }
   },
+  "graph_bucket_stats": {
+    "entries": 1,
+    "hits": 1,
+    "misses": 1,
+    "replay_kernel_hits": 0,
+    "replay_hit_rate": 0.5,
+    "miss_reasons": {
+      "cache_absent": 1
+    },
+    "kernel_time_histogram_ns": {
+      "le_10us": 0,
+      "le_100us": 2,
+      "le_1ms": 3,
+      "le_10ms": 10,
+      "gt_10ms": 46
+    }
+  },
   "profiler": {
     "status": "captured",
     "expected_kernels_present": true,
@@ -69,7 +86,8 @@
   "provenance_blockers_removed": {
     "profiler_command_json_matches_retained_artifact": true,
     "profiler_command_compiler_version_matches_retained": true,
-    "profiler_artifact_path_repo_relative": true
+    "profiler_artifact_path_repo_relative": true,
+    "graph_replay_profiler_not_required_without_replay_kernel_hits": true
   },
   "remaining_blockers": [
     "batch_execution.throughput_claim_eligible=false",
@@ -81,15 +99,11 @@
     "observability.per_request.4.bucket_key context axis must match scheduler decode shape key",
     "observability.per_request.5.bucket_key context axis must match scheduler decode shape key",
     "observability.per_request.6.bucket_key context axis must match scheduler decode shape key",
-    "observability.per_request.7.bucket_key context axis must match scheduler decode shape key",
-    "profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive",
-    "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive",
-    "profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive",
-    "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive"
+    "observability.per_request.7.bucket_key context axis must match scheduler decode shape key"
   ],
   "measurements": {
-    "decode_tok_s_aggregate": 209.78548324159613,
-    "decode_tok_s_per_request": 26.223185405199516
+    "decode_tok_s_aggregate": 210.8376898981762,
+    "decode_tok_s_per_request": 26.354711237272024
   },
   "commands": {
     "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile/2026-06-02-native-c8-exact-profile-iter99 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiler-c8.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
@@ -98,6 +112,6 @@
   "notes": [
     "No retained performance/scaling claim is made.",
     "Raw rocprof CSV remains outside git under /tmp/hipengine-profile; only compact profiler JSON is retained.",
-    "This exact-command recapture removes the stale profiler command provenance blockers from the prior all-evidence artifact."
+    "graph_bucket_stats.hits are cache lookup hits; graph_bucket_stats.replay_kernel_hits counts actual replay kernels and is zero for this native retained path, matching the exact profiler trace with no graph/replay kernel names."
   ]
 }

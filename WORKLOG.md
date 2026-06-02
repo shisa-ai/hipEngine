@@ -65067,3 +65067,22 @@ Required loop verification:
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 
 Conclusion: exact-command c=8 profiler provenance is closed. Remaining retained blockers are now not stale profiler command mismatches: they are runtime batch eligibility, stable-block-id audit, per-request bucket context labels, and graph-replay profiler observability (scheduler reports a hit but no graph/replay kernel ran). No retained performance/scaling claim.
+
+## 2026-06-02 — CONCURRENCY graph replay hit accounting
+
+Ran iteration 100 for `concurrency-e2e/native-c2-e2e`. The iteration-99 exact-profile artifact showed `graph_bucket_stats.hits=1` while the exact raw rocprof trace contained no graph/replay kernel. Fixed the retained observability accounting to distinguish graph-bucket cache lookup hits from actual graph replay kernel executions.
+
+Code/evidence:
+
+- `hipengine.generation.GraphBucketStats` / `GraphBucketCache` now expose `replay_kernel_hits`, defaulting to zero, plus `record_replay_kernel_hit()` for future real graph replay integration. Existing `hits` remains cache lookup hits.
+- `scripts/qwen35_batch_retained_bench.py` validates optional `graph_bucket_stats.replay_kernel_hits` and only requires graph/replay profiler kernel durations when actual replay kernel hits are positive. Legacy artifacts without the new field retain the old `hits > 0` behavior.
+- Updated focused scheduler tests to cover `replay_kernel_hits=0` metadata and to prove profiler graph/replay durations are not required when the retained path records cache lookup hits but no replay kernel executions.
+- Reran the exact-profile c=8 retained validation with the existing exact profiler artifact. `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json` remains `status=blocked`, `performance_claim=false`, equality green (`prefixes=[137,137,137,137,137,137,137,137]`), primitive c=8 passed, scaling complete, and projection dispatch selecting non-row-GEMV `batch`, but now records `graph_bucket_stats.hits=1` and `replay_kernel_hits=0`.
+- Updated compact summary `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json`: graph replay profiler blockers are gone. Remaining blockers are now isolated to `batch_execution.throughput_claim_eligible=false`, `memory.stable_block_id.passed`, and per-request bucket context-axis mismatches.
+
+Required loop verification:
+
+- Primary c=2 512/128 verifier stayed green: metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and native no-flag decode metadata (`native_caware_decode=true`, `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, `full_attention_decode_path=native_batch`, `full_attention_context_decode_path=native_batch`). The primary artifact now records `graph_bucket_stats.replay_kernel_hits=0`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+Conclusion: the graph-replay profiler blocker was a metadata accounting issue, not missing device evidence for this path. The retained artifact now correctly says cache lookup hit but zero replay-kernel hits, matching the exact raw trace. Remaining blockers: batch-level throughput eligibility, stable-block-id audit, and per-request bucket context labels. No retained performance/scaling claim.

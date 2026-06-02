@@ -16389,6 +16389,7 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
         "entries": 1,
         "hits": 0,
         "misses": 1,
+        "replay_kernel_hits": 0,
         "replay_hit_rate": 0.0,
         "miss_reasons": {"shape_changed": 1},
         "kernel_time_histogram_ns": {"le_10us": 1, "le_100us": 1, "le_1ms": 0, "le_10ms": 0, "gt_10ms": 0},
@@ -16403,6 +16404,7 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
     assert cache.stats.entries == 0
     assert cache.stats.hits == 0
     assert cache.stats.misses == 0
+    assert cache.stats.replay_kernel_hits == 0
     assert cache.stats.miss_reasons == {}
     assert cache.stats.kernel_time_histogram_ns == {}
 
@@ -18215,6 +18217,7 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
         "entries": 1,
         "hits": 1,
         "misses": 1,
+        "replay_kernel_hits": 0,
         "replay_hit_rate": 0.5,
         "miss_reasons": {"cache_absent": 1},
         "kernel_time_histogram_ns": {"le_10us": 0, "le_100us": 0, "le_1ms": 0, "le_10ms": 0, "gt_10ms": 0},
@@ -20740,6 +20743,17 @@ def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_d
     }
 
     assert retained_bench._graph_replay_profiler_evidence_blockers(scheduler_metadata, profiler) == []
+
+    cache_hit_without_replay_kernel = json.loads(json.dumps(scheduler_metadata))
+    cache_hit_without_replay_kernel["graph_bucket_stats"]["replay_kernel_hits"] = 0
+    no_graph_profiler = {
+        **profiler,
+        "expected_kernel_names": ["qwen35_batch_decode"],
+        "kernel_durations_ns": {"qwen35_batch_decode": 1000.0},
+        "kernel_duration_categories_ns": {**profiler["kernel_duration_categories_ns"], "graph_replay": 0.0, "other": 1000.0},
+        "kernel_duration_category_shares": {**profiler["kernel_duration_category_shares"], "graph_replay": 0.0, "other": 1.0},
+    }
+    assert retained_bench._graph_replay_profiler_evidence_blockers(cache_hit_without_replay_kernel, no_graph_profiler) == []
 
     missing_graph_replay = {
         **profiler,

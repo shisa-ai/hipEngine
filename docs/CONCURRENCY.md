@@ -307,10 +307,12 @@ What is still not green:
   compiler-version provenance, so those earlier path blockers are gone
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-all-evidence-blockers/summary.json`).
   A follow-up exact-command `rocprofv3` recapture removes the stale profiler
-  command `--json` / `--compiler-version-file` mismatches as well; it stays
-  blocked by batch-level `throughput_claim_eligible=false`, stable-block-id audit,
-  per-request bucket context-axis mismatches, and graph-replay profiler buckets
-  because the raw trace has no graph/replay kernel despite `graph_bucket_stats.hits=1`
+  command `--json` / `--compiler-version-file` mismatches as well; graph bucket
+  stats now distinguish cache lookup hits from actual replay-kernel hits, so the
+  exact-profile artifact records `hits=1` but `replay_kernel_hits=0`, matching
+  the raw trace with no graph/replay kernel. It stays blocked by batch-level
+  `throughput_claim_eligible=false`, stable-block-id audit, and per-request
+  bucket context-axis mismatches
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected

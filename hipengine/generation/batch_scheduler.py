@@ -400,6 +400,7 @@ class GraphBucketStats:
     entries: int
     hits: int
     misses: int
+    replay_kernel_hits: int = 0
     miss_reasons: Mapping[str, int] = field(default_factory=dict)
     kernel_time_histogram_ns: Mapping[str, int] = field(default_factory=dict)
 
@@ -414,6 +415,7 @@ class GraphBucketStats:
             "entries": int(self.entries),
             "hits": int(self.hits),
             "misses": int(self.misses),
+            "replay_kernel_hits": int(self.replay_kernel_hits),
             "replay_hit_rate": replay_hit_rate,
             "miss_reasons": {str(key): int(value) for key, value in sorted(self.miss_reasons.items())},
             "kernel_time_histogram_ns": kernel_time_histogram,
@@ -427,6 +429,7 @@ class GraphBucketCache:
         self._cache: dict[BatchShapeKey, object] = {}
         self._hits = 0
         self._misses = 0
+        self._replay_kernel_hits = 0
         self._miss_reasons: Counter[str] = Counter()
         self._kernel_time_histogram_ns: Counter[str] = Counter()
 
@@ -436,6 +439,7 @@ class GraphBucketCache:
             entries=len(self._cache),
             hits=self._hits,
             misses=self._misses,
+            replay_kernel_hits=self._replay_kernel_hits,
             miss_reasons=dict(self._miss_reasons),
             kernel_time_histogram_ns=dict(self._kernel_time_histogram_ns),
         )
@@ -467,10 +471,16 @@ class GraphBucketCache:
             raise ValueError("duration_ns must be a non-negative integer")
         self._kernel_time_histogram_ns[_kernel_time_histogram_bucket_ns(ns)] += 1
 
+    def record_replay_kernel_hit(self) -> None:
+        """Record an actual graph replay kernel execution, not just a cache lookup."""
+
+        self._replay_kernel_hits += 1
+
     def clear(self) -> None:
         self._cache.clear()
         self._hits = 0
         self._misses = 0
+        self._replay_kernel_hits = 0
         self._miss_reasons.clear()
         self._kernel_time_histogram_ns.clear()
 
