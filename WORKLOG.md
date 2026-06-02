@@ -64797,3 +64797,20 @@ Validation after reverting the patch:
 - `multiloop_measure` recorded metric `137`; prompt verifier failed because the focused native projection blocker did not turn green and the official primary metric did not improve.
 
 Conclusion: the row-interleaved temporary-copy step is not the root blocker. Direct planar dual-GEMV output leaves `batch_gemv` at `[82,104]`, so the selected-QKV/Z correctness fallback remains required; native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain active blockers.
+
+## 2026-06-02 — CONCURRENCY batch-GEMV QKV/Z plus selected-state probe rejected
+
+Ran iteration 85 for `concurrency-e2e/native-c2-e2e` to test whether exact token-1 linear-attention state replay could repair the native/batch-GEMV QKV/Z projection path. No runtime code was changed. The focused probe forced `--batch-decode-linear-projection-path batch_gemv --batch-decode-linear-state-path selected_c1` while leaving grouped-compact MoE, batch-GEMV/Marlin output, and native full-attention defaults in place.
+
+GPU1 / RX 7900 XTX evidence:
+
+- `batch_gemv` QKV/Z + selected-c1 state generated probe: `/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-selected-state-iter85.json` stayed red with prefixes `[82,104]`. Runtime metadata reported `linear_attention_projection_path=batch_gemv`, `linear_attention_state_path=selected_c1_forced`, and `linear_attention_output_path=batch_gemv_from_f32`.
+- Primary verifier control stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137` with generated-token prefixes `[137,137]` under the selected-QKV/Z correctness fallback.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-batch-gemv-selected-state-red-probe/summary.json` (`status=blocked`, `performance_claim=false`, `retained_ready=false`).
+
+Validation:
+
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded metric `137`; prompt verifier failed because selected-c1 state replay did not eliminate a focused native projection/state blocker and the official primary metric did not improve.
+
+Conclusion: token-1 state replay in isolation does not repair the red `batch_gemv` QKV/Z path. The selected-QKV/Z correctness fallback remains required; native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain active blockers.

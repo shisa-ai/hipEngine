@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "change": "Rejected selected-c1 state replay as a repair for batch-GEMV QKV/Z projection.",
+  "created_at": "2026-06-02T16:29:31.496157Z",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "hip_visible_devices": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "workload": {
+    "batch_size": 2,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8,
+    "decode_tokens": 128,
+    "max_layers": 40
+  },
+  "performance_claim": false,
+  "retained_ready": false,
+  "comparison_to_prior": {
+    "prior_batch_gemv_prefix_lengths": [
+      82,
+      104
+    ],
+    "batch_gemv_selected_state_prefix_lengths": [
+      82,
+      104
+    ],
+    "selected_qkv_z_primary_prefix_lengths": [
+      137,
+      137
+    ],
+    "prior_projection_refresh_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json",
+    "prior_selected_fallback_confidence_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-fallback-repeat-confidence/summary.json"
+  },
+  "probes": {
+    "generated_512x128": [
+      {
+        "name": "batch_gemv_qkvz_with_selected_c1_state",
+        "status": "rejected_correctness",
+        "batch_decode_linear_projection_path": "batch_gemv",
+        "batch_decode_linear_state_path": "selected_c1",
+        "linear_attention_projection_path": "batch_gemv",
+        "linear_attention_state_path": "selected_c1_forced",
+        "linear_attention_output_path": "batch_gemv_from_f32",
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-linear-projection-path batch_gemv --batch-decode-linear-state-path selected_c1 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-batch-gemv-selected-state-iter85.json",
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-selected-state-iter85.json",
+        "generated_token_equality_passed": false,
+        "prefix_lengths": [
+          82,
+          104
+        ],
+        "min_equal_prefix_tokens": 82,
+        "first_mismatch_indices": [
+          82,
+          104
+        ],
+        "prior_prefix_lengths": [
+          82,
+          104
+        ]
+      },
+      {
+        "name": "primary_selected_qkv_z_control",
+        "status": "correctness_green_non_retained",
+        "batch_decode_linear_projection_path": "auto_selected_qkv_z",
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "generated_token_equality_passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137
+      }
+    ]
+  },
+  "conclusion": [
+    "Forcing selected-c1 linear state while leaving QKV/Z on batch_gemv did not repair generated-token equality: prefixes stayed [82,104].",
+    "The selected-c1 state path also changes output metadata to batch_gemv_from_f32 and remains non-retained, so it is only a diagnostic rejection.",
+    "The primary selected-QKV/Z correctness fallback remained green at [137,137]. The active blocker remains native/batch-GEMV QKV/Z projection bit exactness/projection-dispatch closure, not native segmented state in isolation."
+  ]
+}

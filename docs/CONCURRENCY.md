@@ -227,6 +227,10 @@ What is still not green:
   failed c=2 512/128 at `[82,104]`; the selected-QKV/Z fallback stayed `[137,137]`
   after reverting the code, so no runtime code was retained
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-planar-dual-gemv-projection-red-probe/summary.json`).
+  Forcing exact selected-c1 linear state while keeping QKV/Z on `batch_gemv`
+  also stayed red at `[82,104]`, while the selected-QKV/Z fallback control stayed
+  `[137,137]`, so the blocker is not repaired by token-1 state replay in isolation
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-batch-gemv-selected-state-red-probe/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
