@@ -644,7 +644,8 @@ reporting.
   `benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json`;
   the outer pi wrapper timed out at 240 s before the helper rewrote the canonical
   oracle JSON, so the 60 s artifact remains the canonical machine-readable
-  oracle blocker.
+  oracle blocker. `tests/test_stepfun_oracle_wrapper_timeout.py` locks the
+  wrapper-timeout artifact schema and unchanged-canonical-artifact SHA.
   A default-device Vulkan oracle attempt is recorded separately in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-vulkan-harness-timeout.json`;
   it exceeded the pi tool supervision window before helper JSON was produced, so

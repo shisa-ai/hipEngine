@@ -31695,3 +31695,35 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: the oracle helper attempt did not complete within the 240 s wrapper and did not rewrite the canonical 60 s timeout JSON; P0-P12 open/partial checklist count stayed at `2`; source/status verification returned `match`; the full StepFun guard passed (`220` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: no StepFun performance/e2e correctness claim was made; runtime torch/import and backend/quant special-casing checks remained clean aside from the pre-existing kernel-local quant shape selection noted in the loop measurement.
+
+## 2026-06-02 — StepFun oracle wrapper-timeout artifact regression
+
+Added regression coverage for the recorded 180 s llama.cpp oracle wrapper-timeout artifact. `tests/test_stepfun_oracle_wrapper_timeout.py` validates `benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json` as blocking evidence: schema/version, blocked status, command timeout `180.0`, wrapper timeout `240.0`, `wrapper_result=timeout`, CPU/no-GPU llama.cpp args, readiness impact false, explicit no-claim statement, and unchanged canonical oracle artifact SHA `20e4827c088946bc85ea5502f7eef120da7ba198b81159c238e82eee89899c21` with canonical `timeout_s=60.0`. Updated `docs/STEPFUN.md` and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` after the docs hash changed. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_oracle_wrapper_timeout.py tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-oracle-wrapper-timeout-test.json
+python3 - <<'PY'
+import hashlib, json
+artifact=json.load(open('benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json'))
+canonical_path='benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json'
+canonical=json.load(open(canonical_path))
+sha=hashlib.sha256(open(canonical_path,'rb').read()).hexdigest()
+assert artifact['status'] == 'blocked'
+assert artifact['wrapper_result'] == 'timeout'
+assert artifact['output_artifact_timeout_s_after_attempt'] == canonical['timeout_s'] == 60.0
+assert artifact['output_artifact_sha256_after_attempt'] == sha
+v=json.load(open('/tmp/stepfun-source-verify-oracle-wrapper-timeout-test.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['all_match'] is True
+print('oracle wrapper timeout coverage ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted oracle-wrapper/status-helper tests passed (`117 passed`); source/status verification returned `match`; the full StepFun guard passed (`221` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
