@@ -1086,6 +1086,86 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         and blocker_meta.get("recommended_commands_sha256")
         == blocker_recommended_commands_sha256
     )
+
+    def _command_metadata_matches(
+        record: object,
+        *,
+        command_key: str,
+        nchars_key: str,
+        sha256_key: str,
+    ) -> bool:
+        if not isinstance(record, dict):
+            return False
+        command = record.get(command_key)
+        if command is None:
+            return record.get(nchars_key) == 0 and record.get(sha256_key) is None
+        return (
+            isinstance(command, str)
+            and record.get(nchars_key) == len(command)
+            and record.get(sha256_key) == hashlib.sha256(command.encode()).hexdigest()
+        )
+
+    def _optional_command_metadata_matches(
+        record: object,
+        *,
+        command_key: str,
+        nchars_key: str,
+        sha256_key: str,
+    ) -> bool:
+        if not isinstance(record, dict):
+            return False
+        if command_key not in record and nchars_key not in record and sha256_key not in record:
+            return True
+        return _command_metadata_matches(
+            record,
+            command_key=command_key,
+            nchars_key=nchars_key,
+            sha256_key=sha256_key,
+        )
+
+    blocker_work_queue_command_metadata = (
+        isinstance(blocker_work_queue, list)
+        and all(
+            isinstance(item, dict)
+            and _command_metadata_matches(
+                item,
+                command_key="primary_command",
+                nchars_key="primary_command_nchars",
+                sha256_key="primary_command_sha256",
+            )
+            and _command_metadata_matches(
+                item,
+                command_key="recommended_command",
+                nchars_key="recommended_command_nchars",
+                sha256_key="recommended_command_sha256",
+            )
+            and _optional_command_metadata_matches(
+                item,
+                command_key="helper_command",
+                nchars_key="helper_command_nchars",
+                sha256_key="helper_command_sha256",
+            )
+            and _optional_command_metadata_matches(
+                item,
+                command_key="long_timeout_helper_command",
+                nchars_key="long_timeout_helper_command_nchars",
+                sha256_key="long_timeout_helper_command_sha256",
+            )
+            for item in blocker_work_queue
+        )
+    )
+    blocker_recommended_commands_command_metadata = (
+        isinstance(blocker_recommended_commands, list)
+        and all(
+            _command_metadata_matches(
+                item,
+                command_key="recommended_command",
+                nchars_key="recommended_command_nchars",
+                sha256_key="recommended_command_sha256",
+            )
+            for item in blocker_recommended_commands
+        )
+    )
     blocker_work_queue_meta_mirror = (
         isinstance(blocker_meta, dict)
         and isinstance(blocker_work_queue, list)
@@ -1304,6 +1384,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         ),
         "blocker_recommended_commands_mirror_work_queue": (
             blocker_recommended_commands_mirror_work_queue
+        ),
+        "blocker_work_queue_command_metadata": blocker_work_queue_command_metadata,
+        "blocker_recommended_commands_command_metadata": (
+            blocker_recommended_commands_command_metadata
         ),
         "blocker_recommended_commands_meta_mirror": (
             blocker_recommended_commands_meta_mirror
