@@ -781,7 +781,10 @@ reporting.
   command/digests directly. The blocker queue also records a compact
   `blocker_recommended_commands` list plus SHA so automation can inspect both
   the front oracle rerun and the queued KV resource refresh without parsing full
-  work-item payloads; status integrity verifies both the list digest and the
+  work-item payloads; `stepfun_correctness_status.py --output ...` now writes
+  full status, compact handoff, and verification payloads through a flushed
+  same-directory temporary file plus atomic `os.replace` so pollers never consume
+  a truncated status JSON. Status integrity verifies both the list digest and the
   queue-meta mirror. The status artifact now persists `status_integrity` plus
   `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the
   digest for top-level embedded-check polling, and source-artifact verification

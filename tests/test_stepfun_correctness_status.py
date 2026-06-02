@@ -2,9 +2,49 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
-from scripts.stepfun_correctness_status import _status_integrity, build_status, main
+from scripts import stepfun_correctness_status
+
+_status_integrity = stepfun_correctness_status._status_integrity
+build_status = stepfun_correctness_status.build_status
+main = stepfun_correctness_status.main
+
+
+def test_stepfun_correctness_status_emit_json_replaces_output_atomically(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "status.json"
+    output.write_text('{"status":"old"}\n')
+    observed: dict[str, object] = {}
+    real_replace = os.replace
+
+    def spy_replace(src: object, dst: object) -> None:
+        observed["destination_before_replace"] = output.read_text()
+        observed["temp_payload"] = Path(src).read_text()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(stepfun_correctness_status.os, "replace", spy_replace)
+
+    stepfun_correctness_status._emit_json(
+        {"status": "blocked", "open_or_partial_items_p0_p12": 2},
+        pretty=True,
+        output=output,
+    )
+
+    assert observed == {
+        "destination_before_replace": '{"status":"old"}\n',
+        "temp_payload": (
+            '{\n  "open_or_partial_items_p0_p12": 2,\n  "status": "blocked"\n}\n'
+        ),
+    }
+    assert json.loads(output.read_text()) == {
+        "open_or_partial_items_p0_p12": 2,
+        "status": "blocked",
+    }
+    assert not list(tmp_path.glob(".status.json.*.tmp"))
 
 
 def _primary_command_fields(kind: str | None, command: str | None) -> dict[str, object]:
