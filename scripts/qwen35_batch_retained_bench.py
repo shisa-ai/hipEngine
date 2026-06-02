@@ -2819,24 +2819,46 @@ def _int_list(value: Any) -> list[int] | None:
     return [int(item) for item in value]
 
 
+_NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER = (
+    "native c>N decode currently supports compact physical-slot-ordered rows; "
+    "full-attention batch context is native only for BF16 KV and context < 1024"
+)
 _NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER = (
     "native c>N decode is experimental and blocked until generated-token equality passes"
 )
 
 
-def _batch_execution_with_satisfied_generated_equality(
-    batch_execution: Mapping[str, Any], *, equality_passed: bool
+def _batch_execution_has_native_full_attention_context(
+    batch_execution: Mapping[str, Any], *, kv_storage_dtype: str | None
+) -> bool:
+    decode_execution = batch_execution.get("decode_execution")
+    if not isinstance(decode_execution, Mapping):
+        return False
+    if decode_execution.get("full_attention_decode_path") != "native_batch":
+        return False
+    max_context = decode_execution.get("max_full_attention_context")
+    return (
+        kv_storage_dtype == "bf16"
+        and isinstance(max_context, int)
+        and not isinstance(max_context, bool)
+        and max_context < 1024
+    )
+
+
+def _batch_execution_with_satisfied_correctness_gates(
+    batch_execution: Mapping[str, Any], *, equality_passed: bool, kv_storage_dtype: str | None
 ) -> dict[str, Any]:
-    """Remove stale native c>N equality blockers once this artifact proves equality."""
+    """Remove stale native c>N blockers once this artifact proves the gate."""
 
     sanitized = dict(batch_execution)
     if not equality_passed:
         return sanitized
     blockers = sanitized.get("blockers")
     if isinstance(blockers, list):
-        sanitized["blockers"] = [
-            blocker for blocker in blockers if blocker != _NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER
-        ]
+        stale_blockers = {_NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER}
+        if _batch_execution_has_native_full_attention_context(sanitized, kv_storage_dtype=kv_storage_dtype):
+            stale_blockers.add(_NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER)
+        sanitized["blockers"] = [blocker for blocker in blockers if blocker not in stale_blockers]
     return sanitized
 
 
@@ -4097,9 +4119,10 @@ def _build_payload(
     )
     cached_build_blockers = _cached_build_provenance_blockers(args)
     command_provenance_blockers = _retained_command_provenance_blockers(args, argv)
-    batch_execution = _batch_execution_with_satisfied_generated_equality(
+    batch_execution = _batch_execution_with_satisfied_correctness_gates(
         bench["batch_execution"],
         equality_passed=bool(equality.get("passed")),
+        kv_storage_dtype=kv_policy.storage_dtype.value,
     )
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))

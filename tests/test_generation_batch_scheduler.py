@@ -19587,27 +19587,43 @@ def test_qwen35_retained_profiler_cpu_side_bottleneck_blockers_require_arithmeti
     assert "profiler.cpu_side_bottlenecks_seconds keys must match known categories" in missing_category_blockers
 
 
-def test_qwen35_retained_batch_execution_drops_satisfied_generated_equality_blocker() -> None:
+def test_qwen35_retained_batch_execution_drops_satisfied_correctness_gate_blockers() -> None:
     batch_execution = {
         "blockers": [
+            retained_bench._NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER,
             retained_bench._NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER,
             "projection dispatch: no c-aware projection candidate applies to this row count",
         ],
         "native_caware_decode": False,
+        "decode_execution": {
+            "full_attention_decode_path": "native_batch",
+            "max_full_attention_context": 512,
+        },
     }
 
-    unsatisfied = retained_bench._batch_execution_with_satisfied_generated_equality(
+    unsatisfied = retained_bench._batch_execution_with_satisfied_correctness_gates(
         batch_execution,
         equality_passed=False,
+        kv_storage_dtype="bf16",
     )
-    satisfied = retained_bench._batch_execution_with_satisfied_generated_equality(
+    wrong_kv = retained_bench._batch_execution_with_satisfied_correctness_gates(
         batch_execution,
         equality_passed=True,
+        kv_storage_dtype="int8",
+    )
+    satisfied = retained_bench._batch_execution_with_satisfied_correctness_gates(
+        batch_execution,
+        equality_passed=True,
+        kv_storage_dtype="bf16",
     )
 
     assert unsatisfied["blockers"] == batch_execution["blockers"]
+    assert wrong_kv["blockers"] == [
+        retained_bench._NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER,
+        "projection dispatch: no c-aware projection candidate applies to this row count",
+    ]
     assert satisfied["blockers"] == ["projection dispatch: no c-aware projection candidate applies to this row count"]
-    assert batch_execution["blockers"][0] == retained_bench._NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER
+    assert batch_execution["blockers"][0] == retained_bench._NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER
 
 
 def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:
