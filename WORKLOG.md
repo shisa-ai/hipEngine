@@ -25007,3 +25007,55 @@ Combined two-row aggregate: exact `2/2`, `36.09 tok/s`, `1.294x` AR.  External
 peak VRAM max was `41.07 GiB` on the W7900 card.  Interpretation: hipfire's
 large-B lesson does transfer when acceptance is essentially perfect, but B=15 is
 not a default policy; it requires a high-accept/profile route and a VRAM guard.
+
+## 2026-06-02 kernel(mtp): keyed shared-expert rotate barrier (M12.3-style verifier follow-up)
+
+Implemented the M14.fuse.barrier prerequisite for the M12.3/M13.B-style MoE
+surround work.  The selected-expert GEMVs are already ids-tensor/mul_mat_id
+style, so this targets the next structural launch-count issue surfaced by the
+M13 audit: M13.B.2's HBM-staged shared-expert rotate+dual-GEMV saved the
+`paro_rotate2` launch but paid a compensating `hipMemsetAsync(barrier,0,8)` per
+call.
+
+Changes:
+
+- Added keyed BF16/FP16 externs for
+  `gemv_awq_dual_pack8_transposed_rotate_staged_*` so the kernel waits on a
+  cumulative rotate-block target and a monotonically increasing ready epoch.
+  The legacy externs still reset the barrier per launch and pass target=total,
+  epoch=1, preserving ABI/behavior for existing callers.
+- Added Python wrappers/registry variants `transposed_keyed{,_fp16}` and changed
+  the opt-in shared-expert FP16 fused path (`HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1`)
+  to initialize each scratch barrier once, then pass cumulative target/epoch
+  values.  Default remains off pending full exact/rocprof validation.
+- Added a CPU/fake-runtime unit test proving the shared-expert path uses the
+  keyed wrapper, increments targets/epochs (`128/1 -> 256/2` for the 2-row
+  verifier shape), and only memset-initializes the barrier once.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py \
+  hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+artifact = build_paro_awq_gemv(load=False, require_cached=True)
+print(artifact.output_path)
+PY
+# /home/lhl/.cache/hipengine/build/paro_awq_gemv-a7228cef1eed80a7/paro_awq_gemv.so
+PYTHONPATH=. python3 -m pytest -q \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier
+# . [100%]
+```
+
+Synthetic GPU equality checks on gfx1100 compared keyed vs non-keyed staged
+rotate+dual-GEMV for a tiny FP16 W4 shape with identity rotations:
+
+- one keyed launch: `equal True`
+- two cumulative keyed launches on the same barrier: `cumulative_equal True`
+
+A full MTP smoke with `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1` was attempted but
+timed out in this shared session before producing an artifact; do not promote or
+default-enable this path until a clean W7900 exact/rocprof verifier row confirms
+net launch reduction and no barrier-spin regression.

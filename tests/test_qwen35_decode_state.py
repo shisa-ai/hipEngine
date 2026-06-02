@@ -21,6 +21,7 @@ class FakeRuntime:
         self.next_ptr = 0xA000
         self.allocations: dict[int, int] = {}
         self.freed: list[int] = []
+        self.memsets: list[tuple[int, int, int]] = []
 
     def malloc(self, nbytes: int) -> int:
         ptr = self.next_ptr
@@ -36,6 +37,7 @@ class FakeRuntime:
         assert dst in self.allocations
         assert value in {0, 0xFF}
         assert nbytes <= self.allocations[dst]
+        self.memsets.append((dst, value, nbytes))
 
     def memset_async(self, dst: int, value: int, nbytes: int, stream: int) -> None:
         self.memset(dst, value, nbytes)
@@ -1823,6 +1825,44 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_
         2,
         768,
     )
+
+
+def test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", "1")
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (2, 4096), "fp16")
+    calls = []
+
+    def record(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", record("unexpected_rotate2"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", record("unexpected_dual_gemv"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_rotate_staged_fp16", record("unexpected_non_keyed"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16", record("keyed"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", record("silu_rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", record("single_pack8"))
+
+    out1 = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
+    out2 = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
+
+    assert out1 is scratch.shared_out
+    assert out2 is scratch.shared_out
+    labels = [label for label, _args, _kwargs in calls]
+    assert labels == ["keyed", "silu_rotate", "single_pack8", "keyed", "silu_rotate", "single_pack8"]
+    keyed_first = calls[0][1]
+    keyed_second = calls[3][1]
+    # 4096 hidden / group 128 -> 32 groups; two rotations and two rows => 128
+    # staged rotate blocks per launch.  The keyed API accumulates counts and
+    # epochs instead of resetting the barrier each launch.
+    assert keyed_first[23:25] == (128, 1)
+    assert keyed_second[23:25] == (256, 2)
+    barrier_memsets = [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
+    assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
 
 
 def test_qwen35_decode_state_dispatches_legacy_shared_expert_w8a16_bf16(monkeypatch) -> None:

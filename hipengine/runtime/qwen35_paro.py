@@ -122,6 +122,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
     gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
+    gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16,
     gemv_awq_pack8_strided_bf16,
     gemv_awq_pack8_strided_fp16,
     gemv_awq_pack8_transposed_bf16,
@@ -314,6 +315,10 @@ class Qwen35ParoDecodeState:
         self.runtime = runtime
         self.workspace = workspace or RuntimeWorkspace(runtime=runtime)
         self._rotate_fuse_ready: set[int] = set()
+        # M14.fuse.barrier: per-barrier cumulative (rotate_count, ready_epoch)
+        # for keyed HBM-staged rotate+dual-GEMV launches.  This removes the
+        # per-launch hipMemsetAsync that cancelled M13.B.2's dispatch saving.
+        self._shared_rotate_fuse_barrier_state: dict[int, tuple[int, int]] = {}
         # M14.dispatch.1-beta: lazy per-layer cache for the C-side MoE C1
         # dispatcher.  Key: layer_kind ('linear_attention' | 'full_attention').
         # Populated on first matching call from run_moe_c1_fp16.
@@ -5296,7 +5301,16 @@ class Qwen35ParoDecodeState:
 
         if small_batch:
             if fused_shared_rotate:
-                gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
+                runtime = self.runtime or get_hip_runtime()
+                barrier_target, barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
+                    scratch.shared_rotate_fuse_barrier,
+                    rows=tokens,
+                    in_features=cfg.hidden_size,
+                    group_size=group_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16(
                     hidden.ptr,
                     scratch.shared_gate_input.ptr,
                     scratch.shared_up_input.ptr,
@@ -5320,9 +5334,11 @@ class Qwen35ParoDecodeState:
                     _out_packed_from_generic_transposed_qweight(up_qweight),
                     group_size,
                     gate_krot,
+                    barrier_target,
+                    barrier_epoch,
                     stream=stream,
                     library=_library_for(library, "awq"),
-                    runtime=self.runtime,
+                    runtime=runtime,
                 )
             else:
                 gemv_awq_dual_pack8_transposed_fp16(
@@ -6987,6 +7003,40 @@ class Qwen35ParoDecodeState:
             ),
         )
 
+    def _next_shared_rotate_fuse_barrier_key(
+        self,
+        barrier: Tensor,
+        *,
+        rows: int,
+        in_features: int,
+        group_size: int,
+        stream: int,
+        runtime,
+    ) -> tuple[int, int]:
+        """Return cumulative barrier target/epoch for a keyed staged rotate GEMV.
+
+        The underlying kernel increments ``barrier[0]`` once for every
+        (rotation, group, row) staging block and publishes ``barrier[1]`` when
+        the cumulative target is reached.  Initializing once per barrier pointer
+        preserves stream ordering while avoiding M13.B.2's per-launch memset.
+        """
+
+        if rows <= 0 or in_features <= 0 or group_size <= 0 or in_features % group_size:
+            raise ValueError("invalid keyed shared-rotate barrier shape")
+        rotate_blocks = (in_features // group_size) * 2 * rows
+        ptr = int(barrier.ptr)
+        count, epoch = self._shared_rotate_fuse_barrier_state.get(ptr, (0, 0))
+        if count == 0 and epoch == 0:
+            self._memset_tensor(barrier, stream=stream, runtime=runtime)
+        if count + rotate_blocks > 0x7FFFFFFF or epoch + 1 > 0x7FFFFFFF:
+            self._memset_tensor(barrier, stream=stream, runtime=runtime)
+            count = 0
+            epoch = 0
+        count += rotate_blocks
+        epoch += 1
+        self._shared_rotate_fuse_barrier_state[ptr] = (count, epoch)
+        return count, epoch
+
     def _memset_tensor(self, tensor: Tensor, *, stream: int, runtime, value: int = 0) -> None:
         nbytes = tensor.numel * tensor.dtype.itemsize
         if stream:
@@ -7168,22 +7218,16 @@ def _shared_expert_fused_rotate_enabled() -> bool:
     """M13.B.2 gate for the shared-expert fused rotate + dual_pack8 GEMV path.
 
     Replaces ``paro_rotate2_fp16 + gemv_awq_dual_pack8_transposed_fp16``
-    with the already-existing HBM-staged kernel
-    ``gemv_awq_dual_pack8_transposed_rotate_staged_fp16``.  Unlike the
-    M13.B.1 selected variant, this kernel uses an HBM barrier so each row
-    rotates exactly once (no per-block redundancy), so it is
-    structurally bit-exact and does not blow up kernel time.
+    with the HBM-staged keyed-barrier kernel
+    ``gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16``.  Unlike
+    the M13.B.1 selected variant, this kernel uses an HBM staging buffer
+    so each row rotates exactly once (no per-block redundancy), and the
+    M14.fuse.barrier keyed counter avoids the per-launch
+    ``hipMemsetAsync(barrier, 0, 8)`` that cancelled the original M13.B.2
+    dispatch saving.
 
-    Defaulted ``off`` after measurement: the kernel does save the
-    expected 10 ``moe_paro_rotate_in`` launches/pass (one per
-    full-attention MoE layer at B=3 batched chain), but its launcher
-    does an implicit ``hipMemsetAsync(barrier, 0, 8)`` to reset the
-    2-int32 atomic barrier on every call, which rocprof counts as
-    another runtime launch.  Net launch delta is therefore ~0 and the
-    fused kernel runs ~0.1 ms/pass slower (extra barrier spin on the
-    GEMV blocks).  Kept opt-in so a future keyed-barrier variant
-    (rotate counter persists, host bumps a uniform value each launch)
-    can flip it on without re-plumbing.  Tracked as M14.fuse.barrier.
+    Default remains ``off`` until a fresh W7900 exact/rocprof row proves
+    the expected net launch reduction and no hidden barrier-spin loss.
     Enable via ``HIPENGINE_SHARED_EXPERT_FUSED_ROTATE={1,on,yes,true}``.
     """
 

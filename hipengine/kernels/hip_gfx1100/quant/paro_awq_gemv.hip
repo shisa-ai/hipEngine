@@ -1075,7 +1075,9 @@ __global__ void gemv_awq_dual_pack8_transposed_rotate_staged_kernel(
     int64_t out_packed_a,
     int64_t out_packed_b,
     int group_size,
-    int krot) {
+    int krot,
+    int barrier_count_target,
+    int barrier_ready_value) {
   const int64_t global_pack = blockIdx.x;
   const int64_t row = blockIdx.y;
   const int tid = threadIdx.x;
@@ -1123,20 +1125,20 @@ __global__ void gemv_awq_dual_pack8_transposed_rotate_staged_kernel(
     }
     __threadfence();
     if (tid == 0) {
-      // M13.B.2: barrier threshold must count all (rotate_block, row) pairs
-      // so the GEMV phase only proceeds after every row has had its rotation
-      // committed to HBM.  At rows == 1 this collapses to the original
-      // rotate_blocks threshold.
-      const int total_rotate = static_cast<int>(rotate_blocks) * static_cast<int>(gridDim.y);
+      // M14.fuse.barrier: keyed barrier mode lets the host keep a cumulative
+      // rotate-block counter in barrier[0] and a monotonically increasing
+      // ready epoch in barrier[1].  The original memset-per-launch path passes
+      // target=total_rotate and ready=1 after zeroing the barrier; keyed callers
+      // pass cumulative target/epoch values and avoid the extra hipMemsetAsync.
       const int prior = atomicAdd(&barrier[0], 1);
-      if (prior + 1 == total_rotate) {
+      if (prior + 1 == barrier_count_target) {
         __threadfence();
-        atomicExch(&barrier[1], 1);
+        atomicExch(&barrier[1], barrier_ready_value);
       }
     }
   }
 
-  while (atomicAdd(&barrier[1], 0) == 0) {
+  while (atomicAdd(&barrier[1], 0) < barrier_ready_value) {
   }
   __threadfence();
 
@@ -1771,9 +1773,10 @@ int launch_dual_pack8_rotate_staged(
     int64_t threads,
     hipStream_t stream) {
   const int64_t groups = (group_size > 0) ? (in_features / group_size) : 0;
+  const int64_t total_rotate = groups * 2 * rows;
   if (rows <= 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 || group_size <= 0 ||
       krot < 0 || (in_features % group_size) != 0 || (group_size % 8) != 0 || !valid_threads(threads) ||
-      (out_packed_a + out_packed_b) < (groups * 2)) {
+      (out_packed_a + out_packed_b) < (groups * 2) || total_rotate <= 0 || total_rotate > 2147483647LL) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipError_t memset_err = hipMemsetAsync(barrier, 0, 2 * sizeof(int32_t), stream);
@@ -1807,7 +1810,80 @@ int launch_dual_pack8_rotate_staged(
       out_packed_a,
       out_packed_b,
       static_cast<int>(group_size),
-      static_cast<int>(krot));
+      static_cast<int>(krot),
+      static_cast<int>(total_rotate),
+      1);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, bool qweight_transposed>
+int launch_dual_pack8_rotate_staged_keyed(
+    const scalar_t* x,
+    scalar_t* rotated_a,
+    scalar_t* rotated_b,
+    const int16_t* pairs_a,
+    const int16_t* pairs_b,
+    const scalar_t* theta_a,
+    const scalar_t* theta_b,
+    const scalar_t* channel_scales_a,
+    const scalar_t* channel_scales_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const scalar_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const scalar_t* scales_b,
+    scalar_t* out,
+    int32_t* barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    int64_t barrier_count_target,
+    int64_t barrier_ready_value,
+    hipStream_t stream) {
+  const int64_t groups = (group_size > 0) ? (in_features / group_size) : 0;
+  const int64_t total_rotate = groups * 2 * rows;
+  if (rows <= 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 || group_size <= 0 ||
+      krot < 0 || (in_features % group_size) != 0 || (group_size % 8) != 0 || !valid_threads(threads) ||
+      (out_packed_a + out_packed_b) < (groups * 2) || total_rotate <= 0 || total_rotate > 2147483647LL ||
+      barrier_count_target <= 0 || barrier_count_target > 2147483647LL ||
+      barrier_ready_value <= 0 || barrier_ready_value > 2147483647LL) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gemv_awq_dual_pack8_transposed_rotate_staged_kernel<scalar_t, qweight_transposed>),
+      dim3(static_cast<unsigned int>(out_packed_a + out_packed_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      x,
+      rotated_a,
+      rotated_b,
+      pairs_a,
+      pairs_b,
+      theta_a,
+      theta_b,
+      channel_scales_a,
+      channel_scales_b,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      barrier,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      static_cast<int>(group_size),
+      static_cast<int>(krot),
+      static_cast<int>(barrier_count_target),
+      static_cast<int>(barrier_ready_value));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -2169,6 +2245,64 @@ extern "C" int hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_bf16(
       stream);
 }
 
+extern "C" int hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_keyed_bf16(
+    const uint16_t* x,
+    uint16_t* rotated_a,
+    uint16_t* rotated_b,
+    const int16_t* pairs_a,
+    const int16_t* pairs_b,
+    const uint16_t* theta_a,
+    const uint16_t* theta_b,
+    const uint16_t* channel_scales_a,
+    const uint16_t* channel_scales_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const uint16_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const uint16_t* scales_b,
+    uint16_t* out,
+    int32_t* barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    int64_t barrier_count_target,
+    int64_t barrier_ready_value,
+    hipStream_t stream) {
+  return launch_dual_pack8_rotate_staged_keyed<uint16_t, true>(
+      x,
+      rotated_a,
+      rotated_b,
+      pairs_a,
+      pairs_b,
+      theta_a,
+      theta_b,
+      channel_scales_a,
+      channel_scales_b,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      barrier,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      group_size,
+      krot,
+      threads,
+      barrier_count_target,
+      barrier_ready_value,
+      stream);
+}
+
 extern "C" int hipengine_gemv_awq_pack8_strided_fp16(
     const half_t* x,
     const int32_t* qweight,
@@ -2398,6 +2532,64 @@ extern "C" int hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
       group_size,
       krot,
       threads,
+      stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16(
+    const half_t* x,
+    half_t* rotated_a,
+    half_t* rotated_b,
+    const int16_t* pairs_a,
+    const int16_t* pairs_b,
+    const half_t* theta_a,
+    const half_t* theta_b,
+    const half_t* channel_scales_a,
+    const half_t* channel_scales_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int32_t* barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    int64_t barrier_count_target,
+    int64_t barrier_ready_value,
+    hipStream_t stream) {
+  return launch_dual_pack8_rotate_staged_keyed<half_t, true>(
+      x,
+      rotated_a,
+      rotated_b,
+      pairs_a,
+      pairs_b,
+      theta_a,
+      theta_b,
+      channel_scales_a,
+      channel_scales_b,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      barrier,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      group_size,
+      krot,
+      threads,
+      barrier_count_target,
+      barrier_ready_value,
       stream);
 }
 
