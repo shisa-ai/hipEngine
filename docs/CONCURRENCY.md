@@ -211,6 +211,13 @@ What is still not green:
   row 0 worse (`[82,104] -> [0,137]`) and left the layer-1 hidden oracle red, so
   A/B exactness alone does not isolate the QKV/Z batch-GEMV path as green
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-dual-gemv-selected-ab-red-probe/summary.json`).
+  A clean-tree hidden-control rerun reproduced layer-limit 40 hidden/token parity
+  green for both default selected-QKV/Z and full selected-c1 projection replay;
+  layer-limit 1 remains an intermediate hidden-only diagnostic mismatch, not a
+  final l40 failure. The same pass exposed a primary c=2 512/128 reproducibility
+  flake (`[82,137]` then immediate repeat `[137,137]`), so the selected fallback
+  is still correctness-only rather than retained-ready
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-projection-hidden-repro/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

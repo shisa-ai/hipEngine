@@ -1,0 +1,164 @@
+{
+  "change": "Clean-tree selected-projection hidden-control reproducibility check after native projection red probes.",
+  "conclusion": [
+    "On the current clean tree, layer-limit 40 hidden/token parity reproduces green for the default auto selected-QKV/Z path and for full selected-c1 projection replay.",
+    "Including layer limit 1 makes the combined hidden-bisect status red for both modes even though QKV/Z projection, linear stage, and segmented state summaries are green; this is an intermediate-layer diagnostic mismatch, not a final layer-limit-40 failure.",
+    "The primary c=2 512/128 generated-token gate is not perfectly reproducible in this pass: the first official verify after hidden controls produced [82,137], while an immediate repeat returned [137,137].",
+    "The result restores the selected-projection l40 hidden-control evidence but adds a runtime reproducibility blocker; it does not remove the native projection/dispatch blocker or make a retained throughput claim."
+  ],
+  "created_at": "2026-06-02T15:52:49.329024Z",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "primary_c2_512x128_repeats": [
+    {
+      "generated_token_equality_passed": false,
+      "min_equal_prefix_tokens": 82,
+      "name": "official_verify_after_hidden_controls",
+      "notes": [
+        "This was the first official verify run after the hidden-control probes."
+      ],
+      "prefix_lengths": [
+        82,
+        137
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "workload_projection": "selected_qkv_z"
+    },
+    {
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "name": "immediate_repeat_verify",
+      "notes": [
+        "Immediate repeat returned the prior green result."
+      ],
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-rerun2-iter82.json",
+      "workload_projection": "selected_qkv_z"
+    }
+  ],
+  "probes": [
+    {
+      "batch_decode_linear_projection_path": "selected_qkv_z",
+      "combined_command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --layer-limits 1,40 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-auto-nativec1-l1-l40-d1-iter82.json",
+      "combined_correctness_passed": false,
+      "combined_failure_modes": [
+        "hidden"
+      ],
+      "combined_hidden_passed": false,
+      "combined_layer_limits_source_artifact_path": "/tmp/hipengine-hidden-auto-nativec1-l1-l40-d1-iter82.json",
+      "combined_projection_bit_exact": true,
+      "combined_projection_drift_stages": [],
+      "combined_projection_passed_under_atol": true,
+      "combined_status": "mismatch_found",
+      "combined_token_passed": true,
+      "l40_only_command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-auto-nativec1-l40-d1-iter82.json",
+      "l40_only_correctness_passed": true,
+      "l40_only_failure_modes": [],
+      "l40_only_hidden_passed": true,
+      "l40_only_projection_bit_exact": true,
+      "l40_only_projection_drift_stages": [],
+      "l40_only_projection_passed_under_atol": true,
+      "l40_only_source_artifact_path": "/tmp/hipengine-hidden-auto-nativec1-l40-d1-iter82.json",
+      "l40_only_status": "eq_ok",
+      "l40_only_token_passed": true,
+      "layer_summaries": [
+        {
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "failure_modes": [
+            "hidden"
+          ],
+          "first_hidden_mismatch": null,
+          "hidden_passed": false,
+          "layer_limit": 1,
+          "projection_bit_exact": null,
+          "projection_drift_stages": null,
+          "token_passed": true
+        },
+        {
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "failure_modes": [],
+          "first_hidden_mismatch": null,
+          "hidden_passed": true,
+          "layer_limit": 40,
+          "projection_bit_exact": null,
+          "projection_drift_stages": null,
+          "token_passed": true
+        }
+      ],
+      "mode": "auto"
+    },
+    {
+      "batch_decode_linear_projection_path": "selected_c1",
+      "combined_command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --layer-limits 1,40 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-linear-projection-path selected_c1 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-selected_c1-nativec1-l1-l40-d1-iter82.json",
+      "combined_correctness_passed": false,
+      "combined_failure_modes": [
+        "hidden"
+      ],
+      "combined_hidden_passed": false,
+      "combined_layer_limits_source_artifact_path": "/tmp/hipengine-hidden-selected_c1-nativec1-l1-l40-d1-iter82.json",
+      "combined_projection_bit_exact": true,
+      "combined_projection_drift_stages": [],
+      "combined_projection_passed_under_atol": true,
+      "combined_status": "mismatch_found",
+      "combined_token_passed": true,
+      "l40_only_command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-linear-projection-path selected_c1 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-selected_c1-nativec1-l40-d1-iter82.json",
+      "l40_only_correctness_passed": true,
+      "l40_only_failure_modes": [],
+      "l40_only_hidden_passed": true,
+      "l40_only_projection_bit_exact": true,
+      "l40_only_projection_drift_stages": [],
+      "l40_only_projection_passed_under_atol": true,
+      "l40_only_source_artifact_path": "/tmp/hipengine-hidden-selected_c1-nativec1-l40-d1-iter82.json",
+      "l40_only_status": "eq_ok",
+      "l40_only_token_passed": true,
+      "layer_summaries": [
+        {
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "failure_modes": [
+            "hidden"
+          ],
+          "first_hidden_mismatch": null,
+          "hidden_passed": false,
+          "layer_limit": 1,
+          "projection_bit_exact": null,
+          "projection_drift_stages": null,
+          "token_passed": true
+        },
+        {
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "failure_modes": [],
+          "first_hidden_mismatch": null,
+          "hidden_passed": true,
+          "layer_limit": 40,
+          "projection_bit_exact": null,
+          "projection_drift_stages": null,
+          "token_passed": true
+        }
+      ],
+      "mode": "selected_c1"
+    }
+  ],
+  "retained_ready": false,
+  "schema": 1,
+  "status": "blocked",
+  "workload": {
+    "batch_size": 2,
+    "c1_decode_path": "native_batch",
+    "decode_tokens": 1,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 0
+  }
+}

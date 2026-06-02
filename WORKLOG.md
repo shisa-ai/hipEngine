@@ -64741,3 +64741,22 @@ Validation after reverting the patch:
 - `multiloop_measure` recorded metric `137`; prompt verifier failed because no focused native projection blocker turned green and the primary metric did not improve.
 
 Conclusion: selected-c1 A/B exactness does not repair the dual-GEMV QKV/Z path; the selected-QKV/Z correctness fallback remains required. Native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain the active blockers.
+
+## 2026-06-02 — CONCURRENCY selected-projection hidden controls reproduced
+
+Ran iteration 82 for `concurrency-e2e/native-c2-e2e` to re-check clean-tree hidden-control reproducibility after the rejected native/batch-GEMV projection probes. No runtime code was changed.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Current clean-tree default projection hidden control with layer limit 40 only: `/tmp/hipengine-hidden-auto-nativec1-l40-d1-iter82.json` reports `status=eq_ok`, `hidden_passed=true`, `token_passed=true`; workload projection resolves to `selected_qkv_z`.
+- Current clean-tree selected-c1 projection hidden control with layer limit 40 only: `/tmp/hipengine-hidden-selected_c1-nativec1-l40-d1-iter82.json` reports `status=eq_ok`, `hidden_passed=true`, `token_passed=true`.
+- Combined layer-limit probes `/tmp/hipengine-hidden-auto-nativec1-l1-l40-d1-iter82.json` and `/tmp/hipengine-hidden-selected_c1-nativec1-l1-l40-d1-iter82.json` report l1 hidden-only mismatches but l40 hidden/token green. QKV/Z projection bit exactness, decode linear stage, and segmented state summaries are green at the reported layer limits; the l1 mismatch is an intermediate diagnostic mismatch, not a final l40 failure.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-projection-hidden-repro/summary.json` (`status=blocked`, `performance_claim=false`, `retained_ready=false`).
+
+Validation:
+
+- Primary verifier was not perfectly reproducible in this pass: the first official verify after hidden controls, `/tmp/hipengine-e2e-native-c2-512-128.json`, printed metric `82` with generated-token prefixes `[82,137]`; an immediate repeat, `/tmp/hipengine-e2e-native-c2-512-128-rerun2-iter82.json`, returned metric `137` with prefixes `[137,137]`. Both used the existing selected-QKV/Z correctness fallback.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded both primary repeats `[82,137]`; prompt verifier failed because the hidden-control repro adds required runtime evidence but does not improve the primary metric or eliminate a native projection blocker. No retained throughput/scaling claim is made.
+
+Conclusion: the selected-QKV/Z l40 hidden control remains reproducible, but the generated-token gate showed a same-iteration flake. Native QKV/Z bit exactness, projection-dispatch/retained-evidence closure, and selected-fallback reproducibility remain active blockers.
