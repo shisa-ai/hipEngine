@@ -787,9 +787,11 @@ reporting.
   a truncated status JSON. The command handoff explicitly records atomic-output
   metadata for the status-refresh and KV resource-refresh commands, including
   output path, helper, `atomic_os_replace` policy, `--output` presence, and lack
-  of shell redirection; status integrity validates those command-level atomic
-  metadata fields and their blocker-work-queue mirrors. Status integrity also
-  verifies both the list digest and the queue-meta mirror. The status artifact now persists `status_integrity` plus
+  of shell redirection; compact `--atomic-output-handoff-only` /
+  `--atomic-output-handoff-sha-only` outputs expose that refresh-safety summary
+  and digest without requiring the full command bundle. Status integrity validates
+  those command-level atomic metadata fields and their blocker-work-queue mirrors.
+  Status integrity also verifies both the list digest and the queue-meta mirror. The status artifact now persists `status_integrity` plus
   `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the
   digest for top-level embedded-check polling, and source-artifact verification
   now checks that the persisted integrity payload/SHA still match the recomputed

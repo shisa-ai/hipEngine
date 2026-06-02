@@ -1433,6 +1433,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
         "next_action_commands_only": "next_action_commands",
         "next_action_commands_sha_only": "next_action_commands_sha256",
+        "atomic_output_handoff_only": "atomic_output_handoff",
+        "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
@@ -3869,6 +3871,97 @@ def test_stepfun_correctness_status_next_action_commands_sha_only(
     assert payload == _stable_json_sha256(status["next_action_commands"])
 
 
+def test_stepfun_correctness_status_atomic_output_handoff_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "atomic-output-handoff.json"
+    sha_output = tmp_path / "atomic-output-handoff-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--next-action-commands-only",
+            "--atomic-output-handoff-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(output.read_text())
+    assert payload == status["atomic_output_handoff"]
+    assert payload["schema_version"] == 1
+    assert payload["status"] == "safe"
+    assert payload["all_refresh_outputs_atomic"] is True
+    assert payload["status_refresh"]["all_command_records_safe"] is True
+    assert payload["status_refresh"]["all_work_queue_mirrors_safe"] is True
+    assert payload["resource_plan_refresh"]["command_record_safe"] is True
+    assert payload["resource_plan_refresh"]["work_queue_mirror_safe"] is True
+    assert payload["status_refresh"]["command_records"][0]["output_helper"] == (
+        "stepfun_correctness_status.py"
+    )
+    assert payload["status_refresh"]["command_records"][0]["uses_shell_redirection"] is False
+    assert payload["resource_plan_refresh"]["command_record"]["output_helper"] == (
+        "stepfun_gguf_load_smoke.py"
+    )
+    assert payload["resource_plan_refresh"]["command_record"]["output_path"] == str(
+        resource
+    )
+    assert payload["resource_plan_refresh"]["command_record"][
+        "uses_shell_redirection"
+    ] is False
+    assert payload["integrity_checks"] == [
+        "status_refresh_atomic_output_command_metadata",
+        "status_refresh_atomic_output_handoff_mirrors",
+        "resource_refresh_atomic_output_command_metadata",
+        "resource_refresh_atomic_output_handoff_mirrors",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--atomic-output-handoff-only",
+            "--atomic-output-handoff-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    sha_payload = json.loads(sha_output.read_text())
+    assert sha_payload == status["atomic_output_handoff_sha256"]
+    assert sha_payload == _stable_json_sha256(status["atomic_output_handoff"])
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
 
 def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
@@ -4035,6 +4128,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
         "next_action_commands_only": "next_action_commands",
         "next_action_commands_sha_only": "next_action_commands_sha256",
+        "atomic_output_handoff_only": "atomic_output_handoff",
+        "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",

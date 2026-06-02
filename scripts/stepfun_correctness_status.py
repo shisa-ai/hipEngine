@@ -288,6 +288,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--atomic-output-handoff-only",
+        action="store_true",
+        help=(
+            "Emit only atomic_output_handoff for compact refresh-safety polling. "
+            "Overrides --summary-only and command compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--atomic-output-handoff-sha-only",
+        action="store_true",
+        help=(
+            "Emit only atomic_output_handoff_sha256 for refresh-safety drift polling. "
+            "Overrides --summary-only and command compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-kinds-only",
         action="store_true",
         help=(
@@ -2383,6 +2399,142 @@ def _first_remaining_blocker_report(
     }
 
 
+def _atomic_output_handoff(
+    *,
+    next_action_commands: dict[str, object],
+    handoff_summary: dict[str, object],
+) -> dict[str, object]:
+    """Return compact status/resource refresh atomic-output handoff metadata."""
+
+    oracle_action = dict(next_action_commands.get("oracle_parity_blocked", {}))
+    kv_action = dict(next_action_commands.get("kv_backed_decode_not_wired", {}))
+    work_queue = [
+        item for item in handoff_summary.get("blocker_work_queue", []) if isinstance(item, dict)
+    ]
+    work_item_by_kind = {str(item.get("blocker_kind")): item for item in work_queue}
+    oracle_item = dict(work_item_by_kind.get("oracle_parity_blocked", {}))
+    kv_item = dict(work_item_by_kind.get("kv_backed_decode_not_wired", {}))
+
+    status_command_records = [
+        {
+            "source": "next_action_commands.oracle_parity_blocked",
+            "command_sha256": oracle_action.get("status_refresh_command_sha256"),
+            "writes_atomic_output": oracle_action.get("status_refresh_writes_atomic_output"),
+            "output_helper": oracle_action.get("status_refresh_output_helper"),
+            "output_path": oracle_action.get("status_refresh_output_path"),
+            "output_overwrite_policy": oracle_action.get(
+                "status_refresh_output_overwrite_policy"
+            ),
+            "output_arg_present": oracle_action.get("status_refresh_output_arg_present"),
+            "uses_shell_redirection": oracle_action.get(
+                "status_refresh_uses_shell_redirection"
+            ),
+        },
+        {
+            "source": "next_action_commands.kv_backed_decode_not_wired",
+            "command_sha256": kv_action.get("status_refresh_command_sha256"),
+            "writes_atomic_output": kv_action.get("status_refresh_writes_atomic_output"),
+            "output_helper": kv_action.get("status_refresh_output_helper"),
+            "output_path": kv_action.get("status_refresh_output_path"),
+            "output_overwrite_policy": kv_action.get(
+                "status_refresh_output_overwrite_policy"
+            ),
+            "output_arg_present": kv_action.get("status_refresh_output_arg_present"),
+            "uses_shell_redirection": kv_action.get("status_refresh_uses_shell_redirection"),
+        },
+    ]
+    status_work_queue_mirrors = [
+        {
+            "source": "handoff_summary.blocker_work_queue.oracle_parity_blocked",
+            "blocker_kind": oracle_item.get("blocker_kind"),
+            "writes_atomic_output": oracle_item.get("status_refresh_writes_atomic_output"),
+            "output_path": oracle_item.get("status_refresh_output_path"),
+            "output_overwrite_policy": oracle_item.get(
+                "status_refresh_output_overwrite_policy"
+            ),
+            "output_arg_present": oracle_item.get("status_refresh_output_arg_present"),
+            "uses_shell_redirection": oracle_item.get(
+                "status_refresh_uses_shell_redirection"
+            ),
+        },
+        {
+            "source": "handoff_summary.blocker_work_queue.kv_backed_decode_not_wired",
+            "blocker_kind": kv_item.get("blocker_kind"),
+            "writes_atomic_output": kv_item.get("status_refresh_writes_atomic_output"),
+            "output_path": kv_item.get("status_refresh_output_path"),
+            "output_overwrite_policy": kv_item.get("status_refresh_output_overwrite_policy"),
+            "output_arg_present": kv_item.get("status_refresh_output_arg_present"),
+            "uses_shell_redirection": kv_item.get("status_refresh_uses_shell_redirection"),
+        },
+    ]
+    resource_command_record = {
+        "source": "next_action_commands.kv_backed_decode_not_wired",
+        "command_sha256": kv_action.get("resource_plan_refresh_command_sha256"),
+        "writes_atomic_output": kv_action.get("resource_plan_refresh_writes_atomic_output"),
+        "output_helper": kv_action.get("resource_plan_refresh_output_helper"),
+        "output_path": kv_action.get("resource_plan_refresh_output_path"),
+        "output_overwrite_policy": kv_action.get(
+            "resource_plan_refresh_output_overwrite_policy"
+        ),
+        "output_arg_present": kv_action.get("resource_plan_refresh_output_arg_present"),
+        "uses_shell_redirection": kv_action.get("resource_plan_refresh_uses_shell_redirection"),
+    }
+    resource_work_queue_mirror = {
+        "source": "handoff_summary.blocker_work_queue.kv_backed_decode_not_wired",
+        "blocker_kind": kv_item.get("blocker_kind"),
+        "writes_atomic_output": kv_item.get("recommended_command_writes_atomic_output"),
+        "output_helper": kv_item.get("atomic_output_helper"),
+        "output_path": kv_item.get("atomic_output_path"),
+        "output_overwrite_policy": kv_item.get("atomic_output_overwrite_policy"),
+        "output_arg_present": kv_item.get("recommended_command_output_arg_present"),
+        "uses_shell_redirection": kv_item.get("recommended_command_uses_shell_redirection"),
+    }
+
+    def _record_is_safe(record: dict[str, object]) -> bool:
+        return (
+            record.get("writes_atomic_output") is True
+            and record.get("output_overwrite_policy") == "atomic_os_replace"
+            and record.get("output_arg_present") is True
+            and record.get("uses_shell_redirection") is False
+            and bool(record.get("output_path"))
+        )
+
+    status_records_safe = all(_record_is_safe(record) for record in status_command_records)
+    status_mirrors_safe = all(
+        _record_is_safe(record) for record in status_work_queue_mirrors
+    )
+    resource_record_safe = _record_is_safe(resource_command_record)
+    resource_mirror_safe = _record_is_safe(resource_work_queue_mirror)
+    return {
+        "schema_version": 1,
+        "status": "safe"
+        if status_records_safe and status_mirrors_safe and resource_record_safe and resource_mirror_safe
+        else "drift",
+        "status_refresh": {
+            "record_count": len(status_command_records),
+            "command_records": status_command_records,
+            "work_queue_mirrors": status_work_queue_mirrors,
+            "all_command_records_safe": status_records_safe,
+            "all_work_queue_mirrors_safe": status_mirrors_safe,
+        },
+        "resource_plan_refresh": {
+            "command_record": resource_command_record,
+            "work_queue_mirror": resource_work_queue_mirror,
+            "command_record_safe": resource_record_safe,
+            "work_queue_mirror_safe": resource_mirror_safe,
+        },
+        "all_refresh_outputs_atomic": (
+            status_records_safe and status_mirrors_safe and resource_record_safe and resource_mirror_safe
+        ),
+        "integrity_checks": [
+            "status_refresh_atomic_output_command_metadata",
+            "status_refresh_atomic_output_handoff_mirrors",
+            "resource_refresh_atomic_output_command_metadata",
+            "resource_refresh_atomic_output_handoff_mirrors",
+        ],
+    }
+
+
 def _primary_command_metadata(kind: str | None, command: object) -> dict[str, object]:
     """Return stable metadata for a blocker primary command."""
 
@@ -2923,6 +3075,8 @@ def _handoff_summary(
             "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
             "next_action_commands_only": "next_action_commands",
             "next_action_commands_sha_only": "next_action_commands_sha256",
+            "atomic_output_handoff_only": "atomic_output_handoff",
+            "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
             "blocker_kinds_only": "blocker_kinds",
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
@@ -3304,6 +3458,11 @@ def build_status(
     first_remaining_blocker_report_sha256 = _stable_json_sha256(
         first_remaining_blocker_report
     )
+    atomic_output_handoff = _atomic_output_handoff(
+        next_action_commands=next_action_commands,
+        handoff_summary=handoff_summary,
+    )
+    atomic_output_handoff_sha256 = _stable_json_sha256(atomic_output_handoff)
     blocker_kinds = list(handoff_summary["open_blockers"])
     blocker_kinds_sha256 = _stable_json_sha256(blocker_kinds)
     blocked_gates = list(handoff_summary["blocked_gates"])
@@ -3397,6 +3556,8 @@ def build_status(
         "remaining_blockers_report_sha256": remaining_blockers_report_sha256,
         "first_remaining_blocker_report": first_remaining_blocker_report,
         "first_remaining_blocker_report_sha256": first_remaining_blocker_report_sha256,
+        "atomic_output_handoff": atomic_output_handoff,
+        "atomic_output_handoff_sha256": atomic_output_handoff_sha256,
         "blocker_kinds": blocker_kinds,
         "blocker_kinds_sha256": blocker_kinds_sha256,
         "blocked_gates": blocked_gates,
@@ -3533,6 +3694,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_long_timeout_command"
         )
+    elif args.atomic_output_handoff_sha_only:
+        result = status["atomic_output_handoff_sha256"]
+    elif args.atomic_output_handoff_only:
+        result = status["atomic_output_handoff"]
     elif args.next_action_commands_sha_only:
         result = status["next_action_commands_sha256"]
     elif args.next_action_commands_only:
