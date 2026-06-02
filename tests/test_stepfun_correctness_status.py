@@ -108,6 +108,28 @@ def _resource_plan_refresh_command(resource: Path) -> str:
     )
 
 
+def _status_refresh_atomic_fields() -> dict[str, object]:
+    return {
+        "status_refresh_writes_atomic_output": True,
+        "status_refresh_output_path": (
+            "benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
+        ),
+        "status_refresh_output_overwrite_policy": "atomic_os_replace",
+        "status_refresh_uses_shell_redirection": False,
+        "status_refresh_output_arg_present": True,
+    }
+
+
+def _resource_refresh_atomic_fields(resource: Path) -> dict[str, object]:
+    return {
+        "recommended_command_writes_atomic_output": True,
+        "atomic_output_path": str(resource),
+        "atomic_output_overwrite_policy": "atomic_os_replace",
+        "atomic_output_helper": "stepfun_gguf_load_smoke.py",
+        "recommended_command_uses_shell_redirection": False,
+        "recommended_command_output_arg_present": True,
+    }
+
 
 def _oracle_helper_fields(
     prompt: Path,
@@ -1305,6 +1327,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
                 reason="oracle_timeout_retry_with_longer_timeout",
             ),
             **_oracle_helper_fields(prompt, oracle),
+            **_status_refresh_atomic_fields(),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -1334,6 +1357,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
                 _resource_plan_refresh_command(resource),
                 reason="refresh_kv_resource_and_run_plan_artifact",
             ),
+            **_resource_refresh_atomic_fields(resource),
+            **_status_refresh_atomic_fields(),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
             "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
@@ -1740,6 +1765,18 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert oracle_commands["status_refresh_command_sha256"] == hashlib.sha256(
         oracle_commands["status_refresh_command"].encode()
     ).hexdigest()
+    assert oracle_commands["status_refresh_writes_atomic_output"] is True
+    assert oracle_commands["status_refresh_output_helper"] == (
+        "stepfun_correctness_status.py"
+    )
+    assert oracle_commands["status_refresh_output_path"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
+    )
+    assert oracle_commands["status_refresh_output_overwrite_policy"] == (
+        "atomic_os_replace"
+    )
+    assert oracle_commands["status_refresh_uses_shell_redirection"] is False
+    assert oracle_commands["status_refresh_output_arg_present"] is True
     assert oracle_commands["gap_report_status"] == "blocked"
     assert oracle_commands["first_missing_precondition"] == "step35_not_rejected"
     assert oracle_commands["missing_evidence"] == [
@@ -1766,6 +1803,16 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_commands["resource_plan_refresh_command_sha256"] == hashlib.sha256(
         kv_commands["resource_plan_refresh_command"].encode()
     ).hexdigest()
+    assert kv_commands["resource_plan_refresh_writes_atomic_output"] is True
+    assert kv_commands["resource_plan_refresh_output_helper"] == (
+        "stepfun_gguf_load_smoke.py"
+    )
+    assert kv_commands["resource_plan_refresh_output_path"] == str(resource)
+    assert kv_commands["resource_plan_refresh_output_overwrite_policy"] == (
+        "atomic_os_replace"
+    )
+    assert kv_commands["resource_plan_refresh_uses_shell_redirection"] is False
+    assert kv_commands["resource_plan_refresh_output_arg_present"] is True
     assert kv_commands["status_refresh_command"] == oracle_commands["status_refresh_command"]
     assert kv_commands["status_refresh_command_nchars"] == oracle_commands[
         "status_refresh_command_nchars"
@@ -1773,6 +1820,15 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_commands["status_refresh_command_sha256"] == oracle_commands[
         "status_refresh_command_sha256"
     ]
+    assert kv_commands["status_refresh_writes_atomic_output"] is True
+    assert kv_commands["status_refresh_output_path"] == oracle_commands[
+        "status_refresh_output_path"
+    ]
+    assert kv_commands["status_refresh_output_overwrite_policy"] == (
+        "atomic_os_replace"
+    )
+    assert kv_commands["status_refresh_uses_shell_redirection"] is False
+    assert kv_commands["status_refresh_output_arg_present"] is True
     assert kv_commands["gap_report_status"] == "blocked"
     assert kv_commands["missing_evidence"] == [
         "streaming_runner_ready_flags",
@@ -3869,6 +3925,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
                 reason="oracle_timeout_retry_with_longer_timeout",
             ),
             **_oracle_helper_fields(prompt, oracle),
+            **_status_refresh_atomic_fields(),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -3898,6 +3955,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
                 _resource_plan_refresh_command(resource),
                 reason="refresh_kv_resource_and_run_plan_artifact",
             ),
+            **_resource_refresh_atomic_fields(resource),
+            **_status_refresh_atomic_fields(),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
             "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
@@ -4204,6 +4263,7 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
                 reason="oracle_timeout_retry_with_longer_timeout",
             ),
             **_oracle_helper_fields(prompt, oracle),
+            **_status_refresh_atomic_fields(),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -4233,6 +4293,8 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
                 _resource_plan_refresh_command(resource),
                 reason="refresh_kv_resource_and_run_plan_artifact",
             ),
+            **_resource_refresh_atomic_fields(resource),
+            **_status_refresh_atomic_fields(),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
             "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
@@ -5308,6 +5370,7 @@ def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -
             reason="oracle_timeout_retry_with_longer_timeout",
         ),
         **_oracle_helper_fields(prompt, oracle),
+        **_status_refresh_atomic_fields(),
         "first_missing_evidence": "oracle_completed_successfully",
         "first_missing_precondition": "step35_not_rejected",
         "gap_report_status": "blocked",

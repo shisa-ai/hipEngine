@@ -784,7 +784,10 @@ reporting.
   work-item payloads; `stepfun_correctness_status.py --output ...` now writes
   full status, compact handoff, and verification payloads through a flushed
   same-directory temporary file plus atomic `os.replace` so pollers never consume
-  a truncated status JSON. Status integrity verifies both the list digest and the
+  a truncated status JSON. The command handoff explicitly records atomic-output
+  metadata for the status-refresh and KV resource-refresh commands, including
+  output path, helper, `atomic_os_replace` policy, `--output` presence, and lack
+  of shell redirection. Status integrity verifies both the list digest and the
   queue-meta mirror. The status artifact now persists `status_integrity` plus
   `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the
   digest for top-level embedded-check polling, and source-artifact verification

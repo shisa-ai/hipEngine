@@ -1899,6 +1899,25 @@ def _command_length_hash(prefix: str, command: str) -> dict[str, object]:
     }
 
 
+def _atomic_output_metadata(
+    prefix: str,
+    *,
+    helper: str,
+    command: str,
+    output_path: Path,
+) -> dict[str, object]:
+    """Return stable metadata for commands that atomically refresh artifacts."""
+
+    output_text = str(output_path)
+    return {
+        f"{prefix}_writes_atomic_output": True,
+        f"{prefix}_output_helper": helper,
+        f"{prefix}_output_path": output_text,
+        f"{prefix}_output_overwrite_policy": "atomic_os_replace",
+        f"{prefix}_uses_shell_redirection": ">" in command,
+        f"{prefix}_output_arg_present": f"--output {output_text}" in command,
+    }
+
 
 def _oracle_helper_refresh_command(
     *,
@@ -1968,6 +1987,19 @@ def _next_action_commands(
         timeout_s_override=DEFAULT_ORACLE_LONG_TIMEOUT_S,
     )
     resource_plan_refresh = _resource_plan_refresh_command(output_artifact=resource_artifact)
+    status_refresh_output = DEFAULT_STATUS_ARTIFACT
+    status_refresh_atomic_output = _atomic_output_metadata(
+        "status_refresh",
+        helper="stepfun_correctness_status.py",
+        command=status_refresh,
+        output_path=status_refresh_output,
+    )
+    resource_plan_atomic_output = _atomic_output_metadata(
+        "resource_plan_refresh",
+        helper="stepfun_gguf_load_smoke.py",
+        command=resource_plan_refresh,
+        output_path=resource_artifact,
+    )
     source_artifacts_verify = _source_artifacts_verify_command()
     verification_status = _source_artifacts_verify_command(
         extra_args=("--verification-status-only",)
@@ -2038,6 +2070,7 @@ def _next_action_commands(
             ),
             "status_refresh_command": status_refresh,
             **_command_length_hash("status_refresh_command", status_refresh),
+            **status_refresh_atomic_output,
             "gap_report_status": oracle_gap_report.get("status"),
             "missing_preconditions": oracle_missing_preconditions,
             "first_missing_precondition": oracle_gap_report.get("first_missing_precondition"),
@@ -2054,8 +2087,10 @@ def _next_action_commands(
         "kv_backed_decode_not_wired": {
             "resource_plan_refresh_command": resource_plan_refresh,
             **_command_length_hash("resource_plan_refresh_command", resource_plan_refresh),
+            **resource_plan_atomic_output,
             "status_refresh_command": status_refresh,
             **_command_length_hash("status_refresh_command", status_refresh),
+            **status_refresh_atomic_output,
             "gap_report_status": kv_backed_decode_gap_report.get("status"),
             "missing_evidence": kv_missing_evidence,
             "first_missing_evidence": kv_backed_decode_gap_report.get("first_missing_evidence"),
@@ -2566,6 +2601,21 @@ def _handoff_summary(
                     "partial_output_blocker_kind": oracle_action.get(
                         "oracle_helper_partial_output_blocker_kind"
                     ),
+                    "status_refresh_writes_atomic_output": oracle_action.get(
+                        "status_refresh_writes_atomic_output"
+                    ) is True,
+                    "status_refresh_output_path": oracle_action.get(
+                        "status_refresh_output_path"
+                    ),
+                    "status_refresh_output_overwrite_policy": oracle_action.get(
+                        "status_refresh_output_overwrite_policy"
+                    ),
+                    "status_refresh_uses_shell_redirection": oracle_action.get(
+                        "status_refresh_uses_shell_redirection"
+                    ) is True,
+                    "status_refresh_output_arg_present": oracle_action.get(
+                        "status_refresh_output_arg_present"
+                    ) is True,
                     "gap_report_status": oracle_gap_report.get("status"),
                     "current_status": oracle_gap_report.get("oracle_status"),
                     "current_returncode": oracle_gap_report.get("returncode"),
@@ -2599,6 +2649,39 @@ def _handoff_summary(
                         kv_resource_command,
                         reason="refresh_kv_resource_and_run_plan_artifact",
                     ),
+                    "recommended_command_writes_atomic_output": kv_action.get(
+                        "resource_plan_refresh_writes_atomic_output"
+                    ) is True,
+                    "atomic_output_path": kv_action.get(
+                        "resource_plan_refresh_output_path"
+                    ),
+                    "atomic_output_overwrite_policy": kv_action.get(
+                        "resource_plan_refresh_output_overwrite_policy"
+                    ),
+                    "atomic_output_helper": kv_action.get(
+                        "resource_plan_refresh_output_helper"
+                    ),
+                    "recommended_command_uses_shell_redirection": kv_action.get(
+                        "resource_plan_refresh_uses_shell_redirection"
+                    ) is True,
+                    "recommended_command_output_arg_present": kv_action.get(
+                        "resource_plan_refresh_output_arg_present"
+                    ) is True,
+                    "status_refresh_writes_atomic_output": kv_action.get(
+                        "status_refresh_writes_atomic_output"
+                    ) is True,
+                    "status_refresh_output_path": kv_action.get(
+                        "status_refresh_output_path"
+                    ),
+                    "status_refresh_output_overwrite_policy": kv_action.get(
+                        "status_refresh_output_overwrite_policy"
+                    ),
+                    "status_refresh_uses_shell_redirection": kv_action.get(
+                        "status_refresh_uses_shell_redirection"
+                    ) is True,
+                    "status_refresh_output_arg_present": kv_action.get(
+                        "status_refresh_output_arg_present"
+                    ) is True,
                     "gap_report_status": kv_backed_decode_gap_report.get("status"),
                     "operation_count": kv_backed_decode_gap_report.get("operation_count"),
                     "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
