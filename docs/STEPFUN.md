@@ -674,8 +674,8 @@ reporting.
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
   text ` |`, top-5 expected tokens, timeout 60 s, elapsed 61.75 s, generated text
   length 0, `timeout_termination` recorded, and the llama.cpp command shell). It carries explicit status,
-  readiness-summary, and handoff-summary schema versions plus a compact
-  `schema_versions` handoff payload, records both blockers
+  readiness-summary, and handoff-summary schema versions plus compact
+  `schema_versions` / `schema_versions_sha256` handoff payloads, records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
   all-layer prompt smoke, exposes compact `--blocker-kinds-only` /
   `--blocker-kinds-sha-only` outputs for polling that blocker-kind list, lists
@@ -813,7 +813,7 @@ reporting.
   Status integrity also verifies the blocker work-queue digest, queue-meta mirror,
   first work-item digest/mirror, blocker-kind and blocked-gate mirrors across the
   compact top-level fields, handoff summary, work queue, and remaining-blocker report,
-  recommended-command list digest, command length/SHA metadata inside the work queue
+  the schema-version payload digest, recommended-command list digest, command length/SHA metadata inside the work queue
   and compact recommended-command records, and the compact recommended-command list
   mirror against the full work queue. The status artifact now persists `status_integrity` plus
   `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the

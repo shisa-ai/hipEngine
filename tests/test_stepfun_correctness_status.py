@@ -1421,6 +1421,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "summary_only": "handoff_summary",
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
+        "schema_versions_sha_only": "schema_versions_sha256",
         "status_integrity_only": "status_integrity",
         "status_integrity_sha_only": "status_integrity_sha256",
         "status_integrity_failures_only": "status_integrity.failed_checks",
@@ -3564,6 +3565,7 @@ def test_stepfun_correctness_status_schema_versions_only(capsys, tmp_path: Path)
     docs = tmp_path / "STEPFUN.md"
     resource = tmp_path / "resource.json"
     output = tmp_path / "schema-versions.json"
+    sha_output = tmp_path / "schema-versions-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -3604,6 +3606,35 @@ def test_stepfun_correctness_status_schema_versions_only(capsys, tmp_path: Path)
         "blocker_work_queue": 1,
         "first_blocker_work_item": 1,
     }
+    assert status["schema_versions_sha256"] == _stable_json_sha256(payload)
+    assert status["handoff_summary"]["compact_output_modes"][
+        "schema_versions_sha_only"
+    ] == "schema_versions_sha256"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--schema-versions-only",
+            "--schema-versions-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(sha_output.read_text()) == status["schema_versions_sha256"]
 
 
 def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path) -> None:
@@ -3698,6 +3729,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "resource_refresh_atomic_output_command_metadata": True,
             "resource_refresh_atomic_output_handoff_mirrors": True,
             "schema_versions": True,
+            "schema_versions_sha256": True,
         },
     }
     assert status["status_integrity"] == payload
@@ -4369,6 +4401,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "summary_only": "handoff_summary",
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
+        "schema_versions_sha_only": "schema_versions_sha256",
         "status_integrity_only": "status_integrity",
         "status_integrity_sha_only": "status_integrity_sha256",
         "status_integrity_failures_only": "status_integrity.failed_checks",
@@ -6071,6 +6104,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "resource_refresh_atomic_output_command_metadata": True,
             "resource_refresh_atomic_output_handoff_mirrors": True,
             "schema_versions": True,
+            "schema_versions_sha256": True,
         },
     }
     assert payload["persisted_status_integrity"] == {
@@ -7014,6 +7048,66 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_stale_inputs(
     assert payload["records"]["oracle"]["match"] is True
 
 
+def test_stepfun_correctness_status_source_artifact_verify_detects_schema_versions_digest_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["schema_versions_sha256"] = "stale"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["failed_checks"] == ["schema_versions_sha256"]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["source_artifacts_sha256"] is True
+    assert checks["handoff_summary_sha256"] is True
+    assert checks["schema_versions"] is True
+    assert checks["schema_versions_sha256"] is False
+    assert checks["readiness_summary_sha256"] is True
+
+
 def test_stepfun_correctness_status_source_artifact_verify_detects_docs_checklist_digest_drift(
     capsys,
     tmp_path: Path,
@@ -7449,6 +7543,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "resource_refresh_atomic_output_command_metadata": True,
         "resource_refresh_atomic_output_handoff_mirrors": True,
         "schema_versions": True,
+        "schema_versions_sha256": True,
     }
 
 
@@ -7560,6 +7655,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "resource_refresh_atomic_output_command_metadata": True,
         "resource_refresh_atomic_output_handoff_mirrors": True,
         "schema_versions": True,
+        "schema_versions_sha256": True,
     }
 
 
@@ -7803,6 +7899,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "resource_refresh_atomic_output_command_metadata": True,
         "resource_refresh_atomic_output_handoff_mirrors": True,
         "schema_versions": True,
+        "schema_versions_sha256": True,
     }
 
 
@@ -8275,6 +8372,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "resource_refresh_atomic_output_command_metadata": True,
         "resource_refresh_atomic_output_handoff_mirrors": True,
         "schema_versions": True,
+        "schema_versions_sha256": True,
     }
 
 
@@ -8385,6 +8483,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "resource_refresh_atomic_output_command_metadata": True,
         "resource_refresh_atomic_output_handoff_mirrors": True,
         "schema_versions": True,
+        "schema_versions_sha256": True,
     }
 
 
@@ -8496,6 +8595,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "resource_refresh_atomic_output_command_metadata": True,
         "resource_refresh_atomic_output_handoff_mirrors": True,
         "schema_versions": True,
+        "schema_versions_sha256": True,
     }
 
 
@@ -8606,6 +8706,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "resource_refresh_atomic_output_command_metadata": True,
         "resource_refresh_atomic_output_handoff_mirrors": True,
         "schema_versions": True,
+        "schema_versions_sha256": True,
     }
 
 

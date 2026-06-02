@@ -32935,3 +32935,40 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted blocker route mirror tests passed (`6` tests); blocker route mirror smoke passed with `blocker_kinds_sha256=dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766`, `blocked_gates_sha256=5442237ae2416bd189f0635665bf630d6061793d9f5e1c52e038ae4d86804120`, and `status_integrity_sha256=9964d490c2fe3b1fb07d1e015da03e06299f2c44a91881b366a977f2b24606c3`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); the full correctness-status test file passed (`141` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`256` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun schema-version digest handoff
+
+Added a compact schema-version digest handoff for the StepFun correctness status. `scripts/stepfun_correctness_status.py` now persists `schema_versions_sha256`, verifies it in `status_integrity`, advertises `--schema-versions-sha-only` in `handoff_summary.compact_output_modes`, and emits the schema contract digest directly. A new drift regression mutates `schema_versions_sha256` and verifies source-artifact verification fails on `schema_versions_sha256`, so compact status/readiness/handoff schema contract polling has the same digest guard as the other handoff sections. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, KV-backed token/logit artifact, e2e correctness, or Step throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_schema_versions_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_schema_versions_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verifies_source_artifact_provenance
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json, subprocess
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+sha=json.loads(subprocess.check_output(['python3','scripts/stepfun_correctness_status.py','--schema-versions-sha-only']))
+versions=json.loads(subprocess.check_output(['python3','scripts/stepfun_correctness_status.py','--schema-versions-only']))
+assert versions == s['schema_versions']
+assert sha == s['schema_versions_sha256']
+assert s['status_integrity']['checks']['schema_versions'] is True
+assert s['status_integrity']['checks']['schema_versions_sha256'] is True
+print('schema versions digest ok', sha)
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+assert p['checks']['schema_versions_sha256'] is True
+print('status integrity ok')
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted schema-version/status-integrity tests passed (`4` tests); schema-version compact output smoke returned `schema_versions_sha256=fe826aa79c4f87c0b50305205a6eb572bb5f63599cbbc3a453bcd2b2f624f2a5`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks, `status_integrity_sha256=267124a28c3f841d4e6047adeffc8f4f7d2a25a31d64416ae6a78c6440027f89`); the full correctness-status test file passed (`142` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`257` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.

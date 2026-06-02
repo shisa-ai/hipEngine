@@ -152,6 +152,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--schema-versions-sha-only",
+        action="store_true",
+        help=(
+            "Emit only schema_versions_sha256 for compact schema contract drift polling. "
+            "Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--status-integrity-only",
         action="store_true",
         help=(
@@ -885,6 +893,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         else []
     )
     schema_versions = status.get("schema_versions", {})
+    schema_versions_sha256 = status.get("schema_versions_sha256")
     blocker_meta = (
         handoff_summary.get("blocker_work_queue_meta", {})
         if isinstance(handoff_summary, dict)
@@ -1556,6 +1565,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             if isinstance(blocker_meta, dict)
             else None,
         },
+        "schema_versions_sha256": (
+            isinstance(schema_versions, dict)
+            and schema_versions_sha256 == _stable_json_sha256(schema_versions)
+        ),
     }
     failed_checks = [name for name, passed in checks.items() if not passed]
     return {"all_match": not failed_checks, "failed_checks": failed_checks, "checks": checks}
@@ -3460,6 +3473,7 @@ def _handoff_summary(
             "summary_only": "handoff_summary",
             "handoff_summary_sha_only": "handoff_summary_sha256",
             "schema_versions_only": "schema_versions",
+            "schema_versions_sha_only": "schema_versions_sha256",
             "status_integrity_only": "status_integrity",
             "status_integrity_sha_only": "status_integrity_sha256",
             "status_integrity_failures_only": "status_integrity.failed_checks",
@@ -3913,6 +3927,7 @@ def build_status(
             "first_work_item_schema_version"
         ],
     }
+    schema_versions_sha256 = _stable_json_sha256(schema_versions)
     readiness_summary = {
         "schema_version": READINESS_SUMMARY_SCHEMA_VERSION,
         "status": "blocked" if blockers else "ready",
@@ -3948,6 +3963,7 @@ def build_status(
     status = {
         "schema_version": STATUS_SCHEMA_VERSION,
         "schema_versions": schema_versions,
+        "schema_versions_sha256": schema_versions_sha256,
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
         "source_artifacts": source_artifacts,
@@ -4297,6 +4313,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["status_integrity_sha256"]
     elif args.status_integrity_only:
         result = status["status_integrity"]
+    elif args.schema_versions_sha_only:
+        result = status["schema_versions_sha256"]
     elif args.schema_versions_only:
         result = status["schema_versions"]
     elif args.handoff_summary_sha_only:
