@@ -64627,3 +64627,21 @@ Validation:
 - Narrow unit expectations passed while the temporary patch was present: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py && pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_linear_attention_moe_layer_chain -q`.
 - Required guard passed while the temporary patch was present: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Patch reverted after `multiloop_measure`/`multiloop_decide(action=log)`. Worktree code is back to the prior grouped-WMMA implementation; next actionable path is a narrower grouped metadata/weighted-lane/shared-combine oracle or a true grouped MoE math fix.
+
+## 2026-06-02 — CONCURRENCY grouped lane-to-row reset probe rejected
+
+Tried a focused grouped-compact MoE combine-side patch: memset `lane_to_row` to `0xFF` immediately before `weighted_lanes_sum_out_*` builds the inverse map, testing whether stale inverse rows were contaminating grouped token reconstruction. The patch was measured, logged through pi-multiloop, and reverted because it did not clear the blocker.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier stayed unchanged: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137` with generated equality prefixes `[137,137]`.
+- All-grouped hidden oracle with the temporary reset patch stayed red: `/tmp/hipengine-hidden-all-grouped-nativec1-l40-d1-iter76-lane-reset.json` reported `status=mismatch_found`, `hidden_passed=false`, `token_passed=true`.
+- The reset reduced the all-grouped hidden drift vs the previous preserved grouped-MoE artifact (`max_abs 0.0546875 -> 0.0078125`, `elements_over_atol 1853 -> 38`, `bit_mismatch 2032 -> 1778`), but the hidden parity gate did not turn green.
+- Focused linear-grouped 512/128 generated-token probe stayed red: `/tmp/hipengine-e2e-native-c2-512-128-linear-grouped-iter76-lane-reset.json` remained prefixes `[82,137]`.
+- Prompt verifier failed under the configured criterion: quantitative hidden drift improved, but the primary metric did not improve and no focused blocker became green.
+
+Validation:
+
+- Narrow grouped-MoE tests passed with the temporary patch: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py && pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_linear_attention_moe_layer_chain -q`.
+- Required guard passed with the temporary patch: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Patch reverted after `multiloop_measure`/`multiloop_decide(action=log)`. Next grouped-MoE work should preserve this lane-map clue but still needs a green hidden/generated artifact before code retention.
