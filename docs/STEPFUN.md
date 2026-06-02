@@ -709,10 +709,12 @@ reporting.
   summaries/digests plus the direct `wire_streaming_decode_loop` handoff target
   and its persisted digest. Compact `--kv-decode-blocker-summary-only` /
   `--kv-decode-blocker-summary-sha-only` outputs expose the resource artifact's
-  `kv_decode_blocker_summary` directly through the correctness-status gap report
-  so KV automation can poll the first runtime blocker, validated upload/launch
-  prerequisites, required evidence artifacts, and no-claim policy without
-  reading the full resource plan; status integrity also
+  `kv_decode_blocker_summary` directly through the correctness-status gap report,
+  and `--kv-streaming-blocker-records-only` /
+  `--kv-streaming-blocker-records-sha-only` expose the full KV streaming blocker
+  records plus digest, so KV automation can poll the first runtime blocker,
+  validated upload/launch prerequisites, required evidence artifacts, and
+  no-claim policy without reading the full resource plan; status integrity also
   cross-checks the blocker-summary digest/recorded flag, recomputes its
   first-blocker/upload/launch mirror invariants against the resource-plan gap
   report, and continues to check the mirrored blueprint digest, loop-status

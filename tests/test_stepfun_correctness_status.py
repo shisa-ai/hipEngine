@@ -385,6 +385,9 @@ def _streaming_runner_blockers() -> list[dict[str, object]]:
     ]
 
 
+def _streaming_runner_blockers_sha256() -> str:
+    return _stable_json_sha256(_streaming_runner_blockers())
+
 
 def _write_prompt_artifact(path: Path) -> None:
     selected_slots = ["root.token_embedding", "root.output_norm", "root.lm_head"]
@@ -1292,6 +1295,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert gap_report["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
     assert gap_report["first_streaming_runner_blocker_sha256"] == _first_streaming_runner_blocker_sha256()
     assert gap_report["streaming_runner_blockers"] == _streaming_runner_blockers()
+    assert gap_report["streaming_runner_blockers_sha256"] == _streaming_runner_blockers_sha256()
     assert gap_report["upload_entry_count"] == 6
     assert gap_report["upload_total_nbytes"] == 484
     assert gap_report["remaining_evidence"][0]["current"] == {
@@ -1447,6 +1451,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
         "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
+        "kv_streaming_blocker_records_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blockers"
+        ),
+        "kv_streaming_blocker_records_sha_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blockers_sha256"
+        ),
         "kv_first_streaming_blocker_only": (
             "kv_backed_decode_gap_report.first_streaming_runner_blocker"
         ),
@@ -2803,6 +2813,84 @@ def test_stepfun_correctness_status_kv_streaming_blockers_only(
     payload = json.loads(output.read_text())
     assert payload == status["kv_backed_decode_gap_report"]["streaming_runner_blocker_names"]
     assert payload == _streaming_runner_blocker_names()
+
+
+def test_stepfun_correctness_status_kv_streaming_blocker_records_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "kv-streaming-blocker-records.json"
+    sha_output = tmp_path / "kv-streaming-blocker-records-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--kv-streaming-blockers-only",
+            "--kv-streaming-blocker-records-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["kv_backed_decode_gap_report"]["streaming_runner_blockers"]
+    assert payload == _streaming_runner_blockers()
+    assert payload[0]["required_evidence"].startswith("resident decode loop")
+    assert status["kv_backed_decode_gap_report"][
+        "streaming_runner_blockers_sha256"
+    ] == _streaming_runner_blockers_sha256()
+    assert status["handoff_summary"]["compact_output_modes"][
+        "kv_streaming_blocker_records_only"
+    ] == "kv_backed_decode_gap_report.streaming_runner_blockers"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--kv-streaming-blocker-records-only",
+            "--kv-streaming-blocker-records-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(sha_output.read_text()) == _streaming_runner_blockers_sha256()
 
 
 def test_stepfun_correctness_status_kv_first_streaming_blocker_only(
@@ -4206,6 +4294,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
         "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
+        "kv_streaming_blocker_records_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blockers"
+        ),
+        "kv_streaming_blocker_records_sha_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blockers_sha256"
+        ),
         "kv_first_streaming_blocker_only": (
             "kv_backed_decode_gap_report.first_streaming_runner_blocker"
         ),

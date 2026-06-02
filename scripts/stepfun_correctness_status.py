@@ -336,6 +336,23 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-streaming-blocker-records-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.streaming_runner_blockers for full KV "
+            "blocker evidence handoff. Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-streaming-blocker-records-sha-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.streaming_runner_blockers_sha256 for full "
+            "KV blocker evidence drift polling. Overrides --summary-only and readiness "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--kv-first-streaming-blocker-only",
         action="store_true",
         help=(
@@ -1724,6 +1741,11 @@ def _kv_backed_decode_gap_report(
     streaming_runner_blockers = (
         run_plan_streaming_runner_blockers or launch_schedule_streaming_runner_blockers
     )
+    streaming_runner_blockers_sha256 = (
+        _stable_json_sha256(streaming_runner_blockers)
+        if streaming_runner_blockers
+        else None
+    )
     launch_schedule_streaming_runner_blocker_names = list(
         launch_schedule.get("streaming_runner_blocker_names", [])
     )
@@ -1985,6 +2007,7 @@ def _kv_backed_decode_gap_report(
         "first_streaming_runner_blocker": first_streaming_runner_blocker,
         "first_streaming_runner_blocker_sha256": first_streaming_runner_blocker_sha256,
         "streaming_runner_blockers": streaming_runner_blockers,
+        "streaming_runner_blockers_sha256": streaming_runner_blockers_sha256,
         "upload_entry_count": decode_input_upload_plan.get("entry_count"),
         "upload_total_nbytes": decode_input_upload_plan.get("total_nbytes"),
         "note": (
@@ -3115,6 +3138,12 @@ def _handoff_summary(
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
             "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
+            "kv_streaming_blocker_records_only": (
+                "kv_backed_decode_gap_report.streaming_runner_blockers"
+            ),
+            "kv_streaming_blocker_records_sha_only": (
+                "kv_backed_decode_gap_report.streaming_runner_blockers_sha256"
+            ),
             "kv_first_streaming_blocker_only": (
                 "kv_backed_decode_gap_report.first_streaming_runner_blocker"
             ),
@@ -3810,6 +3839,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["kv_backed_decode_gap_report"].get(
             "first_streaming_runner_blocker"
         )
+    elif args.kv_streaming_blocker_records_sha_only:
+        result = status["kv_backed_decode_gap_report"].get(
+            "streaming_runner_blockers_sha256"
+        )
+    elif args.kv_streaming_blocker_records_only:
+        result = status["kv_backed_decode_gap_report"].get("streaming_runner_blockers")
     elif args.kv_streaming_blockers_sha_only:
         result = status["kv_backed_decode_gap_report"].get(
             "streaming_runner_blocker_names_sha256"
