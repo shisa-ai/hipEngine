@@ -455,6 +455,24 @@
         ],
         "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
         "streaming_runner_blocker_names_sha256_match": true,
+        "streaming_runner_blockers": [
+          {
+            "name": "streaming_decode_loop_not_wired",
+            "ready": false,
+            "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+          },
+          {
+            "name": "kv_kernel_trace_artifact_missing",
+            "ready": false,
+            "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+          },
+          {
+            "name": "kv_backed_next_token_artifact_missing",
+            "ready": false,
+            "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+          }
+        ],
+        "streaming_runner_blockers_sha256": "70e71525e7eaab64175074a70b26e53883417e8707f42b8947141ee58b3252a8",
         "work_item_schema_version": 1
       }
     ],
@@ -468,10 +486,10 @@
       "first_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
       "recommended_commands_sha256": "33c72dc7e60fcc135d997fd58b1094ff878e1c6737b13ab16667badfc12baca5",
       "schema_version": 1,
-      "sha256": "7919e5605206d9f9ecab55d162693f6c53fb1cdff2780e9f0e62bcc319d11b31"
+      "sha256": "3607b8ffa045f084b8895bfe4e0b91a224572efbbc90f0fc465451bc3740fd49"
     },
     "blocker_work_queue_schema_version": 1,
-    "blocker_work_queue_sha256": "7919e5605206d9f9ecab55d162693f6c53fb1cdff2780e9f0e62bcc319d11b31",
+    "blocker_work_queue_sha256": "3607b8ffa045f084b8895bfe4e0b91a224572efbbc90f0fc465451bc3740fd49",
     "compact_output_modes": {
       "atomic_output_handoff_only": "atomic_output_handoff",
       "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
@@ -652,6 +670,24 @@
       ],
       "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
       "streaming_runner_blocker_names_sha256_match": true,
+      "streaming_runner_blockers": [
+        {
+          "name": "streaming_decode_loop_not_wired",
+          "ready": false,
+          "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+        },
+        {
+          "name": "kv_kernel_trace_artifact_missing",
+          "ready": false,
+          "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+        },
+        {
+          "name": "kv_backed_next_token_artifact_missing",
+          "ready": false,
+          "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+        }
+      ],
+      "streaming_runner_blockers_sha256": "70e71525e7eaab64175074a70b26e53883417e8707f42b8947141ee58b3252a8",
       "upload_total_nbytes": 484,
       "validated_precondition_count": 7
     },
@@ -725,7 +761,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "a6cdea117f985916de01a13fbc95ae6df337bd0ac82f1acfb64228a88fb1eaa4",
+  "handoff_summary_sha256": "b16b1e58b18f99afba66e724447bdc85b962f510d95c9268eab8153c84d3dd05",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -2020,6 +2056,24 @@
       ],
       "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
       "streaming_runner_blocker_names_sha256_match": true,
+      "streaming_runner_blockers": [
+        {
+          "name": "streaming_decode_loop_not_wired",
+          "ready": false,
+          "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+        },
+        {
+          "name": "kv_kernel_trace_artifact_missing",
+          "ready": false,
+          "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+        },
+        {
+          "name": "kv_backed_next_token_artifact_missing",
+          "ready": false,
+          "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+        }
+      ],
+      "streaming_runner_blockers_sha256": "70e71525e7eaab64175074a70b26e53883417e8707f42b8947141ee58b3252a8",
       "success_criteria": [
         "kv_backed_decode_gap_report.status is ready",
         "kv_backed_decode_gap_report.missing_evidence is empty",
@@ -2069,7 +2123,7 @@
       ]
     }
   },
-  "next_action_commands_sha256": "6242b0f341b0b38920e2f3aa05a78f0dd680a735eaf599a360126715ac6ca414",
+  "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
   "next_actions": [
     {
       "action": "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison.",
@@ -2657,26 +2711,26 @@
     "blocked_gates_sha256": "5442237ae2416bd189f0635665bf630d6061793d9f5e1c52e038ae4d86804120",
     "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
     "blocker_work_queue_count": 2,
-    "blocker_work_queue_sha256": "7919e5605206d9f9ecab55d162693f6c53fb1cdff2780e9f0e62bcc319d11b31",
+    "blocker_work_queue_sha256": "3607b8ffa045f084b8895bfe4e0b91a224572efbbc90f0fc465451bc3740fd49",
     "e2e_inference_claim_allowed": false,
     "e2e_inference_ready": false,
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
-    "handoff_summary_sha256": "a6cdea117f985916de01a13fbc95ae6df337bd0ac82f1acfb64228a88fb1eaa4",
+    "handoff_summary_sha256": "b16b1e58b18f99afba66e724447bdc85b962f510d95c9268eab8153c84d3dd05",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
-    "next_action_commands_sha256": "6242b0f341b0b38920e2f3aa05a78f0dd680a735eaf599a360126715ac6ca414",
+    "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "open_blocker_count": 2,
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
     "schema_version": 1,
-    "source_artifacts_sha256": "10b00108990c8c1d157b32e6306973eeb6cc584067fad4bb4496e1bb149d8473",
+    "source_artifacts_sha256": "75fcfaff276266b0b8e1acdfcff3cfa47f39ab8897ac172c549a1723f4190227",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "50266f6b01917e1af5de3b79f60a051286a4adfb7c87e2b7fe60532587ff35e3",
+  "readiness_summary_sha256": "5ab8a4b984576a1c314f75d114c9b266b2ff9f15c826b8b2603977384f96f2a7",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2794,8 +2848,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "f1259946e48cb2f1a4a800a5599071bd98cdd06968962d0ded038e215c60c571",
-      "size_bytes": 65400
+      "sha256": "ea0d2dffd6f6489532840760cf602382c66f7645b31af75501eb701bb4603a77",
+      "size_bytes": 65453
     },
     "oracle": {
       "exists": true,
@@ -2822,7 +2876,7 @@
       "size_bytes": 52292
     }
   },
-  "source_artifacts_sha256": "10b00108990c8c1d157b32e6306973eeb6cc584067fad4bb4496e1bb149d8473",
+  "source_artifacts_sha256": "75fcfaff276266b0b8e1acdfcff3cfa47f39ab8897ac172c549a1723f4190227",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
@@ -2844,6 +2898,8 @@
       "kv_streaming_loop_status_sha256": true,
       "kv_streaming_runner_blocker_mirrors": true,
       "kv_streaming_runner_blocker_names_sha256": true,
+      "kv_streaming_runner_blocker_records_mirrors": true,
+      "kv_streaming_runner_blockers_sha256": true,
       "next_action_commands_sha256": true,
       "oracle_partial_output_command_metadata": true,
       "oracle_partial_output_handoff_mirrors": true,
@@ -2858,7 +2914,7 @@
     },
     "failed_checks": []
   },
-  "status_integrity_sha256": "8a6c53fd785241aedefffd357c0f70ae5c2d4e19e7960783ed85003e32869d74",
+  "status_integrity_sha256": "aa0065cc596e3f0f713926a62607e87c8b07fedb3914ccc6cf561f42ef52f99a",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 }

@@ -718,10 +718,11 @@ reporting.
   cross-checks the blocker-summary digest/recorded flag, recomputes its
   first-blocker/upload/launch mirror invariants against the resource-plan gap
   report, and continues to check the mirrored blueprint digest, loop-status
-  digest, loop next-action digest, mirrored first KV blocker digest, and full KV
-  streaming blocker names/SHA across the gap report, next-action command, and
-  handoff queue so the runner artifact and status helper
-  agree on why KV-backed decode remains blocked. The same status
+  digest, loop next-action digest, mirrored first KV blocker digest, full KV
+  streaming blocker names/SHA, and full required-evidence blocker record/SHA
+  mirrors across the gap report, next-action command, and handoff queue so the
+  runner artifact and status helper agree on why KV-backed decode remains
+  blocked. The same status
   artifact records `source_artifacts` path/size/SHA-256 provenance for the
   prompt, oracle, resource-plan, and docs
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
