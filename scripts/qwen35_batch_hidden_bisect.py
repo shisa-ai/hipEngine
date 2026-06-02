@@ -5682,8 +5682,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-linear-path",
         choices=("batch_segments", "per_row"),
-        default="batch_segments",
-        help="Diagnostic linear-attention decode path for native c>N batch decode; per_row forces the non-retained row loop.",
+        default="per_row",
+        help="Linear-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and batch_segments remains opt-in until generated equality is green.",
     )
     parser.add_argument(
         "--batch-decode-linear-projection-path",

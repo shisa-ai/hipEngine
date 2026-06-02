@@ -3482,6 +3482,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     retained_bench._apply_runtime_env_args(args)
 
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "0"
@@ -3500,6 +3501,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     defaults = SimpleNamespace(projection_dispatch_artifact=None)
     retained_bench._apply_runtime_env_args(defaults)
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "0"
@@ -3510,7 +3512,13 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SUFFIX"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "0"
-    retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="native_batch"))
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(
+            projection_dispatch_artifact=None,
+            batch_decode_full_attn_path="native_batch",
+            batch_decode_linear_path="batch_segments",
+        )
+    )
 
 
 def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -11919,7 +11927,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_prefill_linear_path"] == "packed_segments"
     assert payload["workload"]["batch_prefill_full_attention_path"] == "packed_varlen"
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
-    assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
+    assert payload["workload"]["batch_decode_linear_path"] == "per_row"
     assert payload["workload"]["batch_decode_linear_projection_path"] == "batch"
     assert payload["workload"]["batch_decode_linear_state_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_linear_output_path"] == "auto"

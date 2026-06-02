@@ -3691,7 +3691,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_prefill_linear_path", "packed_segments") == "per_segment" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] = (
-        "1" if getattr(args, "batch_decode_linear_path", "batch_segments") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_linear_path", "per_row") == "per_row" else "0"
     )
     linear_projection_path = getattr(args, "batch_decode_linear_projection_path", "batch")
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] = (
@@ -4185,7 +4185,7 @@ def _build_payload(
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
             "batch_prefill_linear_path": str(getattr(args, "batch_prefill_linear_path", "packed_segments")),
-            "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "batch_segments")),
+            "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "per_row")),
             "batch_decode_linear_projection_path": str(getattr(args, "batch_decode_linear_projection_path", "batch")),
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
@@ -4296,8 +4296,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-linear-path",
         choices=("batch_segments", "per_row"),
-        default="batch_segments",
-        help="Diagnostic linear-attention decode path for native c>N batch decode; per_row forces the non-retained row loop.",
+        default="per_row",
+        help="Linear-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and batch_segments remains opt-in until generated equality is green.",
     )
     parser.add_argument(
         "--batch-decode-linear-projection-path",

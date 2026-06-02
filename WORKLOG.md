@@ -63786,3 +63786,18 @@ GPU1 / RX 7900 XTX evidence:
 - Interpretation: the full-attention fallback default eliminates the row0/native-full-attention failure at token 82, but row1 still diverges at token 104 with native/default linear-attention batch decode. Prior selected-c1 linear diagnostics plus full-attention per-row fallback remain green in `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-minimal.json`.
 
 Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained linear/full per-row defaults reach c2 equality
+
+Switched the retained/hidden diagnostic harness default linear-attention c>N decode path from `batch_segments` to the correctness-first per-row c1 fallback while keeping `--batch-decode-linear-path batch_segments` available as the opt-in native linear batch path for debugging. This pairs with the prior full-attention `per_row` fallback default and still runs c>N scheduling without the serial decode bridge; it does not claim retained/native scaling because diagnostic fallbacks remain active.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier artifact `/tmp/hipengine-e2e-native-c2-512-128.json` now records `workload.batch_decode_linear_path=per_row` and `workload.batch_decode_full_attention_path=per_row`.
+  - Generated-token equality is green: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `first_mismatch_indices=[null, null]`, `generated_token_equality.passed=true`.
+  - Artifact status is `blocked` rather than retained/accepted because per-row diagnostic fallbacks intentionally block performance/retained claims.
+- Earlier one-off diagnostic `/tmp/hipengine-e2e-native-c2-512-128-retained-linear-per-row-full-default.json` also passed with the same linear/full per-row fallback combination.
+
+Conclusion: the c=2 512/128 generated-token equality gate is green when linear-attention and full-attention both use row-c1 correctness fallbacks. Native batch linear and native batch full-attention remain separate blockers for retained/scaling work; next correctness step is to extend the equality gate to c=4/c=8 under these fallback defaults before any profiler/scaling claim.
+
+Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
