@@ -64814,3 +64814,23 @@ Validation:
 - `multiloop_measure` recorded metric `137`; prompt verifier failed because selected-c1 state replay did not eliminate a focused native projection/state blocker and the official primary metric did not improve.
 
 Conclusion: token-1 state replay in isolation does not repair the red `batch_gemv` QKV/Z path. The selected-QKV/Z correctness fallback remains required; native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain active blockers.
+
+## 2026-06-02 — CONCURRENCY batch-GEMV QKV/Z 128-thread fix
+
+Ran iteration 86 for `concurrency-e2e/native-c2-e2e` to test whether the red explicit `batch_gemv` QKV/Z path was a reduction-order/thread-count mismatch. The retained code change updates `hipengine/runtime/qwen35_paro.py::Qwen35ParoDecodeState.project_linear_attention_qkv_z_fp16` so the c>N `force_gemv` QKV/Z branch launches both FP16 pack8 transposed GEMVs with `threads=128` instead of `threads=64`, matching the token-1 dual-GEMV reduction shape more closely.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Explicit `batch_gemv` c=2 512/128 after the change: `/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-threads128-iter86.json` passed generated-token equality with prefixes `[137,137]` and metadata `linear_attention_projection_path=batch_gemv`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`.
+- One first c=2/c=4/c=8 matrix attempt caught a c=2 flake (`/tmp/hipengine-e2e-native-c2-c4-c8-batch-gemv-threads128-iter86-matrix.json`: c=2 `[82,104]`, c=4/c=8 green). Immediate c=2 repeats `/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-threads128-iter86-run{2,3}.json` were both green `[137,137]`.
+- Fresh matrix rerun passed c=2/c=4/c=8 with all rows prefix 137: `/tmp/hipengine-e2e-native-c2-c4-c8-batch-gemv-threads128-iter86-matrix-rerun.json`.
+- Primary no-flag control after restoring script defaults stayed green via selected-QKV/Z: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, and metadata `linear_attention_projection_path=selected_c1_qkv_z`.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-batch-gemv-qkvz-threads128-matrix/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Validation:
+
+- A temporary no-flag auto-default promotion to `batch_gemv` was tried and reverted before commit because env-driven host unit tests expect the no-flag retained-bench dry-run to leave the batch-GEMV projection env off; default promotion remains a separate projection-dispatch/default-metadata task.
+- Required guard passed after reverting the auto-default experiment: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded metric `137`; prompt verifier passes because explicit batch-GEMV QKV/Z generated-token equality is now green for c=2/c=4/c=8 with a retained code change and artifact evidence. No retained throughput/scaling claim is made.
+
+Conclusion: the explicit batch-GEMV QKV/Z correctness blocker was a 64-thread reduction-shape issue. The 128-thread path is c=2/c=4/c=8 generated-token green in the rerun matrix, but no-flag defaults and retained claims remain blocked by projection dispatch/default promotion, profiler, c1/serial baselines, and benchmark gates.

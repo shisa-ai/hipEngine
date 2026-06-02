@@ -231,6 +231,14 @@ What is still not green:
   also stayed red at `[82,104]`, while the selected-QKV/Z fallback control stayed
   `[137,137]`, so the blocker is not repaired by token-1 state replay in isolation
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-batch-gemv-selected-state-red-probe/summary.json`).
+  The focused QKV/Z reduction-order fix now runs the explicit `batch_gemv` QKV/Z
+  diagnostic with 128-thread single GEMVs instead of 64-thread launches. After one
+  reproduced c=2 matrix flake, immediate c=2 repeats and a fresh c=2/c=4/c=8
+  matrix were generated-token green with all rows prefix 137
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-batch-gemv-qkvz-threads128-matrix/summary.json`).
+  This removes the explicit batch-GEMV QKV/Z correctness blocker but remains
+  non-retained: no-flag defaults still use selected-QKV/Z until projection-dispatch,
+  default-promotion, profiler, and scaling gates are closed.
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "change": "Promoted 128-thread FP16 batch-GEMV QKV/Z diagnostic reduction for c<=8 correctness.",
+  "created_at": "2026-06-02T16:51:54.760964Z",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "hip_visible_devices": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "workload": {
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8,
+    "decode_tokens": 128,
+    "max_layers": 40
+  },
+  "performance_claim": false,
+  "retained_ready": false,
+  "code_change": {
+    "file": "hipengine/runtime/qwen35_paro.py",
+    "function": "Qwen35ParoDecodeState.project_linear_attention_qkv_z_fp16",
+    "summary": "The c>N force_gemv QKV/Z branch now launches both single-projection FP16 pack8 transposed GEMVs with 128 threads instead of 64, matching the token-1 dual-GEMV reduction shape more closely."
+  },
+  "comparison_to_prior": {
+    "prior_batch_gemv_prefix_lengths": [
+      82,
+      104
+    ],
+    "prior_batch_gemv_selected_state_prefix_lengths": [
+      82,
+      104
+    ],
+    "prior_projection_refresh_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json",
+    "prior_selected_state_probe_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-batch-gemv-selected-state-red-probe/summary.json"
+  },
+  "probes": {
+    "c2_repeats": [
+      {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-threads128-iter86.json",
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "min": 137,
+        "decode_execution": {
+          "linear_attention_projection_path": "batch_gemv",
+          "linear_attention_state_path": "native_segments",
+          "linear_attention_output_path": "batch_gemv",
+          "moe_decode_path": "grouped_compact",
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": false
+        }
+      },
+      {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-threads128-iter86-run2.json",
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "min": 137,
+        "decode_execution": {
+          "linear_attention_projection_path": "batch_gemv",
+          "linear_attention_state_path": "native_segments",
+          "linear_attention_output_path": "batch_gemv",
+          "moe_decode_path": "grouped_compact",
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": false
+        }
+      },
+      {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-threads128-iter86-run3.json",
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "min": 137,
+        "decode_execution": {
+          "linear_attention_projection_path": "batch_gemv",
+          "linear_attention_state_path": "native_segments",
+          "linear_attention_output_path": "batch_gemv",
+          "moe_decode_path": "grouped_compact",
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": false
+        }
+      }
+    ],
+    "first_c2_c4_c8_matrix": {
+      "status": "failed",
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-batch-gemv-threads128-iter86-matrix.json",
+      "rows": [
+        {
+          "batch_size": 2,
+          "status": "failed",
+          "passed": false,
+          "prefix_lengths": [
+            82,
+            104
+          ],
+          "min_equal_prefix_tokens": 82,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix/native-equality-c2-p512-d128.json",
+          "linear_attention_projection_path": "batch_gemv"
+        },
+        {
+          "batch_size": 4,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix/native-equality-c4-p512-d128.json",
+          "linear_attention_projection_path": "batch_gemv"
+        },
+        {
+          "batch_size": 8,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix/native-equality-c8-p512-d128.json",
+          "linear_attention_projection_path": "batch_gemv"
+        }
+      ],
+      "note": "First matrix attempt caught one c=2 [82,104] flake before immediate c=2 repeats and the matrix rerun passed."
+    },
+    "rerun_c2_c4_c8_matrix": {
+      "status": "passed",
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-batch-gemv-threads128-iter86-matrix-rerun.json",
+      "rows": [
+        {
+          "batch_size": 2,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix-threads128-rerun/native-equality-c2-p512-d128.json",
+          "linear_attention_projection_path": "batch_gemv"
+        },
+        {
+          "batch_size": 4,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix-threads128-rerun/native-equality-c4-p512-d128.json",
+          "linear_attention_projection_path": "batch_gemv"
+        },
+        {
+          "batch_size": 8,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix-threads128-rerun/native-equality-c8-p512-d128.json",
+          "linear_attention_projection_path": "batch_gemv"
+        }
+      ]
+    },
+    "primary_control_after_script_default_restored": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "min": 137,
+      "decode_execution": {
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "full_attention_decode_path": "native_batch",
+        "native_caware_decode": false
+      }
+    }
+  },
+  "conclusion": [
+    "Changing the c>N batch-GEMV QKV/Z diagnostic from 64-thread to 128-thread GEMV repairs the explicit batch_gemv projection path in repeated c=2 runs and in the c=2/c=4/c=8 matrix rerun: all rows reached prefix 137.",
+    "One first matrix attempt reproduced a c=2 [82,104] flake; subsequent c=2 repeats and the rerun matrix were green, so the artifact records the caveat and remains correctness-only.",
+    "The no-flag retained-bench default remains selected-QKV/Z for now; retained/scaling claims are still blocked by projection-dispatch/default-promotion, profiler, c1/serial baselines, and docs/BENCHMARK.md gates."
+  ]
+}
