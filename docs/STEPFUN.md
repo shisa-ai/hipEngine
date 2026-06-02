@@ -689,8 +689,9 @@ reporting.
   summaries/digests plus the direct `wire_streaming_decode_loop` handoff target
   and its persisted digest; status integrity also
   cross-checks the mirrored blueprint digest, the mirrored loop-status digest,
-  the mirrored first KV blocker digest, and the full KV streaming blocker names/SHA across the gap report,
-  next-action command, and handoff queue so the runner artifact and status helper
+  the loop next-action digest, the mirrored first KV blocker digest, and the full
+  KV streaming blocker names/SHA across the gap report, next-action command, and
+  handoff queue so the runner artifact and status helper
   agree on why KV-backed decode remains blocked. The same status
   artifact records `source_artifacts` path/size/SHA-256 provenance for the
   prompt, oracle, resource-plan, and docs
