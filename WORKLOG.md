@@ -64268,3 +64268,19 @@ Evidence:
 - Retained promotion remains blocked by non-full-native projection/MoE/full-attention paths and missing graph-replay profiler evidence; no c>N throughput/scaling claim is made.
 
 Validation is recorded in the active loop measurement: the primary c=2 verifier produced one transient `82` followed by a rerun at `137` without code changes, required guard passes, c=8 profiler preflight JSON validates, and `git diff --check` passes.
+
+## 2026-06-02 — CONCURRENCY retained bench sampler default evidence
+
+Changed `scripts/qwen35_batch_retained_bench.py` so no-flag c=2/c=4/c=8 diagnostic runs auto-attach the repo-retained sampler equality artifact (`benchmarks/results/2026-06-02-hipengine-qwen35-c{c}-native-batch-sampler-equality.json`) when that artifact validates through the existing `plan_batch_sampler_dispatch` gate. Explicit `--batch-sample-*` user flags still win, and invalid/missing artifacts leave the older default untouched. This makes the active primary verifier exercise the row-aware `batched_lm_head` sampler by default without weakening the generated-token equality evidence requirement or making a retained throughput claim.
+
+Evidence:
+
+- Targeted unit coverage added: `tests/test_generation_batch_scheduler.py::test_retained_bench_defaults_to_valid_batched_sampler_artifact` verifies that valid c=2 sampler evidence mutates the retained bench args/env to `batched_lm_head`, and that an explicit `--batch-sample-mode serial_lm_head` is not overridden.
+- Primary c=2 512/128 verifier after the change records `workload.batch_sample_mode=batched_lm_head` and `sampler_execution.mode=batched_lm_head` with the c=2 sampler equality artifact. Samples were variable: first run printed `82` (`prefixes=[82,104]`), followed by three no-code-change reruns printing `137` (`prefixes=[137,137]` each). The active-loop measurement records `[82,137,137,137]` rather than hiding the transient.
+- The change therefore improves the loop's averaged primary metric from the prior `109.5` to `123.25`, but full c=2 stability is still not proven; retained promotion remains blocked by non-full-native projection/MoE/full-attention paths and missing graph-replay profiler evidence.
+
+Validation:
+
+- `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_defaults_to_valid_batched_sampler_artifact tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env -q` passed.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` both passed on AMD Radeon RX 7900 XTX.
+- `git diff --check` passed.

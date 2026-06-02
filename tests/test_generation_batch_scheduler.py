@@ -3592,6 +3592,49 @@ def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: P
     _clear_qwen35_batch_env()
 
 
+def test_retained_bench_defaults_to_valid_batched_sampler_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    artifact_path = retained_bench._DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE.format(rows=2)
+    (tmp_path / artifact_path).write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path=artifact_path)),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    args = SimpleNamespace(
+        batch_size=2,
+        batch_sample_mode="serial_lm_head",
+        batch_sample_eq_ok=False,
+        batch_sample_eq_artifact=None,
+        batch_sample_eq_rows=None,
+    )
+    retained_bench._apply_default_batch_sample_evidence(args, [])
+
+    assert args.batch_sample_mode == "batched_lm_head"
+    assert args.batch_sample_eq_ok is True
+    assert args.batch_sample_eq_artifact == Path(artifact_path)
+    assert args.batch_sample_eq_rows == 2
+
+    retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, **vars(args)))
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "batched_lm_head"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"] == artifact_path
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] == "2"
+
+    explicit_serial = SimpleNamespace(
+        batch_size=2,
+        batch_sample_mode="serial_lm_head",
+        batch_sample_eq_ok=False,
+        batch_sample_eq_artifact=None,
+        batch_sample_eq_rows=None,
+    )
+    retained_bench._apply_default_batch_sample_evidence(explicit_serial, ["--batch-sample-mode", "serial_lm_head"])
+    assert explicit_serial.batch_sample_mode == "serial_lm_head"
+    assert explicit_serial.batch_sample_eq_artifact is None
+    _clear_qwen35_batch_env()
+
+
 def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, raising=False)
     args = SimpleNamespace(

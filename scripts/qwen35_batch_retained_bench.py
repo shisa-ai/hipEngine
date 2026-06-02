@@ -31,8 +31,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.core.memory import memory_stats
 from hipengine.dispatch import (
+    BatchSamplerMode,
     ProjectionDispatchEvidence,
     batch_sampler_equality_payload_blockers,
+    plan_batch_sampler_dispatch,
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_evidence_payload_blockers,
 )
@@ -105,6 +107,10 @@ _BATCH_SAMPLE_COMMAND_FLAGS = (
     "--batch-sample-eq-artifact",
     "--batch-sample-eq-rows",
 )
+_DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE = (
+    "benchmarks/results/2026-06-02-hipengine-qwen35-c{rows}-native-batch-sampler-equality.json"
+)
+_DEFAULT_BATCH_SAMPLE_EQ_ROWS = (2, 4, 8)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
 _ACCEPTED_MODE = RETAINED_ARTIFACT_ACCEPTED_MODE
 _ACCEPTED_SUMMARY = RETAINED_ARTIFACT_ACCEPTED_SUMMARY
@@ -115,6 +121,44 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORR
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
 _UNUSABLE_SCALING_REFERENCE_STATUSES = RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES
 _COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _argv_has_flag(argv: Sequence[str], flag: str) -> bool:
+    return any(arg == flag or arg.startswith(f"{flag}=") for arg in argv)
+
+
+def _apply_default_batch_sample_evidence(args: argparse.Namespace, argv: Sequence[str]) -> None:
+    """Enable the row-aware batched LM-head only when canonical evidence exists.
+
+    The active c=2/c=4/c=8 retained diagnostic gates now have repo-retained
+    generated-token equality artifacts for the row-aware sampler.  Use them as
+    the no-flag diagnostic default so the correctness-first retained bench no
+    longer falls back to the older serial LM-head loop, while preserving an
+    explicit user override and the existing evidence gate.
+    """
+
+    if any(_argv_has_flag(argv, flag) for flag in _BATCH_SAMPLE_COMMAND_FLAGS):
+        return
+    rows = getattr(args, "batch_size", None)
+    if isinstance(rows, bool) or not isinstance(rows, int) or rows not in _DEFAULT_BATCH_SAMPLE_EQ_ROWS:
+        return
+    artifact = _DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE.format(rows=rows)
+    path = Path(artifact)
+    if not path.exists():
+        return
+    decision = plan_batch_sampler_dispatch(
+        rows=rows,
+        requested_mode=BatchSamplerMode.BATCHED_LM_HEAD,
+        c2_equality_green=True,
+        equality_artifact=artifact,
+        equality_rows=rows,
+    )
+    if decision.mode is not BatchSamplerMode.BATCHED_LM_HEAD or decision.blockers:
+        return
+    args.batch_sample_mode = BatchSamplerMode.BATCHED_LM_HEAD.value
+    args.batch_sample_eq_ok = True
+    args.batch_sample_eq_artifact = path
+    args.batch_sample_eq_rows = rows
 
 
 def _load_json_path(path: Path) -> Mapping[str, Any]:
@@ -4479,7 +4523,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-sample-mode",
         choices=("serial_lm_head", "batched_lm_head"),
         default="serial_lm_head",
-        help="Sampler/LM-head path for native c>N decode; serial_lm_head is the conservative default, while batched_lm_head requires explicit generated-token equality evidence via --batch-sample-eq-*.",
+        help="Sampler/LM-head path for native c>N decode; when omitted for c=2/4/8 the bench uses the repo-retained row-aware batched_lm_head equality artifact if it validates, while explicit batched_lm_head still requires generated-token equality evidence via --batch-sample-eq-*.",
     )
     parser.add_argument(
         "--batch-sample-eq-ok",
@@ -4518,7 +4562,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profiler-command", help="Exact rocprofv3 --kernel-trace command that produced --profiler-json")
     add_kv_policy_args(parser, help_prefix="Resident KV storage for retained native c>N benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(argv)
+    _apply_default_batch_sample_evidence(args, raw_argv)
 
     if args.batch_size <= 1:
         raise ValueError("--batch-size must be greater than 1 for retained c>N")
