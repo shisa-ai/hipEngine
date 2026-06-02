@@ -63892,3 +63892,22 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: selected-c1 linear subpath diagnostics are sufficient for the generated equality gate; the broader per-row linear-layer fallback is no longer needed as the default correctness path. Native linear projection/state/MoE/output and native full-attention closure remain retained blockers, and no performance/scaling claim is made.
 
 Validation: focused default/CLI tests pass; required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY selected-c1 linear projection remains required
+
+Tested whether the narrowed equality default could remove selected-c1 linear projections while keeping selected-c1 linear state/MoE and per-row full-attention fallback. It cannot yet.
+
+GPU1 / RX 7900 XTX controls:
+
+- c=2/c=4/c=8 matrix with native/batch linear projections, selected-c1 state, per-row c1 linear MoE, and per-row full attention:
+  `/tmp/hipengine-e2e-native-c2-c4-c8-native-proj-selected-state-full-per-row-matrix.json`
+  - c=2: `[137,104]`
+  - c=4: `[137,104,137,116]`
+  - c=8: `[137,104,137,116,137,11,40,137]`
+- c=2-only projection-mode controls with the same selected state/MoE + per-row full attention:
+  - `batch_gemv`: `/tmp/hipengine-e2e-native-c2-512-128-batch-gemv-proj-selected-state-moe-full-per-row.json` → `[137,104]`
+  - `selected_qkv_z`: `/tmp/hipengine-e2e-native-c2-512-128-selected_qkv_z-selected-state-moe-full-per-row.json` → `[137,104]`
+  - `selected_ab`: `/tmp/hipengine-e2e-native-c2-512-128-selected_ab-selected-state-moe-full-per-row.json` → `[137,104]`
+  - `batch_gemv_selected_ab`: `/tmp/hipengine-e2e-native-c2-512-128-batch_gemv_selected_ab-selected-state-moe-full-per-row.json` → `[137,104]`
+
+Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with selected-c1 projection/state/MoE diagnostics plus per-row full attention (`[137,137]`). Conclusion: selected-c1 linear projection is still required for the correctness-default equality gate. Do not replace it with native/batch, batch-GEMV, QKV/Z-only, or A/B-only projection paths yet. No performance/scaling claim.

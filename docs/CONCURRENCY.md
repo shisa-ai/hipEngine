@@ -1444,7 +1444,13 @@ roll-up/status view.
       `workload.batch_decode_linear_path=batch_segments`, selected-c1 linear
       projection/state/MoE diagnostics, and
       `workload.batch_decode_full_attention_path=per_row`; status remains
-      `blocked` because diagnostic fallbacks prevent retained/perf claims.
+      `blocked` because diagnostic fallbacks prevent retained/perf claims. Negative
+      controls with native/batch linear projections under the same selected state/MoE
+      and per-row full-attention fallback fail (`/tmp/hipengine-e2e-native-c2-c4-c8-native-proj-selected-state-full-per-row-matrix.json`:
+      c=2 `[137,104]`, c=4 `[137,104,137,116]`, c=8
+      `[137,104,137,116,137,11,40,137]`; c=2-only batch-GEMV/selected-qkv/selected-ab
+      projection controls also stop at min prefix `104`), so selected-c1 linear
+      projections are still required for the correctness-default gate.
 - [x] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.
