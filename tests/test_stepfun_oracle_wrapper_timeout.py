@@ -71,6 +71,73 @@ def test_stepfun_correctness_status_tracks_oracle_wrapper_timeout_source_artifac
     assert status["status_integrity"]["checks"]["source_artifacts_sha256"] is True
 
 
+def test_stepfun_correctness_status_oracle_wrapper_timeout_source_only(tmp_path: Path) -> None:
+    output = tmp_path / "oracle-wrapper-timeout-source.json"
+
+    rc = main([
+        "--oracle-wrapper-timeout-source-only",
+        "--output",
+        str(output),
+        "--pretty",
+    ])
+
+    assert rc == 0
+    payload = json.loads(output.read_text())
+    assert payload["path"] == str(WRAPPER_TIMEOUT_ARTIFACT)
+    assert payload["exists"] is True
+    assert payload["sha256"] == hashlib.sha256(
+        WRAPPER_TIMEOUT_ARTIFACT.read_bytes()
+    ).hexdigest()
+
+
+def test_stepfun_correctness_status_oracle_wrapper_timeout_source_sha_only(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "oracle-wrapper-timeout-source-sha.json"
+
+    rc = main([
+        "--oracle-wrapper-timeout-source-sha-only",
+        "--output",
+        str(output),
+        "--pretty",
+    ])
+
+    assert rc == 0
+    assert json.loads(output.read_text()) == hashlib.sha256(
+        WRAPPER_TIMEOUT_ARTIFACT.read_bytes()
+    ).hexdigest()
+
+
+def test_stepfun_correctness_status_verify_source_oracle_wrapper_timeout_source_only(
+    tmp_path: Path,
+) -> None:
+    status_path = tmp_path / "status.json"
+    output = tmp_path / "oracle-wrapper-timeout-source-verify.json"
+    status = build_status(
+        Path("benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json"),
+        CANONICAL_ORACLE,
+    )
+    status_path.write_text(json.dumps(status))
+
+    rc = main([
+        "--verify-source-artifacts",
+        str(status_path),
+        "--oracle-wrapper-timeout-source-only",
+        "--output",
+        str(output),
+        "--pretty",
+    ])
+
+    assert rc == 0
+    payload = json.loads(output.read_text())
+    assert payload["match"] is True
+    assert payload["path"] == str(WRAPPER_TIMEOUT_ARTIFACT)
+    assert payload["recorded"]["path"] == str(WRAPPER_TIMEOUT_ARTIFACT)
+    assert payload["current"]["sha256"] == hashlib.sha256(
+        WRAPPER_TIMEOUT_ARTIFACT.read_bytes()
+    ).hexdigest()
+
+
 def test_stepfun_oracle_wrapper_timeout_source_artifact_drift_is_detected(
     tmp_path: Path,
 ) -> None:

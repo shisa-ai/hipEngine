@@ -1293,6 +1293,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocked_gates_only": "blocked_gates",
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
+        "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
+        "oracle_wrapper_timeout_source_sha_only": (
+            "source_artifacts.oracle_wrapper_timeout.sha256"
+        ),
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
@@ -3360,6 +3364,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocked_gates_only": "blocked_gates",
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
+        "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
+        "oracle_wrapper_timeout_source_sha_only": (
+            "source_artifacts.oracle_wrapper_timeout.sha256"
+        ),
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",

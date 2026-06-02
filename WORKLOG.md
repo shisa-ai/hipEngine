@@ -31782,3 +31782,51 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted oracle-wrapper/status-helper tests passed (`119 passed`); source/status verification returned `match` with `records.oracle_wrapper_timeout.match=true`; the full StepFun guard passed (`223` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-02 — StepFun oracle wrapper-timeout compact source outputs
+
+Exposed compact correctness-status outputs for the recorded 180 s llama.cpp wrapper-timeout oracle evidence. `scripts/stepfun_correctness_status.py` now supports `--oracle-wrapper-timeout-source-only` and `--oracle-wrapper-timeout-source-sha-only` for direct polling of `source_artifacts.oracle_wrapper_timeout`, including the `--verify-source-artifacts` path. Updated `docs/STEPFUN.md`, compact-output mode expectations, `tests/test_stepfun_oracle_wrapper_timeout.py`, and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_summary_only_writes_handoff tests/test_stepfun_oracle_wrapper_timeout.py::test_stepfun_correctness_status_verify_source_oracle_wrapper_timeout_source_only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import hashlib, json, subprocess
+from pathlib import Path
+artifact = Path('benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json')
+status = Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json')
+expected_sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
+record = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--oracle-wrapper-timeout-source-only',
+]))
+sha = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--oracle-wrapper-timeout-source-sha-only',
+]))
+verify_record = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--verify-source-artifacts', str(status),
+    '--oracle-wrapper-timeout-source-only',
+]))
+verify_sha = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--verify-source-artifacts', str(status),
+    '--oracle-wrapper-timeout-source-sha-only',
+]))
+assert record['path'] == str(artifact)
+assert record['sha256'] == expected_sha
+assert sha == expected_sha
+assert verify_record['match'] is True
+assert verify_record['recorded']['sha256'] == expected_sha
+assert verify_record['current']['sha256'] == expected_sha
+assert verify_sha == expected_sha
+print('compact oracle wrapper source outputs ok', expected_sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: the three targeted tests passed; compact source-only/SHA-only outputs and their `--verify-source-artifacts` variants returned SHA `121aec84265bd295f6c7c3bb318f2755478bde2a7653b7ca415b0bdb17a654b0`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`226` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; this logical unit changes docs/scripts/tests/status artifact only and adds no `hipengine/` runtime or engine-wide backend/quant dispatch branch; docs continue to state StepFun throughput/performance claims require later correctness and benchmark gates.
