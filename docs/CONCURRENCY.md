@@ -1735,6 +1735,11 @@ roll-up/status view.
       A follow-up output-labeled no-flag matrix keeps c=2/c=4/c=8 equality
       green while recording the active linear-output route as `batch_gemv`
       in the summary (`benchmarks/results/2026-06-02-hipengine-qwen35-native-default-output-labeled-equality-matrix/summary.json`).
+      A two-repeat no-flag matrix also passes all six c=2/c=4/c=8 runs
+      (`benchmarks/results/2026-06-02-hipengine-qwen35-native-repeat2-equality-matrix/summary.json`),
+      but the loop primary verifier still produced one transient c=2 prefix-82
+      sample before two no-code-change reruns returned 137, so deterministic
+      stability is still not claimed.
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 

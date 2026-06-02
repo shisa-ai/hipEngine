@@ -64326,3 +64326,24 @@ Validation:
 - Primary c=2 verifier printed `137`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
 - Artifact assertions loaded all JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes and output-path metadata, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY repeat2 no-flag equality stability matrix
+
+Captured a two-repeat no-flag c=2/c=4/c=8 generated-token equality matrix under `benchmarks/results/2026-06-02-hipengine-qwen35-native-repeat2-equality-matrix/` on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. This is correctness/runtime stability evidence only (`performance_claim=false`, `retained_ready=false`) and does not promote a throughput/scaling or deterministic-stability claim.
+
+Command:
+
+`HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_equality_matrix.py --batch-sizes 2,4,8 --repeat-runs 2 --output-dir benchmarks/results/2026-06-02-hipengine-qwen35-native-repeat2-equality-matrix/artifacts --json benchmarks/results/2026-06-02-hipengine-qwen35-native-repeat2-equality-matrix/summary.json --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build`
+
+Evidence:
+
+- `summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`, `repeat_runs=2`.
+- All six child retained artifacts passed generated-token equality vs independent c=1 with min prefix `137`: repeat 0 c=2/c=4/c=8 prefixes `[137,137]`, `[137,137,137,137]`, `[137,137,137,137,137,137,137,137]`; repeat 1 same prefixes.
+- All rows record row-aware `batched_lm_head` sampler metadata and `workload.batch_decode_linear_output_path=batch_gemv` in the compact matrix summary.
+- Raw per-run logs were deleted before staging; the committed artifact set keeps the summary plus JSON child artifacts only.
+- The loop primary c=2 verifier was still variable after the matrix: first sample printed `82`, then two no-code-change reruns printed `137` and `137`. Record measurements as `[82,137,137]`; do not claim deterministic stability.
+
+Validation:
+
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
+- Artifact assertions loaded all JSON, verified finite values, confirmed all six prefixes plus row-aware sampler/output-path metadata, and `git diff --check` passed.
