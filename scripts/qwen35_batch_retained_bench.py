@@ -3819,7 +3819,7 @@ def _resolved_batch_decode_linear_projection_path(args: argparse.Namespace) -> s
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
-    batch_decode_moe_path = str(getattr(args, "batch_decode_moe_path", "selected_c1"))
+    batch_decode_moe_path = str(getattr(args, "batch_decode_moe_path", "grouped_compact"))
     force_selected_c1_moe = batch_decode_moe_path == "selected_c1"
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = "1" if force_selected_c1_moe else "0"
     os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] = "1" if force_selected_c1_moe else "0"
@@ -3855,7 +3855,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_linear_state_path", "batch_segments") == "selected_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] = (
-        "1" if (not force_selected_c1_moe and getattr(args, "batch_decode_linear_moe_path", "per_row_c1") == "per_row_c1") else "0"
+        "1" if (not force_selected_c1_moe and getattr(args, "batch_decode_linear_moe_path", "grouped_compact") == "per_row_c1") else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         getattr(args, "batch_decode_linear_output_path", "batch_gemv")
@@ -3900,7 +3900,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_full_attn_layer_copy", "batch") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
-        "1" if (not force_selected_c1_moe and getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1") == "per_row_c1") else "0"
+        "1" if (not force_selected_c1_moe and getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact") == "per_row_c1") else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] = (
         "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
@@ -4354,11 +4354,11 @@ def _build_payload(
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
             "batch_prefill_linear_path": str(getattr(args, "batch_prefill_linear_path", "packed_segments")),
-            "batch_decode_moe_path": str(getattr(args, "batch_decode_moe_path", "selected_c1")),
+            "batch_decode_moe_path": str(getattr(args, "batch_decode_moe_path", "grouped_compact")),
             "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "batch_segments")),
             "batch_decode_linear_projection_path": _resolved_batch_decode_linear_projection_path(args),
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
-            "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "per_row_c1")),
+            "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
             "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "native_batch")),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
@@ -4370,7 +4370,7 @@ def _build_payload(
             "batch_decode_attention_suffix_order": str(getattr(args, "batch_decode_attn_suffix_order", "phased")),
             "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch_gemv")),
             "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "batch")),
-            "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1")),
+            "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
             "batch_sample_mode": str(getattr(args, "batch_sample_mode", "serial_lm_head")),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
@@ -4472,8 +4472,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-moe-path",
         choices=("grouped_compact", "selected_c1"),
-        default="selected_c1",
-        help="Global MoE path for c>N batch decode; selected_c1 is the correctness-first default that uses batched token-1 selected-GEMV MoE with a row-aware shared expert GEMV for c<=8, while grouped_compact keeps the native grouped compact MoE path for probes.",
+        default="grouped_compact",
+        help="Global MoE path for c>N batch decode; grouped_compact is the correctness-first default for c<=8 decode batches, while selected_c1 forces the non-retained selected-GEMV MoE diagnostic.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",
@@ -4496,7 +4496,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-linear-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="per_row_c1",
+        default="grouped_compact",
         help="Diagnostic MoE path for linear-attention c>N batch decode when --batch-decode-moe-path=grouped_compact; per_row_c1 replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
@@ -4568,7 +4568,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="per_row_c1",
+        default="grouped_compact",
         help="Diagnostic MoE path for full-attention c>N batch decode when --batch-decode-moe-path=grouped_compact; per_row_c1 replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(

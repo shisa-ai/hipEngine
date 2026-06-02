@@ -64668,3 +64668,23 @@ Validation:
 - Narrow unit suite passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py && pytest -q tests/test_qwen35_decode_state.py -q` (`57 passed`).
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Prompt verifier passed: the all-grouped hidden blocker is green and all-grouped c=2/c=4/c=8 generated-token equality passes vs independent c=1.
+
+## 2026-06-02 — CONCURRENCY grouped-compact MoE promoted to defaults
+
+Promoted the now-green grouped-compact MoE decode path from a flagged probe to the retained-bench and hidden-bisect correctness defaults. The defaults now use `grouped_compact` globally and for both linear-attention and full-attention MoE subpaths; selected-c1 MoE remains an explicit diagnostic flag. This removes the selected-c1 MoE correctness-default fallback without making any retained throughput/scaling claim.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier stayed green/unchanged: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`; workload records `batch_decode_moe_path=grouped_compact`, `batch_decode_linear_moe_path=grouped_compact`, `batch_decode_full_attention_moe_path=grouped_compact`; decode execution records `moe_decode_path=grouped_compact`, `moe_grouped_compact_layers=40`, `moe_selected_c1_fallback_layers=0`.
+- Default c=2/c=4/c=8 equality matrix is green: `/tmp/hipengine-e2e-native-c2-c4-c8-default-grouped-moe-iter78-matrix.json` reports `status=passed`, `generated_equality_passed=true`, with prefixes:
+  - c=2 `[137,137]`
+  - c=4 `[137,137,137,137]`
+  - c=8 `[137,137,137,137,137,137,137,137]`
+- Default hidden oracle is green: `/tmp/hipengine-hidden-default-grouped-nativec1-l40-d1-iter78.json` reports `status=eq_ok`, `passed=true`, `hidden_passed=true`, `token_passed=true`, and all MoE workload paths are `grouped_compact`.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-default-matrix/summary.json` (`performance_claim=false`, `retained_ready=false`).
+
+Validation:
+
+- Focused tests passed: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Prompt verifier passed: grouped MoE is now the default path and default c=2/c=4/c=8 equality plus default hidden oracle are green vs independent c=1.

@@ -5713,8 +5713,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-linear-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="per_row_c1",
-        help="Diagnostic MoE path for linear-attention c>N batch decode; per_row_c1 is the correctness-first default and replays true token-1 MoE kernels per row.",
+        default="grouped_compact",
+        help="Diagnostic MoE path for linear-attention c>N batch decode; grouped_compact is the correctness-first default, while per_row_c1 replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-linear-output-path",
@@ -5785,8 +5785,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="per_row_c1",
-        help="Diagnostic MoE path for full-attention c>N batch decode; per_row_c1 is the correctness-first default and replays true token-1 MoE kernels per row.",
+        default="grouped_compact",
+        help="Diagnostic MoE path for full-attention c>N batch decode; grouped_compact is the correctness-first default, while per_row_c1 replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-post-attn-path",
