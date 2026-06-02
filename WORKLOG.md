@@ -63952,3 +63952,30 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: selected-c1 output replay is no longer required for generated-token equality. Remaining blockers are selected-c1 linear projections, batch-GEMV output being diagnostic instead of retained native/fused output, per-row c1 linear MoE, and per-row full attention. No performance/scaling claim.
 
 Validation: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q` passed. Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY auto projection narrows c2/c4 A/B fallback
+
+Tried removing the per-row c1 linear MoE fallback now that native segmented state and batch-GEMV/Marlin output are green. Grouped compact linear MoE is still red under the current shape, but the projection controls revealed that c=2/c=4 no longer need selected-c1 A/B projection replay.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Grouped compact linear MoE with selected-c1 projections, native segmented state, batch-GEMV/Marlin output, and per-row full attention failed at `/tmp/hipengine-e2e-native-c2-c4-c8-selected-proj-native-state-marlin-out-grouped-moe-full-per-row-matrix.json`:
+  - c=2: `[137,104]`
+  - c=4: `[137,104,137,137]`
+  - c=8: `[137,104,137,137,137,11,83,137]`
+- Projection variant controls with native segmented state, batch-GEMV/Marlin output, per-row c1 linear MoE, and per-row full attention showed:
+  - `batch_gemv`: c=2 `[137,104]`
+  - `selected_qkv_z`: c=2 `[137,137]`
+  - `selected_ab`: c=2 `[137,104]`
+  - `batch_gemv_selected_ab`: c=2 `[137,104]`
+- c=2/c=4/c=8 selected-QKV/Z + native-A/B matrix `/tmp/hipengine-e2e-native-c2-c4-c8-selected-qkvz-native-ab-state-marlin-out-perrow-moe-full-per-row-matrix.json` passed c=2 and c=4 but failed c=8:
+  - c=2: `[137,137]`
+  - c=4: `[137,137,137,137]`
+  - c=8: `[137,137,137,137,137,0,137,137]`
+- Forcing rocBLAS A/B (`HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS=1`) moved the c=8 failure but did not clear it (`/tmp/hipengine-e2e-native-c2-c4-c8-selected-qkvz-rocblas-ab-state-marlin-out-perrow-moe-full-per-row-matrix.json`: c=8 `[137,137,137,137,137,137,53,137]`).
+
+Updated retained and hidden-bisect projection defaults to `auto`: c=2/c=4 resolve to `selected_qkv_z` (selected QKV/Z, native A/B), while c=8 resolves to full `selected_c1` projection replay. Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with `linear_attention_projection_path=selected_c1_qkv_z` and `[137,137]`; default matrix `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` remains green with c=2/c=4 selected-QKV/Z and c=8 full selected-c1 projections.
+
+Conclusion: selected-c1 A/B projection replay is no longer required for c=2/c=4 generated-token equality, but c=8 still needs full selected-c1 projection replay. Remaining blockers are native QKV/Z projection parity, c=8 native A/B stability, grouped compact linear MoE under this shape, native/fused output retention, and native full attention. No performance/scaling claim.
+
+Validation: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q` passed. Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

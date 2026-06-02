@@ -5625,6 +5625,19 @@ def _repeat_payload(args: argparse.Namespace, argv: Sequence[str] | None, repeat
     return first_payload
 
 
+def _resolved_batch_decode_linear_projection_path(args: argparse.Namespace) -> str:
+    path = str(getattr(args, "batch_decode_linear_projection_path", "auto"))
+    if path != "auto":
+        return path
+    batch_size = getattr(args, "batch_size", 2)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = 2
+    # Native A/B projections are generated-token green for c=2/c=4 under the
+    # current selected-QKV/Z + native-state + Marlin-output controls, but c=8
+    # still needs full selected-c1 projection replay.
+    return "selected_qkv_z" if int(batch_size) <= 4 else "selected_c1"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
@@ -5687,9 +5700,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--batch-decode-linear-projection-path",
-        choices=("batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_ab", "batch_gemv_selected_ab"),
-        default="selected_c1",
-        help="Diagnostic linear-attention projection path for c>N batch decode; selected_c1 is the correctness-first default and forces token-1 QKV/Z/A/B projections before native segmented state updates, batch_gemv uses row-aware GEMV QKV/Z projections, selected_qkv_z forces token-1 QKV/Z only, selected_ab forces token-1 A/B only, and batch_gemv_selected_ab combines batch-GEMV QKV/Z with token-1 A/B.",
+        choices=("auto", "batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_ab", "batch_gemv_selected_ab"),
+        default="auto",
+        help="Diagnostic linear-attention projection path for c>N batch decode; auto uses selected-QKV/Z with native A/B for c<=4 and full selected-c1 replay for c>=8.",
     )
     parser.add_argument(
         "--batch-decode-linear-state-path",
@@ -5822,6 +5835,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         prompt_lengths = [len(prompt) for prompt in prompts]
         if args.max_sequence_length < max(prompt_lengths) + total_decode_tokens + 1:
             raise ValueError("max_sequence_length must cover prompt_length + warmup_decode_tokens + decode_tokens + 1")
+    resolved_linear_projection_path = _resolved_batch_decode_linear_projection_path(args)
     payload: dict[str, Any] = {
         "schema": 1,
         "status": "planned" if args.dry_run else "running",
@@ -5855,7 +5869,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_prefill_full_attention_path": str(args.batch_prefill_full_attn_path),
             "batch_decode_moe_path": str(args.batch_decode_moe_path),
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
-            "batch_decode_linear_projection_path": str(args.batch_decode_linear_projection_path),
+            "batch_decode_linear_projection_path": resolved_linear_projection_path,
             "batch_decode_linear_state_path": str(args.batch_decode_linear_state_path),
             "batch_decode_linear_moe_path": str(args.batch_decode_linear_moe_path),
             "batch_decode_linear_output_path": str(args.batch_decode_linear_output_path),
@@ -5875,7 +5889,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 args.prompt_length + args.decode_tokens < 1024
                 and args.batch_decode_moe_path == "grouped_compact"
                 and args.batch_decode_linear_path == "batch_segments"
-                and args.batch_decode_linear_projection_path == "batch"
+                and resolved_linear_projection_path == "batch"
                 and args.batch_decode_linear_state_path == "batch_segments"
                 and args.batch_decode_linear_moe_path == "grouped_compact"
                 and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
@@ -5942,16 +5956,16 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         "1" if args.batch_decode_linear_path == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] = (
-        "1" if args.batch_decode_linear_projection_path == "selected_c1" else "0"
+        "1" if resolved_linear_projection_path == "selected_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] = (
-        "1" if args.batch_decode_linear_projection_path == "selected_qkv_z" else "0"
+        "1" if resolved_linear_projection_path == "selected_qkv_z" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_AB"] = (
-        "1" if args.batch_decode_linear_projection_path in {"selected_ab", "batch_gemv_selected_ab"} else "0"
+        "1" if resolved_linear_projection_path in {"selected_ab", "batch_gemv_selected_ab"} else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS"] = (
-        "1" if args.batch_decode_linear_projection_path in {"batch_gemv", "batch_gemv_selected_ab"} else "0"
+        "1" if resolved_linear_projection_path in {"batch_gemv", "batch_gemv_selected_ab"} else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] = (
         "1" if args.batch_decode_linear_state_path == "selected_c1" else "0"
