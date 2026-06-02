@@ -218,6 +218,10 @@ What is still not green:
   flake (`[82,137]` then immediate repeat `[137,137]`), so the selected fallback
   is still correctness-only rather than retained-ready
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-projection-hidden-repro/summary.json`).
+  A follow-up confidence sweep returned five consecutive c=2 `[137,137]` repeats
+  and a fresh c=2/c=4/c=8 equality matrix with all rows prefix 137, restoring
+  confidence in the fallback while keeping native projection/dispatch blocked
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-fallback-repeat-confidence/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

@@ -1,0 +1,230 @@
+{
+  "c2_c4_c8_matrix": {
+    "generated_equality_passed": true,
+    "rows": [
+      {
+        "artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix/native-equality-c2-p512-d128.json",
+        "batch_size": 2,
+        "command": "env HIP_VISIBLE_DEVICES=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix/native-equality-c2-p512-d128.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build",
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "selected_c1_qkv_z",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      {
+        "artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix/native-equality-c4-p512-d128.json",
+        "batch_size": 4,
+        "command": "env HIP_VISIBLE_DEVICES=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix/native-equality-c4-p512-d128.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build",
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "selected_c1_qkv_z",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      {
+        "artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix/native-equality-c8-p512-d128.json",
+        "batch_size": 8,
+        "command": "env HIP_VISIBLE_DEVICES=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix/native-equality-c8-p512-d128.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build",
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "selected_c1_qkv_z",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      }
+    ],
+    "source_artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix.json",
+    "status": "passed"
+  },
+  "c2_repeat_sweep": {
+    "all_generated_equality_passed": true,
+    "min_equal_prefix_tokens": [
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "run_count": 5,
+    "runs": [
+      {
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run1.json",
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "generated_token_equality_passed": true,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "min_equal_prefix_tokens": 137,
+        "moe_decode_path": "grouped_compact",
+        "name": "repeat_1",
+        "native_caware_decode": false,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run1.json",
+        "status": "blocked"
+      },
+      {
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run2.json",
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "generated_token_equality_passed": true,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "min_equal_prefix_tokens": 137,
+        "moe_decode_path": "grouped_compact",
+        "name": "repeat_2",
+        "native_caware_decode": false,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run2.json",
+        "status": "blocked"
+      },
+      {
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run3.json",
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "generated_token_equality_passed": true,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "min_equal_prefix_tokens": 137,
+        "moe_decode_path": "grouped_compact",
+        "name": "repeat_3",
+        "native_caware_decode": false,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run3.json",
+        "status": "blocked"
+      },
+      {
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run4.json",
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "generated_token_equality_passed": true,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "min_equal_prefix_tokens": 137,
+        "moe_decode_path": "grouped_compact",
+        "name": "repeat_4",
+        "native_caware_decode": false,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run4.json",
+        "status": "blocked"
+      },
+      {
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "generated_token_equality_passed": true,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "min_equal_prefix_tokens": 137,
+        "moe_decode_path": "grouped_compact",
+        "name": "official_verify_after_repeat_sweep",
+        "native_caware_decode": false,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "status": "blocked"
+      }
+    ]
+  },
+  "change": "Clean-tree repeat confidence check for selected-QKV/Z fallback after a one-run c=2 flake.",
+  "conclusion": [
+    "After the prior one-run [82,137] flake, five clean-tree c=2 512/128 verify-style runs all returned [137,137].",
+    "A fresh c=2/c=4/c=8 equality matrix also passed with all rows at prefix 137 under the selected-QKV/Z fallback, batch-GEMV output, and grouped-compact MoE.",
+    "This improves confidence in the correctness fallback after the flake but does not make a retained/native projection claim: native_caware_decode remains false and projection dispatch is still blocked."
+  ],
+  "created_at": "2026-06-02T16:08:25.082601Z",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "prior_observed_flake": {
+    "immediate_repeat_prefix_lengths": [
+      137,
+      137
+    ],
+    "prefix_lengths": [
+      82,
+      137
+    ]
+  },
+  "prior_repro_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-projection-hidden-repro/summary.json",
+  "retained_ready": false,
+  "schema": 1,
+  "status": "passed",
+  "workload": {
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

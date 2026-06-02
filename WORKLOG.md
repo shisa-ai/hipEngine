@@ -64760,3 +64760,22 @@ Validation:
 - `multiloop_measure` recorded both primary repeats `[82,137]`; prompt verifier failed because the hidden-control repro adds required runtime evidence but does not improve the primary metric or eliminate a native projection blocker. No retained throughput/scaling claim is made.
 
 Conclusion: the selected-QKV/Z l40 hidden control remains reproducible, but the generated-token gate showed a same-iteration flake. Native QKV/Z bit exactness, projection-dispatch/retained-evidence closure, and selected-fallback reproducibility remain active blockers.
+
+## 2026-06-02 — CONCURRENCY selected fallback repeat confidence restored
+
+Ran iteration 83 for `concurrency-e2e/native-c2-e2e` to quantify the c=2 512/128 selected-QKV/Z reproducibility flake seen in iteration 82. No runtime code was changed.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Five clean-tree c=2 512/128 verify-style runs all returned generated-token equality green with prefixes `[137,137]`:
+  - `/tmp/hipengine-e2e-native-c2-512-128-repeat-iter83-run{1,2,3,4}.json`
+  - `/tmp/hipengine-e2e-native-c2-512-128.json` (official verify output after the repeat sweep)
+- Fresh c=2/c=4/c=8 equality matrix passed: `/tmp/hipengine-e2e-native-c2-c4-c8-repeat-iter83-matrix.json`, with all rows at prefix 137.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-fallback-repeat-confidence/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Validation:
+
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded c=2 measurements `[137,137,137,137,137]`; prompt verifier passes because this iteration re-ran and passed the c=2/c=4/c=8 generated-token equality gate after the reproducibility flake. No retained throughput/scaling claim is made.
+
+Conclusion: the selected-QKV/Z correctness fallback is again repeat-green in this clean-tree sweep, but native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain the active blockers because decode still reports `native_caware_decode=false` and `linear_attention_projection_path=selected_c1_qkv_z`.
