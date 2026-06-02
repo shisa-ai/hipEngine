@@ -196,7 +196,11 @@ What is still not green:
   Therefore the current C2.3/C2.4 blockers are native QKV/Z bit exactness and
   projection-dispatch/retained-evidence closure; row-aware batch-GEMV linear/full-attention outputs,
   grouped-compact MoE for c<=8 decode, and the selected-QKV/Z correctness
-  path are green and no longer block correctness-default equality.
+  path are green and no longer block correctness-default equality. A post-grouped
+  projection refresh rejected `batch`, `batch_gemv`, `batch_gemv_selected_ab`,
+  and `selected_ab` as replacements for selected-QKV/Z at c=2 512/128: all four
+  stayed generated-token red with prefixes `[82,104]`
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

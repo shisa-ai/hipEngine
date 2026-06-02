@@ -64688,3 +64688,17 @@ Validation:
 - Focused tests passed: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Prompt verifier passed: grouped MoE is now the default path and default c=2/c=4/c=8 equality plus default hidden oracle are green vs independent c=1.
+
+## 2026-06-02 — CONCURRENCY native projection refresh rejected
+
+Ran a focused c=2 512/128 projection refresh after grouped-compact MoE became the default. The goal was to see whether any current non-selected-QKV/Z projection path could replace the selected-QKV/Z correctness fallback under the grouped-MoE defaults. No runtime code was retained.
+
+GPU1 / RX 7900 XTX evidence:
+
+- `--batch-decode-linear-projection-path batch`: `/tmp/hipengine-e2e-native-c2-512-128-native-projection-iter79.json` -> generated equality red, prefixes `[82,104]`; decode metadata recorded `linear_attention_projection_path=native_batch`, `native_caware_decode=true`, `decode_execution.blockers=[]`.
+- `--batch-decode-linear-projection-path batch_gemv`: `/tmp/hipengine-e2e-native-c2-512-128-proj-batch_gemv-iter79.json` -> generated equality red, prefixes `[82,104]`.
+- `--batch-decode-linear-projection-path batch_gemv_selected_ab`: `/tmp/hipengine-e2e-native-c2-512-128-proj-batch_gemv_selected_ab-iter79.json` -> generated equality red, prefixes `[82,104]`.
+- `--batch-decode-linear-projection-path selected_ab`: `/tmp/hipengine-e2e-native-c2-512-128-proj-selected_ab-iter79.json` -> generated equality red, prefixes `[82,104]`.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json` (`status=blocked`, `performance_claim=false`, `retained_ready=false`).
+
+Conclusion: the selected-QKV/Z correctness fallback remains required; native/batch-GEMV QKV/Z projection and projection-dispatch blockers are not eliminated by the grouped-MoE default change.
