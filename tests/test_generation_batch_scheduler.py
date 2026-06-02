@@ -12485,7 +12485,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
         ]
     )
     c8_auto_projection_payload = run_hidden_bisect(c8_auto_projection, ["--dry-run", "--batch-size", "8"])
-    assert c8_auto_projection_payload["workload"]["batch_decode_linear_projection_path"] == "selected_c1"
+    assert c8_auto_projection_payload["workload"]["batch_decode_linear_projection_path"] == "selected_qkv_z"
 
     focused_trace = build_hidden_bisect_parser().parse_args(
         [

@@ -64406,3 +64406,23 @@ Validation:
 
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Artifact assertions loaded all JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes plus row-aware sampler/output-path metadata, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY auto selected-QKV/Z covers c8
+
+Narrowed the retained/hidden-bisect auto linear-projection diagnostic so c=8 now uses selected-QKV/Z with native A/B projection instead of full selected-c1 QKV/Z/A/B projection replay. Larger unproven row counts still fall back to full selected-c1 replay. This is a correctness-default narrowing only; selected-QKV/Z remains a diagnostic blocker and no retained throughput/scaling claim is made.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Exploratory c=8 retained probe `/tmp/hipengine-e2e-native-c8-512-128-selected-qkvz-current-defaults-probe.json` passed generated-token equality with prefixes `[137,137,137,137,137,137,137,137]` and decode metadata `linear_attention_projection_path=selected_c1_qkv_z`.
+- Committed no-flag auto-projection matrix `benchmarks/results/2026-06-02-hipengine-qwen35-native-auto-qkvz-equality-matrix/summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`, and `performance_claim=false`.
+- Matrix child rows all pass generated-token equality vs independent c=1 while recording row-aware `batched_lm_head` sampler metadata and `linear_attention_projection_path=selected_c1_qkv_z`:
+  - c=2 prefixes `[137,137]`.
+  - c=4 prefixes `[137,137,137,137]`.
+  - c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green after the default change: metric `137`, prefixes `[137,137]`, `sampler_execution.mode=batched_lm_head`, and `linear_attention_projection_path=selected_c1_qkv_z`.
+
+Validation:
+
+- Focused test passed: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Artifact assertions loaded all matrix JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes plus selected-QKV/Z projection, row-aware sampler metadata, and `git diff --check` passed.

@@ -5632,10 +5632,10 @@ def _resolved_batch_decode_linear_projection_path(args: argparse.Namespace) -> s
     batch_size = getattr(args, "batch_size", 2)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 2
-    # Native A/B projections are generated-token green for c=2/c=4 under the
-    # current selected-QKV/Z + native-state + Marlin-output controls, but c=8
-    # still needs full selected-c1 projection replay.
-    return "selected_qkv_z" if int(batch_size) <= 4 else "selected_c1"
+    # Native A/B projections are generated-token green for c=2/c=4/c=8 under
+    # the current selected-QKV/Z + native-state + Marlin-output controls. Keep
+    # larger, unproven row counts on the older full selected-c1 replay fallback.
+    return "selected_qkv_z" if int(batch_size) <= 8 else "selected_c1"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -5702,7 +5702,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--batch-decode-linear-projection-path",
         choices=("auto", "batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_qkv_z_input", "selected_qkv", "selected_z", "selected_ab", "batch_gemv_selected_ab"),
         default="auto",
-        help="Diagnostic linear-attention projection path for c>N batch decode; auto uses selected-QKV/Z with native A/B for c<=4 and full selected-c1 replay for c>=8.",
+        help="Diagnostic linear-attention projection path for c>N batch decode; auto uses selected-QKV/Z with native A/B for c<=8 and full selected-c1 replay for larger unproven row counts.",
     )
     parser.add_argument(
         "--batch-decode-linear-state-path",
