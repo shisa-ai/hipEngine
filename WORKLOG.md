@@ -64182,3 +64182,26 @@ GPU1 / RX 7900 XTX equality evidence after the provenance change:
 - All matrix rows record `sampler_execution.mode=batched_lm_head`, `native_row_aware_lm_head=true`, matching sampler equality artifacts/rows, and no sampler blockers.
 
 Required guard passed (`407 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. No retained throughput/scaling claim; profiler/scaling capture still remains a gate before any performance claim.
+
+## 2026-06-02 — CONCURRENCY c=2 retained baseline preflight
+
+Captured the first repo-scoped c=2 retained-gate baseline preflight artifacts under `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-baseline-preflight/` on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. This is diagnostic runtime evidence only (`performance_claim=false`); it clears the c=1 native and c=2 serial-bridge scaling-reference preconditions and confirms the remaining retained blocker is the profiler summary artifact.
+
+Preflight command:
+
+- `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_c_sweep.py --batch-sizes 1,2 --output-dir benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-baseline-preflight --summary-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-baseline-preflight/summary.json --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-baseline-preflight/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact-template 'benchmarks/results/2026-06-02-hipengine-qwen35-c{c}-native-batch-sampler-equality.json'`
+
+Evidence:
+
+- `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-baseline-preflight/summary.json` validates with `scripts/qwen35_batch_c_sweep.py --validate-summary-json` and reports `status=blocked`, `status_counts={'passed': 5, 'skipped': 1}`.
+- c=1 native scaling baseline precondition passed: `native-baseline-c1.json`, decode `133.4408129612937 tok/s` aggregate/per-request, tracked peak `18.078 GiB`.
+- c=2 serial-bridge scaling baseline precondition passed: `serial-bridge-c2.json`, decode `113.88620620293347 tok/s` aggregate / `56.94310310146673 tok/s` per request.
+- c=2 primitive correctness precondition passed from `primitive-c2.json`.
+- c=2 retained native command was intentionally skipped before execution because `profiler-c2.json` does not exist yet; this is now the next retained precondition to satisfy.
+
+GPU correctness/equality checks after the preflight:
+
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`, `prefixes=[137,137]`, and `first_mismatch_indices=[None,None]`.
+- `/tmp/hipengine-e2e-native-c2-c4-c8-batched-lm-head-baseline-preflight-matrix.json` is `status=passed`, `generated_equality_passed=true`, with c=2/c=4/c=8 all at min equal prefix `137` and `sampler_execution.mode=batched_lm_head` / no sampler blockers.
+
+Validation: required guard passed (`407 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. Updated benchmark rollup/changelog with the blocked diagnostic preflight row. No c>N throughput/scaling claim is made.

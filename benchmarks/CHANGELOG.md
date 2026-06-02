@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-02
+
+- [diagnostic preflight] hipENGINE / Qwen3.6-35B-A3B PARO / native c=2 512/128: retained c=1 native and c=2 serial-bridge scaling baselines for the c>N retained gate (`c1 decode 133.441 tok/s`, `c2 serial aggregate/per-request 113.886/56.943 tok/s`); native c=2 retained execution remains blocked by missing profiler summary, so `performance_claim=false`; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-baseline-preflight/summary.json`.
+
 ## 2026-05-25
 
 - [diagnostic retained] hipENGINE / W7900 TheRock ROCm 7.13 / PARO + GGUF README persistent 5-run sweep: switched hipEngine README sweep protocol to one resident model load per engine with 1 warmup + 5 measured runs per shape. PARO median prefill/decode at `512/4K/32K/128K` is `2718.497/103.460`, `2838.773/101.964`, `2074.699/90.438`, `1055.454/59.598`; GGUF Q4_K_S is `2258.847/109.152`, `2576.673/100.048`, `1893.967/86.774`, `998.143/57.954`. Existing llama.cpp rows unchanged; no new KL/top-1 gate so `performance_claim=false`; `benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json`.
