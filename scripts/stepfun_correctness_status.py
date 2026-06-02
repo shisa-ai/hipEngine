@@ -328,6 +328,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--docs-open-partial-count-only",
+        action="store_true",
+        help=(
+            "Emit only docs_checklist.open_or_partial_count_p0_p12 as a single "
+            "integer for loop metric polling. Overrides --summary-only and "
+            "readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-kinds-only",
         action="store_true",
         help=(
@@ -3531,6 +3540,9 @@ def _handoff_summary(
             ),
             "docs_checklist_only": "docs_checklist",
             "docs_checklist_sha_only": "docs_checklist_sha256",
+            "docs_open_partial_count_only": (
+                "docs_checklist.open_or_partial_count_p0_p12"
+            ),
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "readiness_gates_only": "readiness_gates",
@@ -4205,6 +4217,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["readiness_gates_sha256"]
     elif args.readiness_gates_only:
         result = status["readiness_gates"]
+    elif args.docs_open_partial_count_only:
+        result = status["docs_checklist"].get("open_or_partial_count_p0_p12")
     elif args.docs_checklist_sha_only:
         result = status["docs_checklist_sha256"]
     elif args.docs_checklist_only:

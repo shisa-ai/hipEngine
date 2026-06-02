@@ -218,13 +218,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 627,
+        "line": 628,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ]
   },
-  "docs_checklist_sha256": "e9844186da3eb9e84fe4328c9e0c7b6b9249ef893b7f0022812a39b4d47fe185",
+  "docs_checklist_sha256": "106bd5ede79a13aaf43d43c98ec2e503776fff54e80b5e171365574d1ec741d3",
   "e2e_inference_ready": false,
   "first_remaining_blocker_report": {
     "blocked_gates": [
@@ -505,6 +505,7 @@
       "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
       "docs_checklist_only": "docs_checklist",
       "docs_checklist_sha_only": "docs_checklist_sha256",
+      "docs_open_partial_count_only": "docs_checklist.open_or_partial_count_p0_p12",
       "fail_on_blocked_preserves_payload": true,
       "first_blocker_only": "handoff_summary.first_blocker_work_item",
       "first_blocker_recommended_command_only": "handoff_summary.first_blocker_work_item.recommended_command",
@@ -765,7 +766,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "0adcbd6813aa2c2e5c5bf969fe5a1cb053b2dee6b511b232f4ed79528a050101",
+  "handoff_summary_sha256": "ddf663cd67351b3a13611c997e5186ced08614603969d21c719c875d4d930a8c",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -2721,7 +2722,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
-    "handoff_summary_sha256": "0adcbd6813aa2c2e5c5bf969fe5a1cb053b2dee6b511b232f4ed79528a050101",
+    "handoff_summary_sha256": "ddf663cd67351b3a13611c997e5186ced08614603969d21c719c875d4d930a8c",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
@@ -2731,10 +2732,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
     "schema_version": 1,
-    "source_artifacts_sha256": "ce5d5c461b8abfed30b1a488b011f1caae6671b4964b198f5e196b4a47e5c121",
+    "source_artifacts_sha256": "34c4511f6fa4aa0530a3403399d0c3e20f6833f5b9f1d121a4e8694b000b9bf7",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "5b28d928dfedbdc378899850fccc2e6e8c146dfd182ab52c010d812e2a601a26",
+  "readiness_summary_sha256": "bbefc6a4fdfa0b0032c22927ce34de0325772164b3b54d9735a3610b440fcedd",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2853,8 +2854,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "9e92c0fd60ff5ae7aa7795019afb8db4f199bcbb9fc65467069b2d1aadc6dd59",
-      "size_bytes": 66640
+      "sha256": "65fe0beb987cfb2274b9c0dfcc3f0ee3561759b8bfe8f8ced69255b745009497",
+      "size_bytes": 66718
     },
     "oracle": {
       "exists": true,
@@ -2881,7 +2882,7 @@
       "size_bytes": 52292
     }
   },
-  "source_artifacts_sha256": "ce5d5c461b8abfed30b1a488b011f1caae6671b4964b198f5e196b4a47e5c121",
+  "source_artifacts_sha256": "34c4511f6fa4aa0530a3403399d0c3e20f6833f5b9f1d121a4e8694b000b9bf7",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

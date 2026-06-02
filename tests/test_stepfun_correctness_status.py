@@ -1431,6 +1431,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ),
         "docs_checklist_only": "docs_checklist",
         "docs_checklist_sha_only": "docs_checklist_sha256",
+        "docs_open_partial_count_only": (
+            "docs_checklist.open_or_partial_count_p0_p12"
+        ),
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "readiness_gates_only": "readiness_gates",
@@ -2264,6 +2267,7 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     resource = tmp_path / "resource.json"
     output = tmp_path / "docs-checklist.json"
     sha_output = tmp_path / "docs-checklist-sha.json"
+    count_output = tmp_path / "docs-open-partial-count.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -2329,6 +2333,38 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     assert captured.out == ""
     assert captured.err == ""
     assert json.loads(sha_output.read_text()) == status["docs_checklist_sha256"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(count_output),
+            "--summary-only",
+            "--docs-checklist-only",
+            "--docs-checklist-sha-only",
+            "--docs-open-partial-count-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(count_output.read_text()) == 2
+    assert json.loads(count_output.read_text()) == status["docs_checklist"][
+        "open_or_partial_count_p0_p12"
+    ]
+    assert status["handoff_summary"]["compact_output_modes"][
+        "docs_open_partial_count_only"
+    ] == "docs_checklist.open_or_partial_count_p0_p12"
 
 
 def test_stepfun_correctness_status_readiness_summary_only(capsys, tmp_path: Path) -> None:
@@ -4414,6 +4450,9 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "docs_checklist_only": "docs_checklist",
         "docs_checklist_sha_only": "docs_checklist_sha256",
+        "docs_open_partial_count_only": (
+            "docs_checklist.open_or_partial_count_p0_p12"
+        ),
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "readiness_gates_only": "readiness_gates",
