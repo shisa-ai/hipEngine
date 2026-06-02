@@ -2228,8 +2228,30 @@ def test_qwen35_resident_full_attention_batch_decode_can_force_per_row_output_an
     assert execution["native_caware_decode"] is False
     assert execution["layer_executions"][0]["native_caware_decode"] is False
     assert execution["layer_executions"][0]["full_attention_output_decode_path"] == "batch_gemv"
-    assert "full-attention O projection forced to batch GEMV diagnostic path" in execution["blockers"]
+    assert "full-attention O projection forced to batch GEMV diagnostic path" not in execution["blockers"]
     assert "full-attention MoE forced to per-row selected-c1 diagnostic path" in execution["blockers"]
+
+    monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE")
+    state.calls.clear()
+    force_flags.clear()
+    copies.clear()
+
+    out = session._run_layers_batch_decode(rows=2, positions=(4, 7), slots=(0, 2), stream=5)
+
+    assert out.ptr == 0x2000
+    assert force_flags == [False]
+    assert len(state.calls) == 1
+    _hidden, kwargs = state.calls[0]
+    assert kwargs["force_batch_gemv_output"] is True
+    assert kwargs["force_per_row_moe"] is False
+    execution = session.last_batch_decode_execution
+    assert execution["native_caware_decode"] is True
+    assert execution["moe_decode_path"] == "grouped_compact"
+    assert execution["moe_grouped_compact_layers"] == 1
+    assert execution["moe_selected_c1_fallback_layers"] == 0
+    assert execution["blockers"] == []
+    assert execution["layer_executions"][0]["native_caware_decode"] is True
+    assert execution["layer_executions"][0]["full_attention_output_decode_path"] == "batch_gemv"
 
 
 def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context(monkeypatch) -> None:

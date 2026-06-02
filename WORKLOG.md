@@ -64426,3 +64426,23 @@ Validation:
 - Focused test passed: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Artifact assertions loaded all matrix JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes plus selected-QKV/Z projection, row-aware sampler metadata, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY full-attention batch-GEMV output no longer blocks
+
+Tried the next remaining full-attention fallback first: grouped-compact full-attention MoE under current defaults remains red (`/tmp/hipengine-e2e-native-c2-512-128-current-defaults-fullattn-grouped-moe-probe.json`, prefixes `[82,137]`). The focused positive change for this iteration is the adjacent output blocker: row-aware batch-GEMV full-attention O projection has already been green for c=2/c=4/c=8, so it no longer marks native batch decode with the `full-attention O projection forced to batch GEMV diagnostic path` blocker. The older fused/native full-attention output path remains red; only the row-aware batch-GEMV O path is promoted out of the diagnostic-blocker list.
+
+GPU1 / RX 7900 XTX evidence after the change:
+
+- `benchmarks/results/2026-06-02-hipengine-qwen35-native-fullattn-batchgemv-output-matrix/summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`, and `performance_claim=false`.
+- Child artifacts pass generated-token equality vs independent c=1 and no longer include the full-attention O batch-GEMV blocker in `decode_execution.blockers` or `batch_execution.blockers`:
+  - c=2 prefixes `[137,137]`.
+  - c=4 prefixes `[137,137,137,137]`.
+  - c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- Remaining decode blockers in the child artifacts are selected-QKV/Z linear projection, batch-GEMV linear output, per-row linear MoE, and per-row full-attention MoE. Retained/scaling promotion remains blocked and no throughput claim is made.
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137` and prefixes `[137,137]`, and also lacks the full-attention O batch-GEMV blocker.
+
+Validation:
+
+- Focused runtime metadata test passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_full_attention_batch_decode_can_force_per_row_output_and_moe_probes -q`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Artifact assertions loaded the new matrix JSONs, verified finite values, confirmed c=2/c=4/c=8 prefixes and absence of the full-attention O batch-GEMV blocker, and `git diff --check` passed.

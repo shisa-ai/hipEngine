@@ -4568,7 +4568,6 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_persistent_scratch
                                 or force_per_row_full_attention_skip_batch_setup
                                 or force_per_row_full_attention_output
-                                or force_batch_gemv_full_attention_output
                                 or force_per_row_full_attention_layer_copy
                                 or force_per_row_full_attention_context
                                 or force_per_row_full_attention_kv_append
@@ -4753,8 +4752,6 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention context/output/post/MoE forced to interleaved per-row diagnostic order")
             if force_per_row_full_attention_output:
                 decode_blockers.append("full-attention O projection forced to per-row diagnostic path")
-            if force_batch_gemv_full_attention_output:
-                decode_blockers.append("full-attention O projection forced to batch GEMV diagnostic path")
             if force_per_row_full_attention_layer_copy:
                 decode_blockers.append("full-attention layer output forced to per-row copy diagnostic path")
             if force_per_row_post_attention:
@@ -4803,7 +4800,6 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_append_context
                 and not force_per_row_full_attention_suffix
                 and not force_per_row_full_attention_output
-                and not force_batch_gemv_full_attention_output
                 and not force_per_row_full_attention_layer_copy
                 and not force_per_row_full_attention_moe
                 and not force_per_row_post_attention,
