@@ -3123,6 +3123,35 @@ def test_batch_c_sweep_plans_retained_sampler_evidence(tmp_path: Path) -> None:
     assert "--batch-sample-mode batched_lm_head" in persisted_native_c2["command"]
     assert "--batch-sample-eq-artifact benchmarks/results/sampler-c2.json" in persisted_native_c2["command"]
 
+    tampered_missing_sampler_mode = json.loads(json.dumps(summary))
+    native_c2_row = next(
+        row for row in tampered_missing_sampler_mode["commands"] if row["category"] == "native_diagnostic" and row["batch_size"] == 2
+    )
+    mode_index = native_c2_row["argv"].index("--batch-sample-mode")
+    del native_c2_row["argv"][mode_index : mode_index + 2]
+    native_c2_row["command"] = shlex.join(native_c2_row["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --batch-sample-mode must match options\.batch_sample_mode"):
+        c_sweep.validate_sweep_summary(tampered_missing_sampler_mode)
+
+    tampered_sampler_artifact = json.loads(json.dumps(summary))
+    native_c4_row = next(
+        row for row in tampered_sampler_artifact["commands"] if row["category"] == "native_diagnostic" and row["batch_size"] == 4
+    )
+    artifact_index = native_c4_row["argv"].index("--batch-sample-eq-artifact") + 1
+    native_c4_row["argv"][artifact_index] = "benchmarks/results/sampler-c2.json"
+    native_c4_row["command"] = shlex.join(native_c4_row["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --batch-sample-eq-artifact must match options\.batch_sample_eq_artifact_template"):
+        c_sweep.validate_sweep_summary(tampered_sampler_artifact)
+
+    tampered_c1_sampler_flag = json.loads(json.dumps(summary))
+    native_c1_row = next(
+        row for row in tampered_c1_sampler_flag["commands"] if row["category"] == "native_diagnostic" and row["batch_size"] == 1
+    )
+    native_c1_row["argv"].extend(["--batch-sample-mode", "batched_lm_head"])
+    native_c1_row["command"] = shlex.join(native_c1_row["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv c=1 native baseline must not include batch sampler evidence flags"):
+        c_sweep.validate_sweep_summary(tampered_c1_sampler_flag)
+
 
 def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:
     summary_path = tmp_path / "summary.json"
@@ -3180,6 +3209,10 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
         "require_cached_build": False,
         "compiler_version_file": None,
         "projection_dispatch_artifact": "benchmarks/results/projection-candidates.json",
+        "batch_sample_mode": None,
+        "batch_sample_eq_ok": False,
+        "batch_sample_eq_artifact_template": None,
+        "batch_sample_eq_rows": None,
     }
     assert summary_path.exists()
     persisted = json.loads(summary_path.read_text())
@@ -10143,6 +10176,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "require_cached_build",
         "compiler_version_file",
         "projection_dispatch_artifact",
+        "batch_sample_mode",
+        "batch_sample_eq_ok",
+        "batch_sample_eq_artifact_template",
+        "batch_sample_eq_rows",
     }
     assert set(summary["options"]) == expected_option_keys
     tampered_options_object = json.loads(json.dumps(summary))

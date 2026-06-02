@@ -257,9 +257,16 @@ _INT8_DIAGNOSTIC_UNIQUE_FLAGS = ("--model", "--fixture", "--rows", "--future-jso
 _GGUF_DIAGNOSTIC_BACKEND = "hip_gfx1100"
 _GGUF_DIAGNOSTIC_MAX_NEW_TOKENS = 4
 _GGUF_DIAGNOSTIC_UNIQUE_FLAGS = ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens")
+_BATCH_SAMPLE_UNIQUE_FLAGS = (
+    "--batch-sample-mode",
+    "--batch-sample-eq-ok",
+    "--batch-sample-eq-artifact",
+    "--batch-sample-eq-rows",
+)
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(
     dict.fromkeys(
         _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
+        + _BATCH_SAMPLE_UNIQUE_FLAGS
         + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
         + _INT8_DIAGNOSTIC_UNIQUE_FLAGS
         + _GGUF_DIAGNOSTIC_UNIQUE_FLAGS
@@ -2136,6 +2143,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     option_fixture: str | None = None
     option_seed: int | None = None
     option_projection_dispatch_artifact: str | None = None
+    option_batch_sample_mode: str | None = None
+    option_batch_sample_eq_ok = False
+    option_batch_sample_eq_artifact_template: str | None = None
+    option_batch_sample_eq_rows: str | None = None
     option_shape_values: dict[str, int] = {}
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
@@ -2154,12 +2165,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             "require_cached_build",
             "compiler_version_file",
             "projection_dispatch_artifact",
+            "batch_sample_mode",
+            "batch_sample_eq_ok",
+            "batch_sample_eq_artifact_template",
+            "batch_sample_eq_rows",
         }
         if set(options) != expected_option_keys:
             errors.append("options must contain exactly the c-sweep schema keys")
-        for option in ("stop_on_failure", "include_int8", "include_gguf", "require_cached_build"):
+        for option in ("stop_on_failure", "include_int8", "include_gguf", "require_cached_build", "batch_sample_eq_ok"):
             if not isinstance(options.get(option), bool):
                 errors.append(f"options.{option} must be a bool")
+        if isinstance(options.get("batch_sample_eq_ok"), bool):
+            option_batch_sample_eq_ok = bool(options.get("batch_sample_eq_ok"))
         for option in ("model", "fixture"):
             value = options.get(option)
             if not isinstance(value, str) or not value.strip():
@@ -2197,6 +2214,30 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("options.projection_dispatch_artifact must be a relative path under benchmarks/results")
                 else:
                     option_projection_dispatch_artifact = projection_dispatch_artifact
+        batch_sample_mode = options.get("batch_sample_mode")
+        if batch_sample_mode is not None and not isinstance(batch_sample_mode, str):
+            errors.append("options.batch_sample_mode must be a string or null")
+        elif isinstance(batch_sample_mode, str):
+            if batch_sample_mode not in {"serial_lm_head", "batched_lm_head"}:
+                errors.append("options.batch_sample_mode must be serial_lm_head, batched_lm_head, or null")
+            else:
+                option_batch_sample_mode = batch_sample_mode
+        batch_sample_eq_artifact_template = options.get("batch_sample_eq_artifact_template")
+        if batch_sample_eq_artifact_template is not None and not isinstance(batch_sample_eq_artifact_template, str):
+            errors.append("options.batch_sample_eq_artifact_template must be a string or null")
+        elif isinstance(batch_sample_eq_artifact_template, str):
+            if not batch_sample_eq_artifact_template.strip():
+                errors.append("options.batch_sample_eq_artifact_template must be a non-empty string or null")
+            else:
+                option_batch_sample_eq_artifact_template = batch_sample_eq_artifact_template
+        batch_sample_eq_rows = options.get("batch_sample_eq_rows")
+        if batch_sample_eq_rows is not None and not isinstance(batch_sample_eq_rows, str):
+            errors.append("options.batch_sample_eq_rows must be a string or null")
+        elif isinstance(batch_sample_eq_rows, str):
+            if not batch_sample_eq_rows.strip():
+                errors.append("options.batch_sample_eq_rows must be a non-empty string or null")
+            else:
+                option_batch_sample_eq_rows = batch_sample_eq_rows
         compiler_version_file = options.get("compiler_version_file")
         if compiler_version_file is not None and not isinstance(compiler_version_file, str):
             errors.append("options.compiler_version_file must be a string or null")
@@ -2634,7 +2675,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if command_category == _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and _duplicate_flags(argv, _GGUF_DIAGNOSTIC_UNIQUE_FLAGS):
                 errors.append("commands[].argv must not repeat GGUF diagnostic flags")
                 break
-            duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
+            duplicated_retained_flags = _duplicate_flags(
+                argv,
+                tuple(dict.fromkeys(_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS + _BATCH_SAMPLE_UNIQUE_FLAGS)),
+            )
             if duplicated_retained_flags:
                 errors.append("commands[].argv must not repeat retained benchmark flags")
                 break
@@ -2656,6 +2700,86 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
             elif projection_dispatch_flag_present:
                 errors.append("commands[].argv --projection-dispatch-artifact is only valid for c>N retained native commands")
+                break
+            sample_flags_present = any(
+                _flag_token_matches(token, flag) for token in argv for flag in _BATCH_SAMPLE_UNIQUE_FLAGS
+            )
+            sample_mode_arg = _argv_value(argv, "--batch-sample-mode")
+            sample_eq_ok_present = any(_flag_token_matches(token, "--batch-sample-eq-ok") for token in argv)
+            sample_eq_artifact_arg = _argv_value(argv, "--batch-sample-eq-artifact")
+            sample_eq_rows_arg = _argv_value(argv, "--batch-sample-eq-rows")
+            if entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
+                if entry.get("batch_size") == 1:
+                    if sample_flags_present:
+                        errors.append("commands[].argv c=1 native baseline must not include batch sampler evidence flags")
+                        break
+                elif option_batch_sample_mode is None:
+                    if sample_flags_present:
+                        errors.append("commands[].argv batch sampler evidence flags require options.batch_sample_mode")
+                        break
+                else:
+                    if sample_mode_arg != option_batch_sample_mode:
+                        errors.append("commands[].argv --batch-sample-mode must match options.batch_sample_mode")
+                        break
+                    if sample_eq_ok_present != option_batch_sample_eq_ok:
+                        errors.append("commands[].argv --batch-sample-eq-ok must match options.batch_sample_eq_ok")
+                        break
+                    if option_batch_sample_eq_artifact_template is None:
+                        if sample_eq_artifact_arg is not None:
+                            errors.append("commands[].argv --batch-sample-eq-artifact requires options.batch_sample_eq_artifact_template")
+                            break
+                    else:
+                        try:
+                            expected_sample_eq_artifact = _format_batch_template(
+                                option_batch_sample_eq_artifact_template,
+                                batch_size=int(entry["batch_size"]),
+                                option="options.batch_sample_eq_artifact_template",
+                            )
+                        except ValueError as exc:
+                            errors.append(str(exc))
+                            break
+                        sample_eq_artifact_path = Path(expected_sample_eq_artifact)
+                        if (
+                            sample_eq_artifact_path.is_absolute()
+                            or len(sample_eq_artifact_path.parts) < 3
+                            or sample_eq_artifact_path.parts[:2] != ("benchmarks", "results")
+                            or _path_has_parent_directory_component(expected_sample_eq_artifact)
+                        ):
+                            errors.append("options.batch_sample_eq_artifact_template must expand to a relative path under benchmarks/results")
+                            break
+                        if sample_eq_artifact_arg != expected_sample_eq_artifact:
+                            errors.append("commands[].argv --batch-sample-eq-artifact must match options.batch_sample_eq_artifact_template")
+                            break
+                    if option_batch_sample_eq_rows is None:
+                        expected_sample_eq_rows = str(entry["batch_size"]) if option_batch_sample_eq_ok else None
+                    else:
+                        try:
+                            expected_sample_eq_rows = _format_batch_template(
+                                option_batch_sample_eq_rows,
+                                batch_size=int(entry["batch_size"]),
+                                option="options.batch_sample_eq_rows",
+                            )
+                        except ValueError as exc:
+                            errors.append(str(exc))
+                            break
+                    if expected_sample_eq_rows is None:
+                        if sample_eq_rows_arg is not None:
+                            errors.append("commands[].argv --batch-sample-eq-rows requires options.batch_sample_eq_rows or options.batch_sample_eq_ok")
+                            break
+                    elif sample_eq_rows_arg != expected_sample_eq_rows:
+                        errors.append("commands[].argv --batch-sample-eq-rows must match options.batch_sample_eq_rows/current batch size")
+                        break
+                    if sample_eq_rows_arg is not None:
+                        try:
+                            sample_eq_rows_int = int(sample_eq_rows_arg, 10)
+                        except ValueError:
+                            errors.append("commands[].argv --batch-sample-eq-rows must be an integer")
+                            break
+                        if sample_eq_rows_int <= 0:
+                            errors.append("commands[].argv --batch-sample-eq-rows must be positive")
+                            break
+            elif sample_flags_present:
+                errors.append("commands[].argv batch sampler evidence flags are only valid for c>N retained native commands")
                 break
             try:
                 json_path = argv[argv.index("--json") + 1]
@@ -4378,7 +4502,7 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         if not isinstance(value, str) or not value.strip():
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
-    for option in ("dry_run", "stop_on_failure", "include_int8", "include_gguf", "require_cached_build"):
+    for option in ("dry_run", "stop_on_failure", "include_int8", "include_gguf", "require_cached_build", "batch_sample_eq_ok"):
         if not isinstance(getattr(args, option, None), bool):
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a typed bool")
@@ -4410,6 +4534,14 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         _validate_cli_path_option("--compiler-version-file", args.compiler_version_file)
     if args.summary_json is not None:
         _validate_cli_path_option("--summary-json", args.summary_json)
+    batch_sample_mode = getattr(args, "batch_sample_mode", None)
+    if batch_sample_mode is not None and batch_sample_mode not in {"serial_lm_head", "batched_lm_head"}:
+        raise ValueError("--batch-sample-mode must be serial_lm_head or batched_lm_head")
+    for option in ("batch_sample_eq_artifact_template", "batch_sample_eq_rows"):
+        value = getattr(args, option, None)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            flag = "--" + option.replace("_", "-")
+            raise ValueError(f"{flag} must be a non-empty string")
 
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
@@ -4429,6 +4561,10 @@ def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
         "projection_dispatch_artifact": None
         if getattr(args, "projection_dispatch_artifact", None) is None
         else str(args.projection_dispatch_artifact),
+        "batch_sample_mode": getattr(args, "batch_sample_mode", None),
+        "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
+        "batch_sample_eq_artifact_template": getattr(args, "batch_sample_eq_artifact_template", None),
+        "batch_sample_eq_rows": getattr(args, "batch_sample_eq_rows", None),
     }
 
 
