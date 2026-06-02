@@ -1533,15 +1533,22 @@ def _payload_json(payload: Mapping[str, Any]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False)
 
 
-def _profiled_command(args: argparse.Namespace, argv: Sequence[str] | None) -> str | None:
+def _profiled_command(
+    args: argparse.Namespace,
+    argv: Sequence[str] | None,
+    profiler: Mapping[str, Any] | None = None,
+) -> str | None:
     explicit = getattr(args, "profiler_command", None)
     if isinstance(explicit, str) and explicit:
         return explicit
     if getattr(args, "profiler_json", None) is None:
         return None
+    trace_dir = profiler.get("trace_dir") if isinstance(profiler, Mapping) else None
+    if not isinstance(trace_dir, str) or not trace_dir:
+        trace_dir = "<profile-dir>"
     return (
         f"{_ROCPROF_EXECUTABLE} {_ROCPROF_COMMAND_FLAGS[0]} {_ROCPROF_COMMAND_FLAGS[1]} {_ROCPROF_OUTPUT_FORMAT} "
-        f"{_ROCPROF_COMMAND_FLAGS[2]} <profile-dir> -- {_command(argv)}"
+        f"{_ROCPROF_COMMAND_FLAGS[2]} {shlex.quote(trace_dir)} -- {_command(argv)}"
     )
 
 
@@ -2999,6 +3006,16 @@ def _batch_execution_with_satisfied_correctness_gates(
         if _batch_execution_has_native_full_attention_context(sanitized, kv_storage_dtype=kv_storage_dtype):
             stale_blockers.add(_NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER)
         sanitized["blockers"] = [blocker for blocker in blockers if blocker not in stale_blockers]
+    projection_dispatch = sanitized.get("projection_dispatch")
+    projection_eligible = isinstance(projection_dispatch, Mapping) and projection_dispatch.get("throughput_claim_eligible") is True
+    if (
+        sanitized.get("native_compact_prefill") is True
+        and sanitized.get("native_caware_decode") is True
+        and _batch_execution_has_native_full_attention_context(sanitized, kv_storage_dtype=kv_storage_dtype)
+        and sanitized.get("blockers") == []
+        and projection_eligible
+    ):
+        sanitized["throughput_claim_eligible"] = True
     return sanitized
 
 
@@ -4217,7 +4234,7 @@ def _build_payload(
         _profiler_reference(getattr(args, "profiler_json", None)),
         bench,
     )
-    profiled_command = _profiled_command(args, argv)
+    profiled_command = _profiled_command(args, argv, profiler)
     retained_artifact_path = str(args.json) if args.json is not None else None
     scheduler_metadata = dict(bench["scheduler_metadata"])
     _attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)

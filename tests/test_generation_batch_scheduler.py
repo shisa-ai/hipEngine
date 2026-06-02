@@ -19785,6 +19785,25 @@ def test_qwen35_retained_batch_execution_drops_satisfied_correctness_gate_blocke
     assert satisfied["blockers"] == ["projection dispatch: no c-aware projection candidate applies to this row count"]
     assert batch_execution["blockers"][0] == retained_bench._NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER
 
+    eligible_batch_execution = {
+        **batch_execution,
+        "blockers": [
+            retained_bench._NATIVE_C_GT_ONE_BF16_CONTEXT_BLOCKER,
+            retained_bench._NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER,
+        ],
+        "native_compact_prefill": True,
+        "native_caware_decode": True,
+        "throughput_claim_eligible": False,
+        "projection_dispatch": {"throughput_claim_eligible": True},
+    }
+    eligible = retained_bench._batch_execution_with_satisfied_correctness_gates(
+        eligible_batch_execution,
+        equality_passed=True,
+        kv_storage_dtype="bf16",
+    )
+    assert eligible["blockers"] == []
+    assert eligible["throughput_claim_eligible"] is True
+
 
 def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:
     valid = {

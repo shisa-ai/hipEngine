@@ -225,13 +225,18 @@ DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS = (
 )
 
 
-def _disallowed_accepted_diagnostic_trace_field_reasons(label: str) -> list[str]:
+def _disallowed_accepted_diagnostic_trace_field_reasons(
+    label: str,
+    *,
+    exact_decode_fields: bool = False,
+) -> list[str]:
     reasons: list[str] = []
     for field_name in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
         if field_name in label:
             reasons.append(field_name)
     for field_name in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
-        if field_name in label:
+        decode_field_matches = (label == field_name) if exact_decode_fields else (field_name in label)
+        if decode_field_matches:
             reasons.append(field_name)
     for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS:
         if fragment in label:
@@ -268,7 +273,10 @@ def _validate_no_disallowed_diagnostic_metadata(
             for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
                 if fragment in key_label:
                     errors.append(f"{child_path} must not include diagnostic evidence {fragment} for accepted artifacts")
-            for trace_field_reason in _disallowed_accepted_diagnostic_trace_field_reasons(key_label):
+            for trace_field_reason in _disallowed_accepted_diagnostic_trace_field_reasons(
+                key_label,
+                exact_decode_fields=True,
+            ):
                 errors.append(f"{child_path} must not include diagnostic trace field {trace_field_reason} for accepted artifacts")
             _validate_no_disallowed_diagnostic_metadata(child, path=child_path, errors=errors)
     elif isinstance(value, list):
@@ -1418,6 +1426,7 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         expected_active_c = int(concurrency) if concurrency_valid else None
         expected_mode = None
         expected_context_bucket = None
+        expected_context_buckets: set[int] = set()
         expected_active_mask = None
         expected_top_k = None
         expected_experts_per_token = None
@@ -1433,6 +1442,7 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             context_bucket = decode_shape_key.get("context_bucket")
             if isinstance(context_bucket, int) and not isinstance(context_bucket, bool):
                 expected_context_bucket = int(context_bucket)
+                expected_context_buckets.add(int(context_bucket))
             active_mask = decode_shape_key.get("active_mask")
             if isinstance(active_mask, list) and all(isinstance(active, bool) for active in active_mask):
                 expected_active_mask = "".join("1" if active else "0" for active in active_mask)
@@ -1448,6 +1458,14 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             draft_depth = decode_shape_key.get("draft_depth")
             if isinstance(draft_depth, int) and not isinstance(draft_depth, bool):
                 expected_draft_depth = int(draft_depth)
+        observed_decode_shape_keys = scheduler_metadata.get("decode_shape_keys_observed") if isinstance(scheduler_metadata, Mapping) else None
+        if isinstance(observed_decode_shape_keys, list):
+            for observed_shape_key in observed_decode_shape_keys:
+                if not isinstance(observed_shape_key, Mapping):
+                    continue
+                observed_context_bucket = observed_shape_key.get("context_bucket")
+                if isinstance(observed_context_bucket, int) and not isinstance(observed_context_bucket, bool):
+                    expected_context_buckets.add(int(observed_context_bucket))
         workload_kv_dtype = workload.get("kv_storage_dtype")
         expected_kv_storage_dtype = workload_kv_dtype if isinstance(workload_kv_dtype, str) else None
         max_layers = workload.get("max_layers")
@@ -1459,6 +1477,7 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                 expected_active_c=expected_active_c,
                 expected_mode=expected_mode,
                 expected_context_bucket=expected_context_bucket,
+                expected_context_buckets=expected_context_buckets,
                 expected_active_mask=expected_active_mask,
                 expected_kv_storage_dtype=expected_kv_storage_dtype,
                 expected_layer_plan=expected_layer_plan,
@@ -2654,9 +2673,14 @@ def _validate_graph_replay_profiler_evidence(
     execution = payload.get("execution")
     scheduler_metadata = execution.get("scheduler_metadata") if isinstance(execution, Mapping) else None
     graph_stats = scheduler_metadata.get("graph_bucket_stats") if isinstance(scheduler_metadata, Mapping) else None
-    hits = graph_stats.get("hits") if isinstance(graph_stats, Mapping) else None
-    if not isinstance(hits, int) or isinstance(hits, bool) or hits <= 0:
-        return
+    replay_kernel_hits = graph_stats.get("replay_kernel_hits") if isinstance(graph_stats, Mapping) else None
+    if isinstance(replay_kernel_hits, int) and not isinstance(replay_kernel_hits, bool):
+        if replay_kernel_hits <= 0:
+            return
+    else:
+        hits = graph_stats.get("hits") if isinstance(graph_stats, Mapping) else None
+        if not isinstance(hits, int) or isinstance(hits, bool) or hits <= 0:
+            return
     duration_categories = profiler.get("kernel_duration_categories_ns")
     graph_replay_duration = duration_categories.get("graph_replay") if isinstance(duration_categories, Mapping) else None
     if not _is_positive_number(graph_replay_duration):
@@ -4130,6 +4154,7 @@ def _valid_request_observability(
     expected_active_c: int | None = None,
     expected_mode: str | None = None,
     expected_context_bucket: int | None = None,
+    expected_context_buckets: set[int] | None = None,
     expected_active_mask: str | None = None,
     expected_kv_storage_dtype: str | None = None,
     expected_layer_plan: str | None = None,
@@ -4193,7 +4218,12 @@ def _valid_request_observability(
                 if expected_active_c is not None and c_axis != str(expected_active_c):
                     errors.append("observability.per_request.*.bucket_key c axis must match workload.concurrency for accepted artifacts")
                     ok = False
-                if expected_context_bucket is not None and ctx_axis != str(expected_context_bucket):
+                if expected_context_buckets:
+                    expected_context_axes = {str(context_bucket) for context_bucket in expected_context_buckets}
+                    if ctx_axis not in expected_context_axes:
+                        errors.append("observability.per_request.*.bucket_key context axis must match scheduler decode_shape_key.context_bucket or an observed scheduler decode context bucket for accepted artifacts")
+                        ok = False
+                elif expected_context_bucket is not None and ctx_axis != str(expected_context_bucket):
                     errors.append("observability.per_request.*.bucket_key context axis must match scheduler decode_shape_key.context_bucket for accepted artifacts")
                     ok = False
                 if expected_active_mask is not None and mask_axis != expected_active_mask:
