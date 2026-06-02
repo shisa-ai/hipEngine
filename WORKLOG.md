@@ -64513,3 +64513,23 @@ Validation:
 - Focused metadata tests passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_reports_selected_c1_with_per_row_full_fallback -q`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Artifact assertions loaded the promoted selected-c1 MoE matrix and child JSONs, verified c=2/c=4/c=8 prefix sets, `moe_decode_path=selected_c1_batch`, `moe_selected_c1_fallback_layers=0`, absence of the selected-c1 MoE decode blocker, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY selected-QKV/Z projection blocker removed
+
+Promoted the selected-QKV/Z correctness projection path out of the generic decode-blocker bucket. The runtime still records `linear_attention_projection_path=selected_c1_qkv_z`, `native_caware_decode=false`, and retained validation still requires a real native projection/projection-dispatch artifact, but the c=2/c=4/c=8 correctness-default equality artifacts no longer carry `linear-attention QKV/Z projections forced to selected-c1 diagnostic path` as a decode blocker.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` prints metric `137`; generated equality prefixes are `[137,137]`; decode metadata records `linear_attention_projection_path=selected_c1_qkv_z`, `moe_decode_path=selected_c1_batch`, and `decode_execution.blockers=[]`. Batch execution remains non-retained with `native_caware_decode=false` and a generic diagnostic-fallback/projection-dispatch blocker.
+- `benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-qkvz-promoted-matrix/summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`, and `performance_claim=false`.
+- Child artifacts pass generated-token equality vs independent c=1 and no longer include `linear-attention QKV/Z projections forced to selected-c1 diagnostic path` in retained/decode blockers:
+  - c=2 prefixes `[137,137]`.
+  - c=4 prefixes `[137,137,137,137]`.
+  - c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- Native QKV/Z bit-exact projection and projection-dispatch evidence remain retained blockers; no c>N throughput/scaling claim is made.
+
+Validation:
+
+- Focused metadata test passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_selected_qkv_z_projection_is_non_native -q`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Artifact assertions loaded the promoted selected-QKV/Z matrix and child JSONs, verified c=2/c=4/c=8 prefix sets, `linear_attention_projection_path=selected_c1_qkv_z`, absence of the generic QKV/Z decode blocker, and `git diff --check` passed.

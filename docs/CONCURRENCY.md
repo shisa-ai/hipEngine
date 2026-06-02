@@ -172,11 +172,16 @@ What is still not green:
   c=2/c=4 row 0 stops at prefix `82`, c=8 rows stop at `82/11/40`), and a
   grouped-compact full-attention-MoE retest under current defaults remains red
   (`/tmp/hipengine-e2e-native-c2-512-128-current-defaults-fullattn-grouped-moe-probe.json`, prefixes `[82,137]`).
+  The promoted selected-QKV/Z metadata matrix now removes the generic QKV/Z
+  projection decode blocker while keeping `native_caware_decode=false` and
+  retained validation blocked until a real native projection path/projection-dispatch
+  artifact exists
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-qkvz-promoted-matrix/summary.json`).
   Therefore the current C2.3/C2.4 blockers are native QKV/Z bit exactness,
   native grouped-compact MoE for retained performance under this shape, and
-  projection-dispatch evidence; row-aware batch-GEMV linear/full-attention outputs
-  and the batched selected-c1 MoE correctness path are green and no longer block
-  correctness-default equality.
+  projection-dispatch evidence; row-aware batch-GEMV linear/full-attention outputs,
+  the batched selected-c1 MoE correctness path, and the selected-QKV/Z correctness
+  path are green and no longer block correctness-default equality.
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
@@ -196,7 +201,7 @@ What is still not green:
 | Public `LLM.generate()` / loop adapter | The public generator can be wrapped by `SubmitPollTextGenerator`, preserving outputs while exercising submit/poll semantics in tests. | `hipengine/generation/engine_loop.py:SubmitPollTextGenerator`; `pytest -q tests/test_generation_batch_scheduler.py -q`. | Native Qwen/PARO c>N decode equality and retained benchmark evidence. |
 | Engine loop / scheduler | `ResidentEngineLoop` and `ResidentBatchScheduler` own pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, completion routing, and unified reclaim. | `hipengine/generation/engine_loop.py:ResidentEngineLoop`; `hipengine/generation/batch_scheduler.py`; scheduler tests. | Runtime equality/perf gates, not host-loop shape. |
 | Prefill | BF16 compact/native prompt-list prefill is live; scheduler tests cover chunk/policy plumbing. INT8 retained c>N prefill remains blocked. | `prefill_native_packed`, `CompactPromptSlab`, `scripts/qwen35_batch_packed_prefill_correctness.py`; `tests/test_generation_batch_scheduler.py`. | INT8 c>N parity and retained end-to-end equality. |
-| Decode runtime | Safe/diagnostic paths remain non-claiming: serial bridge rows and experimental native rows are blocked/rejected unless generated-token equality and native execution metadata pass. c=2/c=4/c=8 512/128 generated equality is green with auto selected-QKV/Z projection diagnostics, native segmented linear state, batch-GEMV/Marlin linear output, batched selected-c1 MoE plus row-aware shared-expert GEMV, and native full-attention decode plus row-aware batch-GEMV full-attention output. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; retained/hidden-bisect artifacts cited in C2. | Native projection/MoE/full-attention parity and retained benchmark/profiler evidence. |
+| Decode runtime | Safe/diagnostic paths remain non-claiming: serial bridge rows and experimental native rows are blocked/rejected unless generated-token equality and native execution metadata pass. c=2/c=4/c=8 512/128 generated equality is green with auto selected-QKV/Z correctness projection, native segmented linear state, batch-GEMV/Marlin linear output, batched selected-c1 MoE plus row-aware shared-expert GEMV, and native full-attention decode plus row-aware batch-GEMV full-attention output. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; retained/hidden-bisect artifacts cited in C2. | Native projection/MoE/full-attention parity and retained benchmark/profiler evidence. |
 | Sampler | `PerRowSamplingParams` and sampler blocks exist; native `batched_lm_head` now uses a row-aware `hipengine_batch_argmax_f32` launch and is evidence-gated by generated-token equality plus sampler provenance. The retained bench's no-flag c=2/4/8 diagnostic path now auto-attaches the repo-retained sampler equality artifacts so primary equality probes exercise the row-aware sampler instead of the older serial LM-head loop. | `hipengine/generation/batch_scheduler.py:PerRowSamplingParams`; `hipengine.dispatch.sampling`; `hipengine/kernels/hip_gfx1100/linear/lm_head.*`; `scripts/qwen35_batch_retained_bench.py`; `tests/test_lm_head_plan.py`; `tests/test_generation_batch_scheduler.py`. | Retained native throughput is still blocked by projection/MoE/full-attention/graph-replay gates, not by the sampler launch itself. |
 | Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K long-context decode is labeled per-row fallback. | `scripts/qwen35_batch_correctness.py`; `/tmp/hipengine-multiloop-c{2,4,8}-correctness.json`; attention dispatch tests. | Row-aware split-K reducer; INT8 end-to-end gate. |
 | MoE / quant kernels | The correctness-first retained-bench default now uses a batched selected-c1 MoE path for `tokens>1` and forces the packed shared expert through row-aware GEMV for c<=8, removing host per-row MoE replay and the selected-c1 MoE decode blocker from the c=2/c=4/c=8 equality gate. Grouped-compact MoE remains the retained target and is still red under this shape. | `hipengine/runtime/qwen35_paro.py`; `hipengine/runtime/qwen35_paro_runner.py`; `benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-moe-promoted-matrix/summary.json`; `/tmp/hipengine-e2e-native-c2-512-128-current-defaults-fullattn-grouped-moe-probe.json`. | Native grouped-compact MoE evidence and retained benchmark/profiler evidence; selected-c1 is correctness-first, not a retained throughput path. |
@@ -704,7 +709,8 @@ roll-up/status view.
       c=2 hidden/generated drift isolated by the selected-QKV/Z projection
       controls; native segmented conv/GDN/recurrent state,
       batch-GEMV/Marlin linear output, and native A/B projections for c=2/c=4/c=8 are
-      token-green under selected-QKV/Z, so the current blockers are native QKV/Z
+      token-green under selected-QKV/Z, whose correctness metadata no longer carries
+      a generic projection decode blocker; the current retained blockers are native QKV/Z
       projections, grouped-compact linear MoE under this shape, and native
       full-attention parity. Row-aware batch-GEMV/Marlin linear output is green and no longer blocks, although the older fused/native linear output path remains a negative control. Acceptance: C2.2 reports hidden equality for the failing fixture on
       native linear-attention projection/output paths and generated-token equality
@@ -1494,7 +1500,11 @@ roll-up/status view.
       removes per-row linear/full-attention MoE replay from the c=2/c=4/c=8
       equality default. The follow-up selected-rotary-input, selected-QKV-only,
       and selected-Z-only diagnostics all fail c=2 at the same row-1 prefix-104
-      boundary, so selected-c1 QKV/Z remains required as a complete pair.
+      boundary, so selected-c1 QKV/Z remains required as a complete correctness pair.
+      The promoted selected-QKV/Z matrix
+      (`benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-qkvz-promoted-matrix/summary.json`)
+      keeps c=2/c=4/c=8 prefixes at `137` without the generic QKV/Z decode blocker,
+      while still marking the path non-retained/non-native for projection-dispatch acceptance.
 - [x] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.

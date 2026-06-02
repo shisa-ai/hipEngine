@@ -4697,8 +4697,6 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("linear-attention MoE forced to per-row selected-c1 diagnostic path")
             if force_selected_c1_linear_projections:
                 decode_blockers.append("linear-attention projections forced to selected-c1 diagnostic path")
-            if force_selected_c1_qkv_z_linear_projections:
-                decode_blockers.append("linear-attention QKV/Z projections forced to selected-c1 diagnostic path")
             if force_selected_c1_qkv_z_linear_input:
                 decode_blockers.append("linear-attention QKV/Z rotary inputs forced to selected-c1 diagnostic path")
             if force_selected_c1_qkv_linear_projections:

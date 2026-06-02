@@ -3226,7 +3226,7 @@ def test_qwen35_resident_linear_batch_decode_selected_qkv_z_projection_is_non_na
     assert execution["linear_attention_projection_path"] == "selected_c1_qkv_z"
     assert execution["linear_attention_state_path"] == "native_segments"
     assert execution["linear_attention_output_path"] == "native_batch"
-    assert execution["blockers"] == ["linear-attention QKV/Z projections forced to selected-c1 diagnostic path"]
+    assert execution["blockers"] == []
     layer = execution["layer_executions"][0]
     assert layer["native_caware_decode"] is False
     assert layer["linear_attention_projection_path"] == "selected_c1_qkv_z"
