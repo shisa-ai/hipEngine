@@ -63678,3 +63678,23 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: independent token-1 scratch inside the native-batch full-attention layer is still not equivalent to the outer per-row full-attention fallback. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. The remaining blocker is now outside the obvious full-attention math substage/scratch ordering: likely runner/session side effects that differ between the native-batch branch and the outer per-row fallback.
 
 Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention layer-copy diagnostic
+
+Added a focused full-attention native-branch layer-output copy diagnostic:
+
+- Runtime env: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY=1`.
+- Retained/hidden scripts: `--batch-decode-full-attn-layer-copy {batch,per_row}`.
+- Runtime path: after the native-batch full-attention layer returns, optionally copy each output row into the next hidden buffer with independent row-sized D2D copies instead of one contiguous batch copy.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention batch path with all exposed substages forced to row replay, independent per-row layer scratch, and per-row layer output copies:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-layer-copy.json`
+  - `batch_decode_full_attention_path=native_batch`, `attention_input=qkv=scratch=context=output=per_row`, `full_attention_kv_append=per_row`, `attention_append_context_order=interleaved`, `attention_suffix_order=interleaved`, `full_attention_layer_copy=per_row`, `full_attention_moe=per_row_c1`, `post_attention=per_row`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `status=rejected_correctness`, no performance claim.
+
+Conclusion: the native-branch contiguous full-attention layer-output copy is not the sole remaining c=2 equality blocker. The gap remains between the native-batch full-attention branch and the outer per-row full-attention fallback despite row-local math, scratch, and output-copy diagnostics.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

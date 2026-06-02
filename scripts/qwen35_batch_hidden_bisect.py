@@ -5764,6 +5764,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv forces one batched GEMV kernel and per_row forces token-1 O projection kernels.",
     )
     parser.add_argument(
+        "--batch-decode-full-attn-layer-copy",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row copies rows independently and blocks retained claims.",
+    )
+    parser.add_argument(
         "--batch-decode-full-attn-moe-path",
         choices=("grouped_compact", "per_row_c1"),
         default="grouped_compact",
@@ -5862,6 +5868,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_attention_append_context_order": str(args.batch_decode_attn_append_context_order),
             "batch_decode_attention_suffix_order": str(args.batch_decode_attn_suffix_order),
             "batch_decode_full_attention_output_path": str(args.batch_decode_full_attn_output_path),
+            "batch_decode_full_attention_layer_copy": str(args.batch_decode_full_attn_layer_copy),
             "batch_decode_full_attention_moe_path": str(args.batch_decode_full_attn_moe_path),
             "batch_decode_post_attention_path": str(args.batch_decode_post_attn_path),
             "native_caware_decode": bool(
@@ -5881,6 +5888,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_attn_append_context_order == "phased"
                 and args.batch_decode_attn_suffix_order == "phased"
                 and args.batch_decode_full_attn_output_path == "batch"
+                and args.batch_decode_full_attn_layer_copy == "batch"
                 and args.batch_decode_full_attn_moe_path == "grouped_compact"
                 and args.batch_decode_post_attn_path == "batch"
             ),
@@ -5983,6 +5991,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] = (
         "1" if args.batch_decode_full_attn_output_path == "batch_gemv" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] = (
+        "1" if args.batch_decode_full_attn_layer_copy == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
         "1" if args.batch_decode_full_attn_moe_path == "per_row_c1" else "0"

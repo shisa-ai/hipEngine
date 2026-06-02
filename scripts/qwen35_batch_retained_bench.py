@@ -3745,6 +3745,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] = (
         "1" if getattr(args, "batch_decode_full_attn_output_path", "batch") == "batch_gemv" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] = (
+        "1" if getattr(args, "batch_decode_full_attn_layer_copy", "batch") == "per_row" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
         "1" if getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact") == "per_row_c1" else "0"
     )
@@ -4190,6 +4193,7 @@ def _build_payload(
             "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
             "batch_decode_attention_suffix_order": str(getattr(args, "batch_decode_attn_suffix_order", "phased")),
             "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
+            "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
         },
@@ -4366,6 +4370,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("batch", "batch_gemv", "per_row"),
         default="batch",
         help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv forces one batched GEMV kernel and per_row forces token-1 O projection kernels.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-layer-copy",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row copies rows independently and blocks retained claims.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",

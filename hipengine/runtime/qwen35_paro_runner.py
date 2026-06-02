@@ -4053,6 +4053,9 @@ class Qwen35ParoResidentSession:
             and not force_per_row_full_attention_output
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT")
         )
+        force_per_row_full_attention_layer_copy = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"
+        )
         force_per_row_post_attention = rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN")
         force_per_row_full_attention_moe = (not dense_mlp) and rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"
@@ -4082,6 +4085,9 @@ class Qwen35ParoResidentSession:
             "per_row_o_projection_fallback"
             if force_per_row_full_attention_output
             else "batch_gemv" if force_batch_gemv_full_attention_output else "native_batch"
+        )
+        full_attention_layer_copy_decode_path = (
+            "per_row_layer_copy_fallback" if force_per_row_full_attention_layer_copy else "batch_copy"
         )
         post_attention_decode_path = "per_row_add_rmsnorm_fallback" if force_per_row_post_attention else "native_batch"
         use_single_row_c1_linear = rows == 1 and not force_per_row_linear
@@ -4428,6 +4434,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_scratch
                                 or force_per_row_full_attention_output
                                 or force_batch_gemv_full_attention_output
+                                or force_per_row_full_attention_layer_copy
                                 or force_per_row_full_attention_context
                                 or force_per_row_full_attention_kv_append
                                 or force_per_row_full_attention_append_context
@@ -4454,13 +4461,25 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_suffix_decode_path"] = full_attention_suffix_decode_path
                         if force_per_row_full_attention_output or force_batch_gemv_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = full_attention_output_decode_path
+                        if force_per_row_full_attention_layer_copy:
+                            layer_execution["full_attention_layer_copy_decode_path"] = full_attention_layer_copy_decode_path
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = post_attention_decode_path
                         full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
                         if isinstance(full_spans_metadata, dict):
                             layer_execution["full_attention_segment_metadata"] = full_spans_metadata
                         layer_executions.append(layer_execution)
-                        self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+                        if force_per_row_full_attention_layer_copy:
+                            for row in range(rows):
+                                self.runtime.memcpy_async(
+                                    next_hidden.ptr + row * self.hidden_nbytes,
+                                    out.ptr + row * self.hidden_nbytes,
+                                    self.hidden_nbytes,
+                                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                                    stream,
+                                )
+                        else:
+                            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                     else:
                         if full_attention_decode_path == "none":
                             full_attention_decode_path = "per_row_splitk_fallback" if max_context >= 1024 else "per_row_context_fallback"
@@ -4588,6 +4607,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention O projection forced to per-row diagnostic path")
             if force_batch_gemv_full_attention_output:
                 decode_blockers.append("full-attention O projection forced to batch GEMV diagnostic path")
+            if force_per_row_full_attention_layer_copy:
+                decode_blockers.append("full-attention layer output forced to per-row copy diagnostic path")
             if force_per_row_post_attention:
                 decode_blockers.append("post-attention add/rmsnorm forced to per-row diagnostic path")
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
@@ -4630,6 +4651,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_suffix
                 and not force_per_row_full_attention_output
                 and not force_batch_gemv_full_attention_output
+                and not force_per_row_full_attention_layer_copy
                 and not force_per_row_full_attention_moe
                 and not force_per_row_post_attention,
                 "linear_attention_segment_metadata": linear_segment_metadata,
