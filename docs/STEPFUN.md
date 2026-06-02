@@ -762,9 +762,11 @@ reporting.
   `recommended_command_writes_partial_output_before_launch=true` plus the
   expected `status=running` path/overwrite metadata; status integrity verifies
   the command-level partial-output guarantee and that the queue/compact blocker
-  reports mirror the same path/status/overwrite fields. The helper preserves the
-  recorded `diagnostic_logs=true` setting so reruns keep llama.cpp load/error
-  logs enabled for the canonical timeout artifact. The handoff now
+  reports mirror the same path/status/overwrite fields; oracle-helper tests now
+  cover both successful overwrite and timeout overwrite of the pre-launch
+  `status=running` artifact. The helper preserves the recorded
+  `diagnostic_logs=true` setting so reruns keep llama.cpp load/error logs
+  enabled for the canonical timeout artifact. The handoff now
   also records `oracle_helper_long_timeout_command` (`--timeout-s 900.0`, same
   canonical oracle output JSON) with length/SHA-256 metadata and mirrors it in
   the first blocker work item. The blocker queue now also exposes a generic
