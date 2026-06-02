@@ -3995,9 +3995,24 @@ def _resolved_batch_decode_linear_projection_path(args: argparse.Namespace) -> s
     return "batch" if int(batch_size) <= 8 else "selected_c1"
 
 
+def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
+    if not hasattr(args, "batch_decode_moe_path"):
+        return "grouped_compact"
+    path = str(getattr(args, "batch_decode_moe_path", "grouped_compact"))
+    if path != "auto":
+        return path
+    batch_size = getattr(args, "batch_size", 0)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = 0
+    # c=2 profiling shows native selected-c1 batch MoE is generated-token
+    # green and materially faster than grouped-compact, while c=4/c=8 retained
+    # rows already have accepted grouped-compact evidence.
+    return "selected_c1" if int(batch_size) == 2 else "grouped_compact"
+
+
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
-    batch_decode_moe_path = str(getattr(args, "batch_decode_moe_path", "grouped_compact"))
+    batch_decode_moe_path = _resolved_batch_decode_moe_path(args)
     force_selected_c1_moe = batch_decode_moe_path == "selected_c1"
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = "1" if force_selected_c1_moe else "0"
     os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] = "1" if force_selected_c1_moe else "0"
@@ -4555,7 +4570,7 @@ def _build_payload(
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
             "batch_prefill_linear_path": str(getattr(args, "batch_prefill_linear_path", "packed_segments")),
-            "batch_decode_moe_path": str(getattr(args, "batch_decode_moe_path", "grouped_compact")),
+            "batch_decode_moe_path": _resolved_batch_decode_moe_path(args),
             "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "batch_segments")),
             "batch_decode_linear_projection_path": _resolved_batch_decode_linear_projection_path(args),
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
@@ -4673,9 +4688,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--batch-decode-moe-path",
-        choices=("grouped_compact", "selected_c1"),
-        default="grouped_compact",
-        help="Global MoE path for c>N batch decode; grouped_compact is the correctness-first default for c<=8 decode batches, while selected_c1 forces the non-retained selected-GEMV MoE diagnostic.",
+        choices=("auto", "grouped_compact", "selected_c1"),
+        default="auto",
+        help="Global MoE path for c>N batch decode; auto selects selected_c1 for c=2 and grouped_compact otherwise, while explicit values force a diagnostic path.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",
