@@ -259,6 +259,13 @@ What is still not green:
   the context/gate-only diagnostic stayed green, so the next native fix target is
   the batch context/gate path rather than standalone KV append
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-vs-kvappend-isolation/summary.json`).
+  The raw batched paged-context primitive is green at the real multi-block shape
+  (`rows=2`, context 513/524, 64 Q heads, 8 KV heads, head_dim 128), and a
+  QKV-prep-only per-row diagnostic still reproduces the hidden mismatch; the
+  remaining issue is therefore native context/gate integration with model
+  scratch/cache/gate tensors, not standalone primitive context arithmetic or QKV
+  prep
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-primitive-realshape/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

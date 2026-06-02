@@ -64903,3 +64903,21 @@ Required loop verification for iteration 90:
 
 - Primary no-flag c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and metadata `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, `full_attention_decode_path=native_batch`, `native_caware_decode=true`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY full-attention context primitive real-shape check
+
+Ran iteration 91 for `concurrency-e2e/native-c2-e2e` after iteration 90 narrowed the full-attention hidden blocker away from standalone KV append. The question was whether the raw native batched paged-context primitive itself fails at the real multi-block decode shape, or whether the remaining problem is runtime integration with model scratch/cache/gate tensors.
+
+GPU1 / RX 7900 XTX evidence before final guard:
+
+- Real-shape primitive: `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --block-size 256 --max-context-len 524 --context-lens 513,524 --num-q-heads 64 --num-kv-heads 8 --head-dim 128 --include-dense-c1 --json /tmp/hipengine-e2e-primitive-c2-context524-realshape-iter91.json` passed. `attn_batch_vs_c1_max_abs=0.0`, `attn_batch_aa_max_abs=0.0`, `attn_batch_vs_numpy_max_abs=2.0489096641540527e-08`, and `attn_batch_vs_dense_c1_max_abs=2.0489096641540527e-08`.
+- QKV-prep-only diagnostic: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-qkv-iter91.json` stayed hidden red (`status=mismatch_found`, `hidden_passed=false`, `token_passed=true`) with native context/gate and native KV append. It reproduced the same L8 decode-step-11 row-0 hidden mismatch shape: `max_abs=0.010417938232421875`, `max_abs_flat_index=1543`, `elements_over_atol=934`, `bit_mismatch=2039`; metadata changed only `full_attention_qkv_decode_path=per_row_qkv_scratch_fallback` while preserving native batch projection/state/output/grouped MoE.
+- Context/gate-only green control remains `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-rerun-iter90.json` (`status=eq_ok`, `hidden_passed=true`, `token_passed=true`).
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-primitive-realshape/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Conclusion before final guard: raw batched paged-context arithmetic is correct at the real multi-block shape, and forcing only QKV prep per-row is not enough. The remaining full-attention work should trace/fix native context/gate integration with actual model scratch/cache/gate tensors rather than rewriting the primitive context kernel or returning to QKV prep/KV append.
+
+Required loop verification for iteration 91:
+
+- Primary no-flag c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and metadata `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, `full_attention_decode_path=native_batch`, `native_caware_decode=true`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
