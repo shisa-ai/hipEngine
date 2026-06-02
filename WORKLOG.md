@@ -64303,3 +64303,26 @@ Validation:
 - Primary c=2 verifier printed `137` after the matrix capture.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
 - Artifact assertions loaded all JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes and row-aware sampler metadata, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY output-labeled no-flag equality matrix
+
+Captured a follow-up no-flag c=2/c=4/c=8 generated-token equality matrix under `benchmarks/results/2026-06-02-hipengine-qwen35-native-default-output-labeled-equality-matrix/` after teaching `scripts/qwen35_batch_equality_matrix.py` to carry `workload.batch_decode_linear_output_path` into each compact row summary. This is runtime evidence only (`performance_claim=false`, `retained_ready=false`) and does not promote a throughput/scaling claim.
+
+Command:
+
+`HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_equality_matrix.py --batch-sizes 2,4,8 --output-dir benchmarks/results/2026-06-02-hipengine-qwen35-native-default-output-labeled-equality-matrix/artifacts --json benchmarks/results/2026-06-02-hipengine-qwen35-native-default-output-labeled-equality-matrix/summary.json --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build`
+
+Evidence:
+
+- `summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`.
+- c=2/c=4/c=8 child artifacts all have generated-token equality min prefix `137`; prefixes are `[137,137]`, `[137,137,137,137]`, and `[137,137,137,137,137,137,137,137]`.
+- The summary now records `generated_token_equality.workload.batch_decode_linear_output_path=batch_gemv`, matching `decode_execution.linear_attention_output_path=batch_gemv` for all three shapes.
+- Exploratory grouped-compact MoE probes were not retained: both linear/full-attention grouped MoE c=2 variants went red at prefixes `[82,137]`, and the combined c=2/c=4/c=8 grouped-MoE matrix was red (`min prefixes 82/82/11`). A native linear-output experiment was also not retained because c=4/c=8 were red and a c=2 rerun later went red (`[137,104]`). Keep the default batch-GEMV output and per-row MoE fallbacks until a stable green replacement is found.
+- Raw per-run logs and failed exploratory repo artifacts were deleted before staging.
+
+Validation:
+
+- Targeted: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_equality_matrix.py tests/test_generation_batch_scheduler.py` and `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_equality_matrix_dry_run_records_c2_c4_c8 -q` passed.
+- Primary c=2 verifier printed `137`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
+- Artifact assertions loaded all JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes and output-path metadata, and `git diff --check` passed.

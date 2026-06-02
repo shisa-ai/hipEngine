@@ -173,6 +173,7 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
         "workload": {
             "batch_decode_linear_path": workload.get("batch_decode_linear_path"),
             "batch_decode_full_attention_path": workload.get("batch_decode_full_attention_path"),
+            "batch_decode_linear_output_path": workload.get("batch_decode_linear_output_path"),
             "batch_decode_full_attention_output_path": workload.get("batch_decode_full_attention_output_path"),
             "batch_decode_full_attention_layer_copy": workload.get("batch_decode_full_attention_layer_copy"),
             "batch_decode_full_attention_moe_path": workload.get("batch_decode_full_attention_moe_path"),

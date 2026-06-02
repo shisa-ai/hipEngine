@@ -1732,6 +1732,9 @@ roll-up/status view.
       After the retained-bench default-evidence change, the no-flag c=2/c=4/c=8
       equality matrix is also green with row-aware sampler metadata
       (`benchmarks/results/2026-06-02-hipengine-qwen35-native-default-sampler-equality-matrix/summary.json`).
+      A follow-up output-labeled no-flag matrix keeps c=2/c=4/c=8 equality
+      green while recording the active linear-output route as `batch_gemv`
+      in the summary (`benchmarks/results/2026-06-02-hipengine-qwen35-native-default-output-labeled-equality-matrix/summary.json`).
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 
