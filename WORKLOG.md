@@ -64834,3 +64834,21 @@ Validation:
 - `multiloop_measure` recorded metric `137`; prompt verifier passes because explicit batch-GEMV QKV/Z generated-token equality is now green for c=2/c=4/c=8 with a retained code change and artifact evidence. No retained throughput/scaling claim is made.
 
 Conclusion: the explicit batch-GEMV QKV/Z correctness blocker was a 64-thread reduction-shape issue. The 128-thread path is c=2/c=4/c=8 generated-token green in the rerun matrix, but no-flag defaults and retained claims remain blocked by projection dispatch/default promotion, profiler, c1/serial baselines, and benchmark gates.
+
+## 2026-06-02 — CONCURRENCY auto projection default promoted to batch metadata
+
+Ran iteration 87 for `concurrency-e2e/native-c2-e2e` to remove the selected-QKV/Z default fallback now that iteration 86 fixed explicit batch-GEMV QKV/Z correctness. The retained code change updates `_auto_linear_projection_path()` in `scripts/qwen35_batch_retained_bench.py` and `scripts/qwen35_batch_hidden_bisect.py` so c<=8 auto projection resolves to `batch` instead of `selected_qkv_z`. This leaves selected replay available by explicit flag, but the no-flag correctness gate now reports native projection metadata while still using the row-aware 128-thread batch-GEMV QKV/Z path internally.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary no-flag c=2 512/128 verifier: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, and metadata `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `native_caware_decode=true`; only projection-dispatch evidence remains in batch blockers.
+- Fresh no-flag c=2/c=4/c=8 equality matrix: `/tmp/hipengine-e2e-native-c2-c4-c8-batch-default-iter87-matrix.json` passed with all rows prefix 137, `linear_attention_projection_path=native_batch`, and `native_caware_decode=true` for c=2/c=4/c=8.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-auto-batch-projection-default-matrix/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Validation:
+
+- Updated host tests to expect the no-selected/default projection env (`HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ=0`) and hidden-bisect dry-run auto path `batch`.
+- Required guard passed after test updates: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded metric `137`; prompt verifier passes because the no-flag c=2/c=4/c=8 generated-token equality gate is now green with native projection metadata and without the selected-QKV/Z default fallback. No retained throughput/scaling claim is made.
+
+Conclusion: selected-QKV/Z is no longer the no-flag correctness-default projection fallback for c<=8. The native c>N correctness blocker moves from generated-token projection parity to projection-dispatch evidence/default retained metadata, graph/profiler evidence, c1/serial baselines, and benchmark gates.

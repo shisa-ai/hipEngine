@@ -3661,7 +3661,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ_INPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_Z"] == "0"
@@ -3702,7 +3702,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ_INPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_Z"] == "0"
@@ -12460,7 +12460,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_prefill_full_attention_path"] == "packed_varlen"
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
-    assert payload["workload"]["batch_decode_linear_projection_path"] == "selected_qkv_z"
+    assert payload["workload"]["batch_decode_linear_projection_path"] == "batch"
     assert payload["workload"]["batch_decode_linear_state_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_linear_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_output_path"] == "batch_gemv"
@@ -12498,7 +12498,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
         ]
     )
     c8_auto_projection_payload = run_hidden_bisect(c8_auto_projection, ["--dry-run", "--batch-size", "8"])
-    assert c8_auto_projection_payload["workload"]["batch_decode_linear_projection_path"] == "selected_qkv_z"
+    assert c8_auto_projection_payload["workload"]["batch_decode_linear_projection_path"] == "batch"
 
     focused_trace = build_hidden_bisect_parser().parse_args(
         [

@@ -3811,10 +3811,11 @@ def _resolved_batch_decode_linear_projection_path(args: argparse.Namespace) -> s
     batch_size = getattr(args, "batch_size", 2)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 2
-    # Native A/B projections are generated-token green for c=2/c=4/c=8 under
-    # the current selected-QKV/Z + native-state + Marlin-output controls. Keep
-    # larger, unproven row counts on the older full selected-c1 replay fallback.
-    return "selected_qkv_z" if int(batch_size) <= 8 else "selected_c1"
+    # The c>N no-selected batch projection path is generated-token green for
+    # c=2/c=4/c=8 after the FP16 QKV/Z batch-GEMV reduction moved to 128
+    # threads. Keep larger, unproven row counts on the older full selected-c1
+    # replay fallback.
+    return "batch" if int(batch_size) <= 8 else "selected_c1"
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
