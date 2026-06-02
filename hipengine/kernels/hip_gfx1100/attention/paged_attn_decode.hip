@@ -345,12 +345,12 @@ __global__ void qwen35_full_attn_gate_mul_fp16_kernel(
 }
 
 __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
-    const float* query,
-    const uint16_t* key_cache,
-    const uint16_t* value_cache,
-    const int32_t* block_table,
-    const int64_t* context_len_ptr,
-    float* out,
+    const float* __restrict__ query,
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    const int32_t* __restrict__ block_table,
+    const int64_t* __restrict__ context_len_ptr,
+    float* __restrict__ out,
     int64_t rows,
     int64_t max_context_len,
     int64_t block_size,
