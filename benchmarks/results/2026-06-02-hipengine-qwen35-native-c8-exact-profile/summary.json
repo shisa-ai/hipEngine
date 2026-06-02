@@ -2,14 +2,14 @@
   "schema": 1,
   "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json",
   "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
-  "source_sha256": "01be95697ddf192080c0a99f0e619dfd32688828f2b58b83206f61ca13ca193a",
-  "source_size_bytes": 405725,
+  "source_sha256": "651227b54edbba10c28a02bf8745fe6e44d239c75b2030b06d2e42e759e12e15",
+  "source_size_bytes": 405816,
   "profiler_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiler-c8.json",
   "profiler_sha256": "c49d211014a9ee104e2ed46b5fa25b46dec63f7bb075ab70f7bead40be9fab49",
-  "created_at": "2026-06-02T19:56:54.551961Z",
+  "created_at": "2026-06-02T20:05:16.569717Z",
   "status": "blocked",
   "performance_claim": false,
-  "summary": "Exact-command rocprof c=8 retained validation after decode-shape observation fix. Per-request bucket context-axis blockers are removed by recording observed decode context buckets [512, 768]; remaining blockers are batch-level throughput eligibility and stable-block-id audit.",
+  "summary": "Exact-command rocprof c=8 retained validation after stable-block-id audit. Stable fixed-slot block identity now passes; the only remaining retained blocker is batch_execution.throughput_claim_eligible=false.",
   "hardware": {
     "device_name": "AMD Radeon RX 7900 XTX",
     "env": {
@@ -52,6 +52,13 @@
       "per_request_vs_row_gemv": 1.1446009208707775,
       "accepted": true
     }
+  },
+  "batch_execution": {
+    "path": "scheduler_native_compact_batch",
+    "scheduler_owned": true,
+    "native_caware_decode": true,
+    "throughput_claim_eligible": false,
+    "blockers": []
   },
   "scheduler_metadata": {
     "decode_shape_key": {
@@ -140,6 +147,31 @@
       }
     }
   },
+  "memory": {
+    "stable_block_id": {
+      "passed": true,
+      "audit": "fixed-session stable block identity verified: request_ids=[0, 1, 2, 3, 4, 5, 6, 7], slot_map={0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7}, decode_slots=[0, 1, 2, 3, 4, 5, 6, 7], prefill_slabs=1"
+    },
+    "dynamic_pool": {
+      "enabled": false,
+      "evidence": "resident retained bench still uses fixed session allocation; C4 pool counters are unavailable here",
+      "grow_events": 0,
+      "shrink_events": 0,
+      "pool_counters": {
+        "current_bytes": 0,
+        "high_water_observed_bytes": 0,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "free_pages": 0,
+        "refcounted_pages": 0
+      }
+    },
+    "prefix_sharing": {
+      "enabled": false,
+      "savings_bytes": 0
+    }
+  },
   "profiler": {
     "status": "captured",
     "expected_kernels_present": true,
@@ -158,15 +190,15 @@
     "profiler_command_compiler_version_matches_retained": true,
     "profiler_artifact_path_repo_relative": true,
     "graph_replay_profiler_not_required_without_replay_kernel_hits": true,
-    "per_request_bucket_context_axes_match_observed_decode_shapes": true
+    "per_request_bucket_context_axes_match_observed_decode_shapes": true,
+    "stable_block_id_audit_passed": true
   },
   "remaining_blockers": [
-    "batch_execution.throughput_claim_eligible=false",
-    "memory.stable_block_id.passed is not true"
+    "batch_execution.throughput_claim_eligible=false"
   ],
   "measurements": {
-    "decode_tok_s_aggregate": 210.7850505423518,
-    "decode_tok_s_per_request": 26.348131317793975
+    "decode_tok_s_aggregate": 211.9617140245019,
+    "decode_tok_s_per_request": 26.495214253062738
   },
   "commands": {
     "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile/2026-06-02-native-c8-exact-profile-iter99 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiler-c8.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
@@ -175,6 +207,6 @@
   "notes": [
     "No retained performance/scaling claim is made.",
     "Raw rocprof CSV remains outside git under /tmp/hipengine-profile; only compact profiler JSON is retained.",
-    "per_request bucket keys can advance to a later context bucket during a long decode. The retained gate now checks them against decode_shape_keys_observed rather than only the initial decode_shape_key."
+    "Stable block-id audit verifies fixed-session request ids, slot ownership, prefill slab slot ids, decode slots, completion ids, and full slot reclamation."
   ]
 }

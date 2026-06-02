@@ -65105,3 +65105,22 @@ Required loop verification:
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 
 Conclusion: the per-request bucket context-axis blocker is eliminated with concrete c=8 artifact evidence. The retained evidence stack is now blocked only by batch-level throughput eligibility and stable-block-id audit. No retained performance/scaling claim.
+
+## 2026-06-02 — CONCURRENCY stable block-id audit evidence
+
+Ran iteration 102 for `concurrency-e2e/native-c2-e2e`. After profiler provenance, graph replay accounting, and per-request observed context buckets were green, the c=8 exact-profile artifact was still blocked by `memory.stable_block_id.passed is not true` plus batch-level throughput eligibility.
+
+Code/evidence:
+
+- Added retained stable block-id audit derivation in `scripts/qwen35_batch_retained_bench.py`. The audit verifies scheduler-owned fixed-session identity evidence: request ids, admitted ids, stable compact slot map, prefill slab request/slot mapping, decode slots, completed request ids, active-count release, and fully reclaimed slots after completion.
+- Preserved explicit benchmark-provided `memory.stable_block_id` evidence when already present; otherwise the retained bench derives it from runtime scheduler/batch execution metadata.
+- Added focused unit coverage proving `_retained_memory_payload()` derives a passing stable-block-id audit from scheduler metadata and that the full memory gate accepts it.
+- Reran exact-profile c=8 retained validation using the existing exact profiler artifact. `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json` remains `status=blocked`, `performance_claim=false`, equality green (`prefixes=[137,137,137,137,137,137,137,137]`), primitive c=8 passed, scaling complete, profiler captured, graph replay accounting green, observed decode buckets green, and projection dispatch selecting non-row-GEMV `batch`. Stable block-id audit now passes with `fixed-session stable block identity verified: request_ids=[0..7], slot_map={0:0..7:7}, decode_slots=[0..7], prefill_slabs=1`.
+- Updated compact summary `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json`: remaining blocker is only `batch_execution.throughput_claim_eligible=false`.
+
+Required loop verification:
+
+- Primary c=2 512/128 verifier stayed green: metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and stable block-id audit passed for request ids `[0,1]` / slots `[0,1]` under HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evidence. The retained c=8 evidence stack is now blocked only by `batch_execution.throughput_claim_eligible=false`. No retained performance/scaling claim.

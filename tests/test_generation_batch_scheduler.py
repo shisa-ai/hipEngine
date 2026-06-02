@@ -19150,6 +19150,44 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     assert retained_bench._memory_evidence_blockers(memory) == []
 
 
+def test_qwen35_retained_memory_payload_derives_stable_block_id_audit() -> None:
+    args = argparse.Namespace(
+        batch_size=2,
+        prompt_length=512,
+        decode_tokens=128,
+        warmup_decode_tokens=8,
+        kv_storage="bf16",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+    )
+    kv_policy = retained_bench.resolve_args_kv_policy(args, block_size=256)
+    memory = retained_bench._retained_memory_payload(
+        args,
+        kv_policy,
+        {
+            "memory": {
+                "allocator_reserved_peak_bytes": 16384,
+                "allocator_memory_stats": {"current_allocated_bytes": 0, "peak_allocated_bytes": 16384, "total_allocated_bytes": 32768, "total_freed_bytes": 32768, "active_allocations": 0, "peak_allocations": 4},
+            },
+            "scheduler_metadata": {
+                "request_ids": [0, 1],
+                "admitted": [0, 1],
+                "slot_to_request_after_admit": [0, 1],
+                "active_count_after_admit": 2,
+                "prefill_slabs": [{"request_ids": [0, 1], "slot_ids": [0, 1], "block_count": 2}],
+                "active_count_after_completion": 0,
+                "slot_to_request_after_completion": [None, None],
+            },
+            "batch_execution": {"decode_execution": {"slots": [0, 1]}},
+            "completed": [{"request_id": 0}, {"request_id": 1}],
+        },
+    )
+
+    assert memory["stable_block_id"]["passed"] is True
+    assert "fixed-session stable block identity verified" in memory["stable_block_id"]["audit"]
+    assert retained_bench._memory_evidence_blockers(memory) == []
+
+
 def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
     valid = {

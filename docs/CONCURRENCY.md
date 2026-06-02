@@ -312,8 +312,9 @@ What is still not green:
   exact-profile artifact records `hits=1` but `replay_kernel_hits=0`, matching
   the raw trace with no graph/replay kernel. The retained gate now also records
   observed decode context buckets (`512` and `768` for the 512/128 run), removing
-  the per-request bucket context-axis blockers. It stays blocked only by
-  batch-level `throughput_claim_eligible=false` and stable-block-id audit
+  the per-request bucket context-axis blockers. Stable fixed-slot block identity
+  audit now passes as well. It stays blocked only by batch-level
+  `throughput_claim_eligible=false`
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected

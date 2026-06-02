@@ -1674,6 +1674,131 @@ def _allocator_memory_evidence(stats: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _stable_block_id_evidence(args: argparse.Namespace, bench: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(bench, Mapping):
+        return {"passed": False, "audit": "native bench evidence is unavailable"}
+    scheduler_metadata = bench.get("scheduler_metadata")
+    batch_execution = bench.get("batch_execution")
+    completed = bench.get("completed")
+    if not isinstance(scheduler_metadata, Mapping):
+        return {"passed": False, "audit": "scheduler metadata is unavailable"}
+    if not isinstance(batch_execution, Mapping):
+        return {"passed": False, "audit": "batch execution metadata is unavailable"}
+    expected_count = getattr(args, "batch_size", None)
+    if isinstance(expected_count, bool) or not isinstance(expected_count, int) or expected_count <= 0:
+        return {"passed": False, "audit": "batch_size is unavailable"}
+    expected_request_ids = list(range(int(expected_count)))
+    reasons: list[str] = []
+
+    def _int_list(value: Any) -> list[int] | None:
+        if not isinstance(value, list):
+            return None
+        result: list[int] = []
+        for item in value:
+            if isinstance(item, bool) or not isinstance(item, int):
+                return None
+            result.append(int(item))
+        return result
+
+    request_ids = _int_list(scheduler_metadata.get("request_ids"))
+    admitted = _int_list(scheduler_metadata.get("admitted"))
+    if request_ids != expected_request_ids:
+        reasons.append("scheduler request ids do not match expected stable ids")
+    if admitted != expected_request_ids:
+        reasons.append("admitted request ids do not match expected stable ids")
+    slot_to_request_after_admit = scheduler_metadata.get("slot_to_request_after_admit")
+    request_to_slot: dict[int, int] = {}
+    if not isinstance(slot_to_request_after_admit, list) or len(slot_to_request_after_admit) < int(expected_count):
+        reasons.append("slot_to_request_after_admit is missing or too short")
+    else:
+        for slot, request_id in enumerate(slot_to_request_after_admit):
+            if request_id is None:
+                continue
+            if isinstance(request_id, bool) or not isinstance(request_id, int):
+                reasons.append("slot_to_request_after_admit contains a non-integer request id")
+                break
+            rid = int(request_id)
+            if rid in request_to_slot:
+                reasons.append("slot_to_request_after_admit contains duplicate request ids")
+                break
+            request_to_slot[rid] = int(slot)
+        if [request_to_slot.get(rid) for rid in expected_request_ids] != expected_request_ids:
+            reasons.append("admitted request ids are not mapped to stable compact slots")
+    active_count_after_admit = scheduler_metadata.get("active_count_after_admit")
+    if active_count_after_admit != int(expected_count):
+        reasons.append("active_count_after_admit does not match batch_size")
+
+    prefill_slabs = scheduler_metadata.get("prefill_slabs")
+    covered_prefill_requests: list[int] = []
+    if not isinstance(prefill_slabs, list) or not prefill_slabs:
+        reasons.append("prefill slab metadata is missing")
+    else:
+        for index, slab in enumerate(prefill_slabs):
+            if not isinstance(slab, Mapping):
+                reasons.append(f"prefill slab {index} is not an object")
+                continue
+            slab_request_ids = _int_list(slab.get("request_ids"))
+            slab_slot_ids = _int_list(slab.get("slot_ids"))
+            block_count = slab.get("block_count")
+            if slab_request_ids is None or slab_slot_ids is None or len(slab_request_ids) != len(slab_slot_ids):
+                reasons.append(f"prefill slab {index} request/slot ids are invalid")
+                continue
+            if isinstance(block_count, bool) or not isinstance(block_count, int) or block_count <= 0:
+                reasons.append(f"prefill slab {index} block_count is invalid")
+            covered_prefill_requests.extend(slab_request_ids)
+            for rid, slot in zip(slab_request_ids, slab_slot_ids, strict=True):
+                if request_to_slot.get(rid) != slot:
+                    reasons.append(f"prefill slab {index} slot does not match stable admitted slot")
+                    break
+    if sorted(covered_prefill_requests) != expected_request_ids:
+        reasons.append("prefill slabs do not cover each request id exactly once")
+
+    decode_execution = batch_execution.get("decode_execution")
+    if not isinstance(decode_execution, Mapping):
+        reasons.append("decode execution metadata is missing")
+        decode_slots = None
+    else:
+        decode_slots = _int_list(decode_execution.get("slots"))
+        if decode_slots != expected_request_ids:
+            reasons.append("decode slots do not match stable compact slots")
+
+    if not isinstance(completed, list):
+        reasons.append("completed request metadata is missing")
+        completed_ids = None
+    else:
+        completed_ids = []
+        for row in completed:
+            if not isinstance(row, Mapping):
+                completed_ids = None
+                reasons.append("completed request row is not an object")
+                break
+            request_id = row.get("request_id")
+            if isinstance(request_id, bool) or not isinstance(request_id, int):
+                completed_ids = None
+                reasons.append("completed request id is invalid")
+                break
+            completed_ids.append(int(request_id))
+        if completed_ids is not None and sorted(completed_ids) != expected_request_ids:
+            reasons.append("completed request ids do not match admitted request ids")
+    active_count_after_completion = scheduler_metadata.get("active_count_after_completion")
+    if active_count_after_completion != 0:
+        reasons.append("active_count_after_completion is not zero")
+    slot_to_request_after_completion = scheduler_metadata.get("slot_to_request_after_completion")
+    if not isinstance(slot_to_request_after_completion, list) or any(item is not None for item in slot_to_request_after_completion):
+        reasons.append("slot_to_request_after_completion is not fully reclaimed")
+
+    if reasons:
+        return {"passed": False, "audit": "; ".join(reasons)}
+    return {
+        "passed": True,
+        "audit": (
+            f"fixed-session stable block identity verified: request_ids={expected_request_ids}, "
+            f"slot_map={request_to_slot}, decode_slots={decode_slots}, "
+            f"prefill_slabs={len(prefill_slabs) if isinstance(prefill_slabs, list) else 0}"
+        ),
+    }
+
+
 def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPolicy, bench: Mapping[str, Any] | None = None) -> dict[str, Any]:
     memory = {
         "max_batch_size": args.batch_size,
@@ -1702,6 +1827,9 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
     bench_memory = bench.get("memory") if isinstance(bench, Mapping) else None
     if isinstance(bench_memory, Mapping):
         memory = _merged_mapping(memory, bench_memory)
+    stable_block_id = memory.get("stable_block_id")
+    if not isinstance(stable_block_id, Mapping) or stable_block_id.get("passed") is not True:
+        memory["stable_block_id"] = _stable_block_id_evidence(args, bench)
     return memory
 
 
