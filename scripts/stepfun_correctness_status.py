@@ -17,6 +17,9 @@ DEFAULT_PROMPT_ARTIFACT = Path(
 DEFAULT_ORACLE_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json"
 )
+DEFAULT_ORACLE_WRAPPER_TIMEOUT_ARTIFACT = Path(
+    "benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json"
+)
 DEFAULT_RESOURCE_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 )
@@ -572,12 +575,22 @@ def _source_artifacts(
     resource_artifact: Path,
     docs_path: Path,
 ) -> dict[str, object]:
-    return {
+    artifacts = {
         "prompt": _artifact_record(prompt_artifact),
         "oracle": _artifact_record(oracle_artifact),
         "text_resource": _artifact_record(resource_artifact),
         "docs": _artifact_record(docs_path),
     }
+    if (
+        prompt_artifact == DEFAULT_PROMPT_ARTIFACT
+        and oracle_artifact == DEFAULT_ORACLE_ARTIFACT
+        and resource_artifact == DEFAULT_RESOURCE_ARTIFACT
+        and docs_path == DEFAULT_DOCS_PATH
+    ):
+        artifacts["oracle_wrapper_timeout"] = _artifact_record(
+            DEFAULT_ORACLE_WRAPPER_TIMEOUT_ARTIFACT
+        )
+    return artifacts
 
 
 def _status_integrity(status: dict[str, object]) -> dict[str, object]:

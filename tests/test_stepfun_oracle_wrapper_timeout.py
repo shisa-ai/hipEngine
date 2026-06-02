@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import build_status
+
 
 CANONICAL_ORACLE = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json"
@@ -51,3 +53,19 @@ def test_stepfun_180s_oracle_wrapper_timeout_artifact_is_blocking_evidence() -> 
     }
     assert "before scripts/stepfun_llamacpp_oracle.py rewrote" in artifact["observed_result"]
     assert artifact["claim"] == "No oracle parity, e2e correctness, or performance claim is made."
+
+
+def test_stepfun_correctness_status_tracks_oracle_wrapper_timeout_source_artifact() -> None:
+    status = build_status(
+        Path("benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json"),
+        CANONICAL_ORACLE,
+    )
+    source_record = status["source_artifacts"]["oracle_wrapper_timeout"]
+
+    assert source_record["path"] == str(WRAPPER_TIMEOUT_ARTIFACT)
+    assert source_record["exists"] is True
+    assert source_record["size_bytes"] == len(WRAPPER_TIMEOUT_ARTIFACT.read_bytes())
+    assert source_record["sha256"] == hashlib.sha256(
+        WRAPPER_TIMEOUT_ARTIFACT.read_bytes()
+    ).hexdigest()
+    assert status["status_integrity"]["checks"]["source_artifacts_sha256"] is True
