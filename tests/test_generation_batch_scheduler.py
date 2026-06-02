@@ -3707,6 +3707,28 @@ def test_qwen35_batch_equality_matrix_dry_run_records_linear_diagnostics(tmp_pat
     assert "--batch-decode-full-attn-moe-path per_row_c1" in command
     assert "--batch-decode-post-attn-path batch" in command
 
+    split_projection_summary = tmp_path / "split-projection-summary.json"
+    split_projection_dir = tmp_path / "split-projection-artifacts"
+    rc = equality_matrix.main(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2",
+            "--batch-decode-linear-projection-path",
+            "selected_qkv_z_input",
+            "--output-dir",
+            str(split_projection_dir),
+            "--json",
+            str(split_projection_summary),
+        ]
+    )
+
+    assert rc == 0
+    split_payload = json.loads(split_projection_summary.read_text(encoding="utf-8"))
+    split_command = split_payload["commands"][0]["command"]
+    assert split_payload["workload"]["batch_decode_linear_projection_path"] == "selected_qkv_z_input"
+    assert "--batch-decode-linear-projection-path selected_qkv_z_input" in split_command
+
 
 def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_path: Path) -> None:
     artifact_path = tmp_path / "native-equality-c2.json"

@@ -64075,3 +64075,17 @@ Added full-attention diagnostic flag propagation to `scripts/qwen35_batch_equali
 Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`. No retained/scaling claim.
 
 Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_equality_matrix.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY equality matrix auto projection diagnostics
+
+Retested grouped-compact linear MoE under the current narrowed defaults (selected-QKV/Z or full-selected projections, native segmented state, batch-GEMV linear/full-attention output, native full-attention context/post, per-row full-attention MoE). It remains red and per-row linear MoE remains required:
+
+- `/tmp/hipengine-e2e-native-c2-512-128-selected-linear-grouped-linear-moe-current-fullattn.json`: prefixes `[82,137]`.
+- `/tmp/hipengine-e2e-native-c4-512-128-selected-linear-grouped-linear-moe-current-fullattn.json`: prefixes `[82,137,137,137]`.
+- `/tmp/hipengine-e2e-native-c8-512-128-selected-linear-grouped-linear-moe-current-fullattn.json`: prefixes `[82,137,137,137,137,11,40,137]`.
+
+Extended `scripts/qwen35_batch_equality_matrix.py` to accept/pass through the retained bench's linear projection diagnostics `auto`, `selected_qkv_z_input`, `selected_qkv`, and `selected_z`. This lets matrix artifacts explicitly encode the current auto projection policy instead of relying on retained-bench defaults. The explicit auto/current-full-attention matrix `/tmp/hipengine-e2e-native-c2-c4-c8-explicit-auto-current-fullattn-matrix.json` is green (`status=passed`, all rows min prefix `137`) and records `batch_decode_linear_projection_path=auto`, `batch_decode_full_attn_output_path=batch_gemv`, `batch_decode_full_attn_layer_copy=batch`, `batch_decode_full_attn_moe_path=per_row_c1`, and `batch_decode_post_attn_path=batch`.
+
+Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`. No retained/scaling claim.
+
+Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_equality_matrix.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

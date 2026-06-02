@@ -320,7 +320,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-decode-linear-path", choices=("default", "batch_segments", "per_row"), default="default")
     parser.add_argument(
         "--batch-decode-linear-projection-path",
-        choices=("default", "batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_ab", "batch_gemv_selected_ab"),
+        choices=(
+            "default",
+            "auto",
+            "batch",
+            "batch_gemv",
+            "selected_c1",
+            "selected_qkv_z",
+            "selected_qkv_z_input",
+            "selected_qkv",
+            "selected_z",
+            "selected_ab",
+            "batch_gemv_selected_ab",
+        ),
         default="default",
     )
     parser.add_argument(
