@@ -207,6 +207,10 @@ What is still not green:
   layer-1 hidden probes still showed non-bit-exact QKV/Z projection drift under
   tolerance and hidden parity red, so no runtime code was retained
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-dual-gemv-projection-red-probe/summary.json`).
+  Adding selected-c1 A/B replay to that same temporary dual-GEMV QKV/Z path made
+  row 0 worse (`[82,104] -> [0,137]`) and left the layer-1 hidden oracle red, so
+  A/B exactness alone does not isolate the QKV/Z batch-GEMV path as green
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-dual-gemv-selected-ab-red-probe/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

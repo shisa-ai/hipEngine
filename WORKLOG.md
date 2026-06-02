@@ -64723,3 +64723,21 @@ Validation after reverting the patch:
 - `multiloop_measure` recorded metric `137`; prompt verifier failed because no focused native projection blocker turned green and the primary metric did not improve.
 
 Conclusion: using the existing dual GEMV kernel plus planar copies is not enough to replace selected-QKV/Z. The selected-QKV/Z correctness fallback remains required; native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain the active blockers.
+
+## 2026-06-02 — CONCURRENCY dual-GEMV selected-A/B probe rejected
+
+Ran iteration 81 for `concurrency-e2e/native-c2-e2e` to test whether the row-0 failure from the temporary dual-GEMV QKV/Z projection probe could be isolated by replaying A/B projections with selected-c1 exactness. The temporary patch was the same diagnostic-only change as iteration 80: the `force_gemv` QKV/Z branch in `Qwen35ParoDecodeState.project_linear_attention_qkv_z_fp16` used one `gemv_awq_dual_pack8_transposed_fp16` launch into a row-interleaved temporary buffer and copied rows into planar qkv/z scratch. The patch was reverted before commit; no runtime code was retained.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Temporary `batch_gemv_selected_ab` generated probe: `/tmp/hipengine-e2e-native-c2-512-128-dual-gemv-selected-ab-iter81.json` stayed red and worsened row 0, prefixes `[0,137]` vs prior grouped-default projection refresh `[82,104]` and prior temporary dual-GEMV `batch_gemv` `[82,137]`.
+- Temporary `batch_gemv_selected_ab` hidden oracle: `/tmp/hipengine-hidden-batch-gemv-selected-ab-dual-nativec1-l1-d1-iter81.json` stayed `hidden_passed=false`, `token_passed=true`; QKV/Z projection drift was under tolerance but not bit-exact.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-dual-gemv-selected-ab-red-probe/summary.json` (`status=blocked`, `performance_claim=false`, `retained_ready=false`).
+
+Validation after reverting the patch:
+
+- Primary verifier stayed unchanged/green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137` with generated-token prefixes `[137,137]` under the existing selected-QKV/Z correctness fallback.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded metric `137`; prompt verifier failed because no focused native projection blocker turned green and the primary metric did not improve.
+
+Conclusion: selected-c1 A/B exactness does not repair the dual-GEMV QKV/Z path; the selected-QKV/Z correctness fallback remains required. Native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain the active blockers.
