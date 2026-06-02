@@ -64702,3 +64702,24 @@ GPU1 / RX 7900 XTX evidence:
 - Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json` (`status=blocked`, `performance_claim=false`, `retained_ready=false`).
 
 Conclusion: the selected-QKV/Z correctness fallback remains required; native/batch-GEMV QKV/Z projection and projection-dispatch blockers are not eliminated by the grouped-MoE default change.
+
+## 2026-06-02 — CONCURRENCY dual-GEMV projection probe rejected
+
+Ran iteration 80 for `concurrency-e2e/native-c2-e2e` to test whether the native QKV/Z blocker was caused by splitting QKV and Z into two independent row-aware GEMV launches. The temporary patch changed `hipengine/runtime/qwen35_paro.py::Qwen35ParoDecodeState.project_linear_attention_qkv_z_fp16` so the `force_gemv` branch used one `gemv_awq_dual_pack8_transposed_fp16` launch into a row-interleaved temporary buffer, then copied each row into the existing planar qkv/z scratch buffers. The patch was reverted before commit; no runtime code was retained.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier stayed unchanged/green after reverting the patch: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137` with generated-token prefixes `[137,137]` under the selected-QKV/Z correctness fallback and grouped-compact MoE.
+- Temporary `batch_gemv` generated probe: `/tmp/hipengine-e2e-native-c2-512-128-dual-gemv-batch_gemv-iter80.json` stayed red but improved only row 1 vs the prior grouped-default projection refresh, `[82,104] -> [82,137]`; min prefix remained `82`.
+- Temporary `selected_qkv_z_input` generated probe: `/tmp/hipengine-e2e-native-c2-512-128-dual-gemv-selected_qkv_z_input-iter80.json` stayed red at `[82,104]`.
+- Temporary hidden probes stayed hidden-red with tokens green:
+  - `/tmp/hipengine-hidden-batch-gemv-dual-nativec1-l1-d1-iter80.json`: `hidden_passed=false`, `token_passed=true`, QKV/Z projection not bit-exact but under tolerance.
+  - `/tmp/hipengine-hidden-selected-qkvz-input-dual-nativec1-l1-d1-iter80.json`: same hidden-red / token-green result.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-dual-gemv-projection-red-probe/summary.json` (`status=blocked`, `performance_claim=false`, `retained_ready=false`).
+
+Validation after reverting the patch:
+
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded metric `137`; prompt verifier failed because no focused native projection blocker turned green and the primary metric did not improve.
+
+Conclusion: using the existing dual GEMV kernel plus planar copies is not enough to replace selected-QKV/Z. The selected-QKV/Z correctness fallback remains required; native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain the active blockers.

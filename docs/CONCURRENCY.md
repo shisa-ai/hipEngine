@@ -201,6 +201,12 @@ What is still not green:
   and `selected_ab` as replacements for selected-QKV/Z at c=2 512/128: all four
   stayed generated-token red with prefixes `[82,104]`
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json`).
+  A follow-up temporary dual-GEMV/planar-copy probe for the `batch_gemv` QKV/Z
+  path improved only row 1 (`[82,104] -> [82,137]`) while the minimum prefix stayed
+  82, and the selected-rotary-input + dual-GEMV variant remained `[82,104]`;
+  layer-1 hidden probes still showed non-bit-exact QKV/Z projection drift under
+  tolerance and hidden parity red, so no runtime code was retained
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-dual-gemv-projection-red-probe/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
