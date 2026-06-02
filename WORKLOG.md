@@ -64591,3 +64591,22 @@ Validation:
 - Artifact assertions loaded the grouped-MoE red-probe summary and child JSONs, verified the green per-row fallback and all three grouped-MoE red prefix sets, and confirmed `performance_claim=false` / `retained_ready=false`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Prompt verifier failed intentionally for this iteration: the probe narrowed the grouped-MoE blocker but did not eliminate it or improve the primary equal-prefix metric. Next actionable work is a grouped-MoE kernel/math fix or a narrower hidden-state oracle before another retained-promotion attempt.
+
+## 2026-06-02 — CONCURRENCY native-batch hidden oracle green for selected MoE
+
+Added a compact hidden-state MoE parity artifact using independent c=1 `native_batch` sessions rather than the serial decode bridge. This probes the first c=2 decode step at layer-limit 40 with the current correctness-default projection/state/output/full-attention settings.
+
+GPU1 / RX 7900 XTX evidence:
+
+- `benchmarks/results/2026-06-02-hipengine-qwen35-native-hidden-moe-parity-probe/summary.json` reports `status=passed`, `performance_claim=false`, `retained_ready=false`.
+- Correctness-default `--batch-decode-moe-path selected_c1` is hidden- and token-parity green vs independent c=1 `native_batch`: `hidden_passed=true`, `token_passed=true`.
+- Global grouped flag with per-row selected-c1 linear/full-attention MoE subpaths is also hidden- and token-parity green: `hidden_passed=true`, `token_passed=true`.
+- Linear grouped-compact MoE is hidden-red while the one-step token still matches: first final hidden mismatch `max_abs=0.328125`; decode linear trace first over-tolerance stage is layer 0 `mlp_input`, and the first bit drift is layer 0 `recurrent_out` under tolerance.
+- Full-attention grouped-compact MoE is hidden-red while the one-step token still matches: first final hidden mismatch `max_abs=0.0029296875`; downstream trace first over-tolerance full-attention stage is `attn_input_pre_qkv`.
+- All-grouped MoE is hidden-red while the one-step token still matches: first final hidden mismatch `max_abs=0.0546875`.
+
+Validation:
+
+- Compact artifact assertions verified that the selected/per-row native-batch oracle rows are hidden green and each grouped-compact MoE variant is hidden red with `performance_claim=false`.
+- Primary verifier remained `137` with c=2 prefixes `[137,137]` and generated-token equality green.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
