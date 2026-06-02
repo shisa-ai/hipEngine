@@ -372,6 +372,12 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   float* warp_buf = scores + context_len;
   const int num_warps = blockDim.x / warpSize;
   float* q_shared = warp_buf + num_warps;
+  // For c=2 long-context Qwen decode, the 1024-thread launch would otherwise
+  // leave most threads idle while one thread per dim scans all values.
+  // Keep tiny primitive fixtures on the exact c1-style accumulation order.
+  const int raw_value_groups = (head_dim >= 128 && context_len >= 128) ? static_cast<int>(blockDim.x / static_cast<unsigned int>(head_dim)) : 0;
+  const int value_groups = (blockDim.x >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
+  float* value_partials = q_shared + head_dim;
   const int64_t q_head = blockIdx.x;
   if (q_head >= num_q_heads) {
     return;
@@ -460,17 +466,43 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   }
   __syncthreads();
 
-  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
-    float acc = 0.0f;
-    for (int64_t token = 0; token < context_len; ++token) {
-      const int64_t logical_block = token / block_size;
-      const int64_t block_offset = token - logical_block * block_size;
-      const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-      const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
-      const int64_t v_offset = token_offset + kv_head * head_dim + dim;
-      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+  if (value_groups > 1) {
+    const int64_t value_thread_count = static_cast<int64_t>(value_groups) * head_dim;
+    if (static_cast<int64_t>(threadIdx.x) < value_thread_count) {
+      const int64_t dim = static_cast<int64_t>(threadIdx.x) % head_dim;
+      const int group = static_cast<int>(static_cast<int64_t>(threadIdx.x) / head_dim);
+      float acc = 0.0f;
+      for (int64_t token = group; token < context_len; token += value_groups) {
+        const int64_t logical_block = token / block_size;
+        const int64_t block_offset = token - logical_block * block_size;
+        const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+        const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+        const int64_t v_offset = token_offset + kv_head * head_dim + dim;
+        acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+      }
+      value_partials[static_cast<int64_t>(group) * head_dim + dim] = acc;
     }
-    out[q_offset + dim] = acc;
+    __syncthreads();
+    if (threadIdx.x < head_dim) {
+      float acc = 0.0f;
+      for (int group = 0; group < value_groups; ++group) {
+        acc += value_partials[static_cast<int64_t>(group) * head_dim + threadIdx.x];
+      }
+      out[q_offset + threadIdx.x] = acc;
+    }
+  } else {
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      float acc = 0.0f;
+      for (int64_t token = 0; token < context_len; ++token) {
+        const int64_t logical_block = token / block_size;
+        const int64_t block_offset = token - logical_block * block_size;
+        const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+        const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+        const int64_t v_offset = token_offset + kv_head * head_dim + dim;
+        acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+      }
+      out[q_offset + dim] = acc;
+    }
   }
 }
 
@@ -2671,7 +2703,9 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
   // existing 256-thread shape.
   const int threads = (rows <= 2 && max_context_len < 1024) ? 1024 : 256;
   const int max_warps = threads / 32;
-  const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim) * sizeof(float);
+  const int raw_value_groups = (head_dim >= 128 && max_context_len >= 128) ? static_cast<int>(threads / head_dim) : 0;
+  const int value_groups = (threads >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
