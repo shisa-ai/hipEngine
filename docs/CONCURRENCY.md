@@ -283,6 +283,12 @@ What is still not green:
   same run the no-flag native generated-token equality gate passed for c=2,
   c=4, and c=8 at 512/128 with min equal-prefix `137` on every row
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-c4-c8-equality-and-context-staging/summary.json`).
+  The first retained-scaling prerequisites after that gate are now recorded for
+  c=8: c=1 native 512/128 baseline `133.91` tok/s and c=8 serial-bridge
+  baseline `104.43` aggregate tok/s / `13.05` per-request tok/s, both as
+  non-retained baseline artifacts validated by the retained helper; profiler and
+  full retained artifact validation are still missing
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

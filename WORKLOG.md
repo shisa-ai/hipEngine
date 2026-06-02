@@ -64973,3 +64973,20 @@ Required loop verification:
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 
 Conclusion: c=2/c=4/c=8 generated-token equality is green for the native no-flag path. The hidden-parity blocker remains full-attention numerical alignment under real model traces; temp context destination and compact-cache staging are not sufficient fixes. No retained performance/scaling claim.
+
+## 2026-06-02 — CONCURRENCY c8 scaling baseline prerequisites
+
+Ran iteration 95 for `concurrency-e2e/native-c2-e2e` after c=2/c=4/c=8 generated-token equality turned green. Collected the first retained-scaling prerequisites for the c=8 512/128 row without making a retained performance claim.
+
+GPU1 / RX 7900 XTX evidence:
+
+- c=1 native baseline: `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen35-c1-native-512-128-baseline-iter95.json` completed with warmed decode `133.91159204248916` tok/s and prefill `2525.991950312796` tok/s.
+- c=8 serial bridge baseline: `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen35-c8-serial-bridge-512-128-baseline-iter95.json` completed as a blocked/non-retained serial implementation path with decode `104.431831201549` aggregate tok/s / `13.053978900193625` per-request tok/s and prefill `110.83981340917052` tok/s.
+- Wrote compact repo baseline artifacts under `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/`: `c1-native-512x128-baseline.json`, `c8-serial-bridge-512x128-baseline.json`, and `summary.json`. The retained-bench helper accepted both compact baselines as scaling references when run with `HIP_VISIBLE_DEVICES=1` (no `reason`, rates populated). The summary also records the iteration-94 native c=8 source rate `205.84196031135855` aggregate tok/s / `25.73024503891982` per-request tok/s as context only; no retained claim.
+
+Required loop verification:
+
+- Primary c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and native no-flag decode metadata.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+Conclusion: c=1 and c=8 serial-bridge scaling baselines are now available as compact, helper-validated repo artifacts. Remaining retained c=8 blockers include profiler evidence, repo-relative primitive correctness evidence, and a retained bench rerun/validation with all references wired. No retained performance/scaling claim.
