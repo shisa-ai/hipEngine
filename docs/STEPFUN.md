@@ -903,7 +903,10 @@ layer loop is wired.
   benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json
   --pretty` and runs the resident text-only chat prompt through the layers 0-3
   prefix bridge with root tensors kept resident and each layer loaded/freed as a
-  one-layer chunk; it uses no vision/projector/MTP slots. A deeper artifact
+  one-layer chunk; `--output` writes prompt/layer-prefix JSON artifacts through a
+  flushed same-directory temp file plus atomic `os.replace` so provenance pollers
+  never consume a truncated prompt artifact. It uses no vision/projector/MTP
+  slots. A deeper artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-0-4-prompt-smoke.json`
   runs the same chunked path through layer 4 (`next_token_id=67707`, peak
   resident weight bytes `3,531,578,496`). Full-layer artifact

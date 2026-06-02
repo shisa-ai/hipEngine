@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.stepfun_layer_prefix_smoke import main
+from scripts import stepfun_layer_prefix_smoke
+
+main = stepfun_layer_prefix_smoke.main
 
 DEFAULT_STEPFUN_GGUF_DIR = Path("/data/models/gguf")
 
@@ -32,6 +34,42 @@ def _stepfun_gguf_dir() -> Path:
             "to a directory containing Step-3.7-flash-Q3_K_L-00001..00003.gguf"
         )
     return root
+
+
+def test_stepfun_layer_prefix_smoke_emit_json_replaces_output_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "prefix.json"
+    output.write_text('{"status":"old"}\n')
+    observed: dict[str, object] = {}
+    real_replace = os.replace
+
+    def spy_replace(src: object, dst: object) -> None:
+        observed["destination_before_replace"] = output.read_text()
+        observed["temp_payload"] = Path(src).read_text()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(stepfun_layer_prefix_smoke.os, "replace", spy_replace)
+
+    stepfun_layer_prefix_smoke._emit_json(
+        {"status": "planned", "scope": "layers_0_44_prefix_no_skipped_layers"},
+        pretty=True,
+        output=output,
+    )
+
+    assert observed == {
+        "destination_before_replace": '{"status":"old"}\n',
+        "temp_payload": (
+            '{\n  "scope": "layers_0_44_prefix_no_skipped_layers",\n'
+            '  "status": "planned"\n}\n'
+        ),
+    }
+    assert json.loads(output.read_text()) == {
+        "scope": "layers_0_44_prefix_no_skipped_layers",
+        "status": "planned",
+    }
+    assert not list(tmp_path.glob(".prefix.json.*.tmp"))
 
 
 def test_stepfun_layer_prefix_smoke_dry_run_plans_all_layers_without_hip(
