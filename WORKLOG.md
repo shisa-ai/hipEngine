@@ -32419,3 +32419,50 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: focused handoff metadata tests passed; atomic-output metadata smoke returned `next_action_commands_sha256=6242b0f341b0b38920e2f3aa05a78f0dd680a735eaf599a360126715ac6ca414`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks) with `status_integrity_sha256=c4c2373660cc472787176b0300b9ad915ebe16d366e0ad4c1a323a3419a6e4cd`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`239` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun atomic-output handoff integrity checks
+
+Added embedded correctness-status integrity checks for the atomic-output handoff metadata. `_status_integrity()` now validates status-refresh command metadata (helper, output path, `atomic_os_replace`, `--output`, no shell redirection), verifies both oracle/KV command records use the same safe status refresh path, validates KV resource-refresh atomic-output metadata, and checks blocker-work-queue mirrors for the status/resource refresh commands. Added a drift regression that flips `next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_output_arg_present=false` and confirms `--status-integrity-failures-only` reports `next_action_commands_sha256`, `resource_refresh_atomic_output_command_metadata`, and `resource_refresh_atomic_output_handoff_mirrors`. Updated docs and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no KV-backed token/logit artifact, oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verifies_source_artifact_provenance tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verify_source_status_integrity_detects_resource_atomic_output_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verify_source_status_integrity_failures_only_detects_drift
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+checks=s['status_integrity']['checks']
+for key in [
+    'status_refresh_atomic_output_command_metadata',
+    'status_refresh_atomic_output_handoff_mirrors',
+    'resource_refresh_atomic_output_command_metadata',
+    'resource_refresh_atomic_output_handoff_mirrors',
+]:
+    assert checks[key] is True
+assert s['status_integrity']['all_match'] is True
+assert s['status_integrity']['failed_checks'] == []
+print('atomic handoff integrity ok', s['status_integrity_sha256'])
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+for key in [
+    'status_refresh_atomic_output_command_metadata',
+    'status_refresh_atomic_output_handoff_mirrors',
+    'resource_refresh_atomic_output_command_metadata',
+    'resource_refresh_atomic_output_handoff_mirrors',
+]:
+    assert p['checks'][key] is True
+print('status integrity ok')
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_first_remaining_blocker_report_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_next_action_commands_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_blocker_work_queue_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_kv_resource_command_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_refresh_command_only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: focused atomic handoff integrity tests passed; focused handoff metadata tests passed; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks) with `status_integrity_sha256=c4c2373660cc472787176b0300b9ad915ebe16d366e0ad4c1a323a3419a6e4cd`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`239` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.

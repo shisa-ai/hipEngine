@@ -808,15 +808,24 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(next_action_commands, dict)
         else {}
     )
+    kv_action = (
+        next_action_commands.get("kv_backed_decode_not_wired", {})
+        if isinstance(next_action_commands, dict)
+        else {}
+    )
     oracle_source_artifact = (
         source_artifacts.get("oracle", {}) if isinstance(source_artifacts, dict) else {}
     )
     oracle_work_item: dict[str, object] = {}
+    kv_work_item: dict[str, object] = {}
     if isinstance(handoff_summary, dict):
         for item in handoff_summary.get("blocker_work_queue", []):
-            if isinstance(item, dict) and item.get("blocker_kind") == "oracle_parity_blocked":
+            if not isinstance(item, dict):
+                continue
+            if item.get("blocker_kind") == "oracle_parity_blocked":
                 oracle_work_item = item
-                break
+            elif item.get("blocker_kind") == "kv_backed_decode_not_wired":
+                kv_work_item = item
     remaining_blockers_report = status.get("remaining_blockers_report", {})
     remaining_oracle_item: dict[str, object] = {}
     if isinstance(remaining_blockers_report, dict):
@@ -987,6 +996,79 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         and first_remaining_blocker_report.get("blocker_kind") == "oracle_parity_blocked"
         and _oracle_partial_fields_match(first_remaining_blocker_report)
     )
+    status_refresh_output_path = str(DEFAULT_STATUS_ARTIFACT)
+
+    def _status_refresh_command_metadata_match(record: object) -> bool:
+        command = record.get("status_refresh_command") if isinstance(record, dict) else None
+        return (
+            isinstance(record, dict)
+            and record.get("status_refresh_writes_atomic_output") is True
+            and record.get("status_refresh_output_helper")
+            == "stepfun_correctness_status.py"
+            and record.get("status_refresh_output_path") == status_refresh_output_path
+            and record.get("status_refresh_output_overwrite_policy")
+            == "atomic_os_replace"
+            and record.get("status_refresh_uses_shell_redirection") is False
+            and record.get("status_refresh_output_arg_present") is True
+            and isinstance(command, str)
+            and f"--output {status_refresh_output_path}" in command
+            and ">" not in command
+        )
+
+    def _status_refresh_handoff_fields_match(record: object) -> bool:
+        return (
+            isinstance(record, dict)
+            and record.get("status_refresh_writes_atomic_output") is True
+            and record.get("status_refresh_output_path") == status_refresh_output_path
+            and record.get("status_refresh_output_overwrite_policy")
+            == "atomic_os_replace"
+            and record.get("status_refresh_uses_shell_redirection") is False
+            and record.get("status_refresh_output_arg_present") is True
+        )
+
+    resource_refresh_output_path = (
+        kv_action.get("resource_plan_refresh_output_path")
+        if isinstance(kv_action, dict)
+        else None
+    )
+    resource_refresh_command = (
+        kv_action.get("resource_plan_refresh_command")
+        if isinstance(kv_action, dict)
+        else None
+    )
+    resource_refresh_atomic_output_command_metadata = (
+        isinstance(kv_action, dict)
+        and kv_action.get("resource_plan_refresh_writes_atomic_output") is True
+        and kv_action.get("resource_plan_refresh_output_helper")
+        == "stepfun_gguf_load_smoke.py"
+        and isinstance(resource_refresh_output_path, str)
+        and kv_action.get("resource_plan_refresh_output_overwrite_policy")
+        == "atomic_os_replace"
+        and kv_action.get("resource_plan_refresh_uses_shell_redirection") is False
+        and kv_action.get("resource_plan_refresh_output_arg_present") is True
+        and isinstance(resource_refresh_command, str)
+        and f"--output {resource_refresh_output_path}" in resource_refresh_command
+        and ">" not in resource_refresh_command
+    )
+    resource_refresh_atomic_output_handoff_mirrors = (
+        resource_refresh_atomic_output_command_metadata
+        and isinstance(kv_work_item, dict)
+        and kv_work_item.get("recommended_command_writes_atomic_output") is True
+        and kv_work_item.get("atomic_output_path") == resource_refresh_output_path
+        and kv_work_item.get("atomic_output_overwrite_policy") == "atomic_os_replace"
+        and kv_work_item.get("atomic_output_helper") == "stepfun_gguf_load_smoke.py"
+        and kv_work_item.get("recommended_command_uses_shell_redirection") is False
+        and kv_work_item.get("recommended_command_output_arg_present") is True
+    )
+    status_refresh_atomic_output_command_metadata = (
+        _status_refresh_command_metadata_match(oracle_action)
+        and _status_refresh_command_metadata_match(kv_action)
+    )
+    status_refresh_atomic_output_handoff_mirrors = (
+        status_refresh_atomic_output_command_metadata
+        and _status_refresh_handoff_fields_match(oracle_work_item)
+        and _status_refresh_handoff_fields_match(kv_work_item)
+    )
     checks = {
         "source_artifacts_sha256": (
             isinstance(source_artifacts, dict)
@@ -1054,6 +1136,18 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         ),
         "oracle_partial_output_handoff_mirrors": (
             oracle_partial_output_handoff_mirrors
+        ),
+        "status_refresh_atomic_output_command_metadata": (
+            status_refresh_atomic_output_command_metadata
+        ),
+        "status_refresh_atomic_output_handoff_mirrors": (
+            status_refresh_atomic_output_handoff_mirrors
+        ),
+        "resource_refresh_atomic_output_command_metadata": (
+            resource_refresh_atomic_output_command_metadata
+        ),
+        "resource_refresh_atomic_output_handoff_mirrors": (
+            resource_refresh_atomic_output_handoff_mirrors
         ),
         "schema_versions": schema_versions
         == {
