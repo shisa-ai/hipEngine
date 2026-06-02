@@ -3716,7 +3716,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         getattr(args, "batch_decode_linear_output_path", "auto")
     )
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
-        "0" if getattr(args, "batch_decode_full_attn_path", "native_batch") == "per_row" else "1"
+        "0" if getattr(args, "batch_decode_full_attn_path", "per_row") == "per_row" else "1"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
@@ -4190,7 +4190,7 @@ def _build_payload(
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "auto")),
-            "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "native_batch")),
+            "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "per_row")),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -4326,8 +4326,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-full-attn-path",
         choices=("native_batch", "per_row"),
-        default="native_batch",
-        help="Diagnostic full-attention decode path for native c>N batch decode; per_row forces the existing non-retained row loop and blocks retained claims.",
+        default="per_row",
+        help="Full-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and native_batch remains opt-in until generated equality is green.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",

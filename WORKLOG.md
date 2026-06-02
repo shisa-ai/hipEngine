@@ -63773,3 +63773,16 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: unused per-row diagnostic-list construction is not the blocker. The evidence is now sharper: two row-c1 full-attention paths with matching linear diagnostics differ only by the outer branch choice (`native_batch` branch with persistent c1 no-batch-setup still fails; `per_row` branch passes). The next likely discriminator is a subtle branch-control side effect, such as `native_full_attention_layers/full_attention_decode_path` accounting or post-branch metadata/control that affects subsequent decode steps despite appearing metadata-only.
 
 Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention per-row fallback default
+
+Switched the retained/hidden diagnostic harness default full-attention c>N decode path from `native_batch` to the correctness-first outer per-row fallback while keeping `--batch-decode-full-attn-path native_batch` available as the opt-in path for native full-attention batch debugging. This does not claim retained/native scaling; it is a correctness gate default to avoid the isolated native full-attention branch blocker while preserving c>N scheduling and avoiding the serial decode bridge.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier artifact `/tmp/hipengine-e2e-native-c2-512-128.json` now records `workload.batch_decode_full_attention_path=per_row`.
+  - Equal-prefix metric improved from 82 to `min_equal_prefix_tokens=104`.
+  - Generated-token equality is still not green: `prefix_lengths=[137, 104]`, `first_mismatch_indices=[null, 104]`, `status=rejected_correctness`.
+- Interpretation: the full-attention fallback default eliminates the row0/native-full-attention failure at token 82, but row1 still diverges at token 104 with native/default linear-attention batch decode. Prior selected-c1 linear diagnostics plus full-attention per-row fallback remain green in `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-minimal.json`.
+
+Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

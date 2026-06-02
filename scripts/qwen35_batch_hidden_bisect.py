@@ -5712,8 +5712,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-full-attn-path",
         choices=("native_batch", "per_row"),
-        default="native_batch",
-        help="Diagnostic full-attention decode path for native c>N batch decode; per_row forces the existing non-retained row loop.",
+        default="per_row",
+        help="Full-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and native_batch remains opt-in until generated equality is green.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
