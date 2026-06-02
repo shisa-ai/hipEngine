@@ -1,0 +1,405 @@
+{
+  "best_min_equal_prefix_tokens": 137,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json <out>",
+  "conclusion": "One primary sample reproduced the transient prefix-82/prefix-104 c=2 mismatch while two no-code-change reruns were fully equal; active sampler/output metadata stayed batched_lm_head/batch_gemv, so this preserves the instability fingerprint without making a retained or stability claim.",
+  "created_at": "2026-06-02T09:20:10.574237Z",
+  "deterministic_stability_claim": false,
+  "device": {
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    },
+    "name": "AMD Radeon RX 7900 XTX"
+  },
+  "min_equal_prefix_samples": [
+    82,
+    137,
+    137
+  ],
+  "performance_claim": false,
+  "retained_ready": false,
+  "samples": [
+    {
+      "artifact_status": "rejected_correctness",
+      "full_attention_decode_path": "native_batch",
+      "generated_equality_passed": false,
+      "label": "primary",
+      "linear_output_path": "batch_gemv",
+      "linear_projection_path": "selected_c1_qkv_z",
+      "linear_state_path": "native_segments",
+      "min_equal_prefix_tokens": 82,
+      "moe_decode_path": "selected_c1_per_row_moe_fallback",
+      "performance_claim": false,
+      "prefix_lengths": [
+        82,
+        104
+      ],
+      "row_summaries": [
+        {
+          "batch_tail": [
+            9640,
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262
+          ],
+          "batch_window": [
+            19,
+            60,
+            48306,
+            32907,
+            27502,
+            8204,
+            1228,
+            9640,
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603,
+            4422
+          ],
+          "c1_tail": [
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "c1_window": [
+            19,
+            60,
+            48306,
+            32907,
+            27502,
+            27502,
+            9640,
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603,
+            4422,
+            27867
+          ],
+          "decode_step_from_mismatch": 73,
+          "first_mismatch_index": 82,
+          "prefix": 82,
+          "row": 0,
+          "window_end": 94,
+          "window_start": 77
+        },
+        {
+          "batch_tail": [
+            1414,
+            13,
+            5044,
+            2962,
+            440,
+            61446,
+            10597,
+            58655
+          ],
+          "batch_window": [
+            198,
+            256,
+            471,
+            561,
+            1483,
+            2713,
+            74988,
+            16,
+            25,
+            16,
+            17,
+            60,
+            63,
+            369,
+            3799,
+            974,
+            25
+          ],
+          "c1_tail": [
+            321,
+            81726,
+            35464,
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "c1_window": [
+            198,
+            256,
+            471,
+            561,
+            1483,
+            799,
+            369,
+            3799,
+            974,
+            25,
+            74988,
+            16,
+            25,
+            16,
+            17,
+            60,
+            48306
+          ],
+          "decode_step_from_mismatch": 95,
+          "first_mismatch_index": 104,
+          "prefix": 104,
+          "row": 1,
+          "window_end": 116,
+          "window_start": 99
+        }
+      ],
+      "sampler_mode": "batched_lm_head",
+      "sampler_native_row_aware_lm_head": true,
+      "source_sha256": "1b319e3407d788b5d0a90b06ba420e8852e96275d51867e789650205d61c734e",
+      "source_size_bytes": 162853,
+      "source_tmp_path": "/tmp/hipengine-e2e-native-c2-512-128.json"
+    },
+    {
+      "artifact_status": "blocked",
+      "full_attention_decode_path": "native_batch",
+      "generated_equality_passed": true,
+      "label": "rerun2",
+      "linear_output_path": "batch_gemv",
+      "linear_projection_path": "selected_c1_qkv_z",
+      "linear_state_path": "native_segments",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "selected_c1_per_row_moe_fallback",
+      "performance_claim": false,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "row_summaries": [
+        {
+          "batch_tail": [
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "batch_window": [
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "c1_tail": [
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "c1_window": [
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "decode_step_from_mismatch": null,
+          "first_mismatch_index": null,
+          "prefix": 137,
+          "row": 0,
+          "window_end": 137,
+          "window_start": 132
+        },
+        {
+          "batch_tail": [
+            321,
+            81726,
+            35464,
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "batch_window": [
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "c1_tail": [
+            321,
+            81726,
+            35464,
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "c1_window": [
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "decode_step_from_mismatch": null,
+          "first_mismatch_index": null,
+          "prefix": 137,
+          "row": 1,
+          "window_end": 137,
+          "window_start": 132
+        }
+      ],
+      "sampler_mode": "batched_lm_head",
+      "sampler_native_row_aware_lm_head": true,
+      "source_sha256": "6058136730c3ec7fc8068ec7773b23ed7a018f636955ec2736ebc7c9d554eecb",
+      "source_size_bytes": 152768,
+      "source_tmp_path": "/tmp/hipengine-e2e-native-c2-512-128-rerun2.json"
+    },
+    {
+      "artifact_status": "blocked",
+      "full_attention_decode_path": "native_batch",
+      "generated_equality_passed": true,
+      "label": "rerun3",
+      "linear_output_path": "batch_gemv",
+      "linear_projection_path": "selected_c1_qkv_z",
+      "linear_state_path": "native_segments",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "selected_c1_per_row_moe_fallback",
+      "performance_claim": false,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "row_summaries": [
+        {
+          "batch_tail": [
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "batch_window": [
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "c1_tail": [
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "c1_window": [
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "decode_step_from_mismatch": null,
+          "first_mismatch_index": null,
+          "prefix": 137,
+          "row": 0,
+          "window_end": 137,
+          "window_start": 132
+        },
+        {
+          "batch_tail": [
+            321,
+            81726,
+            35464,
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "batch_window": [
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "c1_tail": [
+            321,
+            81726,
+            35464,
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "c1_window": [
+            7465,
+            440,
+            69892,
+            1414,
+            13
+          ],
+          "decode_step_from_mismatch": null,
+          "first_mismatch_index": null,
+          "prefix": 137,
+          "row": 1,
+          "window_end": 137,
+          "window_start": 132
+        }
+      ],
+      "sampler_mode": "batched_lm_head",
+      "sampler_native_row_aware_lm_head": true,
+      "source_sha256": "115e496320a9c9e83a7cac2685c0d55dcb1a65b713029d3480d99f8bfe75904d",
+      "source_size_bytes": 152771,
+      "source_tmp_path": "/tmp/hipengine-e2e-native-c2-512-128-rerun3.json"
+    }
+  ],
+  "schema": 1,
+  "status": "diagnostic_variability",
+  "workload": {
+    "batch_size": 2,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  },
+  "worst_min_equal_prefix_tokens": 82
+}

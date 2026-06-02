@@ -64347,3 +64347,20 @@ Validation:
 
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
 - Artifact assertions loaded all JSON, verified finite values, confirmed all six prefixes plus row-aware sampler/output-path metadata, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY c=2 primary variability fingerprint
+
+Captured a compact fingerprint artifact for the primary c=2 512/128 verifier variability under `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-primary-variability/summary.json`. This is required runtime evidence only (`performance_claim=false`, `retained_ready=false`) and does not make a retained throughput/scaling or deterministic-stability claim.
+
+Evidence:
+
+- Source samples summarized from GPU1 / AMD Radeon RX 7900 XTX primary verifier artifacts: `/tmp/hipengine-e2e-native-c2-512-128.json` plus no-code-change reruns `/tmp/hipengine-e2e-native-c2-512-128-rerun2.json` and `...-rerun3.json`.
+- Recorded min-prefix samples are `[82,137,137]`; the failing sample has row prefixes `[82,104]` while the two reruns have `[137,137]`.
+- The failing sample records the same active metadata as the passing reruns: `sampler_mode=batched_lm_head`, `linear_attention_output_path=batch_gemv`, selected-QKV/Z projection, native segmented linear state, per-row MoE fallback, and native full-attention decode.
+- The artifact preserves row-level mismatch windows. Row 0 first mismatch is index 82 (decode step 73 after seed+8 warmup); row 1 first mismatch is index 104 (decode step 95). This keeps the recurrent prefix-82/prefix-104 signature available without committing raw logs.
+- A fresh primary verifier run after creating the fingerprint printed `137`.
+
+Validation:
+
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
+- Fingerprint assertions checked schema/status/performance flags, `[82,137,137]`, row mismatch indices 82/104, `batched_lm_head`, `batch_gemv`, finite JSON values, and `git diff --check` passed.
