@@ -3328,6 +3328,8 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "kv_decode_blocker_summary_mirrors_run_plan": True,
             "blocker_recommended_commands_sha256": True,
             "blocker_recommended_commands_meta_mirror": True,
+            "oracle_partial_output_command_metadata": True,
+            "oracle_partial_output_handoff_mirrors": True,
             "schema_versions": True,
         },
     }
@@ -5459,6 +5461,8 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "kv_decode_blocker_summary_mirrors_run_plan": True,
             "blocker_recommended_commands_sha256": True,
             "blocker_recommended_commands_meta_mirror": True,
+            "oracle_partial_output_command_metadata": True,
+            "oracle_partial_output_handoff_mirrors": True,
             "schema_versions": True,
         },
     }
@@ -5757,6 +5761,64 @@ def test_stepfun_correctness_status_verify_source_status_integrity_detects_kv_bl
     assert json.loads(failures_output.read_text()) == [
         "kv_decode_blocker_summary_sha256",
         "kv_decode_blocker_summary_mirrors_run_plan",
+    ]
+
+
+def test_stepfun_correctness_status_verify_source_status_integrity_detects_oracle_partial_output_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    failures_output = tmp_path / "failures.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["next_action_commands"]["oracle_parity_blocked"][
+        "oracle_helper_partial_output_status"
+    ] = "stale_running_status"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--status-integrity-failures-only",
+            "--output",
+            str(failures_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(failures_output.read_text()) == [
+        "next_action_commands_sha256",
+        "oracle_partial_output_command_metadata",
+        "oracle_partial_output_handoff_mirrors",
     ]
 
 
@@ -6362,6 +6424,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
+        "oracle_partial_output_command_metadata": True,
+        "oracle_partial_output_handoff_mirrors": True,
         "schema_versions": True,
     }
 
@@ -6447,6 +6511,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "kv_decode_blocker_summary_mirrors_run_plan": False,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
+        "oracle_partial_output_command_metadata": True,
+        "oracle_partial_output_handoff_mirrors": True,
         "schema_versions": True,
     }
 
@@ -6531,6 +6597,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
+        "oracle_partial_output_command_metadata": True,
+        "oracle_partial_output_handoff_mirrors": True,
         "schema_versions": True,
     }
 
@@ -6678,6 +6746,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
+        "oracle_partial_output_command_metadata": True,
+        "oracle_partial_output_handoff_mirrors": True,
         "schema_versions": True,
     }
 
@@ -6762,6 +6832,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
+        "oracle_partial_output_command_metadata": True,
+        "oracle_partial_output_handoff_mirrors": True,
         "schema_versions": True,
     }
 
@@ -6847,6 +6919,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
+        "oracle_partial_output_command_metadata": True,
+        "oracle_partial_output_handoff_mirrors": True,
         "schema_versions": True,
     }
 
@@ -6931,6 +7005,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
+        "oracle_partial_output_command_metadata": True,
+        "oracle_partial_output_handoff_mirrors": True,
         "schema_versions": True,
     }
 

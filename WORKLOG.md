@@ -32190,3 +32190,42 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: focused integrity/source tests passed; existing drift tests updated and passed; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks) with `status_integrity_sha256=60688533c927d3645775c339c439c34362205b86802546ec4d04c784c7e95b48`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`233` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun oracle partial-output integrity checks
+
+Added embedded correctness-status integrity checks for the StepFun oracle helper partial-output handoff. `_status_integrity()` now verifies the command-level guarantee (`oracle_helper_writes_partial_output_before_launch=true`, `status=running`, `overwrite_on_execute_or_timeout`, `llama_cpp_oracle_in_progress`, output path matching `source_artifacts.oracle.path`, and `--execute --output ...` present in the 900 s command) plus mirror checks across the oracle blocker work item, `remaining_blockers_report`, and `first_remaining_blocker_report`. Added a drift regression that mutates `next_action_commands.oracle_parity_blocked.oracle_helper_partial_output_status` and confirms `--status-integrity-failures-only` reports `next_action_commands_sha256`, `oracle_partial_output_command_metadata`, and `oracle_partial_output_handoff_mirrors`. Updated status-integrity expected payloads and documented the new checks in `docs/STEPFUN.md`; refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+checks=s['status_integrity']['checks']
+for key in [
+    'oracle_partial_output_command_metadata',
+    'oracle_partial_output_handoff_mirrors',
+]:
+    assert checks[key] is True
+assert s['status_integrity']['failed_checks'] == []
+assert s['status_integrity']['all_match'] is True
+print('oracle partial-output integrity ok', s['status_integrity_sha256'])
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+assert p['checks']['oracle_partial_output_command_metadata'] is True
+assert p['checks']['oracle_partial_output_handoff_mirrors'] is True
+print('status integrity ok')
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verifies_source_artifact_provenance tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verify_source_status_integrity_failures_only_detects_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verify_source_status_integrity_detects_kv_blocker_summary_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verify_source_status_integrity_detects_oracle_partial_output_drift
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: focused integrity/source tests passed; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks) with `oracle_partial_output_command_metadata=true`, `oracle_partial_output_handoff_mirrors=true`, and `status_integrity_sha256=c4c2373660cc472787176b0300b9ad915ebe16d366e0ad4c1a323a3419a6e4cd`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`234` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.

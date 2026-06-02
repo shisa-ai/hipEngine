@@ -801,6 +801,28 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(handoff_summary, dict)
         else None
     )
+    oracle_action = (
+        next_action_commands.get("oracle_parity_blocked", {})
+        if isinstance(next_action_commands, dict)
+        else {}
+    )
+    oracle_source_artifact = (
+        source_artifacts.get("oracle", {}) if isinstance(source_artifacts, dict) else {}
+    )
+    oracle_work_item: dict[str, object] = {}
+    if isinstance(handoff_summary, dict):
+        for item in handoff_summary.get("blocker_work_queue", []):
+            if isinstance(item, dict) and item.get("blocker_kind") == "oracle_parity_blocked":
+                oracle_work_item = item
+                break
+    remaining_blockers_report = status.get("remaining_blockers_report", {})
+    remaining_oracle_item: dict[str, object] = {}
+    if isinstance(remaining_blockers_report, dict):
+        for item in remaining_blockers_report.get("items", []):
+            if isinstance(item, dict) and item.get("blocker_kind") == "oracle_parity_blocked":
+                remaining_oracle_item = item
+                break
+    first_remaining_blocker_report = status.get("first_remaining_blocker_report", {})
     kv_streaming_mirror_records: list[dict[str, object]] = []
     if isinstance(kv_gap_report, dict):
         kv_streaming_mirror_records.append(kv_gap_report)
@@ -921,6 +943,48 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         and blocker_meta.get("recommended_commands_sha256")
         == blocker_recommended_commands_sha256
     )
+    oracle_partial_output_command_metadata = (
+        isinstance(oracle_action, dict)
+        and isinstance(oracle_source_artifact, dict)
+        and oracle_action.get("oracle_helper_writes_partial_output_before_launch")
+        is True
+        and oracle_action.get("oracle_helper_partial_output_status") == "running"
+        and oracle_action.get("oracle_helper_partial_output_overwrite_policy")
+        == "overwrite_on_execute_or_timeout"
+        and oracle_action.get("oracle_helper_partial_output_blocker_kind")
+        == "llama_cpp_oracle_in_progress"
+        and oracle_action.get("oracle_helper_partial_output_path")
+        == oracle_source_artifact.get("path")
+        and isinstance(oracle_action.get("oracle_helper_long_timeout_command"), str)
+        and "--execute" in str(oracle_action.get("oracle_helper_long_timeout_command"))
+        and f"--output {oracle_action.get('oracle_helper_partial_output_path')}"
+        in str(oracle_action.get("oracle_helper_long_timeout_command"))
+    )
+    oracle_partial_expected = {
+        "recommended_command_writes_partial_output_before_launch": True,
+        "partial_output_status": oracle_action.get("oracle_helper_partial_output_status"),
+        "partial_output_path": oracle_action.get("oracle_helper_partial_output_path"),
+        "partial_output_overwrite_policy": oracle_action.get(
+            "oracle_helper_partial_output_overwrite_policy"
+        ),
+        "partial_output_blocker_kind": oracle_action.get(
+            "oracle_helper_partial_output_blocker_kind"
+        ),
+    }
+
+    def _oracle_partial_fields_match(record: object) -> bool:
+        return isinstance(record, dict) and all(
+            record.get(key) == value for key, value in oracle_partial_expected.items()
+        )
+
+    oracle_partial_output_handoff_mirrors = (
+        oracle_partial_output_command_metadata
+        and _oracle_partial_fields_match(oracle_work_item)
+        and _oracle_partial_fields_match(remaining_oracle_item)
+        and isinstance(first_remaining_blocker_report, dict)
+        and first_remaining_blocker_report.get("blocker_kind") == "oracle_parity_blocked"
+        and _oracle_partial_fields_match(first_remaining_blocker_report)
+    )
     checks = {
         "source_artifacts_sha256": (
             isinstance(source_artifacts, dict)
@@ -982,6 +1046,12 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         ),
         "blocker_recommended_commands_meta_mirror": (
             blocker_recommended_commands_meta_mirror
+        ),
+        "oracle_partial_output_command_metadata": (
+            oracle_partial_output_command_metadata
+        ),
+        "oracle_partial_output_handoff_mirrors": (
+            oracle_partial_output_handoff_mirrors
         ),
         "schema_versions": schema_versions
         == {
