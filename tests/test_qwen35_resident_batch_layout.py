@@ -2104,15 +2104,15 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
         "full_attention_context_decode_path": "native_batch",
         "full_attention_kv_append_decode_path": "native_batch",
         "post_attention_decode_path": "native_batch",
-        "native_caware_decode": False,
+        "native_caware_decode": True,
         "linear_attention_segment_metadata": {"cu_seqlens": [0, 1, 2], "state_indices": [0, 2]},
         "linear_attention_projection_path": "native_batch",
         "linear_attention_state_path": "native_segments",
         "linear_attention_output_path": "native_batch",
-        "moe_decode_path": "selected_c1_forced",
+        "moe_decode_path": "selected_c1_batch",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 0,
-        "moe_selected_c1_fallback_layers": 1,
+        "moe_selected_c1_fallback_layers": 0,
         "layer_executions": [
             {
                 "layer_index": 0,
@@ -2121,11 +2121,11 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
                 "slots": [0, 2],
                 "max_context": 8,
                 "full_attention_decode_path": "native_batch",
-                "native_caware_decode": False,
-                "moe_decode_path": "selected_c1_forced",
+                "native_caware_decode": True,
+                "moe_decode_path": "selected_c1_batch",
             }
         ],
-        "blockers": ["MoE decode forced to selected-c1 diagnostic path"],
+        "blockers": [],
     }
 
 
@@ -2421,10 +2421,7 @@ def test_qwen35_resident_run_layers_batch_decode_reports_selected_c1_with_per_ro
     assert session.last_batch_decode_execution["moe_decode_path"] == "selected_c1_forced_with_per_row_full_attention_fallback"
     assert session.last_batch_decode_execution["moe_grouped_compact_layers"] == 0
     assert session.last_batch_decode_execution["moe_selected_c1_fallback_layers"] == 1
-    assert session.last_batch_decode_execution["blockers"] == [
-        "MoE decode forced to selected-c1 diagnostic path",
-        "full-attention decode used a per-row fallback",
-    ]
+    assert session.last_batch_decode_execution["blockers"] == ["full-attention decode used a per-row fallback"]
 
 
 def test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallback(monkeypatch) -> None:

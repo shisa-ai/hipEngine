@@ -4134,7 +4134,7 @@ class Qwen35ParoResidentSession:
             else (
                 "selected_c1_per_row_moe_fallback"
                 if force_per_row_linear_moe or force_per_row_full_attention_moe or force_per_row_full_attention_persistent_scratch
-                else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact")
+                else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
             )
         )
         moe_grouped_compact_layers = 0
@@ -4262,12 +4262,12 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
-                            if force_selected_c1_moe or force_per_row_linear_moe:
+                            if force_per_row_linear_moe:
                                 moe_selected_c1_fallback_layers += 1
-                            else:
+                            elif not force_selected_c1_moe:
                                 moe_grouped_compact_layers += 1
                         layer_executions.append(
                             {
@@ -4283,8 +4283,7 @@ class Qwen35ParoResidentSession:
                                 ],
                                 "full_attention_decode_path": "not_applicable",
                                 "native_caware_decode": not (
-                                    force_selected_c1_moe
-                                    or force_per_row_linear_moe
+                                    force_per_row_linear_moe
                                     or force_selected_c1_linear_projections
                                     or force_selected_c1_qkv_z_linear_projections
                                     or force_selected_c1_qkv_z_linear_input
@@ -4542,12 +4541,12 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_full_attention_moe or force_per_row_full_attention_persistent_scratch else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_full_attention_moe or force_per_row_full_attention_persistent_scratch else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
-                            if force_selected_c1_moe or force_per_row_full_attention_moe or force_per_row_full_attention_persistent_scratch:
+                            if force_per_row_full_attention_moe or force_per_row_full_attention_persistent_scratch:
                                 moe_selected_c1_fallback_layers += 1
-                            else:
+                            elif not force_selected_c1_moe:
                                 moe_grouped_compact_layers += 1
                         layer_execution = {
                             "layer_index": int(layer_id),
@@ -4557,8 +4556,7 @@ class Qwen35ParoResidentSession:
                             "max_context": int(max_context),
                             "full_attention_decode_path": "native_batch",
                             "native_caware_decode": not (
-                                force_selected_c1_moe
-                                or force_per_row_full_attention_moe
+                                force_per_row_full_attention_moe
                                 or force_per_row_full_attention_input
                                 or force_per_row_full_attention_qkv
                                 or force_per_row_full_attention_scratch
@@ -4695,8 +4693,6 @@ class Qwen35ParoResidentSession:
                     self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                 hidden, next_hidden = next_hidden, hidden
             decode_blockers: list[str] = []
-            if force_selected_c1_moe:
-                decode_blockers.append("MoE decode forced to selected-c1 diagnostic path")
             if force_per_row_linear_moe:
                 decode_blockers.append("linear-attention MoE forced to per-row selected-c1 diagnostic path")
             if force_selected_c1_linear_projections:
@@ -4773,7 +4769,6 @@ class Qwen35ParoResidentSession:
                 "full_attention_kv_append_decode_path": full_attention_kv_append_decode_path,
                 "post_attention_decode_path": post_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
-                and not force_selected_c1_moe
                 and not force_per_row_linear_moe
                 and not force_selected_c1_linear_projections
                 and not force_selected_c1_qkv_z_linear_projections

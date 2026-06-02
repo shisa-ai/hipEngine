@@ -162,15 +162,21 @@ What is still not green:
   (`/tmp/hipengine-e2e-native-c{2,4,8}-512-128-selected-linear-native-full-batch-gemv-output-moe-native-post.json`, all rows prefix `137`).
   The narrower batched selected-c1 MoE default now removes the per-row linear and
   per-row full-attention MoE blockers while keeping c=2/c=4/c=8 equality green
-  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-batched-selected-moe-matrix/summary.json`).
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-batched-selected-moe-matrix/summary.json`),
+  and the follow-up promoted selected-c1 MoE matrix records `moe_decode_path=selected_c1_batch`,
+  `moe_selected_c1_fallback_layers=0`, and no selected-c1 MoE decode blocker for
+  c=2/c=4/c=8 while preserving the retained grouped-compact target
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-moe-promoted-matrix/summary.json`).
   Grouped-compact linear MoE remains red under the current shape
   (`/tmp/hipengine-e2e-native-c{2,4,8}-512-128-selected-linear-grouped-linear-moe-current-fullattn.json`:
   c=2/c=4 row 0 stops at prefix `82`, c=8 rows stop at `82/11/40`), and a
   grouped-compact full-attention-MoE retest under current defaults remains red
   (`/tmp/hipengine-e2e-native-c2-512-128-current-defaults-fullattn-grouped-moe-probe.json`, prefixes `[82,137]`).
   Therefore the current C2.3/C2.4 blockers are native QKV/Z bit exactness,
-  native grouped-compact MoE under this shape, and projection-dispatch evidence;
-  row-aware batch-GEMV linear/full-attention outputs are green and no longer block.
+  native grouped-compact MoE for retained performance under this shape, and
+  projection-dispatch evidence; row-aware batch-GEMV linear/full-attention outputs
+  and the batched selected-c1 MoE correctness path are green and no longer block
+  correctness-default equality.
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
@@ -193,7 +199,7 @@ What is still not green:
 | Decode runtime | Safe/diagnostic paths remain non-claiming: serial bridge rows and experimental native rows are blocked/rejected unless generated-token equality and native execution metadata pass. c=2/c=4/c=8 512/128 generated equality is green with auto selected-QKV/Z projection diagnostics, native segmented linear state, batch-GEMV/Marlin linear output, batched selected-c1 MoE plus row-aware shared-expert GEMV, and native full-attention decode plus row-aware batch-GEMV full-attention output. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; retained/hidden-bisect artifacts cited in C2. | Native projection/MoE/full-attention parity and retained benchmark/profiler evidence. |
 | Sampler | `PerRowSamplingParams` and sampler blocks exist; native `batched_lm_head` now uses a row-aware `hipengine_batch_argmax_f32` launch and is evidence-gated by generated-token equality plus sampler provenance. The retained bench's no-flag c=2/4/8 diagnostic path now auto-attaches the repo-retained sampler equality artifacts so primary equality probes exercise the row-aware sampler instead of the older serial LM-head loop. | `hipengine/generation/batch_scheduler.py:PerRowSamplingParams`; `hipengine.dispatch.sampling`; `hipengine/kernels/hip_gfx1100/linear/lm_head.*`; `scripts/qwen35_batch_retained_bench.py`; `tests/test_lm_head_plan.py`; `tests/test_generation_batch_scheduler.py`. | Retained native throughput is still blocked by projection/MoE/full-attention/graph-replay gates, not by the sampler launch itself. |
 | Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K long-context decode is labeled per-row fallback. | `scripts/qwen35_batch_correctness.py`; `/tmp/hipengine-multiloop-c{2,4,8}-correctness.json`; attention dispatch tests. | Row-aware split-K reducer; INT8 end-to-end gate. |
-| MoE / quant kernels | The correctness-first retained-bench default now uses a batched selected-c1 MoE path for `tokens>1` and forces the packed shared expert through row-aware GEMV for c<=8, removing host per-row MoE replay from the c=2/c=4/c=8 equality gate. Grouped-compact MoE remains the retained target and is still red under this shape. | `hipengine/runtime/qwen35_paro.py`; `benchmarks/results/2026-06-02-hipengine-qwen35-native-batched-selected-moe-matrix/summary.json`; `/tmp/hipengine-e2e-native-c2-512-128-current-defaults-fullattn-grouped-moe-probe.json`. | Native grouped-compact MoE evidence and retained benchmark/profiler evidence. |
+| MoE / quant kernels | The correctness-first retained-bench default now uses a batched selected-c1 MoE path for `tokens>1` and forces the packed shared expert through row-aware GEMV for c<=8, removing host per-row MoE replay and the selected-c1 MoE decode blocker from the c=2/c=4/c=8 equality gate. Grouped-compact MoE remains the retained target and is still red under this shape. | `hipengine/runtime/qwen35_paro.py`; `hipengine/runtime/qwen35_paro_runner.py`; `benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-moe-promoted-matrix/summary.json`; `/tmp/hipengine-e2e-native-c2-512-128-current-defaults-fullattn-grouped-moe-probe.json`. | Native grouped-compact MoE evidence and retained benchmark/profiler evidence; selected-c1 is correctness-first, not a retained throughput path. |
 | KV pool | Chunked grow/shrink, append-only block ids, current admission capacity, prefix refcounts, and copy-on-write forks are implemented in host tests. | `hipengine/kvcache/pool.py:ChunkedKVPool`, `admit_with_shared_prefix`, `fork_copy_on_write`; `pytest -q tests/test_kvcache_policy.py -q`. | Device/runtime retained equality and perf, not the host allocator contract. |
 | Prefix / radix cache | `RadixCache` indexes block-aligned token prefixes; server exposes prefix-cache mode and `n>1` lowering uses distinct row seeds/request ids. | `hipengine/kvcache/radix.py:RadixCache`; `hipengine/server/api.py`; kvcache/server tests. | Broader retained coverage and future DMS/KVTC policy work; no flat prefix-LRU peer path. |
 | Observability | Completion artifacts and `/metrics` include request/pool counters; graph-bucket stats exist for scheduler observability, and the c=2/c=4/c=8 profiler preflights are captured as compact JSON rather than retaining raw rocprof dumps. | `CompletedRequest.to_json_dict`, `KVPoolStats.to_json_dict`, `GraphBucketCache`, `_render_prometheus_metrics`; server/scheduler tests; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c{2,4,8}-profiler-preflight/profiler-c{2,4,8}.json`. | Accepted retained rows still need graph-replay profiler evidence and accepted benchmark rollup promotion. |
@@ -707,8 +713,8 @@ roll-up/status view.
       scratch for `tokens>1` instead of selected-MoE c1 wrappers, and
       decode-execution metadata reports `moe_decode_path`/`moe_decode_rows`,
       grouped-compact and selected-c1 fallback layer counts, and per-layer
-      decode traces so retained gates and diagnostics can reject stale
-      selected-c1 MoE paths; CPU coverage now locks the
+      decode traces so retained gates and diagnostics can distinguish batched
+      selected-c1 MoE from true per-row fallback paths; CPU coverage now locks the
       token-major routed-lane → token-row, selected-expert → expert-group,
       sorted routing-weight, weighted selected-branch accumulation,
       lane-to-sorted-row helper semantics used by grouped MoE combine metadata,
@@ -2198,8 +2204,8 @@ matrix has at least one green retained c>N cell on the 512/128 protocol.
 - [x] Make linear-attention conv/recurrent state updates consume
       `[C, ...]` state, active masks, and slot ids; remove c1 aliases.
 - [ ] Validate grouped-compact MoE metadata for c=2/4/8 after native
-      linear-attention parity is fixed; selected-c1 MoE remains diagnostic only
-      and is not the residual blocker.
+      linear-attention parity is fixed; batched selected-c1 MoE is correctness-green
+      for c<=8 but is not the retained throughput target.
 - [x] Keep c=1 GEMV dispatch separate from c>N MMQ/GEMM/WMMA candidates.
       Evidence: `plan_projection_dispatch(...)` pins c=1 to `row_gemv_c1`
       even when a faster c-aware candidate is supplied, c>N candidates require
