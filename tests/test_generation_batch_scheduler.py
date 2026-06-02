@@ -3483,7 +3483,11 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     retained_bench._apply_runtime_env_args(args)
 
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] == "auto"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "0"
@@ -3502,7 +3506,10 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     defaults = SimpleNamespace(projection_dispatch_artifact=None)
     retained_bench._apply_runtime_env_args(defaults)
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "0"
@@ -3518,6 +3525,10 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
             projection_dispatch_artifact=None,
             batch_decode_full_attn_path="native_batch",
             batch_decode_linear_path="batch_segments",
+            batch_decode_linear_projection_path="batch",
+            batch_decode_linear_state_path="batch_segments",
+            batch_decode_linear_moe_path="grouped_compact",
+            batch_decode_linear_output_path="auto",
         )
     )
 
@@ -3598,6 +3609,50 @@ def test_qwen35_batch_equality_matrix_repeat_runs_are_distinct(tmp_path: Path) -
     assert commands[1]["artifact_path"].endswith("native-equality-c4-p512-d128-r0.json")
     assert commands[2]["artifact_path"].endswith("native-equality-c2-p512-d128-r1.json")
     assert commands[3]["artifact_path"].endswith("native-equality-c4-p512-d128-r1.json")
+
+
+def test_qwen35_batch_equality_matrix_dry_run_records_linear_diagnostics(tmp_path: Path) -> None:
+    summary_path = tmp_path / "summary.json"
+    output_dir = tmp_path / "artifacts"
+
+    rc = equality_matrix.main(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2",
+            "--batch-decode-linear-path",
+            "batch_segments",
+            "--batch-decode-linear-projection-path",
+            "selected_c1",
+            "--batch-decode-linear-state-path",
+            "selected_c1",
+            "--batch-decode-linear-moe-path",
+            "per_row_c1",
+            "--batch-decode-linear-output-path",
+            "selected_c1",
+            "--batch-decode-full-attn-path",
+            "per_row",
+            "--output-dir",
+            str(output_dir),
+            "--json",
+            str(summary_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    command = payload["commands"][0]["command"]
+    assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
+    assert payload["workload"]["batch_decode_linear_projection_path"] == "selected_c1"
+    assert payload["workload"]["batch_decode_linear_state_path"] == "selected_c1"
+    assert payload["workload"]["batch_decode_linear_moe_path"] == "per_row_c1"
+    assert payload["workload"]["batch_decode_linear_output_path"] == "selected_c1"
+    assert "--batch-decode-linear-path batch_segments" in command
+    assert "--batch-decode-linear-projection-path selected_c1" in command
+    assert "--batch-decode-linear-state-path selected_c1" in command
+    assert "--batch-decode-linear-moe-path per_row_c1" in command
+    assert "--batch-decode-linear-output-path selected_c1" in command
+    assert "--batch-decode-full-attn-path per_row" in command
 
 
 def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_path: Path) -> None:
@@ -12063,9 +12118,10 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_prefill_linear_path"] == "packed_segments"
     assert payload["workload"]["batch_prefill_full_attention_path"] == "packed_varlen"
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
-    assert payload["workload"]["batch_decode_linear_path"] == "per_row"
-    assert payload["workload"]["batch_decode_linear_projection_path"] == "batch"
-    assert payload["workload"]["batch_decode_linear_state_path"] == "batch_segments"
+    assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
+    assert payload["workload"]["batch_decode_linear_projection_path"] == "selected_c1"
+    assert payload["workload"]["batch_decode_linear_state_path"] == "selected_c1"
+    assert payload["workload"]["batch_decode_linear_moe_path"] == "per_row_c1"
     assert payload["workload"]["batch_decode_linear_output_path"] == "auto"
     assert payload["workload"]["batch_decode_full_attention_path"] == "per_row"
     assert payload["workload"]["batch_decode_attention_input_path"] == "batch"

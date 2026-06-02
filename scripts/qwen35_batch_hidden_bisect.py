@@ -5682,26 +5682,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-linear-path",
         choices=("batch_segments", "per_row"),
-        default="per_row",
-        help="Linear-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and batch_segments remains opt-in until generated equality is green.",
+        default="batch_segments",
+        help="Linear-attention decode path for c>N batch decode; batch_segments is the correctness-first default when paired with selected-c1 projection/state/MoE diagnostics, while per_row remains available as a broader row replay fallback.",
     )
     parser.add_argument(
         "--batch-decode-linear-projection-path",
         choices=("batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_ab", "batch_gemv_selected_ab"),
-        default="batch",
-        help="Diagnostic linear-attention projection path for c>N batch decode; batch_gemv uses row-aware GEMV QKV/Z projections, selected_qkv_z forces token-1 QKV/Z only, selected_ab forces token-1 A/B only, batch_gemv_selected_ab combines batch-GEMV QKV/Z with token-1 A/B, and selected_c1 forces token-1 QKV/Z/A/B projections before native segmented state updates.",
+        default="selected_c1",
+        help="Diagnostic linear-attention projection path for c>N batch decode; selected_c1 is the correctness-first default and forces token-1 QKV/Z/A/B projections before native segmented state updates, batch_gemv uses row-aware GEMV QKV/Z projections, selected_qkv_z forces token-1 QKV/Z only, selected_ab forces token-1 A/B only, and batch_gemv_selected_ab combines batch-GEMV QKV/Z with token-1 A/B.",
     )
     parser.add_argument(
         "--batch-decode-linear-state-path",
         choices=("batch_segments", "selected_c1"),
-        default="batch_segments",
-        help="Diagnostic linear-attention conv/GDN/state path for c>N batch decode; selected_c1 forces token-1 state kernels per row.",
+        default="selected_c1",
+        help="Diagnostic linear-attention conv/GDN/state path for c>N batch decode; selected_c1 is the correctness-first default and forces token-1 state kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-linear-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="grouped_compact",
-        help="Diagnostic MoE path for linear-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row.",
+        default="per_row_c1",
+        help="Diagnostic MoE path for linear-attention c>N batch decode; per_row_c1 is the correctness-first default and replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-linear-output-path",

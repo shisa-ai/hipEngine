@@ -203,6 +203,14 @@ def _retained_command(args: argparse.Namespace, batch_size: int, artifact_path: 
         argv.append("--require-cached-build")
     if args.batch_decode_linear_path != "default":
         argv.extend(("--batch-decode-linear-path", str(args.batch_decode_linear_path)))
+    if args.batch_decode_linear_projection_path != "default":
+        argv.extend(("--batch-decode-linear-projection-path", str(args.batch_decode_linear_projection_path)))
+    if args.batch_decode_linear_state_path != "default":
+        argv.extend(("--batch-decode-linear-state-path", str(args.batch_decode_linear_state_path)))
+    if args.batch_decode_linear_moe_path != "default":
+        argv.extend(("--batch-decode-linear-moe-path", str(args.batch_decode_linear_moe_path)))
+    if args.batch_decode_linear_output_path != "default":
+        argv.extend(("--batch-decode-linear-output-path", str(args.batch_decode_linear_output_path)))
     if args.batch_decode_full_attn_path != "default":
         argv.extend(("--batch-decode-full-attn-path", str(args.batch_decode_full_attn_path)))
     return argv
@@ -262,6 +270,10 @@ def _build_summary(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
             "max_layers": args.max_layers,
             "repeat_runs": args.repeat_runs,
             "batch_decode_linear_path": args.batch_decode_linear_path,
+            "batch_decode_linear_projection_path": args.batch_decode_linear_projection_path,
+            "batch_decode_linear_state_path": args.batch_decode_linear_state_path,
+            "batch_decode_linear_moe_path": args.batch_decode_linear_moe_path,
+            "batch_decode_linear_output_path": args.batch_decode_linear_output_path,
             "batch_decode_full_attn_path": args.batch_decode_full_attn_path,
         },
         "commands": rows,
@@ -288,6 +300,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--batch-decode-linear-path", choices=("default", "batch_segments", "per_row"), default="default")
+    parser.add_argument(
+        "--batch-decode-linear-projection-path",
+        choices=("default", "batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_ab", "batch_gemv_selected_ab"),
+        default="default",
+    )
+    parser.add_argument(
+        "--batch-decode-linear-state-path",
+        choices=("default", "batch_segments", "selected_c1"),
+        default="default",
+    )
+    parser.add_argument(
+        "--batch-decode-linear-moe-path",
+        choices=("default", "grouped_compact", "per_row_c1"),
+        default="default",
+    )
+    parser.add_argument(
+        "--batch-decode-linear-output-path",
+        choices=("default", "auto", "batch", "batch_gemv", "selected_c1"),
+        default="default",
+    )
     parser.add_argument("--batch-decode-full-attn-path", choices=("default", "native_batch", "per_row"), default="default")
     return parser
 

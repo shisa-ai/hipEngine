@@ -104,9 +104,10 @@ What is still not green:
 - The retained Qwen/PARO native c>N decode path is experimental. BF16 primitive
   c=2/4/8 KV append/full-attention correctness passes, and generated-token
   equality now passes for the c=2/c=4/c=8 512/128 gates under the
-  correctness-first per-row linear/full-attention fallbacks. These artifacts
-  remain blocked for retained/scaling claims until the native batch linear/full
-  attention/projection paths and profiler/scaling evidence are green.
+  correctness-first selected-c1 linear subpath diagnostics plus per-row
+  full-attention fallback. These artifacts remain blocked for retained/scaling
+  claims until the native batch linear/full-attention/projection paths and
+  profiler/scaling evidence are green.
 - Hidden-state bisection now separates generated-token equality from hidden drift:
   focused L4/L8 controls keep tokens green, and the selected-c1 output replay
   diagnostic now consumes the segmented state's gated `recurrent_bf16` instead of
@@ -1440,7 +1441,8 @@ roll-up/status view.
       passes; if timing is still not retained, artifact is `blocked` for a
       non-correctness reason. Evidence: `/tmp/hipengine-e2e-native-c2-512-128.json`
       reports `generated_token_equality.passed=true`, `prefix_lengths=[137,137]`,
-      `workload.batch_decode_linear_path=per_row`, and
+      `workload.batch_decode_linear_path=batch_segments`, selected-c1 linear
+      projection/state/MoE diagnostics, and
       `workload.batch_decode_full_attention_path=per_row`; status remains
       `blocked` because diagnostic fallbacks prevent retained/perf claims.
 - [x] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
@@ -1450,7 +1452,8 @@ roll-up/status view.
       reports c=2/c=4/c=8 generated equality green with min equal-prefix `137`
       for every row; the child retained artifacts live under
       `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix/` and remain
-      non-retained/blocking while per-row fallback defaults are active. Progress:
+      non-retained/blocking while selected-c1 linear diagnostics and per-row
+      full-attention fallback defaults are active. Progress:
       primitive GPU correctness now has c=4 and c=8 artifacts at
       `/tmp/hipengine-multiloop-c4-correctness.json` (`rows=4`,
       `context_lens=[1,2,3,4]`) and `/tmp/hipengine-multiloop-c8-correctness.json`

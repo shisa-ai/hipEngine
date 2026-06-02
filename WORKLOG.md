@@ -63875,3 +63875,20 @@ Result: `/tmp/hipengine-e2e-native-c2-equality-native-batch-repeat3.json` is `st
 This resolves the previous one-off c=2 native-batch pass as non-reproducible/stale evidence: repeated c=2 native batch remains blocked at row0 token 82, so the correctness-first per-row linear/full-attention fallback defaults should stay in place while native batch linear/full-attention closure continues separately. Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green under fallback defaults with `prefix_lengths=[137,137]` and `status=blocked`.
 
 Validation: focused repeat-run matrix tests pass; required guard passed (`404 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX. No performance/scaling claim.
+
+## 2026-06-02 — CONCURRENCY narrow linear correctness fallback defaults
+
+Narrowed the correctness-first linear decode default from full per-row linear-layer replay to native `batch_segments` with selected-c1 linear subpath diagnostics: selected-c1 QKV/Z/A/B projections, selected-c1 conv/GDN/state replay, per-row c1 linear MoE, and `auto` linear output (which follows selected-c1 state replay). Full-attention remains on the per-row fallback default. This keeps generated-token equality green while removing the broader `--batch-decode-linear-path per_row` row-layer replay from the default retained/hidden harness path; it is still non-retained and blocked for performance claims.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with the narrower default: `prefix_lengths=[137,137]`, `min_equal_prefix_tokens=137`, `generated_token_equality.passed=true`, `workload.batch_decode_linear_path=batch_segments`, `workload.batch_decode_linear_projection_path=selected_c1`, `workload.batch_decode_linear_state_path=selected_c1`, `workload.batch_decode_linear_moe_path=per_row_c1`, `workload.batch_decode_linear_output_path=auto`, and `workload.batch_decode_full_attention_path=per_row`.
+- c=2/c=4/c=8 matrix `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` remains `status=passed`, `generated_equality_passed=true`, `retained_ready=false`:
+  - c=2 prefixes `[137,137]`.
+  - c=4 prefixes `[137,137,137,137]`.
+  - c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- The explicit pre-default-change selected-linear/full-per-row matrix `/tmp/hipengine-e2e-native-c2-c4-c8-selected-linear-full-per-row-matrix.json` also passed with the same c=2/c=4/c=8 prefix sets.
+
+Conclusion: selected-c1 linear subpath diagnostics are sufficient for the generated equality gate; the broader per-row linear-layer fallback is no longer needed as the default correctness path. Native linear projection/state/MoE/output and native full-attention closure remain retained blockers, and no performance/scaling claim is made.
+
+Validation: focused default/CLI tests pass; required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

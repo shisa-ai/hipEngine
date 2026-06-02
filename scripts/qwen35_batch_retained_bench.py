@@ -3691,9 +3691,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_prefill_linear_path", "packed_segments") == "per_segment" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] = (
-        "1" if getattr(args, "batch_decode_linear_path", "per_row") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_linear_path", "batch_segments") == "per_row" else "0"
     )
-    linear_projection_path = getattr(args, "batch_decode_linear_projection_path", "batch")
+    linear_projection_path = getattr(args, "batch_decode_linear_projection_path", "selected_c1")
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] = (
         "1" if linear_projection_path == "selected_c1" else "0"
     )
@@ -3707,10 +3707,10 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if linear_projection_path in {"batch_gemv", "batch_gemv_selected_ab"} else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] = (
-        "1" if getattr(args, "batch_decode_linear_state_path", "batch_segments") == "selected_c1" else "0"
+        "1" if getattr(args, "batch_decode_linear_state_path", "selected_c1") == "selected_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] = (
-        "1" if getattr(args, "batch_decode_linear_moe_path", "grouped_compact") == "per_row_c1" else "0"
+        "1" if getattr(args, "batch_decode_linear_moe_path", "per_row_c1") == "per_row_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         getattr(args, "batch_decode_linear_output_path", "auto")
@@ -4185,10 +4185,10 @@ def _build_payload(
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
             "batch_prefill_linear_path": str(getattr(args, "batch_prefill_linear_path", "packed_segments")),
-            "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "per_row")),
-            "batch_decode_linear_projection_path": str(getattr(args, "batch_decode_linear_projection_path", "batch")),
-            "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
-            "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
+            "batch_decode_linear_path": str(getattr(args, "batch_decode_linear_path", "batch_segments")),
+            "batch_decode_linear_projection_path": str(getattr(args, "batch_decode_linear_projection_path", "selected_c1")),
+            "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "selected_c1")),
+            "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "per_row_c1")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "auto")),
             "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "per_row")),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
@@ -4296,26 +4296,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-linear-path",
         choices=("batch_segments", "per_row"),
-        default="per_row",
-        help="Linear-attention decode path for c>N batch decode; per_row is the correctness-first fallback default and batch_segments remains opt-in until generated equality is green.",
+        default="batch_segments",
+        help="Linear-attention decode path for c>N batch decode; batch_segments is the correctness-first default when paired with selected-c1 projection/state/MoE diagnostics, while per_row remains available as a broader row replay fallback.",
     )
     parser.add_argument(
         "--batch-decode-linear-projection-path",
         choices=("batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_ab", "batch_gemv_selected_ab"),
-        default="batch",
-        help="Diagnostic linear-attention projection path for c>N batch decode; selected_c1 forces token-1 QKV/Z/A/B projections before native segmented state updates.",
+        default="selected_c1",
+        help="Diagnostic linear-attention projection path for c>N batch decode; selected_c1 is the correctness-first default and forces token-1 QKV/Z/A/B projections before native segmented state updates.",
     )
     parser.add_argument(
         "--batch-decode-linear-state-path",
         choices=("batch_segments", "selected_c1"),
-        default="batch_segments",
-        help="Diagnostic linear-attention conv/GDN/state path for c>N batch decode; selected_c1 forces token-1 state kernels per row.",
+        default="selected_c1",
+        help="Diagnostic linear-attention conv/GDN/state path for c>N batch decode; selected_c1 is the correctness-first default and forces token-1 state kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-linear-moe-path",
         choices=("grouped_compact", "per_row_c1"),
-        default="grouped_compact",
-        help="Diagnostic MoE path for linear-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row.",
+        default="per_row_c1",
+        help="Diagnostic MoE path for linear-attention c>N batch decode; per_row_c1 is the correctness-first default and replays true token-1 MoE kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-linear-output-path",
