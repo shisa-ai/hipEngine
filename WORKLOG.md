@@ -64164,3 +64164,21 @@ GPU1 / RX 7900 XTX equality evidence after the validator change:
 Primary default verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`. No retained/scaling claim.
 
 Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`406 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY profiler sampler provenance binding
+
+Bound the retained/profiler evidence path to the native batched-LM-head sampler proof. `scripts/qwen35_batch_retained_bench.py` now requires profiler command provenance to match the retained command's sampler mode, `--batch-sample-eq-ok`, sampler equality artifact, and equality row count whenever the retained run uses `--batch-sample-mode batched_lm_head`; sampler flags are also treated as unique profiler-side retained command flags. `scripts/qwen35_batch_c_sweep.py` now applies the same sampler flag matching in the profiler precondition and in passed-summary validation, so a profiler artifact captured with the old/default serial sampler cannot satisfy a c>N retained native row that claims the proven batched sampler path.
+
+Focused validation:
+
+- `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q` passed.
+- Added unit coverage for c-sweep profiler preconditions rejecting missing sampler flags and for retained profiler provenance rejecting missing/mismatched/duplicated sampler proof flags.
+
+GPU1 / RX 7900 XTX equality evidence after the provenance change:
+
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`, `prefixes=[137,137]`, and `first_mismatch_indices=[None,None]`.
+- `/tmp/hipengine-e2e-native-c2-c4-c8-batched-lm-head-profiler-sampler-provenance-matrix.json` is `status=passed`, `generated_equality_passed=true`.
+- c=2 prefixes `[137,137]`, c=4 prefixes `[137,137,137,137]`, c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- All matrix rows record `sampler_execution.mode=batched_lm_head`, `native_row_aware_lm_head=true`, matching sampler equality artifacts/rows, and no sampler blockers.
+
+Required guard passed (`407 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. No retained throughput/scaling claim; profiler/scaling capture still remains a gate before any performance claim.

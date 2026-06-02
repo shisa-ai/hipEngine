@@ -1740,6 +1740,22 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 "--require-cached-build",
             ):
                 reasons.append("profiler command is missing --require-cached-build")
+            expected_sample_mode = _command_arg_value(command, "--batch-sample-mode")
+            if expected_sample_mode is not None:
+                command_sample_mode = _command_text_arg(profiler_command, "--batch-sample-mode")
+                if command_sample_mode != expected_sample_mode:
+                    reasons.append("profiler command --batch-sample-mode must match retained command")
+                if expected_sample_mode == "batched_lm_head":
+                    if "--batch-sample-eq-ok" in command.argv and not _command_text_has_flag(profiler_command, "--batch-sample-eq-ok"):
+                        reasons.append("profiler command is missing --batch-sample-eq-ok")
+                    expected_sample_artifact = _command_arg_value(command, "--batch-sample-eq-artifact")
+                    command_sample_artifact = _command_text_arg(profiler_command, "--batch-sample-eq-artifact")
+                    if expected_sample_artifact is not None and command_sample_artifact != expected_sample_artifact:
+                        reasons.append("profiler command --batch-sample-eq-artifact must match retained command")
+                    expected_sample_rows = _command_arg_value(command, "--batch-sample-eq-rows")
+                    command_sample_rows = _command_text_arg(profiler_command, "--batch-sample-eq-rows")
+                    if expected_sample_rows is not None and command_sample_rows != expected_sample_rows:
+                        reasons.append("profiler command --batch-sample-eq-rows must match retained command")
         if profiler.get("status") != "captured":
             reasons.append("status is not 'captured'")
         raw_output_format = profiler.get("output_format")
@@ -3579,13 +3595,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].profiler_command must launch retained bench after rocprof separator when passed")
                         break
-                    if _duplicate_flags(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
+                    profiler_retained_unique_flags = tuple(
+                        dict.fromkeys(_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS + _BATCH_SAMPLE_UNIQUE_FLAGS)
+                    )
+                    if _duplicate_flags(profiled_command_argv, profiler_retained_unique_flags):
                         errors.append("commands[].preconditions[].profiler profiled command flags must be unique")
                         break
                     if any(_flag_token_matches(token, flag) for token in profiled_command_argv for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command must not skip generated equality")
                         break
-                    if _empty_inline_flag_values(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
+                    if _empty_inline_flag_values(profiled_command_argv, profiler_retained_unique_flags):
                         errors.append("commands[].preconditions[].profiler profiled command flag values must be non-empty")
                         break
                     if _command_device_env_assignments(profiled_command_argv) != _command_device_env_assignments(argv):
@@ -3696,7 +3715,22 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ) != ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler profiled command flags must match retained command")
                         break
-                    if any(_flag_token_matches(token, flag) for token in rocprof_command_argv for flag in _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
+                    expected_sample_mode = _argv_value(argv, "--batch-sample-mode")
+                    if expected_sample_mode is not None:
+                        if _argv_value(profiled_command_argv, "--batch-sample-mode") != expected_sample_mode:
+                            errors.append("commands[].preconditions[].profiler sampler flags must match retained command")
+                            break
+                        if ("--batch-sample-eq-ok" in profiled_command_argv) != ("--batch-sample-eq-ok" in argv):
+                            errors.append("commands[].preconditions[].profiler sampler flags must match retained command")
+                            break
+                        sampler_flag_mismatch = any(
+                            _argv_value(profiled_command_argv, sample_flag) != _argv_value(argv, sample_flag)
+                            for sample_flag in ("--batch-sample-eq-artifact", "--batch-sample-eq-rows")
+                        )
+                        if sampler_flag_mismatch:
+                            errors.append("commands[].preconditions[].profiler sampler flags must match retained command")
+                            break
+                    if any(_flag_token_matches(token, flag) for token in rocprof_command_argv for flag in profiler_retained_unique_flags):
                         errors.append("commands[].preconditions[].profiler_command retained bench flags must appear after rocprof separator when passed")
                         break
                     if any(_flag_token_matches(token, flag) for token in profiled_command_argv for flag in rocprof_command_flags):

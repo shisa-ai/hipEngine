@@ -99,6 +99,12 @@ _LEGACY_NATIVE_BENCH_SCRIPT = RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT
 _SERIAL_BRIDGE_SCRIPT = RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
 _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
+_BATCH_SAMPLE_COMMAND_FLAGS = (
+    "--batch-sample-mode",
+    "--batch-sample-eq-ok",
+    "--batch-sample-eq-artifact",
+    "--batch-sample-eq-rows",
+)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
 _ACCEPTED_MODE = RETAINED_ARTIFACT_ACCEPTED_MODE
 _ACCEPTED_SUMMARY = RETAINED_ARTIFACT_ACCEPTED_SUMMARY
@@ -2165,6 +2171,7 @@ def _profiler_command_provenance_blockers(
     expected_build: Mapping[str, Any] | None,
     expected_references: Mapping[str, Any] | None,
     expected_kv_policy: Mapping[str, str] | None,
+    expected_sampler: Mapping[str, Any] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     command_parts = _split_command_parts(command)
@@ -2189,7 +2196,7 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command must include rocprof -- separator")
     else:
         retained_command = _join_command_parts(profiled_segment)
-        for flag in _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS:
+        for flag in tuple(dict.fromkeys(_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS + _BATCH_SAMPLE_COMMAND_FLAGS)):
             if _command_flag_count(profiled_segment, flag) > 1:
                 blockers.append(f"profiler command {flag} must be unique after rocprof separator")
         for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
@@ -2267,6 +2274,29 @@ def _profiler_command_provenance_blockers(
                     continue
                 if command_value != expected_value:
                     blockers.append(f"profiler command {flag} must match retained KV policy")
+    if expected_sampler is not None:
+        expected_mode = expected_sampler.get("batch_sample_mode")
+        if isinstance(expected_mode, str) and expected_mode:
+            command_mode = _command_arg_value(retained_command, "--batch-sample-mode")
+            if command_mode is None and expected_mode == "serial_lm_head":
+                command_mode = "serial_lm_head"
+            if command_mode != expected_mode:
+                blockers.append("profiler command --batch-sample-mode must match retained sampler mode")
+        if expected_mode == "batched_lm_head":
+            if expected_sampler.get("batch_sample_eq_ok") is not True:
+                blockers.append("retained command must include --batch-sample-eq-ok for batched_lm_head")
+            elif not _command_has_flag(retained_command, "--batch-sample-eq-ok"):
+                blockers.append("profiler command must include --batch-sample-eq-ok")
+            expected_artifact = expected_sampler.get("batch_sample_eq_artifact")
+            if not isinstance(expected_artifact, str) or not expected_artifact:
+                blockers.append("retained command must include --batch-sample-eq-artifact for batched_lm_head")
+            elif _command_arg_value(retained_command, "--batch-sample-eq-artifact") != expected_artifact:
+                blockers.append("profiler command --batch-sample-eq-artifact must match retained sampler equality artifact")
+            expected_rows = expected_sampler.get("batch_sample_eq_rows")
+            if isinstance(expected_rows, bool) or not isinstance(expected_rows, int) or expected_rows <= 0:
+                blockers.append("retained command must include --batch-sample-eq-rows for batched_lm_head")
+            elif not _command_int_arg_matches(retained_command, "--batch-sample-eq-rows", int(expected_rows)):
+                blockers.append("profiler command --batch-sample-eq-rows must match retained sampler equality rows")
     return blockers
 
 
@@ -2280,6 +2310,7 @@ def _profiler_provenance_blockers(
     expected_build: Mapping[str, Any] | None = None,
     expected_references: Mapping[str, Any] | None = None,
     expected_kv_policy: Mapping[str, str] | None = None,
+    expected_sampler: Mapping[str, Any] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     profiler_artifact_path = profiler.get("artifact_path")
@@ -2344,6 +2375,7 @@ def _profiler_provenance_blockers(
                     expected_build=expected_build,
                     expected_references=expected_references,
                     expected_kv_policy=expected_kv_policy,
+                    expected_sampler=expected_sampler,
                 )
             )
     return blockers
@@ -3958,6 +3990,12 @@ def _build_payload(
             "kv_storage": str(getattr(args, "kv_storage", "auto")),
             "kv_scale_dtype": str(getattr(args, "kv_scale_dtype", "fp16")),
             "kv_scale_granularity": str(getattr(args, "kv_scale_granularity", "per_token_head")),
+        },
+        expected_sampler={
+            "batch_sample_mode": str(getattr(args, "batch_sample_mode", "serial_lm_head")),
+            "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
+            "batch_sample_eq_artifact": str(getattr(args, "batch_sample_eq_artifact", "") or ""),
+            "batch_sample_eq_rows": getattr(args, "batch_sample_eq_rows", None),
         },
     )
     profiler_blockers.extend(_profiler_synthesized_fields_blockers(profiler))

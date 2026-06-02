@@ -815,6 +815,59 @@ def _write_c_sweep_profiler_summary(
     )
 
 
+def test_batch_c_sweep_profiler_precondition_requires_sampler_flags_to_match_retained_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--batch-sample-mode",
+            "batched_lm_head",
+            "--batch-sample-eq-ok",
+            "--batch-sample-eq-artifact-template",
+            "benchmarks/results/sampler-c{c}.json",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    missing_sampler_flags = c_sweep._profiler_summary_precondition(native)
+    assert missing_sampler_flags["kind"] == "profiler_summary"
+    assert missing_sampler_flags["artifact_path"] == str(output_dir / "profiler-c2.json")
+    assert missing_sampler_flags["passed"] is False
+    assert "profiler command --batch-sample-mode must match retained command" in missing_sampler_flags["reason"]
+    assert "profiler command is missing --batch-sample-eq-ok" in missing_sampler_flags["reason"]
+
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(
+        f" --json {output_dir / 'native-diagnostic-c2.json'}",
+        " --batch-sample-mode batched_lm_head --batch-sample-eq-ok "
+        "--batch-sample-eq-artifact benchmarks/results/sampler-c2.json --batch-sample-eq-rows 2"
+        f" --json {output_dir / 'native-diagnostic-c2.json'}",
+    )
+    profiler_path.write_text(json.dumps(payload))
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+    assert precondition["passed"] is True
+    assert precondition["profiler_command"] == payload["profiler"]["command"]
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -18946,6 +18999,19 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "primitive_correctness_json": "benchmarks/results/primitive-c2.json",
     }
     expected_kv_policy = {"kv_storage": "bf16", "kv_scale_dtype": "fp16", "kv_scale_granularity": "per_token_head"}
+    expected_sampler = {
+        "batch_sample_mode": "batched_lm_head",
+        "batch_sample_eq_ok": True,
+        "batch_sample_eq_artifact": "benchmarks/results/sampler-c2.json",
+        "batch_sample_eq_rows": 2,
+    }
+    batched_sampler_valid = {
+        **valid,
+        "command": valid["command"].replace(
+            " --json benchmarks/results/native-c2.json",
+            " --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/sampler-c2.json --batch-sample-eq-rows 2 --json benchmarks/results/native-c2.json",
+        ),
+    }
 
     assert (
         retained_bench._profiler_provenance_blockers(
@@ -18958,6 +19024,67 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
             expected_kv_policy=expected_kv_policy,
         )
         == []
+    )
+    assert (
+        retained_bench._profiler_provenance_blockers(
+            batched_sampler_valid,
+            retained_artifact_path="benchmarks/results/native-c2.json",
+            expected_workload=expected_workload,
+            expected_inputs=expected_inputs,
+            expected_build=expected_build,
+            expected_references=expected_references,
+            expected_kv_policy=expected_kv_policy,
+            expected_sampler=expected_sampler,
+        )
+        == []
+    )
+    missing_sampler_mode = {
+        **batched_sampler_valid,
+        "command": batched_sampler_valid["command"].replace("--batch-sample-mode batched_lm_head ", ""),
+    }
+    assert "profiler command --batch-sample-mode must match retained sampler mode" in retained_bench._profiler_provenance_blockers(
+        missing_sampler_mode,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_sampler=expected_sampler,
+    )
+    missing_sampler_equality = {
+        **batched_sampler_valid,
+        "command": batched_sampler_valid["command"].replace(" --batch-sample-eq-ok", ""),
+    }
+    assert "profiler command must include --batch-sample-eq-ok" in retained_bench._profiler_provenance_blockers(
+        missing_sampler_equality,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_sampler=expected_sampler,
+    )
+    mismatched_sampler_artifact = {
+        **batched_sampler_valid,
+        "command": batched_sampler_valid["command"].replace("benchmarks/results/sampler-c2.json", "benchmarks/results/sampler-c4.json"),
+    }
+    assert "profiler command --batch-sample-eq-artifact must match retained sampler equality artifact" in retained_bench._profiler_provenance_blockers(
+        mismatched_sampler_artifact,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_sampler=expected_sampler,
+    )
+    mismatched_sampler_rows = {
+        **batched_sampler_valid,
+        "command": batched_sampler_valid["command"].replace("--batch-sample-eq-rows 2", "--batch-sample-eq-rows 4"),
+    }
+    assert "profiler command --batch-sample-eq-rows must match retained sampler equality rows" in retained_bench._profiler_provenance_blockers(
+        mismatched_sampler_rows,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_sampler=expected_sampler,
+    )
+    duplicate_sampler_mode = {
+        **batched_sampler_valid,
+        "command": batched_sampler_valid["command"].replace(
+            "--batch-sample-mode batched_lm_head",
+            "--batch-sample-mode batched_lm_head --batch-sample-mode batched_lm_head",
+        ),
+    }
+    assert "profiler command --batch-sample-mode must be unique after rocprof separator" in retained_bench._profiler_provenance_blockers(
+        duplicate_sampler_mode,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_sampler=expected_sampler,
     )
     missing_profiler_source_artifact = {key: value for key, value in valid.items() if key != "source_artifact_path"}
     assert "profiler.source_artifact_path must be a non-empty string" in retained_bench._profiler_provenance_blockers(
