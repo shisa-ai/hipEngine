@@ -4070,6 +4070,9 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_context = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"
         )
+        force_per_row_full_attention_context_only = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT_ONLY"
+        )
         force_per_row_full_attention_gate = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_GATE"
         )
@@ -4109,7 +4112,9 @@ class Qwen35ParoResidentSession:
             else "per_row_layer_scratch_fallback" if force_per_row_full_attention_scratch else "native_batch"
         )
         full_attention_context_decode_path = (
-            "per_row_context_gate_fallback" if force_per_row_full_attention_context else "native_batch"
+            "per_row_context_gate_fallback"
+            if force_per_row_full_attention_context
+            else "per_row_context_only_fallback" if force_per_row_full_attention_context_only else "native_batch"
         )
         full_attention_gate_decode_path = (
             "per_row_gate_fallback" if force_per_row_full_attention_gate else "native_batch"
@@ -4358,13 +4363,14 @@ class Qwen35ParoResidentSession:
                             not force_per_row_full_attention_skip_batch_setup
                             and (
                                 force_per_row_full_attention_context
+                                or force_per_row_full_attention_context_only
                                 or force_per_row_full_attention_kv_append
                                 or force_per_row_full_attention_suffix
                                 or force_per_row_full_attention_scratch
                                 or force_per_row_full_attention_persistent_scratch
                             )
                         ):
-                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
+                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
                             per_row_append_contexts = [] if force_per_row_full_attention_kv_append or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
                             for slot in slots:
                                 row_key_cache, row_value_cache = self._slot_full_cache(layer_id, slot)
@@ -4509,6 +4515,7 @@ class Qwen35ParoResidentSession:
                                 force_per_row_qkv_scratch=force_per_row_full_attention_qkv,
                                 force_per_row_layer_scratch=force_per_row_full_attention_scratch,
                                 force_per_row_context=force_per_row_full_attention_context,
+                                force_per_row_context_only=force_per_row_full_attention_context_only,
                                 force_per_row_gate=force_per_row_full_attention_gate,
                                 per_row_contexts=per_row_contexts,
                                 force_per_row_kv_append=force_per_row_full_attention_kv_append,
@@ -4572,6 +4579,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_output
                                 or force_per_row_full_attention_layer_copy
                                 or force_per_row_full_attention_context
+                                or force_per_row_full_attention_context_only
                                 or force_per_row_full_attention_gate
                                 or force_per_row_full_attention_kv_append
                                 or force_per_row_full_attention_append_context
@@ -4588,7 +4596,7 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_qkv_decode_path"] = full_attention_qkv_decode_path
                         if force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch:
                             layer_execution["full_attention_scratch_decode_path"] = full_attention_scratch_decode_path
-                        if force_per_row_full_attention_context:
+                        if force_per_row_full_attention_context or force_per_row_full_attention_context_only:
                             layer_execution["full_attention_context_decode_path"] = full_attention_context_decode_path
                         if force_per_row_full_attention_gate:
                             layer_execution["full_attention_gate_decode_path"] = full_attention_gate_decode_path
@@ -4743,6 +4751,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention native batch setup skipped for persistent c1 diagnostic path")
             if force_per_row_full_attention_context:
                 decode_blockers.append("full-attention context/gate forced to per-row diagnostic path")
+            if force_per_row_full_attention_context_only:
+                decode_blockers.append("full-attention context forced to per-row diagnostic path with batch gate")
             if force_per_row_full_attention_gate:
                 decode_blockers.append("full-attention gate forced to per-row diagnostic path")
             if force_per_row_full_attention_kv_append:
@@ -4796,6 +4806,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_persistent_scratch
                 and not force_per_row_full_attention_skip_batch_setup
                 and not force_per_row_full_attention_context
+                and not force_per_row_full_attention_context_only
                 and not force_per_row_full_attention_gate
                 and not force_per_row_full_attention_kv_append
                 and not force_per_row_full_attention_append_context

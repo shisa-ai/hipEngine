@@ -271,6 +271,12 @@ What is still not green:
   hidden parity, so the blocker is before/at native batch context output
   integration rather than the contiguous batch gate multiply alone
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-gate-split-isolation/summary.json`).
+  The complementary context-only split (`--batch-decode-attn-context-path
+  per_row_context_only`) replays only token-1 context rows and then uses the
+  normal batch gate; it is hidden/token green, confirming the batch gate is fine
+  when fed per-row context outputs and pinning the blocker to native batch
+  context output integration before gate
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-only-split/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

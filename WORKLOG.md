@@ -64938,3 +64938,20 @@ Required loop verification:
 - Required guard passed after updating focused host tests for the new diagnostic metadata: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 
 Conclusion: per-row gate alone is not sufficient; the remaining full-attention target is native batch context output integration with actual model scratch/cache/gate tensors before gate, not the contiguous batch gate multiply alone. No retained performance claim.
+
+## 2026-06-02 — CONCURRENCY full-attention context-only split diagnostic
+
+Ran iteration 93 for `concurrency-e2e/native-c2-e2e` to complement the gate-only diagnostic from iteration 92. Added `--batch-decode-attn-context-path per_row_context_only`, wired through `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT_ONLY`. This runs token-1 context kernels per row, copies only the FP32 context outputs into the batch scratch, then uses the normal contiguous batch gate.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Context-only split: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-only-iter93.json` passed (`status=eq_ok`, `hidden_passed=true`, `token_passed=true`) with `full_attention_context_decode_path=per_row_context_only_fallback`, native batch gate, native KV append, native batch projection, native segmented state, batch-GEMV linear output, and grouped-compact MoE. Decode blockers: `full-attention context forced to per-row diagnostic path with batch gate`.
+- Gate-only split remains red from iteration 92: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-gate-iter92.json` (`hidden_passed=false`) with native batch context and per-row gate.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-only-split/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Required loop verification:
+
+- Primary no-flag c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and metadata `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, `full_attention_decode_path=native_batch`, `full_attention_context_decode_path=native_batch`, `native_caware_decode=true`.
+- Required guard passed after the new diagnostic split: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+Conclusion: batch gate is fine when fed per-row context outputs. The native full-attention blocker is now pinned to native batch context output integration before gate under real model scratch/cache tensors. No retained performance claim.

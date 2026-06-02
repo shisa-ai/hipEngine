@@ -3882,6 +3882,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
         "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "per_row" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT_ONLY"] = (
+        "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "per_row_context_only" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_GATE"] = (
         "1" if getattr(args, "batch_decode_attn_gate_path", "batch") == "per_row" else "0"
     )
@@ -4536,9 +4539,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--batch-decode-attn-context-path",
-        choices=("batch", "per_row"),
+        choices=("batch", "per_row", "per_row_context_only"),
         default="batch",
-        help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context kernels and blocks retained claims.",
+        help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context+gate kernels, per_row_context_only forces only token-1 context kernels before the batch gate, and both block retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-gate-path",

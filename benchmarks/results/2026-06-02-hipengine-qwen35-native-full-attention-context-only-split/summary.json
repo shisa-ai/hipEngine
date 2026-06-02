@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "purpose": "Focused full-attention context-only split: replay only the token-1 context kernel per row, then use the normal batch gate, to distinguish context output integration from batch gate multiply.",
+  "created_at": "2026-06-02T18:10:48.536716Z",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "workload": {
+    "concurrency": 2,
+    "prompt_tokens_per_request": 512,
+    "decode_tokens": 16,
+    "max_layers": 8,
+    "layer_limits": [
+      8
+    ],
+    "hidden_atol": 0.002,
+    "state_atol": 1e-06,
+    "focus_hidden_flat_indices": [
+      1269
+    ]
+  },
+  "performance_claim": false,
+  "retained_ready": false,
+  "code_change": "Added diagnostic --batch-decode-attn-context-path per_row_context_only, wired through HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT_ONLY, to replay only context rows and then use the batch gate.",
+  "rows": [
+    {
+      "name": "per_row_context_only_green_iter93",
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "hidden_passed": true,
+      "token_passed": true,
+      "first_hidden_mismatch": null,
+      "decode_execution": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "per_row_context_only_fallback",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "blockers": [
+          "full-attention context forced to per-row diagnostic path with batch gate"
+        ]
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-attn-context-path per_row_context_only --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-only-iter93.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-only-iter93.json",
+      "source_sha256": "4574d59a1d936fb40ec8551da9f693ae0286bdc3792fb880e334afa22b1598ea",
+      "source_size_bytes": 7375923
+    },
+    {
+      "name": "per_row_gate_only_red_iter92",
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "hidden_passed": false,
+      "token_passed": true,
+      "first_hidden_mismatch": {
+        "decode_step": 6,
+        "generated_index": 7,
+        "row": 0,
+        "max_abs": 0.028076171875,
+        "max_abs_flat_index": 1269,
+        "elements_over_atol": 1044,
+        "bit_mismatch": 2041,
+        "last_layer_index": 7,
+        "last_layer_type": "full_attention"
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_gate_decode_path": "per_row_gate_fallback",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "blockers": [
+          "full-attention gate forced to per-row diagnostic path"
+        ]
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-attn-gate-path per_row --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-gate-iter92.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-gate-iter92.json",
+      "source_sha256": "c1d6099681e729b3bec86e34560f7442954cf025607cf87f18195549ac88da85",
+      "source_size_bytes": 23045192
+    },
+    {
+      "name": "per_row_context_gate_green_control_iter90",
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "hidden_passed": true,
+      "token_passed": true,
+      "first_hidden_mismatch": null,
+      "decode_execution": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "per_row_context_gate_fallback",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "blockers": [
+          "full-attention context/gate forced to per-row diagnostic path"
+        ]
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-attn-context-path per_row --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-rerun-iter90.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-rerun-iter90.json",
+      "source_sha256": "22cebbb6ef1654b049b21ac5303aa3ced2b0dfbe66db1ae163ea83e22e72e328",
+      "source_size_bytes": 7375673
+    },
+    {
+      "name": "native_batch_full_attention_red_control_iter88",
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "hidden_passed": false,
+      "token_passed": true,
+      "first_hidden_mismatch": {
+        "decode_step": 11,
+        "generated_index": 12,
+        "row": 0,
+        "max_abs": 0.010427474975585938,
+        "max_abs_flat_index": 1543,
+        "elements_over_atol": 931,
+        "bit_mismatch": 2041,
+        "last_layer_index": 7,
+        "last_layer_type": "full_attention"
+      },
+      "decode_execution": {
+        "native_caware_decode": true,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "blockers": []
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-default-threads128-iter88.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-default-threads128-iter88.json",
+      "source_sha256": "f70d84f92905030ab8448f658d0410a18080b100ee6a6503c523dd155f1d4e2b",
+      "source_size_bytes": 18644907
+    }
+  ],
+  "result": "The context-only split is hidden/token green with per-row token-1 context and the normal batch gate. Gate-only replay was red and native batch full attention remains red. Therefore the contiguous batch gate multiply is fine when fed correct per-row context outputs; the remaining blocker is native batch context output integration with real model scratch/cache tensors before gate.",
+  "context_only_batch_gate_clears_hidden": true,
+  "gate_only_clears_hidden": false,
+  "context_gate_only_clears_hidden": true,
+  "next_target": "native batch context output integration before gate"
+}
