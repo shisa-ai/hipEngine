@@ -1294,6 +1294,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "remaining_blockers_report_only": "remaining_blockers_report",
         "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
+        "first_remaining_blocker_report_only": "first_remaining_blocker_report",
+        "first_remaining_blocker_report_sha_only": "first_remaining_blocker_report_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
         "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
         "oracle_wrapper_timeout_source_sha_only": (
@@ -2349,6 +2351,98 @@ def test_stepfun_correctness_status_remaining_blockers_report_outputs(
     assert json.loads(sha_output.read_text()) == status["remaining_blockers_report_sha256"]
     assert json.loads(sha_output.read_text()) == _stable_json_sha256(
         status["remaining_blockers_report"]
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_stepfun_correctness_status_first_remaining_blocker_report_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    report_output = tmp_path / "first-remaining-blocker-report.json"
+    sha_output = tmp_path / "first-remaining-blocker-report-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(report_output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--remaining-blockers-report-only",
+            "--first-remaining-blocker-report-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    report = json.loads(report_output.read_text())
+    assert report == status["first_remaining_blocker_report"]
+    assert report["schema_version"] == 1
+    assert report["status"] == "blocked"
+    assert report["open_or_partial_items_p0_p12"] == 2
+    assert report["remaining_blocker_count"] == 2
+    assert report["remaining_blocker_kinds"] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert report["blocker_kind"] == "oracle_parity_blocked"
+    assert report["queue_index"] == 0
+    assert report["readiness_gate"] == "oracle_parity"
+    assert report["gate_ready"] is False
+    assert report["recommended_command_kind"] == "oracle_helper_long_timeout_command"
+    assert report["recommended_command"] == status["remaining_blockers_report"][
+        "items"
+    ][0]["recommended_command"]
+    assert report["recommended_command_sha256"] == status["remaining_blockers_report"][
+        "items"
+    ][0]["recommended_command_sha256"]
+    assert "oracle_parity is true" in report["success_criteria"]
+    assert report["item"] == status["remaining_blockers_report"]["items"][0]
+    assert report["no_claim_policy"]["performance_claim_allowed"] is False
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--remaining-blockers-report-sha-only",
+            "--first-remaining-blocker-report-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(sha_output.read_text()) == status[
+        "first_remaining_blocker_report_sha256"
+    ]
+    assert json.loads(sha_output.read_text()) == _stable_json_sha256(
+        status["first_remaining_blocker_report"]
     )
 
     captured = capsys.readouterr()
@@ -3647,6 +3741,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "remaining_blockers_report_only": "remaining_blockers_report",
         "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
+        "first_remaining_blocker_report_only": "first_remaining_blocker_report",
+        "first_remaining_blocker_report_sha_only": "first_remaining_blocker_report_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
         "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
         "oracle_wrapper_timeout_source_sha_only": (

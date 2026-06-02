@@ -31947,3 +31947,39 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status-helper tests passed; compact `--remaining-blockers-report-only` matched `status['remaining_blockers_report']` and `--remaining-blockers-report-sha-only` returned SHA `de093cff4fabd7b21b5a6f8d211583dc3c219fc93eefe868c1ea7dc4b5856a22`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`229` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun first remaining-blocker compact report
+
+Added a compact correctness-status report for the front StepFun P11 blocker. `scripts/stepfun_correctness_status.py` now supports `--first-remaining-blocker-report-only` and `--first-remaining-blocker-report-sha-only`, exposing `first_remaining_blocker_report` and its stable digest. The report derives from `remaining_blockers_report`, names the current front blocker (`oracle_parity_blocked`), its readiness gate (`oracle_parity`), missing evidence, success criteria, no-claim policy, and recommended 900 s oracle helper command so automation can route the immediate oracle/KV work without parsing the full blocker list. Updated compact-output mode metadata, focused status-helper tests, `docs/STEPFUN.md`, and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_summary_only_writes_handoff tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_remaining_blockers_report_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_first_remaining_blocker_report_outputs
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json, subprocess
+from pathlib import Path
+status_path = Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json')
+status = json.loads(status_path.read_text())
+report = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--first-remaining-blocker-report-only',
+]))
+sha = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--first-remaining-blocker-report-sha-only',
+]))
+assert report == status['first_remaining_blocker_report']
+assert sha == status['first_remaining_blocker_report_sha256']
+assert report['blocker_kind'] == 'oracle_parity_blocked'
+assert report['readiness_gate'] == 'oracle_parity'
+assert 'oracle_parity is true' in report['success_criteria']
+assert status['handoff_summary']['compact_output_modes']['first_remaining_blocker_report_only'] == 'first_remaining_blocker_report'
+print('compact first remaining blocker report ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status-helper tests passed; compact `--first-remaining-blocker-report-only` matched `status['first_remaining_blocker_report']` and `--first-remaining-blocker-report-sha-only` returned SHA `30d8e8ea49595d095a85b9f0274862be965438229aeed0605d7a50b2077daa12`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`230` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.

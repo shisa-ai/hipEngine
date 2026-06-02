@@ -734,7 +734,10 @@ reporting.
   `--next-action-commands-only` emits that command bundle directly, while
   `--remaining-blockers-report-only` / `--remaining-blockers-report-sha-only`
   emits/digests a compact report joining the two P11 partial checklist items to
-  their readiness gates, missing evidence, and recommended commands.
+  their readiness gates, missing evidence, and recommended commands; compact
+  `--first-remaining-blocker-report-only` /
+  `--first-remaining-blocker-report-sha-only` emits/digests just the front
+  blocker report for immediate oracle/KV routing.
   `next_action_commands_sha256` gives handoff pollers a compact digest of the
   command bundle itself, with length/SHA-256 metadata for the helper/resource/status refresh commands plus
   compact source-artifact verification, verification-status, verification

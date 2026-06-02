@@ -118,6 +118,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-remaining-blocker-report-only",
+        action="store_true",
+        help=(
+            "Emit only first_remaining_blocker_report for compact front-blocker routing. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-remaining-blocker-report-sha-only",
+        action="store_true",
+        help=(
+            "Emit only first_remaining_blocker_report_sha256 for compact front-blocker drift polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--handoff-summary-sha-only",
         action="store_true",
         help=(
@@ -1942,6 +1958,54 @@ def _remaining_blockers_report(
     }
 
 
+def _first_remaining_blocker_report(
+    remaining_blockers_report: dict[str, object]
+) -> dict[str, object]:
+    """Return compact routing metadata for the front remaining blocker."""
+
+    items = remaining_blockers_report.get("items", [])
+    first_item = items[0] if isinstance(items, list) and items else None
+    first_record = first_item if isinstance(first_item, dict) else None
+    return {
+        "schema_version": 1,
+        "status": "blocked" if first_record is not None else "ready",
+        "open_or_partial_items_p0_p12": remaining_blockers_report.get(
+            "open_or_partial_items_p0_p12"
+        ),
+        "remaining_blocker_count": remaining_blockers_report.get(
+            "remaining_blocker_count", 0
+        ),
+        "remaining_blocker_kinds": list(
+            remaining_blockers_report.get("remaining_blocker_kinds", [])
+        ),
+        "blocked_gates": list(remaining_blockers_report.get("blocked_gates", [])),
+        "next_commands_available_for": list(
+            remaining_blockers_report.get("next_commands_available_for", [])
+        ),
+        "blocker_kind": first_record.get("blocker_kind") if first_record else None,
+        "queue_index": first_record.get("queue_index") if first_record else None,
+        "readiness_gate": first_record.get("readiness_gate") if first_record else None,
+        "gate_ready": first_record.get("gate_ready") if first_record else None,
+        "first_missing_evidence": first_record.get("first_missing_evidence")
+        if first_record
+        else None,
+        "recommended_command_kind": first_record.get("recommended_command_kind")
+        if first_record
+        else None,
+        "recommended_command": first_record.get("recommended_command")
+        if first_record
+        else None,
+        "recommended_command_sha256": first_record.get("recommended_command_sha256")
+        if first_record
+        else None,
+        "success_criteria": list(first_record.get("success_criteria", []))
+        if first_record
+        else [],
+        "item": first_record,
+        "no_claim_policy": dict(remaining_blockers_report.get("no_claim_policy", {})),
+    }
+
+
 def _primary_command_metadata(kind: str | None, command: object) -> dict[str, object]:
     """Return stable metadata for a blocker primary command."""
 
@@ -2405,6 +2469,8 @@ def _handoff_summary(
             "blocked_gates_sha_only": "blocked_gates_sha256",
             "remaining_blockers_report_only": "remaining_blockers_report",
             "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
+            "first_remaining_blocker_report_only": "first_remaining_blocker_report",
+            "first_remaining_blocker_report_sha_only": "first_remaining_blocker_report_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
             "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
             "oracle_wrapper_timeout_source_sha_only": (
@@ -2777,6 +2843,12 @@ def build_status(
         next_action_commands=next_action_commands,
     )
     remaining_blockers_report_sha256 = _stable_json_sha256(remaining_blockers_report)
+    first_remaining_blocker_report = _first_remaining_blocker_report(
+        remaining_blockers_report
+    )
+    first_remaining_blocker_report_sha256 = _stable_json_sha256(
+        first_remaining_blocker_report
+    )
     blocker_kinds = list(handoff_summary["open_blockers"])
     blocker_kinds_sha256 = _stable_json_sha256(blocker_kinds)
     blocked_gates = list(handoff_summary["blocked_gates"])
@@ -2868,6 +2940,8 @@ def build_status(
         "handoff_summary_sha256": handoff_summary_sha256,
         "remaining_blockers_report": remaining_blockers_report,
         "remaining_blockers_report_sha256": remaining_blockers_report_sha256,
+        "first_remaining_blocker_report": first_remaining_blocker_report,
+        "first_remaining_blocker_report_sha256": first_remaining_blocker_report_sha256,
         "blocker_kinds": blocker_kinds,
         "blocker_kinds_sha256": blocker_kinds_sha256,
         "blocked_gates": blocked_gates,
@@ -2993,6 +3067,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["blocker_kinds_sha256"]
     elif args.blocker_kinds_only:
         result = status["blocker_kinds"]
+    elif args.first_remaining_blocker_report_sha_only:
+        result = status["first_remaining_blocker_report_sha256"]
+    elif args.first_remaining_blocker_report_only:
+        result = status["first_remaining_blocker_report"]
     elif args.remaining_blockers_report_sha_only:
         result = status["remaining_blockers_report_sha256"]
     elif args.remaining_blockers_report_only:
