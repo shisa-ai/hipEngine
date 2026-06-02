@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-value-scan-rejections/summary.json",
+  "created_at": "2026-06-02T22:39:44.785229Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "Focused c=2 full-attention value-scan scheduling rejection artifact. Manual unroll-4 and pointer __restrict__ variants stayed generated-token green but did not improve clean projection-check or profiler evidence; restrict cleanup was reverted. Final tree is restored to the prior score-scale kernel path and c2 remains below c1.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "final_hipengine_commit": "958b28d3345ad88ca6d2a7893467332483b0f031",
+    "final_hipengine_dirty": false,
+    "restrict_candidate_commit": "a0f86b8ea3ac764a19f411def3208ac29349dd65",
+    "restored_from_prior_commit": "e24506d09b3a3adcbd4d810df41df900894148af",
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "final_restored_verify": {
+    "artifact_tmp_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "prefixes": [
+      137,
+      137
+    ],
+    "min_equal_prefix": 137,
+    "decode_tok_s_aggregate": 111.12018983369131,
+    "software_commit": "958b28d3345ad88ca6d2a7893467332483b0f031",
+    "software_dirty": false
+  },
+  "rejected_variants": [
+    {
+      "name": "manual_value_scan_unroll4",
+      "status": "rejected_not_committed",
+      "code_scope": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel value_groups==4 branch",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-value-unroll-dirty-iter112.json",
+      "prefixes": [
+        137,
+        137
+      ],
+      "decode_tok_s_aggregate": 109.92226767597941,
+      "reason": "Dirty primary c2 run stayed generated-token green but slowed to 109.922 tok/s aggregate, below the prior score-scale/value-scan path."
+    },
+    {
+      "name": "batch_kernel_pointer_restrict",
+      "status": "rejected_reverted",
+      "code_scope": "added __restrict__ qualifiers to batch attention kernel pointer parameters",
+      "dirty_tmp_artifact": "/tmp/hipengine-e2e-native-c2-restrict-dirty-iter112.json",
+      "dirty_projection_tmp_artifact": "/tmp/hipengine-e2e-native-c2-restrict-projcheck-dirty-iter112.json",
+      "clean_projection_tmp_artifacts": [
+        "/tmp/hipengine-e2e-native-c2-restrict-projcheck-clean-iter112-1.json",
+        "/tmp/hipengine-e2e-native-c2-restrict-projcheck-clean-iter112-2.json"
+      ],
+      "profiled_tmp_artifact": "/tmp/hipengine-e2e-native-c2-restrict-profiled-clean-iter112.json",
+      "dirty_primary_decode_tok_s_aggregate": 111.98364715460416,
+      "dirty_projection_decode_tok_s_aggregate": 112.71474710885276,
+      "clean_projection_decode_tok_s_aggregate_runs": [
+        112.12752041415122,
+        110.04533593359135
+      ],
+      "clean_projection_decode_tok_s_aggregate_best": 112.12752041415122,
+      "clean_projection_decode_tok_s_aggregate_mean": 111.08642817387128,
+      "prior_score_scale_projection_best_tok_s_aggregate": 112.2724886276211,
+      "clean_projection_best_delta_vs_prior_score_scale": 0.9987087823985918,
+      "prefixes": [
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "reason": "Dirty projection looked mildly positive, but clean projection-check repeats were neutral/negative and clean profiler context-kernel time regressed versus the prior score-scale artifact, so the code was reverted."
+    }
+  ],
+  "profiler": {
+    "restrict_raw_trace_tmp_path": "/tmp/hipengine-e2e-native-c2-restrict-profile-clean-iter112/epyc/195774_kernel_trace.csv",
+    "restrict_raw_trace_sha256": "481dd87f7a3b0e8f4f2832e752ce9804b51ad526dc90d49514edbfe8a1108a00",
+    "restrict_raw_trace_size_bytes": 127844756,
+    "raw_trace_not_retained_reason": "raw rocprof CSV is large and intentionally left under /tmp; this compact artifact records aggregate evidence only",
+    "restrict_profiled_decode_tok_s_aggregate": 90.84212326173153,
+    "attention_context_kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+    "restrict_attention_context_duration_ns": 468320981,
+    "attention_context_calls": 4080,
+    "prior_score_scale_attention_context_duration_ns": 467859228,
+    "restrict_attention_context_delta_vs_prior_score_scale": 1.0009869485784728,
+    "top_kernels": [
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        "duration_ns": 468320981,
+        "calls": 4080
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "duration_ns": 334858014,
+        "calls": 29920
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 327673883,
+        "calls": 16320
+      },
+      {
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "duration_ns": 305697003,
+        "calls": 412
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "duration_ns": 291415058,
+        "calls": 16320
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "duration_ns": 237522480,
+        "calls": 24480
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "duration_ns": 236062156,
+        "calls": 4080
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "duration_ns": 213272423,
+        "calls": 21760
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 195957122,
+        "calls": 32970
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "duration_ns": 185003217,
+        "calls": 32760
+      }
+    ]
+  },
+  "scaling_context": {
+    "c1_decode_tok_s_aggregate": 134.1118139970783,
+    "serial_bridge_decode_tok_s_aggregate": 79.85063957880106,
+    "best_rejected_projection_vs_c1": 0.836074892079187,
+    "best_rejected_projection_vs_serial_bridge": 1.4042156832506962
+  },
+  "source_artifacts": {
+    "prior_score_scale": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-score-scale/summary.json",
+    "prior_scaling_blocker": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/scaling-blocker-c2.json",
+    "projection_evidence": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json"
+  },
+  "conclusion": {
+    "accepted": false,
+    "reason": "Both value-scan scheduling variants were rejected. The final restored tree keeps generated-token equality green (137 tokens) and avoids retaining a neutral/negative micro-optimization; c2 retained promotion remains blocked by aggregate_vs_c1<1."
+  },
+  "commands": {
+    "primary_verify_after_revert": "active loop verify command at final clean commit 958b28d3 with HIP_VISIBLE_DEVICES=1; output /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard_after_revert": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "restrict_projection_checks": "Two HIP_VISIBLE_DEVICES=1 retained-bench projection checks under restrict candidate commit a0f86b8e",
+    "restrict_profile": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-e2e-native-c2-restrict-profile-clean-iter112 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --json /tmp/hipengine-e2e-native-c2-restrict-profiled-clean-iter112.json"
+  }
+}
