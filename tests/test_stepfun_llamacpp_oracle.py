@@ -296,6 +296,18 @@ def test_stepfun_llamacpp_oracle_timeout_overwrites_partial_output(
     assert payload["oracle_blocker_detail"] == (
         "llama.cpp oracle timed out before producing a comparable token"
     )
+    assert payload["timeout_termination"] == {
+        "timeout_reached": True,
+        "timeout_s": 0.2,
+        "process_group_started": True,
+        "termination_method": "os.killpg",
+        "termination_signal": "SIGKILL",
+        "termination_signal_number": 9,
+        "termination_path": "killpg_sigkill_then_communicate",
+        "communicate_after_signal_timeout_s": 10.0,
+        "process_exited_before_signal": False,
+        "fallback_proc_kill_used": False,
+    }
     assert payload["generated_text"] == ""
     assert payload["text_matches_expected_exact"] is False
     assert payload["text_matches_expected_stripped"] is False

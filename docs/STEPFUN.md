@@ -764,7 +764,9 @@ reporting.
   the command-level partial-output guarantee and that the queue/compact blocker
   reports mirror the same path/status/overwrite fields; oracle-helper tests now
   cover both successful overwrite and timeout overwrite of the pre-launch
-  `status=running` artifact, and JSON file writes now use a flushed same-directory
+  `status=running` artifact; timeout payloads now include `timeout_termination`
+  with the exact `os.killpg` / `SIGKILL` process-group termination path used when
+  `timeout_s` is reached. JSON file writes now use a flushed same-directory
   temporary file plus atomic `os.replace` so handoff pollers never consume a
   truncated partial/final artifact. The helper preserves the recorded
   `diagnostic_logs=true` setting so reruns keep llama.cpp load/error logs

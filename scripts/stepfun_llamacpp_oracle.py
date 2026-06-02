@@ -169,7 +169,7 @@ def _partial_execution_result(
 def _run_with_timeout(
     command: list[str],
     timeout_s: float,
-) -> tuple[str, int | None, str, str, float]:
+) -> tuple[str, int | None, str, str, float, dict[str, object] | None]:
     started = time.perf_counter()
     proc = subprocess.Popen(
         command,
@@ -185,20 +185,43 @@ def _run_with_timeout(
             _as_text(stdout),
             _as_text(stderr),
             time.perf_counter() - started,
+            None,
         )
     except subprocess.TimeoutExpired as exc:
+        termination: dict[str, object] = {
+            "timeout_reached": True,
+            "timeout_s": timeout_s,
+            "process_group_started": True,
+            "termination_method": "os.killpg",
+            "termination_signal": "SIGKILL",
+            "termination_signal_number": int(signal.SIGKILL),
+            "termination_path": "killpg_sigkill_then_communicate",
+            "communicate_after_signal_timeout_s": 10.0,
+            "process_exited_before_signal": False,
+            "fallback_proc_kill_used": False,
+        }
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:  # pragma: no cover - process exited during timeout handling
-            pass
+            termination["process_exited_before_signal"] = True
+            termination["termination_path"] = "process_exited_before_killpg"
         try:
             stdout, stderr = proc.communicate(timeout=10)
         except subprocess.TimeoutExpired:  # pragma: no cover - defensive fallback
+            termination["fallback_proc_kill_used"] = True
+            termination["termination_path"] = "killpg_sigkill_then_proc_kill"
             proc.kill()
             stdout, stderr = proc.communicate()
         stdout_text = _as_text(exc.stdout) + _as_text(stdout)
         stderr_text = _as_text(exc.stderr) + _as_text(stderr)
-        return "timeout", None, stdout_text, stderr_text, time.perf_counter() - started
+        return (
+            "timeout",
+            None,
+            stdout_text,
+            stderr_text,
+            time.perf_counter() - started,
+            termination,
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -268,7 +291,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 pretty=args.pretty,
                 output=args.output,
             )
-        status, returncode, stdout, stderr, elapsed_s = _run_with_timeout(command, args.timeout_s)
+        status, returncode, stdout, stderr, elapsed_s, timeout_termination = _run_with_timeout(
+            command, args.timeout_s
+        )
         partial_output_fields = {
             "partial_output_written_before_launch": args.output is not None,
             "partial_output_path": str(args.output) if args.output is not None else None,
@@ -288,6 +313,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "elapsed_s": elapsed_s,
                     "stdout": stdout,
                     "stderr": stderr,
+                    "timeout_termination": timeout_termination,
                     **_comparison_fields(stdout, result.get("expected_next_token_text")),
                     **blocker,
                     **partial_output_fields,
