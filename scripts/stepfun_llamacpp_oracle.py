@@ -105,6 +105,43 @@ def _blocker_fields(stderr: str) -> dict[str, object]:
     }
 
 
+def _partial_execution_result(
+    result: dict[str, object],
+    *,
+    output: Path,
+    timeout_s: float,
+) -> dict[str, object]:
+    """Return the pre-launch artifact written before llama-cli execution."""
+
+    partial = dict(result)
+    partial.update(
+        {
+            "status": "running",
+            "timeout_s": timeout_s,
+            "partial_artifact": True,
+            "partial_artifact_reason": (
+                "stepfun_llamacpp_oracle.py wrote this structured handoff artifact before "
+                "launching llama-cli; the helper overwrites it with executed/timeout JSON "
+                "when the child process completes or reaches timeout_s."
+            ),
+            "partial_artifact_overwrite_policy": "overwrite_on_execute_or_timeout",
+            "partial_output_path": str(output),
+            "stdout": "",
+            "stderr": "",
+            "generated_text": "",
+            "text_matches_expected_exact": None,
+            "text_matches_expected_stripped": None,
+            "oracle_blocker_kind": "llama_cpp_oracle_in_progress",
+            "oracle_blocker_detail": (
+                "llama-cli execution has started but no comparable token or timeout result "
+                "has been recorded yet"
+            ),
+            "step35_supported": None,
+        }
+    )
+    return partial
+
+
 def _run_with_timeout(
     command: list[str],
     timeout_s: float,
@@ -201,7 +238,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     }
     if args.execute:
+        if args.output is not None:
+            _emit_json(
+                _partial_execution_result(result, output=args.output, timeout_s=args.timeout_s),
+                pretty=args.pretty,
+                output=args.output,
+            )
         status, returncode, stdout, stderr, elapsed_s = _run_with_timeout(command, args.timeout_s)
+        partial_output_fields = {
+            "partial_output_written_before_launch": args.output is not None,
+            "partial_output_path": str(args.output) if args.output is not None else None,
+        }
         if status == "timeout":
             blocker = _blocker_fields(stderr)
             if blocker["oracle_blocker_kind"] is None:
@@ -219,6 +266,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "stderr": stderr,
                     **_comparison_fields(stdout, result.get("expected_next_token_text")),
                     **blocker,
+                    **partial_output_fields,
                 }
             )
         else:
@@ -231,6 +279,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "stderr": stderr,
                     **_comparison_fields(stdout, result.get("expected_next_token_text")),
                     **_blocker_fields(stderr),
+                    **partial_output_fields,
                 }
             )
     _emit_json(result, pretty=args.pretty, output=args.output)

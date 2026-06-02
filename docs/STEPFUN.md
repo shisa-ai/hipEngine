@@ -742,9 +742,14 @@ reporting.
   command bundle itself, with length/SHA-256 metadata for the helper/resource/status refresh commands plus
   compact source-artifact verification, verification-status, verification
   exit-code, and verification-failure commands for rechecking embedded
-  prompt/oracle/resource/docs hashes before blocker handoff; the oracle helper
-  preserves the recorded `diagnostic_logs=true` setting so reruns keep llama.cpp
-  load/error logs enabled for the canonical timeout artifact. The handoff now
+  prompt/oracle/resource/docs hashes before blocker handoff; when invoked with
+  `--execute --output`, the oracle helper now writes a structured
+  `status=running` partial artifact before launching llama.cpp and overwrites it
+  with the final executed/timeout JSON when the child returns, so supervised
+  long reruns leave machine-readable in-progress evidence instead of only an
+  opaque wrapper timeout. The helper preserves the recorded
+  `diagnostic_logs=true` setting so reruns keep llama.cpp load/error logs
+  enabled for the canonical timeout artifact. The handoff now
   also records `oracle_helper_long_timeout_command` (`--timeout-s 900.0`, same
   canonical oracle output JSON) with length/SHA-256 metadata and mirrors it in
   the first blocker work item. The blocker queue now also exposes a generic

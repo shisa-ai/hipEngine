@@ -31983,3 +31983,26 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status-helper tests passed; compact `--first-remaining-blocker-report-only` matched `status['first_remaining_blocker_report']` and `--first-remaining-blocker-report-sha-only` returned SHA `30d8e8ea49595d095a85b9f0274862be965438229aeed0605d7a50b2077daa12`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`230` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun oracle helper partial-output artifact
+
+Hardened the StepFun llama.cpp oracle helper so future long supervised reruns leave structured evidence even if the outer wrapper times out. `scripts/stepfun_llamacpp_oracle.py --execute --output ...` now writes a `status=running` partial artifact before launching `llama-cli`, with `partial_artifact=true`, `oracle_blocker_kind=llama_cpp_oracle_in_progress`, and an overwrite policy; the helper overwrites that file with the final `executed` or `timeout` JSON when the child returns. Final execution/timeout payloads also record whether a partial output was written before launch. Added a fake `llama-cli` regression test that reads the output file during its own invocation and verifies the pre-launch partial payload was present. Updated `docs/STEPFUN.md` and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` for the docs source hash. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+print('status integrity ok')
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted oracle-helper tests passed (`7` tests); persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`231` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_llamacpp_oracle.py`, and `tests/test_stepfun_llamacpp_oracle.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.

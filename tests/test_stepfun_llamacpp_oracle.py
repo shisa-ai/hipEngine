@@ -124,6 +124,72 @@ def test_stepfun_llamacpp_oracle_execute_compares_stdout(
     assert payload["step35_supported"] is None
 
 
+def test_stepfun_llamacpp_oracle_execute_writes_partial_output_before_launch(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    _write_artifact(artifact)
+    output_path = tmp_path / "oracle-output.json"
+    marker_path = tmp_path / "partial-marker.json"
+    llama_cli = tmp_path / "llama-cli"
+    llama_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"$1\" = \"--version\" ]; then\n"
+        "  echo 'version: test (deadbeef)'\n"
+        "else\n"
+        f"  python3 - {str(output_path)!r} {str(marker_path)!r} <<'PY'\n"
+        "import json, sys\n"
+        "output_path, marker_path = sys.argv[1:3]\n"
+        "payload = json.load(open(output_path))\n"
+        "json.dump({\n"
+        "    'status': payload.get('status'),\n"
+        "    'partial_artifact': payload.get('partial_artifact'),\n"
+        "    'oracle_blocker_kind': payload.get('oracle_blocker_kind'),\n"
+        "    'partial_output_path': payload.get('partial_output_path'),\n"
+        "}, open(marker_path, 'w'), sort_keys=True)\n"
+        "PY\n"
+        "  printf ' |'\n"
+        "fi\n"
+    )
+    llama_cli.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fake")
+
+    rc = main(
+        [
+            "--artifact",
+            str(artifact),
+            "--llama-cli",
+            str(llama_cli),
+            "--model",
+            str(model),
+            "--execute",
+            "--output",
+            str(output_path),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == ""
+    marker = json.loads(marker_path.read_text())
+    assert marker == {
+        "status": "running",
+        "partial_artifact": True,
+        "oracle_blocker_kind": "llama_cpp_oracle_in_progress",
+        "partial_output_path": str(output_path),
+    }
+    payload = json.loads(output_path.read_text())
+    assert payload["status"] == "executed"
+    assert payload["partial_output_written_before_launch"] is True
+    assert payload["partial_output_path"] == str(output_path)
+    assert payload["generated_text"] == " |"
+    assert payload["text_matches_expected_exact"] is True
+
+
 def test_stepfun_llamacpp_oracle_execute_structures_step35_blocker(
     capsys,
     tmp_path: Path,
