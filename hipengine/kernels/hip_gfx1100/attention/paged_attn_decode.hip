@@ -2665,8 +2665,13 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
   if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int threads = 256;
-  const size_t shared_bytes = static_cast<size_t>(max_context_len + 8 + head_dim) * sizeof(float);
+  // c=2 decode is dominated by fixed launch/context overhead. Give the
+  // small-row, sub-1K context batch path more warps so each head processes
+  // more context tokens concurrently while larger retained rows keep the
+  // existing 256-thread shape.
+  const int threads = (rows <= 2 && max_context_len < 1024) ? 1024 : 256;
+  const int max_warps = threads / 32;
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
