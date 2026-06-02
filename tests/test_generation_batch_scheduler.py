@@ -3087,6 +3087,43 @@ def test_batch_c_sweep_load_json_path_rejects_nonfinite(tmp_path: Path) -> None:
     assert c_sweep._load_json_path(payload_path) == {"ok": 1.0}
 
 
+def test_batch_c_sweep_plans_retained_sampler_evidence(tmp_path: Path) -> None:
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "1,2,4",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--batch-sample-mode",
+            "batched_lm_head",
+            "--batch-sample-eq-ok",
+            "--batch-sample-eq-artifact-template",
+            "benchmarks/results/sampler-c{c}.json",
+        ]
+    )
+
+    planned = build_sweep_commands(args)
+    native_commands = [item for item in planned if item.category == "native_diagnostic"]
+    native_c1, native_c2, native_c4 = native_commands
+
+    assert "--batch-sample-mode" not in native_c1.argv
+    assert "--batch-sample-mode batched_lm_head" in native_c2.command
+    assert "--batch-sample-eq-ok" in native_c2.argv
+    assert "--batch-sample-eq-artifact benchmarks/results/sampler-c2.json" in native_c2.command
+    assert "--batch-sample-eq-rows 2" in native_c2.command
+    assert "--batch-sample-eq-artifact benchmarks/results/sampler-c4.json" in native_c4.command
+    assert "--batch-sample-eq-rows 4" in native_c4.command
+
+    summary = run_sweep(args)
+    c_sweep.validate_sweep_summary(summary)
+    persisted_native_c2 = next(
+        row for row in summary["commands"] if row["category"] == "native_diagnostic" and row["batch_size"] == 2
+    )
+    assert "--batch-sample-mode batched_lm_head" in persisted_native_c2["command"]
+    assert "--batch-sample-eq-artifact benchmarks/results/sampler-c2.json" in persisted_native_c2["command"]
+
+
 def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:
     summary_path = tmp_path / "summary.json"
     args = build_c_sweep_parser().parse_args(

@@ -64125,3 +64125,22 @@ GPU1 / RX 7900 XTX matrix evidence:
 Primary default verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`. No retained/scaling claim.
 
 Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_equality_matrix.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY c-sweep sampler evidence propagation
+
+Extended `scripts/qwen35_batch_c_sweep.py` so retained native c>N commands can carry the same sampler/LM-head evidence flags as the retained bench and equality matrix: `--batch-sample-mode`, `--batch-sample-eq-ok`, `--batch-sample-eq-artifact-template`, and `--batch-sample-eq-rows`. These flags are passed only to retained native c>N commands, not primitive, serial bridge, or c=1 native-baseline rows.
+
+Dry-run c-sweep evidence:
+
+- `/tmp/hipengine-c-sweep-batched-lm-head-dry-run.json` validates with `scripts/qwen35_batch_c_sweep.py --validate-summary-json` and plans 12 commands for c=1/2/4/8.
+- Planned c=2/c=4/c=8 retained native commands include `--batch-sample-mode batched_lm_head --batch-sample-eq-ok`, the matching same-row sampler equality artifact under `benchmarks/results/2026-06-02-hipengine-qwen35-c{c}-native-batch-sampler-equality.json`, and `--batch-sample-eq-rows {c}`.
+
+GPU1 / RX 7900 XTX equality evidence after the c-sweep planner change:
+
+- `/tmp/hipengine-e2e-native-c2-c4-c8-batched-lm-head-csweep-propagation-matrix.json` is `status=passed`, `generated_equality_passed=true`.
+- c=2 prefixes `[137,137]`, c=4 prefixes `[137,137,137,137]`, c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- All rows record `sampler_execution.mode=batched_lm_head`, `native_row_aware_lm_head=true`, matching equality artifacts/rows, and no sampler blockers.
+
+Primary default verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`. No retained/scaling claim.
+
+Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`406 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

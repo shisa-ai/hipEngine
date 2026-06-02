@@ -304,6 +304,14 @@ def parse_cli_path(text: str) -> Path:
     return Path(text)
 
 
+def _format_batch_template(value: str | Path, *, batch_size: int, option: str) -> str:
+    text = str(value)
+    try:
+        return text.format(batch_size=batch_size, c=batch_size)
+    except (IndexError, KeyError, ValueError) as exc:
+        raise ValueError(f"{option} supports only {{batch_size}}/{{c}} placeholders") from exc
+
+
 def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
     output_dir = Path(args.output_dir)
     commands: list[SweepCommand] = []
@@ -500,6 +508,38 @@ def _batch_bench_argv(
     projection_dispatch_artifact = getattr(args, "projection_dispatch_artifact", None)
     if script == _RETAINED_BENCH_SCRIPT and projection_dispatch_artifact is not None:
         argv.extend(["--projection-dispatch-artifact", str(projection_dispatch_artifact)])
+    if script == _RETAINED_BENCH_SCRIPT:
+        batch_sample_mode = getattr(args, "batch_sample_mode", None)
+        if batch_sample_mode is not None:
+            argv.extend(["--batch-sample-mode", str(batch_sample_mode)])
+        if getattr(args, "batch_sample_eq_ok", False):
+            argv.append("--batch-sample-eq-ok")
+        batch_sample_eq_artifact_template = getattr(args, "batch_sample_eq_artifact_template", None)
+        if batch_sample_eq_artifact_template is not None:
+            argv.extend(
+                [
+                    "--batch-sample-eq-artifact",
+                    _format_batch_template(
+                        batch_sample_eq_artifact_template,
+                        batch_size=batch_size,
+                        option="--batch-sample-eq-artifact-template",
+                    ),
+                ]
+            )
+        batch_sample_eq_rows = getattr(args, "batch_sample_eq_rows", None)
+        if batch_sample_eq_rows is not None:
+            argv.extend(
+                [
+                    "--batch-sample-eq-rows",
+                    _format_batch_template(
+                        batch_sample_eq_rows,
+                        batch_size=batch_size,
+                        option="--batch-sample-eq-rows",
+                    ),
+                ]
+            )
+        elif getattr(args, "batch_sample_eq_ok", False):
+            argv.extend(["--batch-sample-eq-rows", str(batch_size)])
     if args.compiler_version_file is not None:
         argv.extend(["--compiler-version-file", str(args.compiler_version_file)])
     if args.require_cached_build:
@@ -4602,6 +4642,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--projection-dispatch-artifact",
         type=parse_cli_path,
         help="Optional benchmarks/results JSON with projection_dispatch_candidates passed to retained native commands",
+    )
+    parser.add_argument(
+        "--batch-sample-mode",
+        choices=("serial_lm_head", "batched_lm_head"),
+        help="Optional sampler/LM-head path passed to retained native c>N commands",
+    )
+    parser.add_argument(
+        "--batch-sample-eq-ok",
+        action="store_true",
+        help="Pass --batch-sample-eq-ok to retained native c>N commands",
+    )
+    parser.add_argument(
+        "--batch-sample-eq-artifact-template",
+        help="Template for retained native --batch-sample-eq-artifact; supports {batch_size} or {c} placeholders",
+    )
+    parser.add_argument(
+        "--batch-sample-eq-rows",
+        help="Template/value for retained native --batch-sample-eq-rows; defaults to each c when --batch-sample-eq-ok is set",
     )
     parser.add_argument("--include-int8", action="store_true", help="Plan blocked INT8 KV c>N diagnostics for c>1 rows")
     parser.add_argument("--include-gguf", action="store_true", help="Plan blocked GGUF c>N diagnostics for c>1 rows and all template quants")
