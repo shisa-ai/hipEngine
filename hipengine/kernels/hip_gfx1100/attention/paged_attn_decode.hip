@@ -459,12 +459,14 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   __syncthreads();
   const float inv_denom = warp_buf[0];
 
-  for (int64_t token = warp_id; token < context_len; token += num_warps) {
-    if (lane_id == 0) {
-      scores[token] *= inv_denom;
+  if (value_groups == 1) {
+    for (int64_t token = warp_id; token < context_len; token += num_warps) {
+      if (lane_id == 0) {
+        scores[token] *= inv_denom;
+      }
     }
+    __syncthreads();
   }
-  __syncthreads();
 
   if (value_groups > 1) {
     const int64_t value_thread_count = static_cast<int64_t>(value_groups) * head_dim;
@@ -478,7 +480,7 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
         const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
         const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
         const int64_t v_offset = token_offset + kv_head * head_dim + dim;
-        acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+        acc += (scores[token] * inv_denom) * bf16_bits_to_float(value_cache[v_offset]);
       }
       value_partials[static_cast<int64_t>(group) * head_dim + dim] = acc;
     }
