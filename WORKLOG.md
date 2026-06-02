@@ -32006,3 +32006,54 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted oracle-helper tests passed (`7` tests); persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`231` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_llamacpp_oracle.py`, and `tests/test_stepfun_llamacpp_oracle.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun oracle partial-output handoff metadata
+
+Mirrored the oracle helper's pre-launch partial-output guarantee into the correctness-status handoff. `scripts/stepfun_correctness_status.py` now records `oracle_helper_writes_partial_output_before_launch=true`, expected `status=running`, partial output path, overwrite policy, and `llama_cpp_oracle_in_progress` blocker kind in `next_action_commands.oracle_parity_blocked`; the same metadata is mirrored through the blocker work queue, `remaining_blockers_report`, and `first_remaining_blocker_report` as `recommended_command_writes_partial_output_before_launch` plus path/status fields. Updated focused status-helper tests, `docs/STEPFUN.md`, and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_remaining_blockers_report_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_first_remaining_blocker_report_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_next_action_commands_only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json, subprocess
+from pathlib import Path
+status_path = Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json')
+status = json.loads(status_path.read_text())
+commands = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--next-action-commands-only',
+]))
+remaining = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--remaining-blockers-report-only',
+]))
+first = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--first-remaining-blocker-report-only',
+]))
+assert commands == status['next_action_commands']
+assert remaining == status['remaining_blockers_report']
+assert first == status['first_remaining_blocker_report']
+oracle = commands['oracle_parity_blocked']
+assert oracle['oracle_helper_writes_partial_output_before_launch'] is True
+assert oracle['oracle_helper_partial_output_status'] == 'running'
+assert oracle['oracle_helper_partial_output_path'] == 'benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json'
+assert remaining['items'][0]['recommended_command_writes_partial_output_before_launch'] is True
+assert first['recommended_command_writes_partial_output_before_launch'] is True
+assert first['partial_output_status'] == 'running'
+print('oracle partial-output handoff metadata ok', status['next_action_commands_sha256'])
+PY
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+print('status integrity ok')
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status-helper tests passed; compact command/report smoke returned next-action SHA `9c5a984e9ff79659b4eed0dd026ab7281adc7c55128e5aa924c08eb30f753b1d`; status-integrity checks passed (`all_match=true`, no failed checks); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`231` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.

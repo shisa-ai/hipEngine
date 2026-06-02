@@ -1818,6 +1818,15 @@ def _next_action_commands(
                 "oracle_helper_long_timeout_command",
                 oracle_helper_long_timeout,
             ),
+            "oracle_helper_writes_partial_output_before_launch": True,
+            "oracle_helper_partial_output_status": "running",
+            "oracle_helper_partial_output_path": str(oracle_artifact),
+            "oracle_helper_partial_output_overwrite_policy": (
+                "overwrite_on_execute_or_timeout"
+            ),
+            "oracle_helper_partial_output_blocker_kind": (
+                "llama_cpp_oracle_in_progress"
+            ),
             "status_refresh_command": status_refresh,
             **_command_length_hash("status_refresh_command", status_refresh),
             "gap_report_status": oracle_gap_report.get("status"),
@@ -1932,6 +1941,17 @@ def _remaining_blockers_report(
                 "recommended_command": work_record.get("recommended_command"),
                 "recommended_command_sha256": work_record.get("recommended_command_sha256"),
                 "recommended_command_reason": work_record.get("recommended_command_reason"),
+                "recommended_command_writes_partial_output_before_launch": work_record.get(
+                    "recommended_command_writes_partial_output_before_launch"
+                ),
+                "partial_output_status": work_record.get("partial_output_status"),
+                "partial_output_path": work_record.get("partial_output_path"),
+                "partial_output_overwrite_policy": work_record.get(
+                    "partial_output_overwrite_policy"
+                ),
+                "partial_output_blocker_kind": work_record.get(
+                    "partial_output_blocker_kind"
+                ),
                 "success_criteria": list(next_action_record.get("success_criteria", [])),
                 "artifact": blocker.get("artifact"),
                 "resource_artifact": blocker.get("resource_artifact"),
@@ -1996,6 +2016,25 @@ def _first_remaining_blocker_report(
         if first_record
         else None,
         "recommended_command_sha256": first_record.get("recommended_command_sha256")
+        if first_record
+        else None,
+        "recommended_command_writes_partial_output_before_launch": first_record.get(
+            "recommended_command_writes_partial_output_before_launch"
+        )
+        if first_record
+        else None,
+        "partial_output_status": first_record.get("partial_output_status")
+        if first_record
+        else None,
+        "partial_output_path": first_record.get("partial_output_path")
+        if first_record
+        else None,
+        "partial_output_overwrite_policy": first_record.get(
+            "partial_output_overwrite_policy"
+        )
+        if first_record
+        else None,
+        "partial_output_blocker_kind": first_record.get("partial_output_blocker_kind")
         if first_record
         else None,
         "success_criteria": list(first_record.get("success_criteria", []))
@@ -2300,6 +2339,24 @@ def _handoff_summary(
                         else None
                     ),
                     "long_timeout_s": oracle_action.get("oracle_helper_long_timeout_s"),
+                    "recommended_command_writes_partial_output_before_launch": (
+                        oracle_action.get(
+                            "oracle_helper_writes_partial_output_before_launch"
+                        )
+                        is True
+                    ),
+                    "partial_output_status": oracle_action.get(
+                        "oracle_helper_partial_output_status"
+                    ),
+                    "partial_output_path": oracle_action.get(
+                        "oracle_helper_partial_output_path"
+                    ),
+                    "partial_output_overwrite_policy": oracle_action.get(
+                        "oracle_helper_partial_output_overwrite_policy"
+                    ),
+                    "partial_output_blocker_kind": oracle_action.get(
+                        "oracle_helper_partial_output_blocker_kind"
+                    ),
                     "gap_report_status": oracle_gap_report.get("status"),
                     "current_status": oracle_gap_report.get("oracle_status"),
                     "current_returncode": oracle_gap_report.get("returncode"),

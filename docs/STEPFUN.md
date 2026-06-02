@@ -747,9 +747,13 @@ reporting.
   `status=running` partial artifact before launching llama.cpp and overwrites it
   with the final executed/timeout JSON when the child returns, so supervised
   long reruns leave machine-readable in-progress evidence instead of only an
-  opaque wrapper timeout. The helper preserves the recorded
-  `diagnostic_logs=true` setting so reruns keep llama.cpp load/error logs
-  enabled for the canonical timeout artifact. The handoff now
+  opaque wrapper timeout. `stepfun_correctness_status.py` mirrors that guarantee
+  in `next_action_commands.oracle_parity_blocked`, the blocker work queue,
+  `remaining_blockers_report`, and `first_remaining_blocker_report` via
+  `recommended_command_writes_partial_output_before_launch=true` plus the
+  expected `status=running` path/overwrite metadata. The helper preserves the
+  recorded `diagnostic_logs=true` setting so reruns keep llama.cpp load/error
+  logs enabled for the canonical timeout artifact. The handoff now
   also records `oracle_helper_long_timeout_command` (`--timeout-s 900.0`, same
   canonical oracle output JSON) with length/SHA-256 metadata and mirrors it in
   the first blocker work item. The blocker queue now also exposes a generic

@@ -92,6 +92,11 @@ def _oracle_helper_fields(
         "long_timeout_helper_command_nchars": len(long_command),
         "long_timeout_helper_command_sha256": hashlib.sha256(long_command.encode()).hexdigest(),
         "long_timeout_s": 900.0,
+        "recommended_command_writes_partial_output_before_launch": True,
+        "partial_output_status": "running",
+        "partial_output_path": str(oracle),
+        "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+        "partial_output_blocker_kind": "llama_cpp_oracle_in_progress",
     }
 
 
@@ -1614,6 +1619,15 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         expected_long_timeout_command.encode()
     ).hexdigest()
     assert "--timeout-s 900.0" in oracle_commands["oracle_helper_long_timeout_command"]
+    assert oracle_commands["oracle_helper_writes_partial_output_before_launch"] is True
+    assert oracle_commands["oracle_helper_partial_output_status"] == "running"
+    assert oracle_commands["oracle_helper_partial_output_path"] == str(oracle)
+    assert oracle_commands["oracle_helper_partial_output_overwrite_policy"] == (
+        "overwrite_on_execute_or_timeout"
+    )
+    assert oracle_commands["oracle_helper_partial_output_blocker_kind"] == (
+        "llama_cpp_oracle_in_progress"
+    )
     assert f"--prompt-artifact {prompt}" in oracle_commands["status_refresh_command"]
     assert f"--oracle-artifact {oracle}" in oracle_commands["status_refresh_command"]
     assert oracle_commands["status_refresh_command_nchars"] == len(
@@ -2314,6 +2328,15 @@ def test_stepfun_correctness_status_remaining_blockers_report_outputs(
     assert report["items"][0]["recommended_command_kind"] == (
         "oracle_helper_long_timeout_command"
     )
+    assert report["items"][0]["recommended_command_writes_partial_output_before_launch"] is True
+    assert report["items"][0]["partial_output_status"] == "running"
+    assert report["items"][0]["partial_output_path"] == str(oracle)
+    assert report["items"][0]["partial_output_overwrite_policy"] == (
+        "overwrite_on_execute_or_timeout"
+    )
+    assert report["items"][0]["partial_output_blocker_kind"] == (
+        "llama_cpp_oracle_in_progress"
+    )
     assert "oracle_parity is true" in report["items"][0]["success_criteria"]
     assert report["items"][1]["checklist_item"] == (
         "P11 text-only c=1 KV-backed decode runner"
@@ -2415,6 +2438,13 @@ def test_stepfun_correctness_status_first_remaining_blocker_report_outputs(
     assert report["recommended_command_sha256"] == status["remaining_blockers_report"][
         "items"
     ][0]["recommended_command_sha256"]
+    assert report["recommended_command_writes_partial_output_before_launch"] is True
+    assert report["partial_output_status"] == "running"
+    assert report["partial_output_path"] == str(oracle)
+    assert report["partial_output_overwrite_policy"] == (
+        "overwrite_on_execute_or_timeout"
+    )
+    assert report["partial_output_blocker_kind"] == "llama_cpp_oracle_in_progress"
     assert "oracle_parity is true" in report["success_criteria"]
     assert report["item"] == status["remaining_blockers_report"]["items"][0]
     assert report["no_claim_policy"]["performance_claim_allowed"] is False
