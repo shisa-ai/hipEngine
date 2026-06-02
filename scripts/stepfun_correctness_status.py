@@ -1464,6 +1464,19 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(source_artifacts, dict)
             and status.get("source_artifacts_sha256") == _stable_json_sha256(source_artifacts)
         ),
+        "source_artifacts_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("source_artifacts_sha_only")
+            == "source_artifacts_sha256"
+            and compact_output_modes.get("oracle_wrapper_timeout_source_only")
+            == "source_artifacts.oracle_wrapper_timeout"
+            and compact_output_modes.get("oracle_wrapper_timeout_source_sha_only")
+            == "source_artifacts.oracle_wrapper_timeout.sha256"
+            and compact_output_modes.get("text_resource_source_only")
+            == "source_artifacts.text_resource"
+            and compact_output_modes.get("text_resource_source_sha_only")
+            == "source_artifacts.text_resource.sha256"
+        ),
         "handoff_summary_sha256": (
             isinstance(handoff_summary, dict)
             and status.get("handoff_summary_sha256") == _stable_json_sha256(handoff_summary)

@@ -748,7 +748,9 @@ reporting.
   `--text-resource-source-only` / `--text-resource-source-sha-only` outputs
   expose the resource-plan (`source_artifacts.text_resource`) record and digest
   directly so KV decode handoff automation can poll the dry-run plan provenance
-  without reading the full status. The status also exposes
+  without reading the full status; status integrity also verifies the compact
+  source-artifact output-mode mappings for the source digest, wrapper-timeout
+  oracle source, and text-resource source routes. The status also exposes
   `handoff_summary_sha256` so pollers can detect blocker-summary or
   compact-output metadata drift before trusting the remaining handoff queue. The
   status also includes `next_action_commands` for rerunning the oracle command
