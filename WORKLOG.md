@@ -65086,3 +65086,22 @@ Required loop verification:
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 
 Conclusion: the graph-replay profiler blocker was a metadata accounting issue, not missing device evidence for this path. The retained artifact now correctly says cache lookup hit but zero replay-kernel hits, matching the exact raw trace. Remaining blockers: batch-level throughput eligibility, stable-block-id audit, and per-request bucket context labels. No retained performance/scaling claim.
+
+## 2026-06-02 — CONCURRENCY observed decode bucket context evidence
+
+Ran iteration 101 for `concurrency-e2e/native-c2-e2e`. The remaining c=8 exact-profile artifact still had per-request bucket context-axis blockers: the scheduler's initial retained `decode_shape_key.context_bucket` was 512, while each completed request's final `bucket_key` recorded `ctx=768` after the 512/128 run crossed the next decode context bucket.
+
+Code/evidence:
+
+- `scripts/qwen35_batch_retained_bench.py` now records unique `execution.scheduler_metadata.decode_shape_keys_observed` during every native decode step. For 512/128 c=8 this captures both the initial `context_bucket=512` and the later `context_bucket=768` bucket, with the same c/mask/KV/layer/top-k/expert/replay/draft axes.
+- Retained per-request observability validation now checks `bucket_key` context axes against the observed decode shape-key set, instead of only the initial graph bucket. Other axes still must match the scheduler decode shape key.
+- Added focused unit coverage proving a per-request `ctx=768` key is accepted when `decode_shape_keys_observed` contains `{512, 768}`, while stale/mismatched axes remain blocked.
+- Reran exact-profile c=8 retained validation using the existing exact profiler artifact. `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json` remains `status=blocked`, `performance_claim=false`, equality green (`prefixes=[137,137,137,137,137,137,137,137]`), primitive c=8 passed, scaling complete, profiler captured, graph replay accounting green (`hits=1`, `replay_kernel_hits=0`), and projection dispatch selecting non-row-GEMV `batch`. The per-request bucket context-axis blockers are gone.
+- Updated compact summary `benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json`: remaining blockers are only `batch_execution.throughput_claim_eligible=false` and `memory.stable_block_id.passed is not true`.
+
+Required loop verification:
+
+- Primary c=2 512/128 verifier stayed green: metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and observed decode context buckets `[512,768]` under HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+Conclusion: the per-request bucket context-axis blocker is eliminated with concrete c=8 artifact evidence. The retained evidence stack is now blocked only by batch-level throughput eligibility and stable-block-id audit. No retained performance/scaling claim.

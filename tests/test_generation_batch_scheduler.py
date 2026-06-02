@@ -18854,7 +18854,7 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     )
     assert "observability.per_request.0.bucket_key mode must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key c axis must match expected concurrency" in blockers
-    assert "observability.per_request.0.bucket_key context axis must match scheduler decode shape key" in blockers
+    assert "observability.per_request.0.bucket_key context axis must match scheduler observed decode shape key" in blockers
     assert "observability.per_request.0.bucket_key active-mask axis must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key kv axis must match expected KV storage dtype" in blockers
     assert "observability.per_request.0.bucket_key layer-plan axis must match expected layer plan" in blockers
@@ -18862,6 +18862,28 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     assert "observability.per_request.0.bucket_key experts axis must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key replay axis must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key draft axis must match scheduler decode shape key" in blockers
+
+    observed_later_context_bucket = json.loads(json.dumps(valid))
+    observed_later_context_bucket["0"]["bucket_key"] = (
+        "decode:c=2:ctx=768:mask=11:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0"
+    )
+    observed_later_context_bucket["1"]["bucket_key"] = (
+        "decode:c=2:ctx=768:mask=11:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0"
+    )
+    assert retained_bench._request_observability_blockers(
+        observed_later_context_bucket,
+        expected_concurrency=2,
+        expected_mode="decode",
+        expected_context_bucket=512,
+        expected_context_buckets={512, 768},
+        expected_active_mask="11",
+        expected_kv_storage_dtype="bf16",
+        expected_layer_plan="max_layers=40",
+        expected_top_k=0,
+        expected_experts_per_token=0,
+        expected_replay_steps=1,
+        expected_draft_depth=0,
+    ) == []
 
     invalid_timing = json.loads(json.dumps(valid))
     invalid_timing["1"]["queue_seconds"] = 1.0

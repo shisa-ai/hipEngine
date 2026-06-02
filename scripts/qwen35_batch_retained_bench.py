@@ -3071,6 +3071,7 @@ def _request_observability_blockers(
     expected_concurrency: int,
     expected_mode: str | None = None,
     expected_context_bucket: int | None = None,
+    expected_context_buckets: set[int] | None = None,
     expected_active_mask: str | None = None,
     expected_kv_storage_dtype: str | None = None,
     expected_layer_plan: str | None = None,
@@ -3082,6 +3083,11 @@ def _request_observability_blockers(
     if not isinstance(per_request, Mapping):
         return ["observability.per_request is missing"]
     blockers: list[str] = []
+    allowed_context_buckets: set[int] = set()
+    if expected_context_bucket is not None:
+        allowed_context_buckets.add(int(expected_context_bucket))
+    if expected_context_buckets is not None:
+        allowed_context_buckets.update(int(bucket) for bucket in expected_context_buckets)
     expected_keys = {str(request_id) for request_id in range(expected_concurrency)}
     if set(per_request.keys()) != expected_keys:
         blockers.append("observability.per_request keys do not match expected row ids")
@@ -3161,8 +3167,8 @@ def _request_observability_blockers(
             else:
                 if c_axis != str(expected_concurrency):
                     blockers.append(f"{label}.bucket_key c axis must match expected concurrency")
-                if expected_context_bucket is not None and ctx_axis != str(expected_context_bucket):
-                    blockers.append(f"{label}.bucket_key context axis must match scheduler decode shape key")
+                if allowed_context_buckets and ctx_axis not in {str(bucket) for bucket in allowed_context_buckets}:
+                    blockers.append(f"{label}.bucket_key context axis must match scheduler observed decode shape key")
                 if expected_active_mask is not None and mask_axis != str(expected_active_mask):
                     blockers.append(f"{label}.bucket_key active-mask axis must match scheduler decode shape key")
             if kv_axis is None or layer_axis is None:
@@ -3517,6 +3523,7 @@ def _decode_scheduler_step_native(
     count_output: bool,
     kv_storage_dtype: str = "bf16",
     layer_plan: str = "all",
+    scheduler_metadata: dict[str, Any] | None = None,
 ) -> tuple[int, bool]:
     work = scheduler.next_decode_work(
         kv_storage_dtype=kv_storage_dtype,
@@ -3524,6 +3531,17 @@ def _decode_scheduler_step_native(
     )
     if work is None:
         raise RuntimeError("scheduler did not emit decode work")
+    if scheduler_metadata is not None:
+        shape_payload = _shape_key_payload(
+            scheduler.shape_key(
+                mode="decode",
+                kv_storage_dtype=kv_storage_dtype,
+                layer_plan=layer_plan,
+            )
+        )
+        observed_shapes = scheduler_metadata.setdefault("decode_shape_keys_observed", [])
+        if isinstance(observed_shapes, list) and shape_payload not in observed_shapes:
+            observed_shapes.append(shape_payload)
     request_ids = tuple(request_id for request_id in work.request_ids if request_id in next_token_by_request)
     slots = [scheduler.active_batch.slot_for(request_id) for request_id in request_ids]
     if tuple(slots) != tuple(range(len(slots))):
@@ -3636,6 +3654,7 @@ def _run_native_bench(
                 count_output=False,
                 kv_storage_dtype=kv_policy.storage_dtype.value,
                 layer_plan=f"max_layers={int(max_layers)}",
+                scheduler_metadata=scheduler_metadata,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
             warmup_step_seconds.append(time.perf_counter() - step_start)
@@ -3652,6 +3671,7 @@ def _run_native_bench(
                 count_output=True,
                 kv_storage_dtype=kv_policy.storage_dtype.value,
                 layer_plan=f"max_layers={int(max_layers)}",
+                scheduler_metadata=scheduler_metadata,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
             measured_step_seconds.append(time.perf_counter() - step_start)
@@ -4188,6 +4208,7 @@ def _build_payload(
     expected_experts_per_token = None
     expected_replay_steps = None
     expected_draft_depth = None
+    expected_context_buckets: set[int] = set()
     if isinstance(decode_shape_key, Mapping):
         mode = decode_shape_key.get("mode")
         if isinstance(mode, str) and mode:
@@ -4195,6 +4216,7 @@ def _build_payload(
         context_bucket = decode_shape_key.get("context_bucket")
         if isinstance(context_bucket, int) and not isinstance(context_bucket, bool):
             expected_context_bucket = int(context_bucket)
+            expected_context_buckets.add(int(context_bucket))
         active_mask = decode_shape_key.get("active_mask")
         if isinstance(active_mask, list) and all(isinstance(active, bool) for active in active_mask):
             expected_active_mask = "".join("1" if active else "0" for active in active_mask)
@@ -4210,11 +4232,20 @@ def _build_payload(
         draft_depth = decode_shape_key.get("draft_depth")
         if isinstance(draft_depth, int) and not isinstance(draft_depth, bool):
             expected_draft_depth = int(draft_depth)
+    observed_decode_shape_keys = scheduler_metadata.get("decode_shape_keys_observed")
+    if isinstance(observed_decode_shape_keys, list):
+        for observed_shape_key in observed_decode_shape_keys:
+            if not isinstance(observed_shape_key, Mapping):
+                continue
+            observed_context_bucket = observed_shape_key.get("context_bucket")
+            if isinstance(observed_context_bucket, int) and not isinstance(observed_context_bucket, bool):
+                expected_context_buckets.add(int(observed_context_bucket))
     observability_blockers = _request_observability_blockers(
         per_request_observability,
         expected_concurrency=args.batch_size,
         expected_mode=expected_mode,
         expected_context_bucket=expected_context_bucket,
+        expected_context_buckets=expected_context_buckets,
         expected_active_mask=expected_active_mask,
         expected_kv_storage_dtype=kv_policy.storage_dtype.value,
         expected_layer_plan=f"max_layers={int(args.max_layers)}",
