@@ -3324,31 +3324,34 @@ def test_qwen35_resident_linear_batch_decode_selected_ab_projection_combines_wit
 
 
 @pytest.mark.parametrize(
-    ("env_value", "expected_selected_c1", "expected_batch_gemv", "expected_path", "expected_blocker"),
+    ("env_value", "expected_selected_c1", "expected_batch_gemv", "expected_path", "expected_native_caware", "expected_blockers"),
     [
         (
             "selected_c1",
             True,
             False,
             "selected_c1_forced",
-            "linear-attention output projection forced to selected-c1 diagnostic path",
+            False,
+            ["linear-attention output projection forced to selected-c1 diagnostic path"],
         ),
         (
             "batch_gemv",
             False,
             True,
             "batch_gemv",
-            "linear-attention output projection forced to batch GEMV diagnostic path",
+            True,
+            [],
         ),
     ],
 )
-def test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native(
+def test_qwen35_resident_linear_batch_decode_output_paths_update_native_metadata(
     monkeypatch,
     env_value: str,
     expected_selected_c1: bool,
     expected_batch_gemv: bool,
     expected_path: str,
-    expected_blocker: str,
+    expected_native_caware: bool,
+    expected_blockers: list[str],
 ) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT", env_value)
     device = Device("hip", 0)
@@ -3430,16 +3433,16 @@ def test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native(
     assert runtime.copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
 
     execution = session.last_batch_decode_execution
-    assert execution["native_caware_decode"] is False
+    assert execution["native_caware_decode"] is expected_native_caware
     assert execution["linear_attention_projection_path"] == "native_batch"
     assert execution["linear_attention_state_path"] == "native_segments"
     assert execution["linear_attention_output_path"] == expected_path
     assert execution["moe_decode_path"] == "grouped_compact"
     assert execution["moe_grouped_compact_layers"] == 1
     assert execution["moe_selected_c1_fallback_layers"] == 0
-    assert execution["blockers"] == [expected_blocker]
+    assert execution["blockers"] == expected_blockers
     layer = execution["layer_executions"][0]
-    assert layer["native_caware_decode"] is False
+    assert layer["native_caware_decode"] is expected_native_caware
     assert layer["linear_attention_projection_path"] == "native_batch"
     assert layer["linear_attention_state_path"] == "native_segments"
     assert layer["linear_attention_output_path"] == expected_path

@@ -1712,9 +1712,9 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
                 "execution.batch_execution.decode_execution.linear_attention_state_path must be native_segments or absent for accepted artifacts"
             )
         linear_output_path = decode_execution.get("linear_attention_output_path")
-        if linear_output_path not in {None, "native_batch"}:
+        if linear_output_path not in {None, "native_batch", "batch_gemv"}:
             errors.append(
-                "execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch or absent for accepted artifacts"
+                "execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch, batch_gemv, or absent for accepted artifacts"
             )
         if decode_execution.get("native_caware_decode") is not True:
             errors.append("execution.batch_execution.decode_execution.native_caware_decode must be true for accepted artifacts")
@@ -1823,8 +1823,8 @@ def _validate_accepted_decode_layer_executions(
             if linear_state_path not in {None, "native_segments"}:
                 errors.append(f"{label}.linear_attention_state_path must be native_segments or absent for accepted artifacts")
             linear_output_path = layer.get("linear_attention_output_path")
-            if linear_output_path not in {None, "native_batch"}:
-                errors.append(f"{label}.linear_attention_output_path must be native_batch or absent for accepted artifacts")
+            if linear_output_path not in {None, "native_batch", "batch_gemv"}:
+                errors.append(f"{label}.linear_attention_output_path must be native_batch, batch_gemv, or absent for accepted artifacts")
     if isinstance(native_full_attention_layers, int) and not isinstance(native_full_attention_layers, bool):
         if traced_native_full_attention_layers != native_full_attention_layers:
             errors.append("execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers for accepted artifacts")

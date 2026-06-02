@@ -165,7 +165,7 @@ What is still not green:
   c=2/c=4 row 0 stops at prefix `82`, c=8 rows stop at `82/11/40`).
   Therefore the current C2.3/C2.4 blockers are native QKV/Z bit exactness,
   grouped-compact linear/full-attention MoE under this shape, and the older
-  fused/native full-attention output path (row-aware batch-GEMV output is green and no longer blocks); c=8 native A/B projection is green under the
+  fused/native linear/full-attention output paths (row-aware batch-GEMV outputs are green and no longer block); c=8 native A/B projection is green under the
   selected-QKV/Z diagnostic, while paged KV row setup, grouped-compact MoE,
   and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
@@ -694,9 +694,8 @@ roll-up/status view.
       controls; native segmented conv/GDN/recurrent state,
       batch-GEMV/Marlin linear output, and native A/B projections for c=2/c=4/c=8 are
       token-green under selected-QKV/Z, so the current blockers are native QKV/Z
-      projections, grouped-compact linear MoE under this shape,
-      native/fused linear output retention, and native
-      full-attention parity. Acceptance: C2.2 reports hidden equality for the failing fixture on
+      projections, grouped-compact linear MoE under this shape, and native
+      full-attention parity. Row-aware batch-GEMV/Marlin linear output is green and no longer blocks, although the older fused/native linear output path remains a negative control. Acceptance: C2.2 reports hidden equality for the failing fixture on
       native linear-attention projection/output paths and generated-token equality
       stays green without selected-c1 linear replay.
       Progress: decode batch rows now use grouped compact MoE
@@ -1491,11 +1490,13 @@ roll-up/status view.
       for every row; the child retained artifacts live under
       `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix/` and remain
       non-retained/blocking while auto selected-QKV/Z projection,
-      batch-GEMV output, per-row c1 MoE, and native full-attention decode with
-      row-aware batch-GEMV full-attention output plus per-row full-attention MoE defaults
-      are active. The batch-GEMV full-attention output blocker was eliminated by
-      `benchmarks/results/2026-06-02-hipengine-qwen35-native-fullattn-batchgemv-output-matrix/summary.json`,
-      which keeps c=2/c=4/c=8 prefixes at `137` and removes the full-attention O batch-GEMV blocker from child artifacts. Progress:
+      row-aware batch-GEMV/Marlin linear output, per-row c1 MoE, and native
+      full-attention decode with row-aware batch-GEMV full-attention output plus per-row full-attention MoE defaults
+      are active. The linear-output batch-GEMV blocker was eliminated by
+      `benchmarks/results/2026-06-02-hipengine-qwen35-native-linear-batchgemv-output-matrix/summary.json`,
+      and the batch-GEMV full-attention output blocker was eliminated by
+      `benchmarks/results/2026-06-02-hipengine-qwen35-native-fullattn-batchgemv-output-matrix/summary.json`;
+      both keep c=2/c=4/c=8 prefixes at `137` and remove their output-path blockers from child artifacts. Progress:
       primitive GPU correctness now has c=4 and c=8 artifacts at
       `/tmp/hipengine-multiloop-c4-correctness.json` (`rows=4`,
       `context_lens=[1,2,3,4]`) and `/tmp/hipengine-multiloop-c8-correctness.json`

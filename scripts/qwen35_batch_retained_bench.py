@@ -1773,8 +1773,8 @@ def _decode_layer_execution_blockers(
             if linear_state_path not in {None, "native_segments"}:
                 blockers.append(f"{label}.linear_attention_state_path must be native_segments or absent")
             linear_output_path = layer.get("linear_attention_output_path")
-            if linear_output_path not in {None, "native_batch"}:
-                blockers.append(f"{label}.linear_attention_output_path must be native_batch or absent")
+            if linear_output_path not in {None, "native_batch", "batch_gemv"}:
+                blockers.append(f"{label}.linear_attention_output_path must be native_batch, batch_gemv, or absent")
     if isinstance(native_full_attention_layers, int) and not isinstance(native_full_attention_layers, bool):
         if traced_native_full_attention_layers != native_full_attention_layers:
             blockers.append("execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers")
@@ -1895,8 +1895,8 @@ def _batch_execution_blockers(
         if linear_state_path not in {None, "native_segments"}:
             blockers.append("execution.batch_execution.decode_execution.linear_attention_state_path must be native_segments or absent")
         linear_output_path = decode_execution.get("linear_attention_output_path")
-        if linear_output_path not in {None, "native_batch"}:
-            blockers.append("execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch or absent")
+        if linear_output_path not in {None, "native_batch", "batch_gemv"}:
+            blockers.append("execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch, batch_gemv, or absent")
         if decode_execution.get("native_caware_decode") is not True:
             blockers.append("execution.batch_execution.decode_execution.native_caware_decode must be true")
         for diagnostic_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:

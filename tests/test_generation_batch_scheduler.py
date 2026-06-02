@@ -19692,7 +19692,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         (
             "linear_attention_output_path",
             "batch_gemv_from_f32",
-            "execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch or absent",
+            "execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch, batch_gemv, or absent",
         ),
     ):
         top_level_linear_diagnostic = json.loads(json.dumps(valid))
@@ -19723,12 +19723,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         (
             "linear_attention_output_path",
             "selected_c1_forced",
-            "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch or absent",
-        ),
-        (
-            "linear_attention_output_path",
-            "batch_gemv",
-            "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch or absent",
+            "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch, batch_gemv, or absent",
         ),
     ):
         linear_diagnostic = json.loads(json.dumps(valid))
@@ -23236,7 +23231,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         (
             "linear_attention_output_path",
             "batch_gemv_from_f32",
-            "decode_execution.linear_attention_output_path must be native_batch or absent for accepted artifacts",
+            "decode_execution.linear_attention_output_path must be native_batch, batch_gemv, or absent for accepted artifacts",
         ),
     ):
         diagnostic_top_level_linear = json.loads(json.dumps(accepted))
@@ -23265,12 +23260,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         (
             "linear_attention_output_path",
             "selected_c1_forced",
-            "layer_executions[1].linear_attention_output_path must be native_batch or absent",
-        ),
-        (
-            "linear_attention_output_path",
-            "batch_gemv",
-            "layer_executions[1].linear_attention_output_path must be native_batch or absent",
+            "layer_executions[1].linear_attention_output_path must be native_batch, batch_gemv, or absent",
         ),
     ):
         diagnostic_linear_layer = json.loads(json.dumps(accepted))

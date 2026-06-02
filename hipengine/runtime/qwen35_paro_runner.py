@@ -4293,10 +4293,7 @@ class Qwen35ParoResidentSession:
                                     or force_selected_c1_ab_linear_projections
                                     or force_batch_gemv_linear_projections
                                     or force_selected_c1_linear_state
-                                    or (
-                                        linear_attention_output_path
-                                        in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}
-                                    )
+                                    or linear_attention_output_path in {"selected_c1_forced", "batch_gemv_from_f32"}
                                 ),
                                 "linear_attention_projection_path": linear_attention_projection_path,
                                 "linear_attention_state_path": linear_attention_state_path,
@@ -4720,8 +4717,6 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("linear-attention state forced to selected-c1 diagnostic path")
             if linear_attention_output_path == "selected_c1_forced":
                 decode_blockers.append("linear-attention output projection forced to selected-c1 diagnostic path")
-            if force_batch_gemv_linear_out:
-                decode_blockers.append("linear-attention output projection forced to batch GEMV diagnostic path")
             if force_per_row_linear:
                 decode_blockers.append("linear-attention decode forced to per-row diagnostic path")
                 if not dense_mlp and rows > 1:
@@ -4788,7 +4783,7 @@ class Qwen35ParoResidentSession:
                 and not force_selected_c1_ab_linear_projections
                 and not force_batch_gemv_linear_projections
                 and not force_selected_c1_linear_state
-                and linear_attention_output_path not in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}
+                and linear_attention_output_path not in {"selected_c1_forced", "batch_gemv_from_f32"}
                 and not force_per_row_linear
                 and not force_per_row_full_attention_input
                 and not force_per_row_full_attention_qkv
