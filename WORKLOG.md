@@ -64533,3 +64533,23 @@ Validation:
 - Focused metadata test passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_selected_qkv_z_projection_is_non_native -q`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Artifact assertions loaded the promoted selected-QKV/Z matrix and child JSONs, verified c=2/c=4/c=8 prefix sets, `linear_attention_projection_path=selected_c1_qkv_z`, absence of the generic QKV/Z decode blocker, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY generated-equality gate blocker retired in artifacts
+
+Retired the stale native c>N `blocked until generated-token equality passes` blocker from retained-bench artifacts after the artifact itself embeds a passing generated-token equality comparison. The resident session metadata remains conservative before correctness is known, and retained promotion still requires native projection/projection-dispatch, grouped-compact MoE, native c-aware decode metadata, primitive/scaling/profiler gates, and no performance claim is made.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` prints metric `137`; generated equality prefixes are `[137,137]`; `execution.batch_execution.blockers` no longer contains `native c>N decode is experimental and blocked until generated-token equality passes`; the decision reason no longer contains that stale blocker. Remaining top-level blockers include diagnostic fallback and projection-dispatch gating.
+- `benchmarks/results/2026-06-02-hipengine-qwen35-native-equality-gate-promoted-matrix/summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`, and `performance_claim=false`.
+- Child artifacts pass generated-token equality vs independent c=1 and no longer include the stale generated-equality blocker in retained/decode evidence:
+  - c=2 prefixes `[137,137]`.
+  - c=4 prefixes `[137,137,137,137]`.
+  - c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- Native projection-dispatch, grouped-compact MoE, c-aware native execution metadata, and profiler/scaling promotion remain retained blockers; no c>N throughput/scaling claim is made.
+
+Validation:
+
+- Focused retained-bench helper test passed: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_drops_satisfied_generated_equality_blocker -q`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Artifact assertions loaded the promoted generated-equality matrix and child JSONs, verified c=2/c=4/c=8 prefix sets, `linear_attention_projection_path=selected_c1_qkv_z`, absence of the stale generated-equality blocker from `batch_execution.blockers` and decision reasons, and `git diff --check` passed.

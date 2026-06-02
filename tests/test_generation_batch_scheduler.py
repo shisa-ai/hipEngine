@@ -19587,6 +19587,29 @@ def test_qwen35_retained_profiler_cpu_side_bottleneck_blockers_require_arithmeti
     assert "profiler.cpu_side_bottlenecks_seconds keys must match known categories" in missing_category_blockers
 
 
+def test_qwen35_retained_batch_execution_drops_satisfied_generated_equality_blocker() -> None:
+    batch_execution = {
+        "blockers": [
+            retained_bench._NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER,
+            "projection dispatch: no c-aware projection candidate applies to this row count",
+        ],
+        "native_caware_decode": False,
+    }
+
+    unsatisfied = retained_bench._batch_execution_with_satisfied_generated_equality(
+        batch_execution,
+        equality_passed=False,
+    )
+    satisfied = retained_bench._batch_execution_with_satisfied_generated_equality(
+        batch_execution,
+        equality_passed=True,
+    )
+
+    assert unsatisfied["blockers"] == batch_execution["blockers"]
+    assert satisfied["blockers"] == ["projection dispatch: no c-aware projection candidate applies to this row count"]
+    assert batch_execution["blockers"][0] == retained_bench._NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER
+
+
 def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:
     valid = {
         "path": "scheduler_native_compact_batch",

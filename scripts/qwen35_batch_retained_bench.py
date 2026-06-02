@@ -2819,6 +2819,27 @@ def _int_list(value: Any) -> list[int] | None:
     return [int(item) for item in value]
 
 
+_NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER = (
+    "native c>N decode is experimental and blocked until generated-token equality passes"
+)
+
+
+def _batch_execution_with_satisfied_generated_equality(
+    batch_execution: Mapping[str, Any], *, equality_passed: bool
+) -> dict[str, Any]:
+    """Remove stale native c>N equality blockers once this artifact proves equality."""
+
+    sanitized = dict(batch_execution)
+    if not equality_passed:
+        return sanitized
+    blockers = sanitized.get("blockers")
+    if isinstance(blockers, list):
+        sanitized["blockers"] = [
+            blocker for blocker in blockers if blocker != _NATIVE_C_GT_ONE_GENERATED_EQUALITY_BLOCKER
+        ]
+    return sanitized
+
+
 def _generated_token_equality_blockers(
     equality: Any,
     *,
@@ -4076,7 +4097,10 @@ def _build_payload(
     )
     cached_build_blockers = _cached_build_provenance_blockers(args)
     command_provenance_blockers = _retained_command_provenance_blockers(args, argv)
-    batch_execution = dict(bench["batch_execution"])
+    batch_execution = _batch_execution_with_satisfied_generated_equality(
+        bench["batch_execution"],
+        equality_passed=bool(equality.get("passed")),
+    )
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     batch_execution_blockers = _batch_execution_blockers(
