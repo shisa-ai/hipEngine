@@ -1,0 +1,107 @@
+{
+  "artifacts": {
+    "baseline_rocprof_json": "/tmp/m14_keyed_rocprof_baseline.json",
+    "dflash_chain_e2e_json": "/tmp/dflash_chain_shared_keyed_35b_1p4t.json",
+    "fused_rocprof_json": "/tmp/m14_keyed_rocprof_fused.json",
+    "mtp_persistent_smoke_json": "/tmp/mtp_smoke_shared_keyed_d4_persistent.json",
+    "mtp_reload_smoke_json": "/tmp/mtp_smoke_shared_keyed_d4_global.json"
+  },
+  "backend": "hip_gfx1100",
+  "change": "M14.fuse.barrier keyed shared-expert rotate+dual GEMV barrier, gated by HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1",
+  "correctness": {
+    "dflash_chain_e2e_35b_decode4_b3": {
+      "all_exact_match_ar": true,
+      "all_finite_logits": true,
+      "ar_decode_tok_s": 68.17064049933239,
+      "correctness_gate_passed": true,
+      "decision_reason": "full-model diagnostic only: native bulk verifier did not produce a same-session AR speed win",
+      "drafter_model": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "rows": 1,
+      "spec_decode_tok_s": 18.19417921953376,
+      "speedup_vs_ar": 0.26689171593909167,
+      "status": "diagnostic",
+      "target_model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "target_verify_rows_per_output_token": 3.0
+    },
+    "dflash_tree_smoke": "attempted chain_reduction/depth1_branch4; existing standalone tree harness failed before artifact with target_top1 length mismatch, so DFlash tree-mode remains separately blocked even though chain E2E exactness passed",
+    "mtp_persistent_decode4_b3": {
+      "accepted_lengths": [
+        0,
+        0,
+        0
+      ],
+      "ar_tokens": [
+        180184,
+        148897,
+        205222,
+        318
+      ],
+      "exact_ar_match": true,
+      "mtp_tokens": [
+        180184,
+        148897,
+        205222,
+        318
+      ],
+      "status": "passed"
+    },
+    "mtp_reload_d2h_decode4_b3": {
+      "accepted_lengths": [
+        0,
+        0,
+        0
+      ],
+      "ar_tokens": [
+        180184,
+        148897,
+        205222,
+        318
+      ],
+      "exact_ar_match": true,
+      "mtp_tokens": [
+        180184,
+        148897,
+        205222,
+        318
+      ],
+      "status": "passed"
+    }
+  },
+  "date": "2026-06-02",
+  "decision": "Keep infra default-off: exact MTP smokes and a one-prompt DFlash chain E2E smoke pass with HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1; keyed barrier removes the prior hipMemsetAsync cancellation, but 4-token rocprof is kernel-time neutral/slightly worse, so use as prerequisite for future staged fuses, not default speed path.",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "rocprof": {
+    "baseline": {
+      "kernel_calls": 3057,
+      "kernel_calls_per_pass": 1019.0,
+      "kernel_time_ms": 46.050507,
+      "kernel_time_ms_per_pass": 15.350169000000001
+    },
+    "candidate_budget": 3,
+    "chain_attn_mode": "batched",
+    "command_baseline": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/m14_keyed_rocprof_baseline -o mtp-verifier-baseline -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 151646 --decode-tokens 4 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --rocprof-warmup-cycles 0 --rocprof-verify-cycles 0 --json /tmp/m14_keyed_rocprof_baseline/mtp-verifier-baseline-smoke.json",
+    "command_fused": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/m14_keyed_rocprof_fused -o mtp-verifier-baseline -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 151646 --decode-tokens 4 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --rocprof-warmup-cycles 0 --rocprof-verify-cycles 0 --json /tmp/m14_keyed_rocprof_fused/mtp-verifier-baseline-smoke.json",
+    "decode_tokens": 4,
+    "delta": {
+      "kernel_calls": -29,
+      "kernel_calls_per_pass": -9.666666666666629,
+      "kernel_time_ms": 0.043077999999994177,
+      "kernel_time_ms_per_pass": 0.014359333333331392
+    },
+    "family_notes": {
+      "moe_paro_rotate_in_calls_pass": "baseline 190 -> fused 180 (from artifact family classifier; -10 expected full-attn shared-expert rotate launches/pass)",
+      "runtime_memset": "prior M13.B.2 +10 memset launches/pass no longer appears as the cancelling offset; net calls drop ~9.7/pass in this short decode run"
+    },
+    "fused": {
+      "kernel_calls": 3028,
+      "kernel_calls_per_pass": 1009.3333333333334,
+      "kernel_time_ms": 46.093585,
+      "kernel_time_ms_per_pass": 15.364528333333332
+    },
+    "steady_state_skip": 0
+  },
+  "schema": 1,
+  "status": "diagnostic_retained_default_off"
+}

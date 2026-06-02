@@ -90,6 +90,7 @@ from hipengine.runtime.qwen35_paro import (
     Qwen35ParoGroupedMoeScratch,
     Qwen35ParoLinearAttentionScratch,
     Qwen35ParoMoeScratch,
+    _reset_shared_rotate_fuse_barrier_state,
     _use_moe_grouped_compact_prefill,
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -954,6 +955,7 @@ class Qwen35ParoResidentSession:
         self.full_scratch = {}
         self.moe_scratch = {}
         self.prefill_workspace = RuntimeWorkspace(runtime=self.runtime)
+        _reset_shared_rotate_fuse_barrier_state()
         self._prefill_scratch_state: Qwen35ParoDecodeState | None = None
         self.prefill_linear_scratch: Qwen35ParoLinearAttentionScratch | None = None
         self.prefill_full_scratch: Qwen35ParoAttentionScratch | None = None

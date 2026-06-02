@@ -1828,6 +1828,7 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_
 
 
 def test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier(monkeypatch) -> None:
+    qwen_runtime._reset_shared_rotate_fuse_barrier_state()
     monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", "1")
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
@@ -1849,18 +1850,32 @@ def test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier(
 
     out1 = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
     out2 = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
+    sibling_layer = Qwen35ParoLayerDeviceWeights(
+        config=_config(), layer_id=0, weights=_prepared_moe_weights()
+    )
+    sibling = Qwen35ParoDecodeState(layer_weights=sibling_layer, workspace=state.workspace, runtime=runtime)
+    sibling_scratch = sibling.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
+    out3 = sibling.shared_expert_paro_w4_fp16(hidden, sibling_scratch, tokens=2)
 
     assert out1 is scratch.shared_out
     assert out2 is scratch.shared_out
+    assert out3 is sibling_scratch.shared_out
     labels = [label for label, _args, _kwargs in calls]
-    assert labels == ["keyed", "silu_rotate", "single_pack8", "keyed", "silu_rotate", "single_pack8"]
+    assert labels == [
+        "keyed", "silu_rotate", "single_pack8",
+        "keyed", "silu_rotate", "single_pack8",
+        "keyed", "silu_rotate", "single_pack8",
+    ]
     keyed_first = calls[0][1]
     keyed_second = calls[3][1]
+    keyed_third = calls[6][1]
     # 4096 hidden / group 128 -> 32 groups; two rotations and two rows => 128
     # staged rotate blocks per launch.  The keyed API accumulates counts and
     # epochs instead of resetting the barrier each launch.
     assert keyed_first[23:25] == (128, 1)
     assert keyed_second[23:25] == (256, 2)
+    assert keyed_third[23:25] == (384, 3)
+    assert sibling_scratch.shared_rotate_fuse_barrier.ptr == scratch.shared_rotate_fuse_barrier.ptr
     barrier_memsets = [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
     assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
 

@@ -25059,3 +25059,95 @@ A full MTP smoke with `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1` was attempted but
 timed out in this shared session before producing an artifact; do not promote or
 default-enable this path until a clean W7900 exact/rocprof verifier row confirms
 net launch reduction and no barrier-spin regression.
+
+## 2026-06-02 fix(mtp): keyed shared-expert barrier validated, stays default-off
+
+Follow-up to the previous M14.fuse.barrier commit.  The first keyed-barrier cut
+kept the host counter on each `Qwen35ParoDecodeState`, but the batched verifier
+passes a scratch barrier owned by the runner's shared prefill workspace into
+many layer states.  Result: layers reused the same barrier pointer while each
+state passed epoch=1/target=128, which hung at B=3/decode4 and produced a B=2
+exact mismatch.
+
+Fixes made:
+
+- Moved the keyed barrier counter to a module-global table keyed by barrier ptr,
+  with `Qwen35ParoResidentSession` clearing it at session construction.  This
+  matches the shared-prefill-scratch ownership in the verifier.
+- Gave layer-owned MoE scratch barriers layer-qualified names for ordinary
+  per-layer scratch paths; the prefill verifier can still share one barrier,
+  but the global counter now tracks that correctly.
+- Strengthened the fake-runtime unit to cover a sibling decode state reusing the
+  same workspace/barrier and to assert only one initial memset while targets
+  advance `128/1 -> 256/2 -> 384/3`.
+
+Validation on W7900/gfx1100:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py \
+  tests/test_qwen35_decode_state.py
+PYTHONPATH=. python3 -m pytest -q \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier
+# . [100%]
+
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1 PYTHONPATH=. \
+python3 scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+  --json /tmp/mtp_smoke_shared_keyed_d4_global.json
+# status=passed exact_ar_match=true accepted=[0,0,0]
+
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1 PYTHONPATH=. \
+python3 scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode off \
+  --json /tmp/mtp_smoke_shared_keyed_d4_persistent.json
+# status=passed exact_ar_match=true accepted=[0,0,0]
+```
+
+Rocprof short verifier window (`scripts/mtp_verifier_rocprof.py --backend
+hip_gfx1100 --chain-attn-mode batched --decode-tokens 4 --candidate-budget 3
+--steady-state-skip 0`) comparing env off vs
+`HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1`:
+
+| Metric | off | keyed fused on | delta |
+| --- | ---: | ---: | ---: |
+| kernel_calls/pass | 1019.00 | 1009.33 | -9.67 |
+| kernel_time_ms/pass | 15.350 | 15.365 | +0.015 |
+| total kernel calls | 3057 | 3028 | -29 |
+| total kernel ms | 46.051 | 46.094 | +0.043 |
+
+Family classifier: `moe_paro_rotate_in` drops 190 -> 180 calls/pass as
+expected; the prior M13.B.2 `hipMemsetAsync` cancellation is gone.  Kernel time
+is neutral/slightly worse on this short row, so the path remains default-off and
+is treated as infrastructure/prerequisite for future staged fuses, not a
+promoted speed win.  Diagnostic artifact:
+`benchmarks/results/2026-06-02-hipengine-mtp-m14-fuse-barrier-keyed-diagnostic.json`.
+
+DFlash validation: the standalone `dflash_tree_e2e_smoke.py` still fails before
+artifact emission with the existing `target_top1 must align with target verify
+rows` issue, but the full chain E2E harness did run with the local 35B DFlash
+drafter snapshot:
+
+```bash
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1 PYTHONPATH=. \
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --max-prompts 1 --decode-tokens 4 --draft-budgets 3 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --verifier-graph off --tree-mode chain \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/dflash_chain_shared_keyed_35b_1p4t.json
+# all_correctness_passed=true rows=1 speedup_vs_ar=0.267 (diagnostic only)
+```
+
+DFlash exactness gate passed (`all_exact_match_ar=true`, finite logits true) but
+speed is far below AR on this tiny diagnostic, so it is correctness evidence
+only.  The diagnostic artifact records both the MTP and DFlash rows.

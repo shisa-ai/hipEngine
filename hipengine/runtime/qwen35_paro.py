@@ -161,6 +161,15 @@ from hipengine.runtime.moe_c1_dispatch import moe_c1_c_dispatch_enabled
 from hipengine.runtime.workspace import RuntimeWorkspace
 
 
+_SHARED_ROTATE_FUSE_BARRIER_STATE: dict[int, tuple[int, int]] = {}
+
+
+def _reset_shared_rotate_fuse_barrier_state() -> None:
+    """Clear process-local keyed barrier counters for a new resident session."""
+
+    _SHARED_ROTATE_FUSE_BARRIER_STATE.clear()
+
+
 @dataclass(frozen=True)
 class Qwen35ParoAttentionScratch:
     attn_input: Tensor
@@ -316,9 +325,11 @@ class Qwen35ParoDecodeState:
         self.workspace = workspace or RuntimeWorkspace(runtime=runtime)
         self._rotate_fuse_ready: set[int] = set()
         # M14.fuse.barrier: per-barrier cumulative (rotate_count, ready_epoch)
-        # for keyed HBM-staged rotate+dual-GEMV launches.  This removes the
-        # per-launch hipMemsetAsync that cancelled M13.B.2's dispatch saving.
-        self._shared_rotate_fuse_barrier_state: dict[int, tuple[int, int]] = {}
+        # for keyed HBM-staged rotate+dual-GEMV launches.  This is module-global
+        # because verifier layers can pass a scratch barrier owned by the
+        # runner's prefill workspace rather than by the layer runtime's own
+        # workspace.  Qwen35ParoResidentSession resets it at session start.
+        self._shared_rotate_fuse_barrier_state = _SHARED_ROTATE_FUSE_BARRIER_STATE
         # M14.dispatch.1-beta: lazy per-layer cache for the C-side MoE C1
         # dispatcher.  Key: layer_kind ('linear_attention' | 'full_attention').
         # Populated on first matching call from run_moe_c1_fp16.
@@ -6928,7 +6939,7 @@ class Qwen35ParoDecodeState:
             shared_out=self.workspace.reserve_tensor("moe.grouped.shared_out", (tokens, cfg.hidden_size), lowp),
             moe_out=self.workspace.reserve_tensor("moe.grouped.out", (tokens, cfg.hidden_size), lowp),
             shared_rotate_fuse_barrier=self.workspace.reserve_tensor(
-                "moe.grouped.shared_rotate_fuse_barrier", (2,), DType.INT32,
+                f"moe.grouped.layer{self.layer_weights.layer_id}.shared_rotate_fuse_barrier", (2,), DType.INT32,
             ),
         )
 
@@ -6999,7 +7010,7 @@ class Qwen35ParoDecodeState:
             shared_out=self.workspace.reserve_tensor("moe.shared_out", (tokens, cfg.hidden_size), lowp),
             moe_out=self.workspace.reserve_tensor("moe.out", (tokens, cfg.hidden_size), lowp),
             shared_rotate_fuse_barrier=self.workspace.reserve_tensor(
-                "moe.shared_rotate_fuse_barrier", (2,), DType.INT32,
+                f"moe.layer{self.layer_weights.layer_id}.shared_rotate_fuse_barrier", (2,), DType.INT32,
             ),
         )
 
