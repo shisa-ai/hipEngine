@@ -3513,6 +3513,10 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "serial_lm_head"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] == "0"
+    assert "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT" not in os.environ
+    assert "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS" not in os.environ
 
     defaults = SimpleNamespace(projection_dispatch_artifact=None)
     retained_bench._apply_runtime_env_args(defaults)
@@ -3539,6 +3543,22 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "serial_lm_head"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] == "0"
+
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(
+            projection_dispatch_artifact=None,
+            batch_sample_mode="batched_lm_head",
+            batch_sample_eq_ok=True,
+            batch_sample_eq_artifact=Path("benchmarks/results/qwen35-c2-sampler-eq.json"),
+            batch_sample_eq_rows=2,
+        )
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "batched_lm_head"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"] == "benchmarks/results/qwen35-c2-sampler-eq.json"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] == "2"
 
     retained_bench._apply_runtime_env_args(
         SimpleNamespace(projection_dispatch_artifact=None, batch_decode_linear_projection_path="selected_qkv")

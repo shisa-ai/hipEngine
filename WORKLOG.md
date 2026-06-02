@@ -64089,3 +64089,24 @@ Extended `scripts/qwen35_batch_equality_matrix.py` to accept/pass through the re
 Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`. No retained/scaling claim.
 
 Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_equality_matrix.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY batched LM-head sampler equality
+
+Added retained-bench CLI controls for the native batch sampler/LM-head gate: `--batch-sample-mode`, `--batch-sample-eq-ok`, `--batch-sample-eq-artifact`, and `--batch-sample-eq-rows`. The script now sets the corresponding `HIPENGINE_QWEN35_BATCH_SAMPLE_*` runtime env vars itself and records those sampler inputs in the workload, so batched-LM-head correctness runs no longer depend on ambient shell env.
+
+Created same-row standalone sampler equality artifacts under `benchmarks/results/` from the green auto-projection/current-full-attention matrix:
+
+- `benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json`
+- `benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json`
+- `benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json`
+
+GPU1 / RX 7900 XTX batched-LM-head evidence:
+
+- c=2: `/tmp/hipengine-e2e-native-c2-512-128-batched-lm-head.json` is generated-token green, prefixes `[137,137]`, and `sampler_execution` records requested/mode `batched_lm_head`, `native_row_aware_lm_head=true`, equality rows 2, and no blockers.
+- c=4: `/tmp/hipengine-e2e-native-c4-512-128-batched-lm-head.json` is generated-token green, prefixes `[137,137,137,137]`, and `sampler_execution` records requested/mode `batched_lm_head`, `native_row_aware_lm_head=true`, equality rows 4, and no blockers.
+- c=8: `/tmp/hipengine-e2e-native-c8-512-128-batched-lm-head.json` is generated-token green, prefixes `[137,137,137,137,137,137,137,137]`, and `sampler_execution` records requested/mode `batched_lm_head`, `native_row_aware_lm_head=true`, equality rows 8, and no blockers.
+- Compact summary artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-c2-c4-c8-native-batched-lm-head-equality.json`.
+
+Primary default verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137` and still defaults to `serial_lm_head`; no retained/scaling claim is made because projection/MoE/full native and profiler/baseline gates remain open.
+
+Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

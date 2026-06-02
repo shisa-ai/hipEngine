@@ -1718,7 +1718,11 @@ roll-up/status view.
       through a symlink outside the active results tree, and accepted c>N artifact
       schema requires a native sampler decision with requested mode `batched_lm_head`, row count and equality row count matching `workload.concurrency`, green retained equality
       evidence plus no blockers, and dispatch/retained bench now block promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact whose core dispatch, retained-bench, and accepted-schema path loaders reject non-JSON/non-regular/symlinked evidence before reading and whose JSON reports non-blank self-matching `artifact_path`/`source_artifact_path` plus generated-token equality vs independent c=1 (`passed=true`, `skipped=false`, matching non-empty typed integer batch/c1 sequence lists, empty mismatches) at the same row count, matching profiler expected/trace/duration evidence for a native batch sampler/LM-head kernel that is not serial/per-row/fallback, and no blockers, so setting the mode cannot silently create a
-      native sampler claim before same-concurrency equality and profiler evidence are green.
+      native sampler claim before same-concurrency equality and profiler evidence are green. The retained bench now exposes explicit
+      `--batch-sample-mode/--batch-sample-eq-*` flags, and GPU1 / RX 7900 XTX
+      c=2/c=4/c=8 512/128 runs with `--batch-sample-mode batched_lm_head`
+      stayed generated-token equal (all rows prefix 137) using same-row sampler
+      equality artifacts under `benchmarks/results/2026-06-02-hipengine-qwen35-c{2,4,8}-native-batch-sampler-equality.json`.
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 

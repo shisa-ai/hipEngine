@@ -3782,6 +3782,20 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] = (
         "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] = str(getattr(args, "batch_sample_mode", "serial_lm_head"))
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] = (
+        "1" if getattr(args, "batch_sample_eq_ok", False) else "0"
+    )
+    batch_sample_eq_artifact = getattr(args, "batch_sample_eq_artifact", None)
+    if batch_sample_eq_artifact is None:
+        os.environ.pop("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT", None)
+    else:
+        os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"] = str(batch_sample_eq_artifact)
+    batch_sample_eq_rows = getattr(args, "batch_sample_eq_rows", None)
+    if batch_sample_eq_rows is None:
+        os.environ.pop("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS", None)
+    else:
+        os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] = str(batch_sample_eq_rows)
     projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
     if projection_dispatch_artifact is not None:
         os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
@@ -4224,6 +4238,12 @@ def _build_payload(
             "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
+            "batch_sample_mode": str(getattr(args, "batch_sample_mode", "serial_lm_head")),
+            "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
+            "batch_sample_eq_artifact": (
+                str(getattr(args, "batch_sample_eq_artifact", "") or "")
+            ),
+            "batch_sample_eq_rows": getattr(args, "batch_sample_eq_rows", None),
         },
         "benchmark_rollup": {
             "artifact_path": str(args.json) if args.json is not None else None,
@@ -4417,6 +4437,27 @@ def main(argv: list[str] | None = None) -> int:
         default="batch",
         help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; batch is the correctness-first default after the per-row full-attention output/MoE boundary, while per_row remains available as a diagnostic.",
     )
+    parser.add_argument(
+        "--batch-sample-mode",
+        choices=("serial_lm_head", "batched_lm_head"),
+        default="serial_lm_head",
+        help="Sampler/LM-head path for native c>N decode; serial_lm_head is the conservative default, while batched_lm_head requires explicit generated-token equality evidence via --batch-sample-eq-*.",
+    )
+    parser.add_argument(
+        "--batch-sample-eq-ok",
+        action="store_true",
+        help="Mark the supplied --batch-sample-eq-artifact as green generated-token equality evidence for enabling batched_lm_head.",
+    )
+    parser.add_argument(
+        "--batch-sample-eq-artifact",
+        type=Path,
+        help="benchmarks/results JSON artifact with generated-token equality rows for enabling batched_lm_head.",
+    )
+    parser.add_argument(
+        "--batch-sample-eq-rows",
+        type=int,
+        help="Row count covered by --batch-sample-eq-artifact; must match --batch-size when --batch-sample-mode=batched_lm_head.",
+    )
     parser.add_argument(_RETAINED_GATE_FLAGS[0], type=Path, help="c=1 baseline artifact used for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[2], type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")
@@ -4447,6 +4488,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("decode token counts must be positive/non-negative")
     if args.max_layers <= 0:
         raise ValueError("--max-layers must be positive")
+    if args.batch_sample_eq_rows is not None and args.batch_sample_eq_rows <= 0:
+        raise ValueError("--batch-sample-eq-rows must be positive")
 
     prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
