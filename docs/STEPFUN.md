@@ -872,8 +872,11 @@ layer loop is wired.
   and a 512-token BF16 KV estimate of `94,371,840` bytes (`0.0879 GiB`) across
   90 K/V buffers for backend `hip_gfx1151`; the load-smoke JSON now embeds that
   resource-plan dictionary when KV allocation is requested and offers
-  `--dry-run-plan` for metadata-only resource artifacts without HIP allocation.
-  Artifact `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json`
+  `--dry-run-plan` for metadata-only resource artifacts without HIP allocation;
+  `--output` writes those resource artifacts through a flushed same-directory temp
+  file plus atomic `os.replace`, and the correctness-status KV refresh handoff now
+  uses that flag instead of shell redirection. Artifact
+  `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json`
   records the dry-run plan for the same 512-token KV shape. 2026-05-31
   host-composed all-layer prompt smoke artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`

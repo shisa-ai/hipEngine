@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import resource
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -33,6 +35,38 @@ from hipengine.tokenization.gguf import StepFunGGUFTokenizer
 DEFAULT_MODEL_DIR = Path("/data/models/gguf")
 DEFAULT_PATTERN = "Step-3.7-flash-Q3_K_L-*.gguf"
 BOOT_CONFIG = Path("/etc/modprobe.d/amdgpu_llm_optimized.conf")
+
+
+def _write_text_atomic(output: Path, text: str) -> None:
+    """Atomically write text by replacing the destination with a flushed temp file."""
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(text)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_path, output)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
+def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) -> None:
+    text = json.dumps(result, indent=2 if pretty else None, sort_keys=True) + "\n"
+    if output is None:
+        print(text, end="")
+        return
+    _write_text_atomic(output, text)
 
 
 def _stepfun_kv_cache_nbytes(
@@ -120,6 +154,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Reasoning-effort template value used for the metadata-only KV decode run plan.",
     )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help=(
+            "Write JSON output atomically to this path instead of stdout. Useful for "
+            "refreshing resource artifacts without exposing truncated files to pollers."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.kv_context_pages < 0:
@@ -229,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
             "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
             "snapshots": snapshots,
         }
-        print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+        _emit_json(result, pretty=args.pretty, output=args.output)
         return 0
 
     status = "unknown"
@@ -306,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
         "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
         "snapshots": snapshots,
     }
-    print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+    _emit_json(result, pretty=args.pretty, output=args.output)
     return 0 if status == "loaded" else 1
 
 

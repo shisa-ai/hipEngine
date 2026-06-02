@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.stepfun_gguf_load_smoke import main
+from scripts import stepfun_gguf_load_smoke
+
+main = stepfun_gguf_load_smoke.main
 
 DEFAULT_STEPFUN_GGUF_DIR = Path("/data/models/gguf")
 
@@ -21,6 +23,39 @@ def _stepfun_gguf_dir() -> Path:
             "to a directory containing Step-3.7-flash-Q3_K_L-00001..00003.gguf"
         )
     return root
+
+
+def test_stepfun_load_smoke_emit_json_replaces_output_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "resource.json"
+    output.write_text('{"status":"old"}\n')
+    observed: dict[str, object] = {}
+    real_replace = os.replace
+
+    def spy_replace(src: object, dst: object) -> None:
+        observed["destination_before_replace"] = output.read_text()
+        observed["temp_payload"] = Path(src).read_text()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(stepfun_gguf_load_smoke.os, "replace", spy_replace)
+
+    stepfun_gguf_load_smoke._emit_json(
+        {"status": "planned", "kv_context_pages": 1},
+        pretty=True,
+        output=output,
+    )
+
+    assert observed == {
+        "destination_before_replace": '{"status":"old"}\n',
+        "temp_payload": '{\n  "kv_context_pages": 1,\n  "status": "planned"\n}\n',
+    }
+    assert json.loads(output.read_text()) == {
+        "kv_context_pages": 1,
+        "status": "planned",
+    }
+    assert not list(tmp_path.glob(".resource.json.*.tmp"))
 
 
 def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.CaptureFixture[str]) -> None:

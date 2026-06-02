@@ -1888,7 +1888,7 @@ def _resource_plan_refresh_command(
     return (
         "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
         "--kv-context-pages 1 --kv-page-size 512 --pretty "
-        f"> {output_artifact}"
+        f"--output {output_artifact}"
     )
 
 

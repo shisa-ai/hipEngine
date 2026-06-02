@@ -32311,3 +32311,43 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: the new atomic correctness-status output regression passed; summary-output smoke wrote a blocked handoff summary with `open_blocker_count=2` and no lingering temp file; focused status-helper tests passed; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks) with `status_integrity_sha256=c4c2373660cc472787176b0300b9ad915ebe16d366e0ad4c1a323a3419a6e4cd`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`237` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun resource dry-run atomic output writes
+
+Hardened the StepFun GGUF resource dry-run artifact refresh path. `scripts/stepfun_gguf_load_smoke.py` now supports `--output` and writes JSON outputs through a flushed same-directory temporary file followed by atomic `os.replace`; the correctness-status KV refresh handoff now uses `--output benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` instead of shell redirection. Added `test_stepfun_load_smoke_emit_json_replaces_output_atomically`, which monkeypatches `os.replace` to prove the destination remains unchanged until the complete temp payload is ready and verifies no temp file remains. Refreshed the text-resource dry-run artifact via the new `--output` path and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no KV-backed token/logit artifact, oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_load_smoke.py::test_stepfun_load_smoke_emit_json_replaces_output_atomically
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_next_action_commands_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_kv_resource_command_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_kv_resource_command_sha_only
+python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+resource=Path('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json')
+status=Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json')
+r=json.loads(resource.read_text())
+s=json.loads(status.read_text())
+assert r['status'] == 'planned'
+assert s['source_artifacts']['text_resource']['path'] == str(resource)
+assert s['next_action_commands']['kv_backed_decode_not_wired']['resource_plan_refresh_command'].endswith(f'--output {resource}')
+assert not list(resource.parent.glob('.2026-05-31-stepfun-q3kl-text-resource-dry-run.json.*.tmp'))
+print('atomic resource refresh ok', s['source_artifacts']['text_resource']['sha256'])
+PY
+python3 -m pytest -q tests/test_stepfun_load_smoke.py::test_stepfun_load_smoke_emit_json_replaces_output_atomically tests/test_stepfun_load_smoke.py::test_stepfun_load_smoke_dry_run_plan_emits_resource_json
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_next_action_commands_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_kv_resource_command_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_kv_resource_command_sha_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_text_resource_source_outputs
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+print('status integrity ok')
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: the new resource atomic-output regression passed; resource-refresh command handoff tests passed; the text-resource artifact refreshed atomically with SHA `2fb7588a6f4a4223009a7b6aca349a0e15e1df57c7f6cff83acb82fb77a002ac`; correctness status now records resource refresh command SHA `a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks) with `status_integrity_sha256=c4c2373660cc472787176b0300b9ad915ebe16d366e0ad4c1a323a3419a6e4cd`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`238` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, `scripts/stepfun_gguf_load_smoke.py`, `tests/test_stepfun_correctness_status.py`, and `tests/test_stepfun_load_smoke.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.

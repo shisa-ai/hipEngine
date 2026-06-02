@@ -104,7 +104,7 @@ def _oracle_helper_command(
 def _resource_plan_refresh_command(resource: Path) -> str:
     return (
         "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-        f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+        f"--kv-context-pages 1 --kv-page-size 512 --pretty --output {resource}"
     )
 
 
@@ -1326,7 +1326,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
                 "resource_plan_refresh_command",
                 (
                     "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-                    f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+                    f"--kv-context-pages 1 --kv-page-size 512 --pretty --output {resource}"
                 ),
             ),
             **_recommended_command_fields(
@@ -1758,7 +1758,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     kv_commands = commands["kv_backed_decode_not_wired"]
     assert kv_commands["resource_plan_refresh_command"] == (
         "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-        f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+        f"--kv-context-pages 1 --kv-page-size 512 --pretty --output {resource}"
     )
     assert kv_commands["resource_plan_refresh_command_nchars"] == len(
         kv_commands["resource_plan_refresh_command"]
@@ -2096,7 +2096,7 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert oracle_command["first_missing_evidence"] == "oracle_completed_successfully"
     assert oracle_command["success_criteria"][0] == "oracle_gap_report.status is ready"
     kv_command = payload["next_action_commands"]["kv_backed_decode_not_wired"]
-    assert kv_command["resource_plan_refresh_command"].endswith(f"> {resource}")
+    assert kv_command["resource_plan_refresh_command"].endswith(f"--output {resource}")
     assert kv_command["first_missing_evidence"] == "streaming_runner_ready_flags"
     assert kv_command["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
     assert kv_command["streaming_runner_blocker_count"] == 3
@@ -3890,7 +3890,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
                 "resource_plan_refresh_command",
                 (
                     "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-                    f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+                    f"--kv-context-pages 1 --kv-page-size 512 --pretty --output {resource}"
                 ),
             ),
             **_recommended_command_fields(
@@ -4225,7 +4225,7 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
                 "resource_plan_refresh_command",
                 (
                     "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-                    f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+                    f"--kv-context-pages 1 --kv-page-size 512 --pretty --output {resource}"
                 ),
             ),
             **_recommended_command_fields(
@@ -4551,8 +4551,7 @@ def test_stepfun_correctness_status_kv_resource_command_only(capsys, tmp_path: P
         "resource_plan_refresh_command"
     ]
     assert payload.startswith("python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan")
-    assert f"> {resource}" in payload
-
+    assert f"--output {resource}" in payload
 
 
 def test_stepfun_correctness_status_status_refresh_command_sha_only(capsys, tmp_path: Path) -> None:
