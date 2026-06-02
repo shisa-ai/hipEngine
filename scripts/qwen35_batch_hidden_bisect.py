@@ -5706,8 +5706,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-linear-output-path",
         choices=("auto", "batch", "batch_gemv", "selected_c1"),
-        default="selected_c1",
-        help="Diagnostic linear-attention output projection path for c>N batch decode; selected_c1 is the correctness-first default with native segmented state, while auto follows selected-c1 state replay for compatibility.",
+        default="batch_gemv",
+        help="Diagnostic linear-attention output projection path for c>N batch decode; batch_gemv is the correctness-first default with native segmented state and uses the row-aware Marlin/GEMV path when available, while selected_c1 remains the per-row token-1 output replay fallback.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-path",

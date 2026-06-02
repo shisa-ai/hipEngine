@@ -63933,3 +63933,22 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: selected-c1 state replay is no longer required for the correctness-default equality gate. The active linear blockers are still selected-c1 projections and selected-c1 output; per-row c1 linear MoE and per-row full attention also remain non-retained. No performance/scaling claim.
 
 Validation: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py scripts/qwen35_batch_equality_matrix.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q` passed. Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY default batch-GEMV/Marlin linear output
+
+Eliminated selected-c1 linear output replay from the correctness-default c>N equality path. `project_pack8_fp16(..., force_gemv=True)` now uses the row-grid Marlin-K GEMV kernel when `qweight_mk` is available, instead of falling through to the generic pack8 GEMV path for `rows>1`. The retained and hidden-bisect defaults now use `--batch-decode-linear-output-path batch_gemv` with selected-c1 projections, native segmented state, per-row c1 linear MoE, and per-row full attention.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Focused batch-GEMV/Marlin output matrix `/tmp/hipengine-e2e-native-c2-c4-c8-selected-proj-native-state-marlin-out-perrow-moe-full-per-row-matrix.json` passed generated-token equality:
+  - c=2: `[137,137]`
+  - c=4: `[137,137,137,137]`
+  - c=8: `[137,137,137,137,137,137,137,137]`
+- Default matrix after the change `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` remains generated-equality green and child decode metadata reports `linear_attention_output_path=batch_gemv`, `linear_attention_state_path=native_segments`, and `linear_attention_projection_path=selected_c1_forced`.
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains `status=blocked`, `generated_token_equality.passed=true`, and `[137,137]` with `workload.batch_decode_linear_output_path=batch_gemv`.
+- Native/fused batch output remains red: `/tmp/hipengine-e2e-native-c2-512-128-selected-proj-native-state-native-out-perrow-moe-full-per-row-after-marlin.json` rejects at `[82,117]` with `linear_attention_output_path=native_batch`.
+- Grouped-compact linear MoE under selected projections/native state/batch-GEMV-output/per-row full attention remains red from `/tmp/hipengine-e2e-native-c2-c4-c8-selected-proj-native-state-selected-out-grouped-moe-full-per-row-matrix.json` (`c=2 [137,104]`, c=4 `[137,104,137,137]`, c=8 `[137,104,137,137,137,11,83,137]`), and native full attention remains red from `/tmp/hipengine-e2e-native-c2-c4-c8-selected-proj-native-state-selected-out-perrow-moe-native-full-matrix.json` (`c=2 [82,137]`, c=4 `[82,137,137,118]`, c=8 `[82,137,137,118,137,11,40,137]`).
+
+Conclusion: selected-c1 output replay is no longer required for generated-token equality. Remaining blockers are selected-c1 linear projections, batch-GEMV output being diagnostic instead of retained native/fused output, per-row c1 linear MoE, and per-row full attention. No performance/scaling claim.
+
+Validation: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q` passed. Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

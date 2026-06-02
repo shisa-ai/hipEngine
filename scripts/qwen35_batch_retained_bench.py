@@ -3713,7 +3713,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_linear_moe_path", "per_row_c1") == "per_row_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
-        getattr(args, "batch_decode_linear_output_path", "selected_c1")
+        getattr(args, "batch_decode_linear_output_path", "batch_gemv")
     )
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
         "0" if getattr(args, "batch_decode_full_attn_path", "per_row") == "per_row" else "1"
@@ -4189,7 +4189,7 @@ def _build_payload(
             "batch_decode_linear_projection_path": str(getattr(args, "batch_decode_linear_projection_path", "selected_c1")),
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "per_row_c1")),
-            "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "selected_c1")),
+            "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
             "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "per_row")),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
@@ -4320,8 +4320,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-linear-output-path",
         choices=("auto", "batch", "batch_gemv", "selected_c1"),
-        default="selected_c1",
-        help="Diagnostic linear-attention output projection path for c>N batch decode; selected_c1 is the correctness-first default with native segmented state, while auto follows selected-c1 state replay for compatibility.",
+        default="batch_gemv",
+        help="Diagnostic linear-attention output projection path for c>N batch decode; batch_gemv is the correctness-first default with native segmented state and uses the row-aware Marlin/GEMV path when available, while selected_c1 remains the per-row token-1 output replay fallback.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-path",

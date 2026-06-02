@@ -647,7 +647,11 @@ class Qwen35ParoDecodeState:
         scales = self.tensor(f"{prefix}.scales")
         width = x.shape[-1] if in_features is None else in_features
         awq_library = _library_for(library, "awq")
-        if rows == 1 and self.has_tensor(f"{prefix}.qweight_mk"):
+        if (rows == 1 or force_gemv) and self.has_tensor(f"{prefix}.qweight_mk"):
+            # The Marlin-K GEMV kernel has a row grid and matches token-1 output
+            # projection numerics for c>N diagnostic GEMV paths.  Keep normal
+            # rows>1 prefill on the fused prefill kernels unless force_gemv asks
+            # for a decode-style row-aware GEMV projection.
             qweight_mk = self.tensor(f"{prefix}.qweight_mk")
             out_packed = _out_packed_from_marlin_qweight(qweight_mk)
             gemv_paro_marlin_k_fma_fp16(
