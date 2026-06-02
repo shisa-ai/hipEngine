@@ -707,9 +707,11 @@ reporting.
   so KV automation can poll the first runtime blocker, validated upload/launch
   prerequisites, required evidence artifacts, and no-claim policy without
   reading the full resource plan; status integrity also
-  cross-checks the mirrored blueprint digest, the mirrored loop-status digest,
-  the loop next-action digest, the mirrored first KV blocker digest, and the full
-  KV streaming blocker names/SHA across the gap report, next-action command, and
+  cross-checks the blocker-summary digest/recorded flag, recomputes its
+  first-blocker/upload/launch mirror invariants against the resource-plan gap
+  report, and continues to check the mirrored blueprint digest, loop-status
+  digest, loop next-action digest, mirrored first KV blocker digest, and full KV
+  streaming blocker names/SHA across the gap report, next-action command, and
   handoff queue so the runner artifact and status helper
   agree on why KV-backed decode remains blocked. The same status
   artifact records `source_artifacts` path/size/SHA-256 provenance for the

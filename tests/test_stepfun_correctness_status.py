@@ -3323,6 +3323,9 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "kv_streaming_loop_status_sha256": True,
             "kv_streaming_loop_status_mirrors": True,
             "kv_streaming_loop_next_action_sha256": True,
+            "kv_decode_blocker_summary_sha256": True,
+            "kv_decode_blocker_summary_recorded": True,
+            "kv_decode_blocker_summary_mirrors_run_plan": True,
             "blocker_recommended_commands_sha256": True,
             "blocker_recommended_commands_meta_mirror": True,
             "schema_versions": True,
@@ -5451,6 +5454,9 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "kv_streaming_loop_status_sha256": True,
             "kv_streaming_loop_status_mirrors": True,
             "kv_streaming_loop_next_action_sha256": True,
+            "kv_decode_blocker_summary_sha256": True,
+            "kv_decode_blocker_summary_recorded": True,
+            "kv_decode_blocker_summary_mirrors_run_plan": True,
             "blocker_recommended_commands_sha256": True,
             "blocker_recommended_commands_meta_mirror": True,
             "schema_versions": True,
@@ -5695,6 +5701,63 @@ def test_stepfun_correctness_status_verify_source_status_integrity_failures_only
     assert captured.out == ""
     assert captured.err == ""
     assert json.loads(failures_output.read_text()) == ["next_action_commands_sha256"]
+
+
+def test_stepfun_correctness_status_verify_source_status_integrity_detects_kv_blocker_summary_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    failures_output = tmp_path / "failures.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["kv_backed_decode_gap_report"]["kv_decode_blocker_summary"][
+        "first_blocker_name"
+    ] = "stale_streaming_blocker"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--status-integrity-failures-only",
+            "--output",
+            str(failures_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(failures_output.read_text()) == [
+        "kv_decode_blocker_summary_sha256",
+        "kv_decode_blocker_summary_mirrors_run_plan",
+    ]
 
 
 def test_stepfun_correctness_status_verify_source_artifact_failures_only(
@@ -6294,6 +6357,9 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "kv_streaming_loop_status_sha256": True,
         "kv_streaming_loop_status_mirrors": True,
         "kv_streaming_loop_next_action_sha256": True,
+        "kv_decode_blocker_summary_sha256": True,
+        "kv_decode_blocker_summary_recorded": True,
+        "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
@@ -6357,6 +6423,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
     assert payload["status_integrity"]["failed_checks"] == [
         "kv_streaming_runner_blocker_names_sha256",
         "kv_streaming_runner_blocker_mirrors",
+        "kv_decode_blocker_summary_mirrors_run_plan",
     ]
     assert payload["status_integrity"]["checks"] == {
         "source_artifacts_sha256": True,
@@ -6375,6 +6442,9 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "kv_streaming_loop_status_sha256": True,
         "kv_streaming_loop_status_mirrors": True,
         "kv_streaming_loop_next_action_sha256": True,
+        "kv_decode_blocker_summary_sha256": True,
+        "kv_decode_blocker_summary_recorded": True,
+        "kv_decode_blocker_summary_mirrors_run_plan": False,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
@@ -6456,6 +6526,9 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "kv_streaming_loop_status_sha256": True,
         "kv_streaming_loop_status_mirrors": True,
         "kv_streaming_loop_next_action_sha256": True,
+        "kv_decode_blocker_summary_sha256": True,
+        "kv_decode_blocker_summary_recorded": True,
+        "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
@@ -6600,6 +6673,9 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "kv_streaming_loop_status_sha256": True,
         "kv_streaming_loop_status_mirrors": True,
         "kv_streaming_loop_next_action_sha256": True,
+        "kv_decode_blocker_summary_sha256": True,
+        "kv_decode_blocker_summary_recorded": True,
+        "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
@@ -6681,6 +6757,9 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "kv_streaming_loop_status_sha256": False,
         "kv_streaming_loop_status_mirrors": False,
         "kv_streaming_loop_next_action_sha256": True,
+        "kv_decode_blocker_summary_sha256": True,
+        "kv_decode_blocker_summary_recorded": True,
+        "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
@@ -6763,6 +6842,9 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "kv_streaming_loop_status_sha256": False,
         "kv_streaming_loop_status_mirrors": False,
         "kv_streaming_loop_next_action_sha256": False,
+        "kv_decode_blocker_summary_sha256": True,
+        "kv_decode_blocker_summary_recorded": True,
+        "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
@@ -6844,6 +6926,9 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "kv_streaming_loop_status_sha256": True,
         "kv_streaming_loop_status_mirrors": True,
         "kv_streaming_loop_next_action_sha256": True,
+        "kv_decode_blocker_summary_sha256": True,
+        "kv_decode_blocker_summary_recorded": True,
+        "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_recommended_commands_sha256": True,
         "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,

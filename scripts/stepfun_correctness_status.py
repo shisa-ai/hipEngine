@@ -699,6 +699,17 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(kv_gap_report, dict)
         else []
     )
+    kv_streaming_runner_blockers = (
+        kv_gap_report.get("streaming_runner_blockers", [])
+        if isinstance(kv_gap_report, dict)
+        else []
+    )
+    first_kv_streaming_runner_blocker_record = (
+        kv_streaming_runner_blockers[0]
+        if isinstance(kv_streaming_runner_blockers, list)
+        and kv_streaming_runner_blockers
+        else None
+    )
     kv_streaming_blocker_names_sha256 = (
         kv_gap_report.get("streaming_runner_blocker_names_sha256")
         if isinstance(kv_gap_report, dict)
@@ -748,6 +759,31 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         kv_streaming_loop_status.get("next_action_sha256")
         if isinstance(kv_streaming_loop_status, dict)
         else None
+    )
+    kv_decode_blocker_summary = (
+        kv_gap_report.get("kv_decode_blocker_summary")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_decode_blocker_summary_sha256 = (
+        kv_gap_report.get("kv_decode_blocker_summary_sha256")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_decode_blocker_summary_recorded = (
+        kv_gap_report.get("kv_decode_blocker_summary_recorded")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_decode_blocker_summary_mirrors_run_plan = (
+        kv_gap_report.get("kv_decode_blocker_summary_mirrors_run_plan")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_validated_preconditions = (
+        kv_gap_report.get("validated_preconditions", [])
+        if isinstance(kv_gap_report, dict)
+        else []
     )
     schema_versions = status.get("schema_versions", {})
     blocker_meta = (
@@ -832,6 +868,49 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         kv_streaming_loop_next_action_sha256
         == _stable_json_sha256(kv_streaming_loop_next_action)
     )
+    first_kv_streaming_runner_blocker_record_sha256_match = (
+        first_kv_streaming_runner_blocker_record is None
+        or (
+            isinstance(kv_decode_blocker_summary, dict)
+            and kv_decode_blocker_summary.get("first_blocker_sha256")
+            == _stable_json_sha256(first_kv_streaming_runner_blocker_record)
+        )
+    )
+    kv_decode_blocker_summary_sha256_match = (
+        isinstance(kv_decode_blocker_summary, dict)
+        and kv_decode_blocker_summary_sha256
+        == _stable_json_sha256(kv_decode_blocker_summary)
+    )
+    kv_decode_blocker_summary_recorded_match = (
+        isinstance(kv_decode_blocker_summary, dict)
+        and bool(kv_decode_blocker_summary)
+        and kv_decode_blocker_summary_recorded is True
+    )
+    kv_decode_blocker_summary_mirror_recomputed = (
+        isinstance(kv_gap_report, dict)
+        and isinstance(kv_decode_blocker_summary, dict)
+        and kv_decode_blocker_summary_mirrors_run_plan is True
+        and kv_decode_blocker_summary.get("blocker_names")
+        == kv_streaming_blocker_names
+        and kv_decode_blocker_summary.get("blocker_names_sha256")
+        == kv_streaming_blocker_names_sha256
+        and kv_decode_blocker_summary.get("blocker_count")
+        == kv_gap_report.get("streaming_runner_blocker_count")
+        and kv_decode_blocker_summary.get("first_blocker_name")
+        == first_kv_streaming_blocker
+        and kv_decode_blocker_summary.get("first_blocker")
+        == first_kv_streaming_runner_blocker_record
+        and first_kv_streaming_runner_blocker_record_sha256_match
+        and kv_decode_blocker_summary.get("upload_plan_ready")
+        == ("decode_input_upload_plan_consistent" in kv_validated_preconditions)
+        and kv_decode_blocker_summary.get("launch_operation_count")
+        == kv_gap_report.get("operation_count")
+        and isinstance(kv_streaming_blueprint, dict)
+        and kv_decode_blocker_summary.get("launch_blueprint_ready")
+        == kv_streaming_blueprint.get("pre_run_upload_checks_passed")
+        and kv_decode_blocker_summary.get("launch_stage_count")
+        == kv_streaming_blueprint.get("stage_count")
+    )
     blocker_recommended_commands_sha256_match = (
         isinstance(blocker_recommended_commands, list)
         and blocker_recommended_commands_sha256
@@ -890,6 +969,13 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "kv_streaming_loop_status_mirrors": kv_streaming_loop_status_mirrors,
         "kv_streaming_loop_next_action_sha256": (
             kv_streaming_loop_next_action_sha256_match
+        ),
+        "kv_decode_blocker_summary_sha256": kv_decode_blocker_summary_sha256_match,
+        "kv_decode_blocker_summary_recorded": (
+            kv_decode_blocker_summary_recorded_match
+        ),
+        "kv_decode_blocker_summary_mirrors_run_plan": (
+            kv_decode_blocker_summary_mirror_recomputed
         ),
         "blocker_recommended_commands_sha256": (
             blocker_recommended_commands_sha256_match

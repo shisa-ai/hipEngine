@@ -32148,3 +32148,45 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status-helper tests passed; compact KV blocker-summary output matched the text-resource artifact and status gap report, returning SHA `d21868cabe9fbb5f8a36aae4dc0981c38f07637e66be90d5959b0797980c1e50`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`232` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun KV blocker summary integrity checks
+
+Added embedded correctness-status integrity checks for the StepFun `kv_decode_blocker_summary`. `_status_integrity()` now verifies the blocker-summary SHA, requires the recorded flag, and recomputes the summary mirror invariants against the KV gap report (blocker names/SHA, first blocker record/SHA, upload readiness, launch operation count, launch blueprint readiness, and launch stage count). Added a drift regression that mutates `kv_decode_blocker_summary.first_blocker_name` and confirms `--status-integrity-failures-only` reports both `kv_decode_blocker_summary_sha256` and `kv_decode_blocker_summary_mirrors_run_plan`. Updated existing status-integrity expected payloads and documented the new checks in `docs/STEPFUN.md`; refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no KV-backed token/logit artifact, oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+checks=s['status_integrity']['checks']
+for key in [
+    'kv_decode_blocker_summary_sha256',
+    'kv_decode_blocker_summary_recorded',
+    'kv_decode_blocker_summary_mirrors_run_plan',
+]:
+    assert checks[key] is True
+assert s['status_integrity']['failed_checks'] == []
+assert s['status_integrity']['all_match'] is True
+print('kv blocker summary integrity ok', s['status_integrity_sha256'])
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verifies_source_artifact_provenance tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verify_source_status_integrity_failures_only_detects_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_verify_source_status_integrity_detects_kv_blocker_summary_drift
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_status_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_streaming_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_status_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_action_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_mirror_drift
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+assert p['checks']['kv_decode_blocker_summary_sha256'] is True
+assert p['checks']['kv_decode_blocker_summary_recorded'] is True
+assert p['checks']['kv_decode_blocker_summary_mirrors_run_plan'] is True
+print('status integrity ok')
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: focused integrity/source tests passed; existing drift tests updated and passed; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks) with `status_integrity_sha256=60688533c927d3645775c339c439c34362205b86802546ec4d04c784c7e95b48`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`233` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
