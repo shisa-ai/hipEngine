@@ -246,6 +246,63 @@ def _streaming_decode_loop_status_summary_sha256() -> str:
     return _stable_json_sha256(_streaming_decode_loop_status_summary())
 
 
+def _kv_decode_blocker_summary() -> dict[str, object]:
+    artifacts_needed = [
+        {
+            "name": "kv_kernel_trace_artifact",
+            "required_for": "kv_kernel_trace_artifact_missing",
+            "evidence": (
+                "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, "
+                "and gated decode-attention kernels for the canonical prompt"
+            ),
+        },
+        {
+            "name": "kv_backed_next_token_artifact",
+            "required_for": "kv_backed_next_token_artifact_missing",
+            "evidence": (
+                "one-token decode artifact recording generated token/logit path from KV-backed "
+                "runtime execution, not host-composed layer-prefix outputs"
+            ),
+        },
+    ]
+    return {
+        "schema_version": 1,
+        "source": "kv_decode_run_plan",
+        "status": "blocked",
+        "ready": False,
+        "executable": False,
+        "next_action": "wire_streaming_decode_loop",
+        "blocker_count": 3,
+        "blocker_names": _streaming_runner_blocker_names(),
+        "blocker_names_sha256": _streaming_runner_blocker_names_sha256(),
+        "first_blocker": _streaming_runner_blockers()[0],
+        "first_blocker_name": _first_streaming_runner_blocker(),
+        "first_blocker_sha256": _stable_json_sha256(_streaming_runner_blockers()[0]),
+        "upload_plan_ready": True,
+        "upload_entry_count": 6,
+        "upload_total_nbytes": 484,
+        "launch_blueprint_ready": True,
+        "launch_stage_count": 4,
+        "launch_operation_count": 135,
+        "per_layer_order": ["prompt_kv_write", "decode_kv_write", "decode_attention"],
+        "artifacts_needed": artifacts_needed,
+        "artifact_count": len(artifacts_needed),
+        "no_claim_policy": {
+            "oracle_parity_claim_allowed": False,
+            "kv_backed_decode_claim_allowed": False,
+            "performance_claim_allowed": False,
+            "reason": (
+                "metadata-only KV decode planning is not a streaming decode execution and "
+                "does not generate a token/logit artifact"
+            ),
+        },
+    }
+
+
+def _kv_decode_blocker_summary_sha256() -> str:
+    return _stable_json_sha256(_kv_decode_blocker_summary())
+
+
 def _streaming_runner_blockers() -> list[dict[str, object]]:
     return [
         {
@@ -780,6 +837,7 @@ def _write_resource_artifact(path: Path) -> None:
                             "decode loop; no kernels are launched."
                         ),
                     },
+                    "kv_decode_blocker_summary": _kv_decode_blocker_summary(),
                     "stop_token_ids": [1, 2, 128007],
                     "streaming_runner_ready": False,
                     "streaming_runner_blocker_count": 3,
@@ -1337,6 +1395,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ),
         "kv_streaming_loop_next_action_sha_only": (
             "kv_backed_decode_gap_report.streaming_decode_loop_status.next_action_sha256"
+        ),
+        "kv_decode_blocker_summary_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary"
+        ),
+        "kv_decode_blocker_summary_sha_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256"
         ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
@@ -2857,6 +2921,87 @@ def test_stepfun_correctness_status_kv_streaming_loop_status_sha_only(
     assert payload == _streaming_decode_loop_status_summary_sha256()
 
 
+def test_stepfun_correctness_status_kv_decode_blocker_summary_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    summary_output = tmp_path / "kv-decode-blocker-summary.json"
+    sha_output = tmp_path / "kv-decode-blocker-summary-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(summary_output),
+            "--summary-only",
+            "--kv-streaming-loop-status-only",
+            "--kv-decode-blocker-summary-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    summary = json.loads(summary_output.read_text())
+    assert summary == status["kv_backed_decode_gap_report"][
+        "kv_decode_blocker_summary"
+    ]
+    assert summary == _kv_decode_blocker_summary()
+    assert summary["status"] == "blocked"
+    assert summary["first_blocker_name"] == "streaming_decode_loop_not_wired"
+    assert summary["upload_plan_ready"] is True
+    assert summary["artifact_count"] == 2
+    assert status["kv_backed_decode_gap_report"][
+        "kv_decode_blocker_summary_recorded"
+    ] is True
+    assert status["kv_backed_decode_gap_report"][
+        "kv_decode_blocker_summary_mirrors_run_plan"
+    ] is True
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--kv-decode-blocker-summary-only",
+            "--kv-decode-blocker-summary-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    sha_payload = json.loads(sha_output.read_text())
+    assert sha_payload == status["kv_backed_decode_gap_report"][
+        "kv_decode_blocker_summary_sha256"
+    ]
+    assert sha_payload == _kv_decode_blocker_summary_sha256()
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
 def test_stepfun_correctness_status_kv_streaming_loop_next_action_only(
     capsys,
     tmp_path: Path,
@@ -3809,6 +3954,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "kv_streaming_loop_next_action_sha_only": (
             "kv_backed_decode_gap_report.streaming_decode_loop_status.next_action_sha256"
+        ),
+        "kv_decode_blocker_summary_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary"
+        ),
+        "kv_decode_blocker_summary_sha_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256"
         ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
