@@ -63698,3 +63698,19 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: the native-branch contiguous full-attention layer-output copy is not the sole remaining c=2 equality blocker. The gap remains between the native-batch full-attention branch and the outer per-row full-attention fallback despite row-local math, scratch, and output-copy diagnostics.
 
 Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention c1 delegate layer-scratch diagnostic
+
+Rewired the full-attention per-row layer-scratch diagnostic so each native-branch row delegates to the exact `run_full_attention_moe_c1_layer_fp16` orchestrator instead of maintaining a duplicated c1 pipeline inside `run_full_attention_moe_decode_batch_layer_fp16`. Trace callbacks are adapted row-locally, and row outputs are still copied back into the batch MoE output buffer.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention batch path with all exposed substages forced to row replay, independent per-row layer scratch, exact c1 row orchestrator, and per-row layer output copies:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-layer-scratch-c1delegate.json`
+  - `batch_decode_full_attention_path=native_batch`, `attention_input=qkv=scratch=context=output=per_row`, `full_attention_kv_append=per_row`, `attention_append_context_order=interleaved`, `attention_suffix_order=interleaved`, `full_attention_layer_copy=per_row`, `full_attention_moe=per_row_c1`, `post_attention=per_row`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, no performance claim.
+
+Conclusion: the duplicated c1 math orchestration inside the batch method was not the sole blocker. Because the outer `--batch-decode-full-attn-path per_row` fallback stays green in prior artifacts while this exact-c1 delegate on the native branch still fails, the next likely discriminator is the scratch object/lifetime used by the native branch (`attn.decode_row.*` temp scratch and row MoE scratch) versus the session's persistent c1 `full_scratch`/`moe_scratch` used by the outer fallback.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
