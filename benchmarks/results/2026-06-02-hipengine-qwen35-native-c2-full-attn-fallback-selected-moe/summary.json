@@ -1,0 +1,260 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-full-attn-fallback-selected-moe/summary.json",
+  "created_at": "2026-06-02T23:28:26.414979Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "c=2 full-attention fallback sweep after auto selected-c1 MoE: per-row full-attention fallback is generated-token green and slightly faster than native batch full attention when combined with selected-c1 MoE, but it is explicitly not native c-aware/retained and still below c1. Native batch full-attention remains the retained path.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "9799e910dfa8ddf95c484b532323d6ff46b6ed93",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "rows": 2,
+    "shape": "c=2 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_decode_moe_path": "selected_c1",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "primary_verify": {
+    "tmp_artifact": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "min_equal_prefix": 137,
+    "prefixes": [
+      137,
+      137
+    ],
+    "decode_tok_s_aggregate": 126.19953913067647,
+    "decode_moe_path": "selected_c1_batch"
+  },
+  "variants": [
+    {
+      "name": "default_native_batch_full_attention",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-fullattn-selected-moe-sweep-iter116-default.json",
+      "software_commit": "9799e910dfa8ddf95c484b532323d6ff46b6ed93",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 124.83282045218665,
+      "decode_tok_s_per_request": 62.416410226093326,
+      "full_attention_decode_path": "native_batch",
+      "moe_decode_path": "selected_c1_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "throughput_claim_eligible": true,
+      "native_caware_decode": true,
+      "batch_execution_blockers": []
+    },
+    {
+      "name": "per_row_full_attention",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-fullattn-selected-moe-sweep-iter116-full_per_row.json",
+      "software_commit": "9799e910dfa8ddf95c484b532323d6ff46b6ed93",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 128.80987819718413,
+      "decode_tok_s_per_request": 64.40493909859207,
+      "full_attention_decode_path": "per_row_context_fallback",
+      "moe_decode_path": "selected_c1_forced_with_per_row_full_attention_fallback",
+      "linear_attention_output_path": "batch_gemv",
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode"
+      ]
+    },
+    {
+      "name": "per_row_full_attention_r2",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-fullattn-selected-moe-sweep-iter116-full_per_row-r2.json",
+      "software_commit": "9799e910dfa8ddf95c484b532323d6ff46b6ed93",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 129.65264242763672,
+      "decode_tok_s_per_request": 64.82632121381836,
+      "full_attention_decode_path": "per_row_context_fallback",
+      "moe_decode_path": "selected_c1_forced_with_per_row_full_attention_fallback",
+      "linear_attention_output_path": "batch_gemv",
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode"
+      ]
+    },
+    {
+      "name": "per_row_full_attention_linear_batch_out",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-fullattn-selected-moe-sweep-iter116-full_per_row_linear_batch_out.json",
+      "software_commit": "9799e910dfa8ddf95c484b532323d6ff46b6ed93",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 116.0375170358245,
+      "decode_tok_s_per_request": 58.01875851791225,
+      "full_attention_decode_path": "per_row_context_fallback",
+      "moe_decode_path": "selected_c1_forced_with_per_row_full_attention_fallback",
+      "linear_attention_output_path": "native_batch",
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode"
+      ]
+    },
+    {
+      "name": "per_row_full_attention_selected_linear_out",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-fullattn-selected-moe-sweep-iter116-full_per_row_selected_linear_out.json",
+      "software_commit": "9799e910dfa8ddf95c484b532323d6ff46b6ed93",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 114.75685541901535,
+      "decode_tok_s_per_request": 57.378427709507676,
+      "full_attention_decode_path": "per_row_context_fallback",
+      "moe_decode_path": "selected_c1_forced_with_per_row_full_attention_fallback",
+      "linear_attention_output_path": "selected_c1_forced",
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode"
+      ]
+    }
+  ],
+  "measurements": {
+    "default_native_batch_full_attention_decode_tok_s_aggregate": 124.83282045218665,
+    "per_row_full_attention_decode_tok_s_aggregate_runs": [
+      128.80987819718413,
+      129.65264242763672
+    ],
+    "per_row_full_attention_decode_tok_s_aggregate_best": 129.65264242763672,
+    "per_row_full_attention_decode_tok_s_aggregate_mean": 129.23126031241043,
+    "per_row_best_vs_default_native_batch": 1.0386102145092215,
+    "per_row_mean_vs_default_native_batch": 1.03523464297523,
+    "per_row_best_vs_c1": 0.9667503448313755,
+    "default_native_batch_vs_c1": 0.9308115126599228,
+    "primary_verify_vs_c1": 0.9410024021703697,
+    "per_row_best_vs_serial_bridge": 1.6236894671292927,
+    "c1_decode_tok_s_aggregate": 134.1118139970783,
+    "serial_bridge_decode_tok_s_aggregate": 79.85063957880106,
+    "prior_auto_selected_moe_best_projection_decode_tok_s_aggregate": 126.17956290612028,
+    "prior_output_sweep_default_decode_tok_s_aggregate": 126.00129048412069
+  },
+  "profiler": {
+    "per_row_raw_trace_tmp_path": "/tmp/hipengine-e2e-native-c2-fullattn-perrow-selected-moe-profile-iter116/epyc/211917_kernel_trace.csv",
+    "per_row_raw_trace_sha256": "067ee9635f2bdf242bf0262a30284fbfb818ae0a50935357469a25c7362b2310",
+    "per_row_raw_trace_size_bytes": 122783186,
+    "raw_trace_not_retained_reason": "raw rocprof CSV is large and intentionally left under /tmp; this compact artifact records aggregate evidence only",
+    "per_row_profiled_decode_tok_s_aggregate": 106.1318527381575,
+    "per_row_profiled_prefixes": [
+      137,
+      137
+    ],
+    "top_kernels": [
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, float*, long const*, long, long, long, long, float)",
+        "duration_ns": 438853032,
+        "calls": 5440
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "duration_ns": 436686874,
+        "calls": 31400
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "duration_ns": 350000947,
+        "calls": 25960
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 328597764,
+        "calls": 17680
+      },
+      {
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "duration_ns": 305401202,
+        "calls": 412
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "duration_ns": 296823412,
+        "calls": 17680
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "duration_ns": 236040636,
+        "calls": 4080
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "duration_ns": 220037330,
+        "calls": 23120
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 218724773,
+        "calls": 35570
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "duration_ns": 212949045,
+        "calls": 35600
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "duration_ns": 173609502,
+        "calls": 90
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 152098842,
+        "calls": 30130
+      }
+    ]
+  },
+  "retained_claim_blockers": [
+    "per-row full-attention fallback is not native c-aware decode and has explicit batch_execution blockers",
+    "per-row full-attention best run remains below c1 aggregate throughput",
+    "native batch full-attention remains required for retained c>N rows even though the per-row diagnostic is faster at c=2"
+  ],
+  "source_artifacts": {
+    "prior_auto_selected_moe": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-auto-selected-moe/summary.json",
+    "prior_output_path_sweep": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-output-path-sweep/summary.json",
+    "prior_scaling_blocker": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/scaling-blocker-c2.json"
+  },
+  "conclusion": {
+    "accepted": false,
+    "reason": "Per-row full-attention plus selected-c1 MoE is a useful diagnostic and reaches 0.967x c1, but it is non-retained/non-c-aware. No graph replay option is currently wired in retained-bench; this iteration records focused full-attention fallback evidence instead of changing code."
+  },
+  "commands": {
+    "sweep": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... with variants default, --batch-decode-full-attn-path per_row, per_row plus --batch-decode-linear-output-path selected_c1, and per_row plus --batch-decode-linear-output-path batch",
+    "profile_per_row": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-e2e-native-c2-fullattn-perrow-selected-moe-profile-iter116 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-decode-full-attn-path per_row --json /tmp/hipengine-e2e-native-c2-fullattn-perrow-selected-moe-profiled-iter116.json",
+    "primary_verify": "active loop verify command at clean commit 9799e91 with HIP_VISIBLE_DEVICES=1; output /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json"
+  }
+}
