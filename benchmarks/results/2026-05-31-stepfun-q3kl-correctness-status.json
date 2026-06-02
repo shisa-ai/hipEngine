@@ -218,13 +218,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 628,
+        "line": 629,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ]
   },
-  "docs_checklist_sha256": "106bd5ede79a13aaf43d43c98ec2e503776fff54e80b5e171365574d1ec741d3",
+  "docs_checklist_sha256": "9a61a40b7a8be0ea387cdcb22dcfb484a9370f9305b424495c31985664b6fb65",
   "e2e_inference_ready": false,
   "first_remaining_blocker_report": {
     "blocked_gates": [
@@ -2732,10 +2732,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
     "schema_version": 1,
-    "source_artifacts_sha256": "34c4511f6fa4aa0530a3403399d0c3e20f6833f5b9f1d121a4e8694b000b9bf7",
+    "source_artifacts_sha256": "51ede427b29b37f28a09988e541618604a77691f2f6468e1b96a1551b567396b",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "bbefc6a4fdfa0b0032c22927ce34de0325772164b3b54d9735a3610b440fcedd",
+  "readiness_summary_sha256": "2ec3daf345f8ae9492d73ca9e376e421ba4f3c7e81165bb1845f5ccc35964ce7",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2854,8 +2854,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "65fe0beb987cfb2274b9c0dfcc3f0ee3561759b8bfe8f8ced69255b745009497",
-      "size_bytes": 66718
+      "sha256": "d77c3c391ec76d9e4c6a546d5149d78e97cb3af09f01323bd3cc1d7dd338d81a",
+      "size_bytes": 66765
     },
     "oracle": {
       "exists": true,
@@ -2882,7 +2882,7 @@
       "size_bytes": 52292
     }
   },
-  "source_artifacts_sha256": "34c4511f6fa4aa0530a3403399d0c3e20f6833f5b9f1d121a4e8694b000b9bf7",
+  "source_artifacts_sha256": "51ede427b29b37f28a09988e541618604a77691f2f6468e1b96a1551b567396b",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
@@ -2901,6 +2901,7 @@
       "blocker_work_queue_command_metadata": true,
       "blocker_work_queue_meta_mirror": true,
       "blocker_work_queue_sha256": true,
+      "docs_checklist_compact_output_modes": true,
       "docs_checklist_count_matches_items": true,
       "docs_checklist_sha256": true,
       "first_blocker_work_item_mirror": true,
@@ -2942,7 +2943,7 @@
     },
     "failed_checks": []
   },
-  "status_integrity_sha256": "7dc4e201fa86e155b69e07cac1d2fe0bee8cf7b11e748b526395fe98d2e3a7c3",
+  "status_integrity_sha256": "8bedf92bbeefafcd550637e6fc0249173d01fbd3cf80571e877b7af3bf647843",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 }

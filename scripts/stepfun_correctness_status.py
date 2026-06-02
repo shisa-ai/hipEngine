@@ -1498,6 +1498,14 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(docs_checklist, dict)
             and docs_checklist_sha256 == _stable_json_sha256(docs_checklist)
         ),
+        "docs_checklist_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("docs_checklist_only") == "docs_checklist"
+            and compact_output_modes.get("docs_checklist_sha_only")
+            == "docs_checklist_sha256"
+            and compact_output_modes.get("docs_open_partial_count_only")
+            == "docs_checklist.open_or_partial_count_p0_p12"
+        ),
         "docs_checklist_count_matches_items": (
             isinstance(docs_open_or_partial_items, list)
             and docs_open_or_partial_count == len(docs_open_or_partial_items)

@@ -3722,6 +3722,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "handoff_summary_sha256": True,
             "readiness_summary_sha256": True,
             "docs_checklist_sha256": True,
+            "docs_checklist_compact_output_modes": True,
             "docs_checklist_count_matches_items": True,
             "readiness_summary_docs_checklist_count_mirror": True,
             "readiness_gates_sha256": True,
@@ -6103,6 +6104,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "handoff_summary_sha256": True,
             "readiness_summary_sha256": True,
             "docs_checklist_sha256": True,
+            "docs_checklist_compact_output_modes": True,
             "docs_checklist_count_matches_items": True,
             "readiness_summary_docs_checklist_count_mirror": True,
             "readiness_gates_sha256": True,
@@ -7355,9 +7357,83 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_docs_checklis
     assert checks["handoff_summary_sha256"] is True
     assert checks["readiness_summary_sha256"] is True
     assert checks["docs_checklist_sha256"] is False
+    assert checks["docs_checklist_compact_output_modes"] is True
     assert checks["docs_checklist_count_matches_items"] is True
     assert checks["readiness_summary_docs_checklist_count_mirror"] is True
     assert checks["readiness_gates_sha256"] is True
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_docs_checklist_compact_mode_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    compact_modes = status_payload["handoff_summary"]["compact_output_modes"]
+    compact_modes["docs_open_partial_count_only"] = "stale.docs.metric"
+    status_payload["handoff_summary_sha256"] = _stable_json_sha256(
+        status_payload["handoff_summary"]
+    )
+    status_payload["readiness_summary"]["handoff_summary_sha256"] = status_payload[
+        "handoff_summary_sha256"
+    ]
+    status_payload["readiness_summary_sha256"] = _stable_json_sha256(
+        status_payload["readiness_summary"]
+    )
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["failed_checks"] == [
+        "docs_checklist_compact_output_modes"
+    ]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["handoff_summary_sha256"] is True
+    assert checks["readiness_summary_sha256"] is True
+    assert checks["docs_checklist_sha256"] is True
+    assert checks["docs_checklist_compact_output_modes"] is False
+    assert checks["docs_checklist_count_matches_items"] is True
+    assert checks["readiness_summary_docs_checklist_count_mirror"] is True
 
 
 def test_stepfun_correctness_status_source_artifact_verify_detects_readiness_docs_metric_mirror_drift(
@@ -7756,6 +7832,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
         "docs_checklist_sha256": True,
+        "docs_checklist_compact_output_modes": True,
         "docs_checklist_count_matches_items": True,
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
@@ -7871,6 +7948,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
         "docs_checklist_sha256": True,
+        "docs_checklist_compact_output_modes": True,
         "docs_checklist_count_matches_items": True,
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
@@ -8118,6 +8196,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
         "docs_checklist_sha256": True,
+        "docs_checklist_compact_output_modes": True,
         "docs_checklist_count_matches_items": True,
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
@@ -8594,6 +8673,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
         "docs_checklist_sha256": True,
+        "docs_checklist_compact_output_modes": True,
         "docs_checklist_count_matches_items": True,
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
@@ -8708,6 +8788,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
         "docs_checklist_sha256": True,
+        "docs_checklist_compact_output_modes": True,
         "docs_checklist_count_matches_items": True,
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
@@ -8823,6 +8904,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
         "docs_checklist_sha256": True,
+        "docs_checklist_compact_output_modes": True,
         "docs_checklist_count_matches_items": True,
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
@@ -8937,6 +9019,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
         "docs_checklist_sha256": True,
+        "docs_checklist_compact_output_modes": True,
         "docs_checklist_count_matches_items": True,
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
