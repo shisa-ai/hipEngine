@@ -64869,3 +64869,20 @@ Required loop verification:
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 
 Conclusion: after QKV/Z batch projection is generated-token green, the focused L8 hidden-only blocker moves to native full-attention decode. Per-row full-attention replay clears the hidden mismatch while preserving native batch projection/state/output and grouped MoE, so the next correctness bite should inspect native full-attention context/output/KV evidence rather than returning to linear QKV/Z projection.
+
+## 2026-06-02 — CONCURRENCY full-attention context/gate hidden isolation
+
+Ran iteration 89 for `concurrency-e2e/native-c2-e2e` to narrow the full-attention hidden blocker from iteration 88. The hypothesis was that forcing only the full-attention context/gate subpath to per-row replay would be sufficient, without replaying the whole full-attention layer.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Narrow diagnostic: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-iter89.json` passed (`status=eq_ok`, `hidden_passed=true`, `token_passed=true`) with no-selected `batch` linear projection, native segmented state, batch-GEMV linear output, grouped-compact MoE, and only `--batch-decode-attn-context-path per_row` changed. Decode metadata: `full_attention_decode_path=native_batch`, `full_attention_context_decode_path=per_row_context_gate_fallback`, `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, blocker `full-attention context/gate forced to per-row diagnostic path`.
+- Prior native control remains `/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-default-threads128-iter88.json`: hidden red at L8 decode step 11 / row 0 under fully native full attention with first full-attention context-oracle failure at decode step 0 (`batch_numpy_vs_c1_numpy`, context_len 513) and KV current-token key/value prefix/sample mismatches.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-isolation/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Required loop verification:
+
+- Primary no-flag c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and metadata `linear_attention_projection_path=native_batch`, `full_attention_decode_path=native_batch`, `native_caware_decode=true`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+Conclusion: the focused full-attention blocker is now narrowed to native context/gate decode. The next correctness bite should inspect the batched context/gate kernel inputs/current-token KV source rather than replaying all full-attention or revisiting linear projections.

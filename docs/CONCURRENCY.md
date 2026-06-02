@@ -251,6 +251,10 @@ What is still not green:
   hidden-only blocker from linear QKV/Z projection to native full-attention decode
   evidence
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-hidden-isolation/summary.json`).
+  A narrower follow-up proved that forcing only full-attention context/gate to the
+  per-row diagnostic path is sufficient to make the same L8 probe hidden/token
+  green, narrowing the blocker to native full-attention context/gate decode
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-isolation/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

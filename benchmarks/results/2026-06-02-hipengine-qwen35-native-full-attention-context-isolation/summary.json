@@ -1,0 +1,363 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "purpose": "Focused C2.3 full-attention substage probe: determine whether forcing only the context/gate portion of native full-attention decode to the per-row diagnostic path clears the L8 c=2 hidden mismatch after no-selected batch projection became the default.",
+  "created_at": "2026-06-02T17:26:54.867905Z",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "workload": {
+    "concurrency": 2,
+    "prompt_tokens_per_request": 512,
+    "decode_tokens": 16,
+    "max_layers": 8,
+    "layer_limits": [
+      8
+    ],
+    "hidden_atol": 0.002,
+    "state_atol": 1e-06,
+    "focus_hidden_flat_indices": [
+      1269
+    ]
+  },
+  "performance_claim": false,
+  "retained_ready": false,
+  "rows": [
+    {
+      "name": "native_full_attention_hidden_red_control",
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "hidden_passed": false,
+      "token_passed": true,
+      "first_hidden_mismatch": {
+        "decode_step": 11,
+        "generated_index": 12,
+        "row": 0,
+        "max_abs": 0.010427474975585938,
+        "max_abs_flat_index": 1543,
+        "last_layer_index": 7,
+        "last_layer_type": "full_attention"
+      },
+      "first_token_mismatch": null,
+      "workload_paths": {
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_attention_context_path": "batch",
+        "native_caware_decode": false
+      },
+      "decode_execution": {
+        "native_caware_decode": true,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "moe_grouped_compact_layers": 8,
+        "moe_selected_c1_fallback_layers": 0,
+        "blockers": []
+      },
+      "failed_full_attention_stages": [
+        "attn_input_pre_qkv",
+        "attn_input_after_rotate",
+        "attn_input_after_project",
+        "q_proj_key_after_project",
+        "query_raw_after_split",
+        "key_raw_after_cast",
+        "gate_after_split",
+        "query_after_prepare",
+        "key_after_prepare",
+        "attn_input_after_prepare",
+        "attn_input",
+        "gate",
+        "query",
+        "attn_context",
+        "gated_attn",
+        "mlp_input",
+        "output"
+      ],
+      "first_full_attention_stage_failure": {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 175,
+        "max_abs_index": [
+          0,
+          175
+        ],
+        "elements_over_atol": 5
+      },
+      "first_context_oracle_failure": {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "row": 0,
+        "comparison": "batch_numpy_vs_c1_numpy",
+        "context_len": 513,
+        "context_len_match": true,
+        "max_abs": 0.011104345321655273,
+        "max_abs_flat_index": 2812,
+        "max_abs_index": [
+          0,
+          2812
+        ],
+        "elements_over_atol": 3288
+      },
+      "first_kv_prefix_failure": {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "row": 0,
+        "kind": "key",
+        "context_len": 513,
+        "mismatch_count": 1,
+        "first_mismatch_position": 512,
+        "last_mismatch_position": 512,
+        "mismatch_positions_first": [
+          512
+        ],
+        "mismatch_positions_last": [
+          512
+        ],
+        "tail_mismatch_count": 1,
+        "batch_hash": 2757246677,
+        "c1_hash": 1243858560,
+        "batch_token_sample_u16": [
+          48963,
+          48573,
+          49070,
+          49069,
+          16301,
+          16214,
+          48985,
+          49037
+        ],
+        "c1_token_sample_u16": [
+          48964,
+          48573,
+          49070,
+          49069,
+          16301,
+          16214,
+          48985,
+          49037
+        ],
+        "token_sample_word_count": 8
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-default-threads128-iter88.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-default-threads128-iter88.json",
+      "source_size_bytes": 18644907,
+      "source_sha256": "f70d84f92905030ab8448f658d0410a18080b100ee6a6503c523dd155f1d4e2b"
+    },
+    {
+      "name": "per_row_full_attention_hidden_green_prior_control",
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "hidden_passed": true,
+      "token_passed": true,
+      "first_hidden_mismatch": null,
+      "first_token_mismatch": null,
+      "workload_paths": {
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_decode_full_attention_path": "per_row",
+        "batch_decode_attention_context_path": "batch",
+        "native_caware_decode": false
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "moe_grouped_compact_layers": 6,
+        "moe_selected_c1_fallback_layers": 2,
+        "blockers": [
+          "full-attention decode used a per-row fallback"
+        ]
+      },
+      "failed_full_attention_stages": [],
+      "first_full_attention_stage_failure": null,
+      "first_context_oracle_failure": null,
+      "first_kv_prefix_failure": null,
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-full-attn-path per_row --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-proj-native-state-batch-out-perrow-full-threads128-iter88.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-proj-native-state-batch-out-perrow-full-threads128-iter88.json",
+      "source_size_bytes": 6104998,
+      "source_sha256": "32c603cf4616c5a4ec301641bfd547982cff39da2362e56978ebc5086bfb4a49"
+    },
+    {
+      "name": "per_row_context_gate_hidden_green",
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "hidden_passed": true,
+      "token_passed": true,
+      "first_hidden_mismatch": null,
+      "first_token_mismatch": null,
+      "workload_paths": {
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_attention_context_path": "per_row",
+        "native_caware_decode": false
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "per_row_context_gate_fallback",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "moe_grouped_compact_layers": 8,
+        "moe_selected_c1_fallback_layers": 0,
+        "blockers": [
+          "full-attention context/gate forced to per-row diagnostic path"
+        ]
+      },
+      "failed_full_attention_stages": [
+        "attn_input_pre_qkv",
+        "attn_input_after_rotate",
+        "attn_input_after_project",
+        "q_proj_key_after_project",
+        "value_after_project",
+        "query_raw_after_split",
+        "key_raw_after_cast",
+        "gate_after_split",
+        "query_after_prepare",
+        "key_after_prepare",
+        "attn_input_after_prepare",
+        "attn_input",
+        "gate",
+        "query",
+        "attn_context",
+        "gated_attn",
+        "mlp_input"
+      ],
+      "first_full_attention_stage_failure": {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 3,
+        "stage": "attn_input_pre_qkv",
+        "row": 1,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.015625,
+        "max_abs_flat_index": 1269,
+        "max_abs_index": [
+          0,
+          1269
+        ],
+        "elements_over_atol": 7
+      },
+      "first_context_oracle_failure": {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 3,
+        "row": 1,
+        "comparison": "batch_numpy_vs_c1_numpy",
+        "context_len": 513,
+        "context_len_match": true,
+        "max_abs": 0.007330656051635742,
+        "max_abs_flat_index": 1648,
+        "max_abs_index": [
+          0,
+          1648
+        ],
+        "elements_over_atol": 3042
+      },
+      "first_kv_prefix_failure": {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 3,
+        "row": 1,
+        "kind": "key",
+        "context_len": 513,
+        "mismatch_count": 4,
+        "first_mismatch_position": 509,
+        "last_mismatch_position": 512,
+        "mismatch_positions_first": [
+          509,
+          510,
+          511,
+          512
+        ],
+        "mismatch_positions_last": [
+          509,
+          510,
+          511,
+          512
+        ],
+        "tail_mismatch_count": 4,
+        "batch_hash": 3151002290,
+        "c1_hash": 2035484354,
+        "batch_token_sample_u16": [
+          16026,
+          16250,
+          16308,
+          16212,
+          49037,
+          16510,
+          49282,
+          16518
+        ],
+        "c1_token_sample_u16": [
+          16026,
+          16250,
+          16308,
+          16212,
+          49037,
+          16510,
+          49282,
+          16518
+        ],
+        "token_sample_word_count": 8
+      },
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-attn-context-path per_row --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-iter89.json",
+      "source_tmp_path": "/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-iter89.json",
+      "source_size_bytes": 16421487,
+      "source_sha256": "217278b50e0c277a7a403479777932ff527f18e7412b561bba60c670ec082057"
+    }
+  ],
+  "result": "The native full-attention control is hidden-red, while forcing only full-attention context/gate to per-row (`--batch-decode-attn-context-path per_row`) is hidden/token green under the same native_batch projection/native segmented state/batch-GEMV output/grouped-MoE controls. This narrows the focused full-attention blocker to native context/gate decode rather than whole full-attention replay.",
+  "context_gate_blocker_eliminated_by_per_row_probe": true,
+  "native_projection_path_under_probe": "native_batch",
+  "per_row_context_decode_path": "per_row_context_gate_fallback"
+}
