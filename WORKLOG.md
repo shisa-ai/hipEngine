@@ -64779,3 +64779,21 @@ Validation:
 - `multiloop_measure` recorded c=2 measurements `[137,137,137,137,137]`; prompt verifier passes because this iteration re-ran and passed the c=2/c=4/c=8 generated-token equality gate after the reproducibility flake. No retained throughput/scaling claim is made.
 
 Conclusion: the selected-QKV/Z correctness fallback is again repeat-green in this clean-tree sweep, but native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain the active blockers because decode still reports `native_caware_decode=false` and `linear_attention_projection_path=selected_c1_qkv_z`.
+
+## 2026-06-02 — CONCURRENCY direct-planar dual-GEMV projection probe rejected
+
+Ran iteration 84 for `concurrency-e2e/native-c2-e2e` to test whether the `batch_gemv` QKV/Z blocker was specifically caused by the prior dual-GEMV row-interleaved temporary-copy layout. A temporary patch added a direct-planar `gemv_awq_dual_pack8_transposed_planar_fp16` path in `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.{hip,py}` and routed `Qwen35ParoDecodeState.project_linear_attention_qkv_z_fp16(..., force_gemv=True)` through that one-launch QKV/Z writer. The patch was reverted before commit; no runtime code was retained.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Temporary direct-planar `batch_gemv` generated probe: `/tmp/hipengine-e2e-planar-gemv-c2-512-128.json` stayed red with prefixes `[82,104]`, matching the prior post-grouped projection refresh and not improving the official metric.
+- The temporary kernel was prebuilt outside the retained command with `HIP_VISIBLE_DEVICES=1` and `hip_target_arch_environment('gfx1100')`; the retained probe then ran with `--compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build`.
+- After reverting the temporary code, the primary verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137` with generated-token prefixes `[137,137]` under the selected-QKV/Z correctness fallback.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-planar-dual-gemv-projection-red-probe/summary.json` (`status=blocked`, `performance_claim=false`, `retained_ready=false`).
+
+Validation after reverting the patch:
+
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- `multiloop_measure` recorded metric `137`; prompt verifier failed because the focused native projection blocker did not turn green and the official primary metric did not improve.
+
+Conclusion: the row-interleaved temporary-copy step is not the root blocker. Direct planar dual-GEMV output leaves `batch_gemv` at `[82,104]`, so the selected-QKV/Z correctness fallback remains required; native QKV/Z bit exactness and projection-dispatch/retained-evidence closure remain active blockers.

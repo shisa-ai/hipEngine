@@ -222,6 +222,11 @@ What is still not green:
   and a fresh c=2/c=4/c=8 equality matrix with all rows prefix 137, restoring
   confidence in the fallback while keeping native projection/dispatch blocked
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-selected-fallback-repeat-confidence/summary.json`).
+  A temporary direct-planar dual-GEMV QKV/Z probe wrote QKV and Z outputs in one
+  launch without the row-interleaved temporary-copy step, but `batch_gemv` still
+  failed c=2 512/128 at `[82,104]`; the selected-QKV/Z fallback stayed `[137,137]`
+  after reverting the code, so no runtime code was retained
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-planar-dual-gemv-projection-red-probe/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
