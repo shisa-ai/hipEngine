@@ -64041,3 +64041,21 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: post-attention add/RMSNorm and full-attention layer-copy are no longer correctness-default fallbacks. Remaining full-attention blockers are native/fused full-attention output and grouped-compact full-attention MoE. No retained/scaling claim.
 
 Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY batch-GEMV full-attention output default
+
+Tested whether the remaining per-row full-attention output projection fallback can be narrowed to the row-aware batch-GEMV output path while keeping per-row full-attention MoE active. This keeps generated-token equality green and removes per-row output projection from the correctness default.
+
+GPU1 / RX 7900 XTX evidence with native full-attention input/QKV/context, native post-attention, batch layer-copy, selected-QKV/Z or full-selected linear projections, native segmented linear state, batch-GEMV/Marlin linear output, and per-row linear/full-attention MoE:
+
+- Batch-GEMV full-attention output is green:
+  - c=2: `/tmp/hipengine-e2e-native-c2-512-128-selected-linear-native-full-batch-gemv-output-moe-native-post.json`, prefixes `[137,137]`.
+  - c=4: `/tmp/hipengine-e2e-native-c4-512-128-selected-linear-native-full-batch-gemv-output-moe-native-post.json`, prefixes `[137,137,137,137]`.
+  - c=8: `/tmp/hipengine-e2e-native-c8-512-128-selected-linear-native-full-batch-gemv-output-moe-native-post.json`, prefixes `[137,137,137,137,137,137,137,137]`.
+- Prior native-output controls remain red from the previous iteration (`output_batch_output_moe_post` / fully-native output controls stop at `[82,137]`), so fused/native full-attention output is still not green.
+- After promoting `batch_decode_full_attention_output_path=batch_gemv` to the retained/hidden-bisect default, the primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`; workload now records `batch_decode_full_attention_output_path=batch_gemv`, `batch_decode_full_attention_layer_copy=batch`, `batch_decode_full_attention_moe_path=per_row_c1`, and `batch_decode_post_attention_path=batch`.
+- Default matrix `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` remains `status=passed`, all rows min equal-prefix `137`, and full-attention decode path `native_batch`.
+
+Conclusion: per-row full-attention output projection is no longer a correctness-default fallback; row-aware batch-GEMV full-attention output is enough. Remaining full-attention blockers are fused/native full-attention output and grouped-compact full-attention MoE. No retained/scaling claim.
+
+Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

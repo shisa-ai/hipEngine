@@ -3768,10 +3768,10 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_attn_suffix_order", "phased") == "interleaved" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] = (
-        "1" if getattr(args, "batch_decode_full_attn_output_path", "per_row") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_full_attn_output_path", "batch_gemv") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] = (
-        "1" if getattr(args, "batch_decode_full_attn_output_path", "per_row") == "batch_gemv" else "0"
+        "1" if getattr(args, "batch_decode_full_attn_output_path", "batch_gemv") == "batch_gemv" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] = (
         "1" if getattr(args, "batch_decode_full_attn_layer_copy", "batch") == "per_row" else "0"
@@ -4220,7 +4220,7 @@ def _build_payload(
             "batch_decode_full_attention_kv_append_path": str(getattr(args, "batch_decode_full_attn_kv_append_path", "batch")),
             "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
             "batch_decode_attention_suffix_order": str(getattr(args, "batch_decode_attn_suffix_order", "phased")),
-            "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "per_row")),
+            "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch_gemv")),
             "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
@@ -4396,8 +4396,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-full-attn-output-path",
         choices=("batch", "batch_gemv", "per_row"),
-        default="per_row",
-        help="Diagnostic full-attention O projection path for c>N batch decode; per_row is the correctness-first default with native context, batch_gemv forces one batched GEMV kernel, and batch is the native fused path.",
+        default="batch_gemv",
+        help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv is the correctness-first default with native context, per_row remains a token-1 output replay fallback, and batch is the native fused path.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-layer-copy",

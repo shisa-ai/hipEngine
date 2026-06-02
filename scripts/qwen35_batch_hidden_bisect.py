@@ -5773,8 +5773,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-full-attn-output-path",
         choices=("batch", "batch_gemv", "per_row"),
-        default="per_row",
-        help="Diagnostic full-attention O projection path for c>N batch decode; per_row is the correctness-first default with native context, batch_gemv forces one batched GEMV kernel, and batch is the native fused path.",
+        default="batch_gemv",
+        help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv is the correctness-first default with native context, per_row remains a token-1 output replay fallback, and batch is the native fused path.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-layer-copy",
