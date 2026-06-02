@@ -1,0 +1,18 @@
+{
+  "artifact_json": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
+  "benchmark_rollup": {
+    "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
+    "changelog_path": "benchmarks/CHANGELOG.md",
+    "readme_path": "benchmarks/README.md",
+    "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json"
+  },
+  "error": null,
+  "mode": "rollup_evidence",
+  "passed": true,
+  "performance_claim": true,
+  "schema": 1,
+  "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
+  "status": "accepted",
+  "summary_type": "qwen35_retained_validation_summary"
+}
