@@ -1494,6 +1494,22 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(readiness_summary, dict)
             and status.get("readiness_summary_sha256") == _stable_json_sha256(readiness_summary)
         ),
+        "readiness_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("readiness_summary_only")
+            == "readiness_summary"
+            and compact_output_modes.get("readiness_summary_sha_only")
+            == "readiness_summary_sha256"
+            and compact_output_modes.get("readiness_gates_only") == "readiness_gates"
+            and compact_output_modes.get("readiness_gates_sha_only")
+            == "readiness_gates_sha256"
+            and compact_output_modes.get("blocked_gates_only") == "blocked_gates"
+            and compact_output_modes.get("blocked_gates_sha_only")
+            == "blocked_gates_sha256"
+            and compact_output_modes.get("blocker_kinds_only") == "blocker_kinds"
+            and compact_output_modes.get("blocker_kinds_sha_only")
+            == "blocker_kinds_sha256"
+        ),
         "docs_checklist_sha256": (
             isinstance(docs_checklist, dict)
             and docs_checklist_sha256 == _stable_json_sha256(docs_checklist)

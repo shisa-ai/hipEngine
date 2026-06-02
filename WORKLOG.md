@@ -33157,3 +33157,45 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted docs-checklist compact-mode tests passed (`5` tests); docs-checklist compact-mode smoke passed with `docs_checklist_sha256=9a61a40b7a8be0ea387cdcb22dcfb484a9370f9305b424495c31985664b6fb65` and `status_integrity_sha256=8bedf92bbeefafcd550637e6fc0249173d01fbd3cf80571e877b7af3bf647843`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); the full correctness-status test file passed (`146` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`261` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=51ede427b29b37f28a09988e541618604a77691f2f6468e1b96a1551b567396b`, `handoff_summary_sha256=ddf663cd67351b3a13611c997e5186ced08614603969d21c719c875d4d930a8c`, and `readiness_summary_sha256=2ec3daf345f8ae9492d73ca9e376e421ba4f3c7e81165bb1845f5ccc35964ce7`. Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun readiness compact route integrity check
+
+Added status-integrity coverage for readiness/blocker compact output-mode mappings. `scripts/stepfun_correctness_status.py` now verifies that `handoff_summary.compact_output_modes` routes readiness summaries/gates, blocked gates, and blocker kinds to the expected top-level fields (`readiness_summary`, `readiness_summary_sha256`, `readiness_gates`, `readiness_gates_sha256`, `blocked_gates`, `blocked_gates_sha256`, `blocker_kinds`, `blocker_kinds_sha256`). A new drift regression mutates `readiness_summary_sha_only`, recomputes the enclosing handoff/readiness digests, and still fails source-artifact verification on `readiness_compact_output_modes`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, KV-backed token/logit artifact, e2e correctness, or Step throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_source_compact_mode_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_readiness_compact_mode_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_readiness_summary_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_readiness_gates_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_blocker_kinds_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_blocked_gates_only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+checks=s['status_integrity']['checks']
+assert checks['readiness_compact_output_modes'] is True
+m=s['handoff_summary']['compact_output_modes']
+assert m['readiness_summary_only']=='readiness_summary'
+assert m['readiness_summary_sha_only']=='readiness_summary_sha256'
+assert m['readiness_gates_only']=='readiness_gates'
+assert m['readiness_gates_sha_only']=='readiness_gates_sha256'
+assert m['blocked_gates_only']=='blocked_gates'
+assert m['blocked_gates_sha_only']=='blocked_gates_sha256'
+assert m['blocker_kinds_only']=='blocker_kinds'
+assert m['blocker_kinds_sha_only']=='blocker_kinds_sha256'
+print('readiness compact modes ok', s['readiness_summary_sha256'])
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+assert p['checks']['readiness_compact_output_modes'] is True
+print('status integrity ok')
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted readiness compact-route tests passed (`7` tests); readiness compact-mode smoke passed with `readiness_summary_sha256=6e59acc70f485758f4e69f0a17dd55c2e8497a0aab734d491dca20f1a4de1914` and `status_integrity_sha256=d6e808b82562ce2dbe88ded6b8093896767073d834e674215b964cca8025f287`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); the full correctness-status test file passed (`147` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`262` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=c4db422cef7a108002d75142d58e63b7ca1f1221a96a82e1c472e0deee4e8914`, `handoff_summary_sha256=ddf663cd67351b3a13611c997e5186ced08614603969d21c719c875d4d930a8c`, and `docs_checklist_sha256=9effdb25d2e5e7a379be98e41cb3d9ca1835ac62393f335450bc40aba4026515`. Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.
