@@ -485,6 +485,62 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
             "decode loop; no kernels are launched."
         ),
     }
+    blocker_summary = payload["kv_decode_blocker_summary"]
+    assert blocker_summary == {
+        "schema_version": 1,
+        "source": "kv_decode_run_plan",
+        "status": "blocked",
+        "ready": False,
+        "executable": False,
+        "next_action": "wire_streaming_decode_loop",
+        "blocker_count": 3,
+        "blocker_names": expected_streaming_blockers,
+        "blocker_names_sha256": expected_streaming_blockers_sha,
+        "first_blocker": payload["streaming_runner_blockers"][0],
+        "first_blocker_name": "streaming_decode_loop_not_wired",
+        "first_blocker_sha256": hashlib.sha256(
+            json.dumps(
+                payload["streaming_runner_blockers"][0],
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+        "upload_plan_ready": True,
+        "upload_entry_count": 6,
+        "upload_total_nbytes": 484,
+        "launch_blueprint_ready": True,
+        "launch_stage_count": 4,
+        "launch_operation_count": 135,
+        "per_layer_order": ["prompt_kv_write", "decode_kv_write", "decode_attention"],
+        "artifacts_needed": [
+            {
+                "name": "kv_kernel_trace_artifact",
+                "required_for": "kv_kernel_trace_artifact_missing",
+                "evidence": (
+                    "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, "
+                    "and gated decode-attention kernels for the canonical prompt"
+                ),
+            },
+            {
+                "name": "kv_backed_next_token_artifact",
+                "required_for": "kv_backed_next_token_artifact_missing",
+                "evidence": (
+                    "one-token decode artifact recording generated token/logit path from KV-backed "
+                    "runtime execution, not host-composed layer-prefix outputs"
+                ),
+            },
+        ],
+        "artifact_count": 2,
+        "no_claim_policy": {
+            "oracle_parity_claim_allowed": False,
+            "kv_backed_decode_claim_allowed": False,
+            "performance_claim_allowed": False,
+            "reason": (
+                "metadata-only KV decode planning is not a streaming decode execution and "
+                "does not generate a token/logit artifact"
+            ),
+        },
+    }
 
 
 def test_stepfun_kv_decode_run_plan_frees_partial_uploads_after_copy_failure() -> None:

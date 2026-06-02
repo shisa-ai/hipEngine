@@ -172,6 +172,58 @@
     "input_ids_dtype": "int32",
     "input_ids_nbytes": 92,
     "input_ids_sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
+    "kv_decode_blocker_summary": {
+      "artifact_count": 2,
+      "artifacts_needed": [
+        {
+          "evidence": "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt",
+          "name": "kv_kernel_trace_artifact",
+          "required_for": "kv_kernel_trace_artifact_missing"
+        },
+        {
+          "evidence": "one-token decode artifact recording generated token/logit path from KV-backed runtime execution, not host-composed layer-prefix outputs",
+          "name": "kv_backed_next_token_artifact",
+          "required_for": "kv_backed_next_token_artifact_missing"
+        }
+      ],
+      "blocker_count": 3,
+      "blocker_names": [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing"
+      ],
+      "blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
+      "executable": false,
+      "first_blocker": {
+        "name": "streaming_decode_loop_not_wired",
+        "ready": false,
+        "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+      },
+      "first_blocker_name": "streaming_decode_loop_not_wired",
+      "first_blocker_sha256": "bf84270b5778a93b79a2db04da1c932c7a05c9f224f5811de5280fe5bfb0d1b4",
+      "launch_blueprint_ready": true,
+      "launch_operation_count": 135,
+      "launch_stage_count": 4,
+      "next_action": "wire_streaming_decode_loop",
+      "no_claim_policy": {
+        "kv_backed_decode_claim_allowed": false,
+        "oracle_parity_claim_allowed": false,
+        "performance_claim_allowed": false,
+        "reason": "metadata-only KV decode planning is not a streaming decode execution and does not generate a token/logit artifact"
+      },
+      "per_layer_order": [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention"
+      ],
+      "ready": false,
+      "schema_version": 1,
+      "source": "kv_decode_run_plan",
+      "status": "blocked",
+      "upload_entry_count": 6,
+      "upload_plan_ready": true,
+      "upload_total_nbytes": 484
+    },
     "kv_decode_launch_operation_count": 135,
     "kv_decode_launch_per_layer_order": [
       "prompt_kv_write",

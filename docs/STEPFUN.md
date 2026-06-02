@@ -582,7 +582,9 @@ reporting.
   `hello` prompt (input token IDs with int32 byte-count/SHA-256 metadata, prompt
   positions, rendered prompt SHA-256, input-token/span-input device-upload helpers
   and a metadata-only combined upload plan with cleanup order, decode position/live-count,
-  stop IDs, KV dispatch keys, and resource-fit booleans), plus the planned per-layer KV launch
+  stop IDs, KV dispatch keys, resource-fit booleans, and a `kv_decode_blocker_summary`
+  that names the first runtime blocker, validated upload/launch prerequisites, required
+  trace/next-token artifacts, and the no-oracle/no-performance-claim policy), plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
   planned operations plus source-level `streaming_runner_blockers` naming the still-missing
   decode loop, kernel trace, and KV-backed next-token artifact), and includes a compact

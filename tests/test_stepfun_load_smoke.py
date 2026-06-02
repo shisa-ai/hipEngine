@@ -232,11 +232,32 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert run_plan["streaming_runner_blocker_count"] == 3
     assert run_plan["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
     assert run_plan["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
-    assert [blocker["name"] for blocker in run_plan["streaming_runner_blockers"]] == [
+    expected_blockers = [
         "streaming_decode_loop_not_wired",
         "kv_kernel_trace_artifact_missing",
         "kv_backed_next_token_artifact_missing",
     ]
+    assert [blocker["name"] for blocker in run_plan["streaming_runner_blockers"]] == expected_blockers
+    blocker_summary = run_plan["kv_decode_blocker_summary"]
+    assert blocker_summary["schema_version"] == 1
+    assert blocker_summary["status"] == "blocked"
+    assert blocker_summary["ready"] is False
+    assert blocker_summary["executable"] is False
+    assert blocker_summary["blocker_names"] == expected_blockers
+    assert blocker_summary["first_blocker_name"] == "streaming_decode_loop_not_wired"
+    assert blocker_summary["upload_plan_ready"] is True
+    assert blocker_summary["launch_operation_count"] == 135
+    assert blocker_summary["artifact_count"] == 2
+    assert blocker_summary["artifacts_needed"][0]["name"] == "kv_kernel_trace_artifact"
+    assert blocker_summary["no_claim_policy"] == {
+        "oracle_parity_claim_allowed": False,
+        "kv_backed_decode_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": (
+            "metadata-only KV decode planning is not a streaming decode execution and "
+            "does not generate a token/logit artifact"
+        ),
+    }
     assert plan["slot_paths"][:4] == [
         "root.token_embedding",
         "root.rope_freqs",
