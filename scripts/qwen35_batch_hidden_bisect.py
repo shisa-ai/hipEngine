@@ -5779,8 +5779,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-full-attn-layer-copy",
         choices=("batch", "per_row"),
-        default="per_row",
-        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row is the correctness-first default and blocks retained claims.",
+        default="batch",
+        help="Diagnostic full-attention layer-output handoff for c>N batch decode; batch is the correctness-first default with per-row output projection, while per_row remains an explicit row-copy diagnostic.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",
@@ -5791,8 +5791,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-post-attn-path",
         choices=("batch", "per_row"),
-        default="per_row",
-        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row is the correctness-first default and forces token-1 row kernels.",
+        default="batch",
+        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; batch is the correctness-first default after the per-row full-attention output/MoE boundary, while per_row remains available as a diagnostic.",
     )
     parser.add_argument(
         "--batch-prefill-linear-path",

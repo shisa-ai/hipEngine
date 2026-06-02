@@ -64019,3 +64019,25 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: broad per-row full-attention decode is no longer required for generated-token equality. Native full-attention input/QKV/context can run in the correctness default; remaining full-attention blockers are the native/fused full-attention output handoff, full-attention MoE, and post-attention add/RMSNorm. No retained/scaling claim.
 
 Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY native post-attention default after full-attention boundary split
+
+Narrowed the native full-attention correctness default further. Previous default used native full-attention input/QKV/context plus per-row full-attention output/layer-copy, per-row full-attention MoE, and per-row post-attention. Boundary splits show native post-attention and batch layer-copy can be restored when per-row full-attention output and per-row full-attention MoE remain active.
+
+GPU1 / RX 7900 XTX evidence:
+
+- c=2 boundary controls with selected-QKV/Z projection, native segmented state, batch-GEMV/Marlin linear output, per-row linear MoE, and native full attention:
+  - `output_moe_native_post`: `/tmp/hipengine-e2e-native-c2-512-128-selected-linear-native-full-output_moe_native_post.json` is green, prefixes `[137,137]`.
+  - `output_post_native_moe`: `/tmp/hipengine-e2e-native-c2-512-128-selected-linear-native-full-output_post_native_moe.json` is red, prefixes `[82,137]`.
+  - `output_native_moe_post_batch_copy`: `/tmp/hipengine-e2e-native-c2-512-128-selected-linear-native-full-output_native_moe_post_batch_copy.json` is green, prefixes `[137,137]`.
+  - `output_batch_output_moe_post`: `/tmp/hipengine-e2e-native-c2-512-128-selected-linear-native-full-output_batch_output_moe_post.json` is red, prefixes `[82,137]`.
+- The promoted narrower control, per-row full-attention output + per-row full-attention MoE with batch layer-copy and native post-attention, is green for all default equality shapes:
+  - c=2: `/tmp/hipengine-e2e-native-c2-512-128-selected-linear-native-full-perrow-output-moe-native-post-batch-copy.json`, prefixes `[137,137]`.
+  - c=4: `/tmp/hipengine-e2e-native-c4-512-128-selected-linear-native-full-perrow-output-moe-native-post-batch-copy.json`, prefixes `[137,137,137,137]`.
+  - c=8: `/tmp/hipengine-e2e-native-c8-512-128-selected-linear-native-full-perrow-output-moe-native-post-batch-copy.json`, prefixes `[137,137,137,137,137,137,137,137]`.
+- After promoting retained/hidden-bisect defaults to `batch_decode_full_attention_layer_copy=batch` and `batch_decode_post_attention_path=batch`, the primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with metric `137`; workload now records `batch_decode_full_attention_output_path=per_row`, `batch_decode_full_attention_layer_copy=batch`, `batch_decode_full_attention_moe_path=per_row_c1`, and `batch_decode_post_attention_path=batch`.
+- Default matrix `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` remains `status=passed`, all rows min equal-prefix `137`, and full-attention decode path `native_batch`.
+
+Conclusion: post-attention add/RMSNorm and full-attention layer-copy are no longer correctness-default fallbacks. Remaining full-attention blockers are native/fused full-attention output and grouped-compact full-attention MoE. No retained/scaling claim.
+
+Validation: focused compile/tests passed (`python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

@@ -3774,13 +3774,13 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_full_attn_output_path", "per_row") == "batch_gemv" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] = (
-        "1" if getattr(args, "batch_decode_full_attn_layer_copy", "per_row") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_full_attn_layer_copy", "batch") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
         "1" if getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1") == "per_row_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] = (
-        "1" if getattr(args, "batch_decode_post_attn_path", "per_row") == "per_row" else "0"
+        "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
     )
     projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
     if projection_dispatch_artifact is not None:
@@ -4221,9 +4221,9 @@ def _build_payload(
             "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
             "batch_decode_attention_suffix_order": str(getattr(args, "batch_decode_attn_suffix_order", "phased")),
             "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "per_row")),
-            "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "per_row")),
+            "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "per_row_c1")),
-            "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "per_row")),
+            "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
         },
         "benchmark_rollup": {
             "artifact_path": str(args.json) if args.json is not None else None,
@@ -4402,8 +4402,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-full-attn-layer-copy",
         choices=("batch", "per_row"),
-        default="per_row",
-        help="Diagnostic full-attention layer-output handoff for c>N batch decode; per_row is the correctness-first default and blocks retained claims.",
+        default="batch",
+        help="Diagnostic full-attention layer-output handoff for c>N batch decode; batch is the correctness-first default with per-row output projection, while per_row remains an explicit row-copy diagnostic.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",
@@ -4414,8 +4414,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-post-attn-path",
         choices=("batch", "per_row"),
-        default="per_row",
-        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row is the correctness-first default and forces token-1 row kernels.",
+        default="batch",
+        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; batch is the correctness-first default after the per-row full-attention output/MoE boundary, while per_row remains available as a diagnostic.",
     )
     parser.add_argument(_RETAINED_GATE_FLAGS[0], type=Path, help="c=1 baseline artifact used for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
