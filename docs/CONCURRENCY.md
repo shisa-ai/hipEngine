@@ -295,6 +295,14 @@ What is still not green:
   c=8 correctness, and generated-token equality green, but remains blocked by
   projection-dispatch/other retained gates, so no throughput claim is retained
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/summary.json`).
+  A focused projection-dispatch evidence artifact now measures the native c=8
+  `batch` projection candidate against the explicit selected-c1/row-GEMV
+  projection baseline (`1.1446x` aggregate and per-request) and the retained
+  runner selects `projection_dispatch.selected_candidate=batch` with path
+  `benchmark_accepted_caware_projection` when the artifact is supplied; remaining
+  retained blockers are batch-level eligibility/provenance/observability rather
+  than missing projection candidate evidence
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
