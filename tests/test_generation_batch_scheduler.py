@@ -3559,6 +3559,7 @@ def test_qwen35_batch_equality_matrix_dry_run_records_c2_c4_c8(tmp_path: Path, m
     assert payload["status"] == "planned"
     assert payload["performance_claim"] is False
     assert payload["generated_equality_passed"] is False
+    assert payload["retained_ready"] is False
     assert payload["device"]["env"]["HIP_VISIBLE_DEVICES"] == "1"
     assert payload["workload"]["batch_sizes"] == [2, 4, 8]
     assert [row["batch_size"] for row in payload["commands"]] == [2, 4, 8]
@@ -3581,6 +3582,21 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
                     "batch_decode_full_attention_path": "per_row",
                     "native_caware_decode": False,
                 },
+                "performance_claim": False,
+                "decision": {"accepted": False, "reason": "missing profiler evidence"},
+                "execution": {
+                    "batch_execution": {
+                        "native_caware_decode": False,
+                        "blockers": ["full-attention decode used a per-row fallback"],
+                        "decode_execution": {
+                            "native_caware_decode": False,
+                            "full_attention_decode_path": "per_row_context_fallback",
+                            "linear_attention_projection_path": "native_batch",
+                            "moe_decode_path": "mixed_grouped_compact_with_per_row_linear_and_full_attention_fallback",
+                            "blockers": ["linear-attention decode forced to per-row diagnostic path"],
+                        },
+                    }
+                },
                 "correctness": {
                     "generated_token_equality": {
                         "passed": True,
@@ -3596,11 +3612,20 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
     summary = equality_matrix._equality_summary(artifact_path)
 
     assert summary["passed"] is True
+    assert summary["retained_ready"] is False
     assert summary["retained_artifact_status"] == "blocked"
+    assert summary["performance_claim"] is False
     assert summary["min_equal_prefix_tokens"] == 137
     assert summary["prefix_lengths"] == [137, 137]
     assert summary["workload"]["batch_decode_linear_path"] == "per_row"
     assert summary["workload"]["batch_decode_full_attention_path"] == "per_row"
+    assert summary["decode_execution"]["full_attention_decode_path"] == "per_row_context_fallback"
+    assert summary["decode_execution"]["linear_attention_projection_path"] == "native_batch"
+    assert summary["retained_blockers"] == [
+        "full-attention decode used a per-row fallback",
+        "linear-attention decode forced to per-row diagnostic path",
+        "missing profiler evidence",
+    ]
 
 
 def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -63829,3 +63829,19 @@ Result: `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` reports `statu
 Primary c=2 verifier refresh `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with `prefix_lengths=[137,137]`, `workload.batch_decode_linear_path=per_row`, and `workload.batch_decode_full_attention_path=per_row`. The retained artifacts all exit with return code 1/status `blocked` because linear/full-attention per-row correctness fallbacks are active, so this is not a retained/scaling claim. Next step: profiler/scaling evidence and native batch linear/full-attention/projection closure without non-retained per-row fallbacks.
 
 Validation: targeted equality-matrix CPU tests pass; required guard passed with the expanded pytest bundle (`403 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY equality matrix retained-readiness blockers
+
+Extended `scripts/qwen35_batch_equality_matrix.py` so each child retained artifact summary now records `retained_ready`, `performance_claim`, retained/decode blockers, and compact decode path metadata. The top-level matrix also reports `retained_ready=false` unless every child artifact is accepted for retained/performance use. This keeps the green generated-token equality matrix from being mistaken for a retained/scaling claim while per-row fallback defaults are active.
+
+GPU1 / RX 7900 XTX evidence after the change:
+
+- Correctness-first fallback matrix `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` remains `status=passed`, `generated_equality_passed=true`, and now `retained_ready=false`.
+  - c=2 prefixes `[137,137]`, c=4 `[137,137,137,137]`, c=8 `[137,137,137,137,137,137,137,137]`.
+  - Each row records `workload.batch_decode_linear_path=per_row`, `workload.batch_decode_full_attention_path=per_row`, `native_caware_decode=false`, and blockers including the per-row full-attention fallback.
+- Opt-in native-batch comparison `/tmp/hipengine-e2e-native-c2-c4-c8-equality-native-batch-matrix.json` is not green: c=2 `[82,137]`, c=4 `[82,137,137,11]`, c=8 `[82,137,137,11,137,11,40,137]` with `native_caware_decode=true`. A preceding c=2-only native-batch matrix artifact briefly passed at `[137,137]`, so native batch equality is not yet stable enough to promote back to the default path.
+- Primary c=2 verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green under the fallback defaults: `prefix_lengths=[137,137]`, `generated_token_equality.passed=true`, `status=blocked`.
+
+Conclusion: the equality gate is reproducible for c=2/c=4/c=8 under fallback defaults, and the matrix now carries explicit retained-readiness blockers. Native batch linear/full-attention remains the retained blocker; no performance/scaling claim is made.
+
+Validation: focused equality-matrix tests pass; required guard passed (`403 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

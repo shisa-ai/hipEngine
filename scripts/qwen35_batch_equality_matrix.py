@@ -87,6 +87,17 @@ def _prefix_lengths_from_sequences(eq: dict[str, Any]) -> list[int]:
     return prefixes
 
 
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
+
+
+def _append_unique(strings: list[str], value: str) -> None:
+    if value and value not in strings:
+        strings.append(value)
+
+
 def _equality_summary(artifact_path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(artifact_path.read_text(encoding="utf-8"))
@@ -95,10 +106,28 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
             "passed": False,
             "artifact_load_error": str(exc),
             "artifact_path": str(artifact_path),
+            "retained_ready": False,
         }
     eq = payload.get("correctness", {}).get("generated_token_equality", {})
     if not isinstance(eq, dict):
         eq = {}
+    workload = payload.get("workload", {})
+    if not isinstance(workload, dict):
+        workload = {}
+    batch_execution = payload.get("execution", {}).get("batch_execution", {})
+    if not isinstance(batch_execution, dict):
+        batch_execution = {}
+    decode_execution = batch_execution.get("decode_execution", {})
+    if not isinstance(decode_execution, dict):
+        decode_execution = {}
+    blockers: list[str] = []
+    for blocker in _string_list(batch_execution.get("blockers")):
+        _append_unique(blockers, blocker)
+    for blocker in _string_list(decode_execution.get("blockers")):
+        _append_unique(blockers, blocker)
+    decision = payload.get("decision")
+    if isinstance(decision, dict) and decision.get("accepted") is not True and isinstance(decision.get("reason"), str):
+        _append_unique(blockers, decision["reason"])
     prefix_lengths = eq.get("prefix_lengths")
     if not (
         isinstance(prefix_lengths, list)
@@ -109,17 +138,30 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
     if not isinstance(first_mismatch_indices, list):
         first_mismatch_indices = []
     passed = bool(eq.get("passed") is True)
+    retained_ready = bool(payload.get("status") == "accepted" and payload.get("performance_claim") is True)
     return {
         "passed": passed,
+        "retained_ready": retained_ready,
         "retained_artifact_status": payload.get("status"),
+        "performance_claim": payload.get("performance_claim"),
         "artifact_path": str(artifact_path),
         "min_equal_prefix_tokens": min(prefix_lengths) if prefix_lengths else 0,
         "prefix_lengths": prefix_lengths,
         "first_mismatch_indices": first_mismatch_indices,
+        "retained_blockers": blockers,
         "workload": {
-            "batch_decode_linear_path": payload.get("workload", {}).get("batch_decode_linear_path"),
-            "batch_decode_full_attention_path": payload.get("workload", {}).get("batch_decode_full_attention_path"),
-            "native_caware_decode": payload.get("workload", {}).get("native_caware_decode"),
+            "batch_decode_linear_path": workload.get("batch_decode_linear_path"),
+            "batch_decode_full_attention_path": workload.get("batch_decode_full_attention_path"),
+            "native_caware_decode": workload.get("native_caware_decode"),
+        },
+        "decode_execution": {
+            "native_caware_decode": decode_execution.get("native_caware_decode"),
+            "linear_attention_decode_path": decode_execution.get("linear_attention_decode_path"),
+            "linear_attention_projection_path": decode_execution.get("linear_attention_projection_path"),
+            "linear_attention_state_path": decode_execution.get("linear_attention_state_path"),
+            "linear_attention_output_path": decode_execution.get("linear_attention_output_path"),
+            "full_attention_decode_path": decode_execution.get("full_attention_decode_path"),
+            "moe_decode_path": decode_execution.get("moe_decode_path"),
         },
     }
 
@@ -189,12 +231,16 @@ def _build_summary(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
     else:
         equality_passed = bool(rows) and all(row.get("generated_token_equality", {}).get("passed") is True for row in rows)
         status = "passed" if equality_passed else "failed"
+    retained_ready = bool(rows) and all(
+        row.get("generated_token_equality", {}).get("retained_ready") is True for row in rows
+    )
     return {
         "schema": 1,
         "created_at": _utc_now(),
         "status": status,
         "performance_claim": False,
         "generated_equality_passed": equality_passed,
+        "retained_ready": retained_ready,
         "device": {"env": {"HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES")}},
         "workload": {
             "batch_sizes": list(args.batch_sizes),
