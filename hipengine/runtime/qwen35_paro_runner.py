@@ -4320,11 +4320,14 @@ class Qwen35ParoResidentSession:
                         per_row_contexts = None
                         per_row_append_contexts = None
                         if (
-                            force_per_row_full_attention_context
-                            or force_per_row_full_attention_kv_append
-                            or force_per_row_full_attention_suffix
-                            or force_per_row_full_attention_scratch
-                            or force_per_row_full_attention_persistent_scratch
+                            not force_per_row_full_attention_skip_batch_setup
+                            and (
+                                force_per_row_full_attention_context
+                                or force_per_row_full_attention_kv_append
+                                or force_per_row_full_attention_suffix
+                                or force_per_row_full_attention_scratch
+                                or force_per_row_full_attention_persistent_scratch
+                            )
                         ):
                             per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
                             per_row_append_contexts = [] if force_per_row_full_attention_kv_append or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None

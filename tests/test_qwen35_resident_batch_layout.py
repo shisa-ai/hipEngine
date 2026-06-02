@@ -1954,15 +1954,21 @@ def test_qwen35_resident_full_attention_native_branch_can_use_persistent_c1_scra
     session._batch_full_spans = lambda layer_id, *, rows, positions, slots: pytest.fail(
         "persistent c1 skip-batch-setup path must not build batch full-attention spans"
     )
+    slot_span_calls: list[int] = []
     session._slot_full_cache = lambda layer_id, slot: (
         Tensor.from_handle(0x5100 + int(slot) * 0x100, (1,), DType.BF16, device),
         Tensor.from_handle(0x6100 + int(slot) * 0x100, (1,), DType.BF16, device),
     )
-    session._slot_full_spans = lambda layer_id, slot: (
-        Tensor.from_handle(0x7100 + int(slot) * 0x100, (1,), DType.INT64, device),
-        SimpleNamespace(slot=int(slot), span="row_append"),
-        SimpleNamespace(slot=int(slot), span="row_decode"),
-    )
+
+    def slot_full_spans(layer_id, slot):
+        slot_span_calls.append(int(slot))
+        return (
+            Tensor.from_handle(0x7100 + int(slot) * 0x100, (1,), DType.INT64, device),
+            SimpleNamespace(slot=int(slot), span="row_append"),
+            SimpleNamespace(slot=int(slot), span="row_decode"),
+        )
+
+    session._slot_full_spans = slot_full_spans
     persistent_attention = SimpleNamespace(name="persistent_attention")
     persistent_moe = SimpleNamespace(name="persistent_moe")
     session.full_scratch = {0: persistent_attention}
@@ -2009,6 +2015,7 @@ def test_qwen35_resident_full_attention_native_branch_can_use_persistent_c1_scra
     assert all(call[1]["attention_scratch"] is persistent_attention for call in state.c1_calls)
     assert all(call[1]["moe_scratch"] is persistent_moe for call in state.c1_calls)
     assert [call[1]["append_spans"].slot for call in state.c1_calls] == [0, 2]
+    assert slot_span_calls == [0, 2]
     assert copies == [
         (0x2000, 0x9100, session.hidden_nbytes, 5),
         (0x2000 + session.hidden_nbytes, 0x9200, session.hidden_nbytes, 5),

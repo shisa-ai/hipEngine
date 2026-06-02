@@ -63754,3 +63754,22 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: `_full_cache_all_slots`, `_batch_full_spans`, and native full-attention batch scratch/MoE scratch allocation are not the sole remaining difference. The branch can run row c1 full-attention with persistent c1 scratch and no native batch setup yet still diverges from the outer `--batch-decode-full-attn-path per_row` fallback, so the remaining discriminator is likely another branch-level control-flow difference or interaction with the full-attention diagnostic env flags.
 
 Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention minimal persistent branch diagnostic
+
+Tightened the native-branch persistent c1 no-batch-setup diagnostic so it no longer prebuilds unused per-row full-attention context/append diagnostic lists before entering the row c1 loop. This makes `--batch-decode-attn-scratch-path persistent_c1_no_batch_setup` closer to the outer `--batch-decode-full-attn-path per_row` fallback: no `_full_cache_all_slots`, no `_batch_full_spans`, no batch full-attention scratch, no batch MoE scratch, no unused per-row diagnostic list prebuild, and direct row-output copies to `next_hidden`.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native branch, minimal full-attention diagnostics (linear diagnostics only) plus persistent c1 no-batch-setup:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-min-persistent-c1-no-batch-setup.json`
+  - `batch_decode_full_attention_path=native_batch`, `batch_decode_attention_scratch_path=persistent_c1_no_batch_setup`; all other full-attention subdiagnostics at defaults.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Matched outer full-attention per-row fallback with the same minimal full-attention diagnostics and linear diagnostics:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-minimal.json`
+  - Green generated-token equality: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `generated_token_equality.passed=true`.
+- Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, no performance claim.
+
+Conclusion: unused per-row diagnostic-list construction is not the blocker. The evidence is now sharper: two row-c1 full-attention paths with matching linear diagnostics differ only by the outer branch choice (`native_batch` branch with persistent c1 no-batch-setup still fails; `per_row` branch passes). The next likely discriminator is a subtle branch-control side effect, such as `native_full_attention_layers/full_attention_decode_path` accounting or post-branch metadata/control that affects subsequent decode steps despite appearing metadata-only.
+
+Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
