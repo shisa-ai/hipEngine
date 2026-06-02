@@ -1,0 +1,229 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-current-profile-evidence/summary.json",
+  "source_artifact_path": "/tmp/hipengine-e2e-native-c2-profiled-projection-iter107b.json",
+  "created_at": "2026-06-02T21:18:21.511647Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "Current-commit c=2 rocprof diagnostic after generated-token equality and projection dispatch are green; retained promotion remains blocked by aggregate_vs_c1<1.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "caddb584538e82781506c4f0834988affa38446f",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "rows": 2,
+    "shape": "c=2 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "correctness": {
+    "generated_token_equality_passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "min_equal_prefix_tokens": 137
+  },
+  "projection_dispatch": {
+    "rows": 2,
+    "selected_candidate": "batch",
+    "path": "benchmark_accepted_caware_projection",
+    "selection": {
+      "layer": "linear",
+      "quant": "w4_paro",
+      "variant": "batch"
+    },
+    "throughput_claim_eligible": true,
+    "blockers": [],
+    "evidence": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json",
+      "aggregate_vs_row_gemv": 1.1144871753675365,
+      "per_request_vs_row_gemv": 1.1144871753675365,
+      "accepted": true
+    }
+  },
+  "measurements": {
+    "profiled_decode_tok_s_aggregate": 86.36087966658233,
+    "profiled_decode_tok_s_per_request": 43.18043983329117,
+    "unprofiled_projection_check_decode_tok_s_aggregate": 104.20504173451897,
+    "unprofiled_projection_check_decode_tok_s_per_request": 52.102520867259486,
+    "c1_decode_tok_s_aggregate": 134.1118139970783,
+    "serial_bridge_decode_tok_s_aggregate": 79.85063957880106,
+    "scaling_ratios": {
+      "aggregate_vs_c1": 0.7770012098769251,
+      "per_request_vs_c1": 0.38850060493846256,
+      "aggregate_vs_serial_bridge": 1.3049994625488708,
+      "per_request_vs_serial_bridge": 1.3049994625488708
+    }
+  },
+  "profiler": {
+    "raw_trace_tmp_path": "/tmp/hipengine-e2e-native-c2-profile-iter107b/epyc/169428_kernel_trace.csv",
+    "raw_trace_sha256": "b951368017dbe3cca588e829891779ea6d56b3c1dd4ac568f9fe067b41940c9f",
+    "raw_trace_size_bytes": 127844666,
+    "raw_trace_not_retained_reason": "raw rocprof CSV is large and intentionally left under /tmp; this compact artifact records aggregate evidence only",
+    "total_kernel_duration_ns": 4912876339,
+    "unique_kernel_count": 61,
+    "total_kernel_dispatches": 472539,
+    "category_estimates": {
+      "attention": {
+        "duration_ns": 993100232,
+        "share": 0.20214232223116413
+      },
+      "moe_router_gdn": {
+        "duration_ns": 1031388939,
+        "share": 0.2099358640095419
+      },
+      "other": {
+        "duration_ns": 86570556,
+        "share": 0.017621155108825955
+      },
+      "projection_norm": {
+        "duration_ns": 2663624326,
+        "share": 0.5421720682963846
+      },
+      "runtime_copy_fill": {
+        "duration_ns": 134859603,
+        "share": 0.02745023356876315
+      },
+      "sampling": {
+        "duration_ns": 3332683,
+        "share": 0.0006783567853202584
+      }
+    },
+    "top_kernels": [
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        "duration_ns": 971758509,
+        "calls": 4080,
+        "share": 0.19779828392704837,
+        "category": "attention"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "duration_ns": 327506735,
+        "calls": 29920,
+        "share": 0.06666293071538269,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 327105965,
+        "calls": 16320,
+        "share": 0.06658135528536047,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "duration_ns": 304879481,
+        "calls": 412,
+        "share": 0.06205722675732099,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "duration_ns": 289767599,
+        "calls": 16320,
+        "share": 0.05898125232661184,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "duration_ns": 236492428,
+        "calls": 4080,
+        "share": 0.04813726454351124,
+        "category": "moe_router_gdn"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "duration_ns": 231758774,
+        "calls": 24480,
+        "share": 0.04717374466770596,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "duration_ns": 211700956,
+        "calls": 21760,
+        "share": 0.043091041050524595,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 191555071,
+        "calls": 32970,
+        "share": 0.0389904116819253,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "duration_ns": 171519748,
+        "calls": 90,
+        "share": 0.03491228684883045,
+        "category": "moe_router_gdn"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "duration_ns": 170171626,
+        "calls": 32760,
+        "share": 0.03463788100040757,
+        "category": "moe_router_gdn"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 142669904,
+        "calls": 28770,
+        "share": 0.02903999493482875,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 125603602,
+        "calls": 120,
+        "share": 0.02556620466974062,
+        "category": "projection_norm"
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+        "duration_ns": 105763300,
+        "calls": 16440,
+        "share": 0.021527775726902943,
+        "category": "moe_router_gdn"
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+        "duration_ns": 103046717,
+        "calls": 8160,
+        "share": 0.020974824092758422,
+        "category": "moe_router_gdn"
+      }
+    ]
+  },
+  "source_artifacts": {
+    "projection_evidence": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json",
+    "projection_check": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/retained-projection-check-c2.json",
+    "scaling_blocker": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/scaling-blocker-c2.json",
+    "c1_baseline": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/native-baseline-c1.json",
+    "serial_bridge": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/serial-bridge-c2.json"
+  },
+  "commands": {
+    "profiled_command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-e2e-native-c2-profile-iter107b -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json --json /tmp/hipengine-e2e-native-c2-profiled-projection-iter107b.json"
+  },
+  "interpretation": [
+    "Current c=2 remains generated-token equal under rocprof in this rerun and uses projection_dispatch.selected_candidate=batch.",
+    "Unprofiled c=2 remains faster than serial bridge but slower than c=1, so no retained c=2 performance claim is made.",
+    "The largest traced aggregate kernel bucket is qwen35_paged_full_attn_decode_context_tensor_batch_kernel; the trace includes whole-process validation kernels, so top-kernel shares are diagnostic rather than a retained decode-only profile."
+  ],
+  "notes": [
+    "software.hipengine_commit/hipcc_version are normalized from git/hipcc-version provenance because rocprofv3 interleaved warning lines into the profiled process environment command output."
+  ]
+}
