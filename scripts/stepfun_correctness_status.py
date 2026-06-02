@@ -238,6 +238,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--next-action-commands-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands for command handoff polling. Overrides "
+            "--summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--next-action-commands-sha-only",
         action="store_true",
         help=(
@@ -2310,6 +2318,7 @@ def _handoff_summary(
             ),
             "text_resource_source_only": "source_artifacts.text_resource",
             "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
+            "next_action_commands_only": "next_action_commands",
             "next_action_commands_sha_only": "next_action_commands_sha256",
             "blocker_kinds_only": "blocker_kinds",
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
@@ -2870,6 +2879,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.next_action_commands_sha_only:
         result = status["next_action_commands_sha256"]
+    elif args.next_action_commands_only:
+        result = status["next_action_commands"]
     elif args.readiness_gates_sha_only:
         result = status["readiness_gates_sha256"]
     elif args.readiness_gates_only:

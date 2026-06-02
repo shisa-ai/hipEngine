@@ -1299,6 +1299,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ),
         "text_resource_source_only": "source_artifacts.text_resource",
         "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
+        "next_action_commands_only": "next_action_commands",
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
@@ -3289,6 +3290,59 @@ def test_stepfun_correctness_status_text_resource_source_outputs(
     assert captured.err == ""
 
 
+def test_stepfun_correctness_status_next_action_commands_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "next-action-commands.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--readiness-summary-sha-only",
+            "--source-artifacts-sha-only",
+            "--next-action-commands-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["next_action_commands"]
+    assert payload["oracle_parity_blocked"]["oracle_helper_refresh_command"].startswith(
+        "python3 scripts/stepfun_llamacpp_oracle.py"
+    )
+    assert payload["kv_backed_decode_not_wired"][
+        "resource_plan_refresh_command"
+    ].startswith("python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan")
+    assert payload["handoff_integrity"]["source_artifacts_verify_command"].startswith(
+        "python3 scripts/stepfun_correctness_status.py --verify-source-artifacts"
+    )
+
+
 def test_stepfun_correctness_status_next_action_commands_sha_only(
     capsys,
     tmp_path: Path,
@@ -3491,6 +3545,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "text_resource_source_only": "source_artifacts.text_resource",
         "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
+        "next_action_commands_only": "next_action_commands",
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",

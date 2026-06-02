@@ -31878,3 +31878,36 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: compact text-resource source-only/SHA-only outputs and their `--verify-source-artifacts` variants returned matching SHA `b5ce6a8636b80a71c16ccc10b339463bb91c365cf67e3ea07060248280491450`; targeted status-helper tests passed; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`227` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun next-action command compact output
+
+Added a compact correctness-status output for the full remaining handoff command bundle. `scripts/stepfun_correctness_status.py` now supports `--next-action-commands-only`, complementing the existing `--next-action-commands-sha-only`, so automation can poll the exact oracle rerun, KV resource refresh, status refresh, and provenance-verification commands without parsing the full status JSON. Updated compact-output mode metadata, focused status-helper tests, `docs/STEPFUN.md`, and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`), with the P11 decode runner and llama.cpp oracle comparison still partial; no e2e correctness or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_next_action_commands_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_next_action_commands_sha_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_summary_only_writes_handoff
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json, subprocess
+from pathlib import Path
+status_path = Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json')
+status = json.loads(status_path.read_text())
+payload = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--next-action-commands-only',
+]))
+sha = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--next-action-commands-sha-only',
+]))
+assert payload == status['next_action_commands']
+assert sha == status['next_action_commands_sha256']
+assert status['handoff_summary']['compact_output_modes']['next_action_commands_only'] == 'next_action_commands'
+print('compact next action commands ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status-helper tests passed; compact `--next-action-commands-only` matched `status['next_action_commands']` and `--next-action-commands-sha-only` returned SHA `b2ffb1b9892c802788deb70c20c0aa0da9102125f72e60ed3a2e255e31bcd7ba`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`228` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
