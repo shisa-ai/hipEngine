@@ -2732,10 +2732,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
     "schema_version": 1,
-    "source_artifacts_sha256": "abb6ad4a65c7f450d50cadb32158ae97fcca17f0518aeb5c82221124b0e3ba7a",
+    "source_artifacts_sha256": "14c0385820bb066464f6772d1b1f07a4174a03d6ebcd55b6771d30da4c9967ea",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "90be1890f534ae977e11dd7d52b83e8cf92b3f610ba0fd9ae44d48933e7dee05",
+  "readiness_summary_sha256": "f0231d3f5070ea1f3153e0b04821faddbd3e123dc2e95bce3c863852191eac64",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2854,8 +2854,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "6b760efa675b96e672b23632f24b565e3b4b306df5208777507bbfcecbc0c13f",
-      "size_bytes": 67256
+      "sha256": "491b4e955c3aed234856a5a47c164523975898f9599c6140cf256576d02464a4",
+      "size_bytes": 67299
     },
     "oracle": {
       "exists": true,
@@ -2882,7 +2882,7 @@
       "size_bytes": 52292
     }
   },
-  "source_artifacts_sha256": "abb6ad4a65c7f450d50cadb32158ae97fcca17f0518aeb5c82221124b0e3ba7a",
+  "source_artifacts_sha256": "14c0385820bb066464f6772d1b1f07a4174a03d6ebcd55b6771d30da4c9967ea",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
@@ -2942,12 +2942,13 @@
       "schema_versions_sha256": true,
       "source_artifacts_compact_output_modes": true,
       "source_artifacts_sha256": true,
+      "status_compact_output_modes": true,
       "status_refresh_atomic_output_command_metadata": true,
       "status_refresh_atomic_output_handoff_mirrors": true
     },
     "failed_checks": []
   },
-  "status_integrity_sha256": "99a9c77d89fe2a24fee679b5003ffa1cf6088db6b3c361bf2abdb76f43d1d3c7",
+  "status_integrity_sha256": "352c1528083e9ba7b200157a7a224f67fd9750479e6e014fec055be5983ca692",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 }

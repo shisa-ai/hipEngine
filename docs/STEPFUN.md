@@ -825,8 +825,9 @@ reporting.
   blocker-kind and blocked-gate mirrors across the
   compact top-level fields, handoff summary, work queue, and remaining-blocker report,
   the schema-version payload digest, recommended-command list digest, command length/SHA metadata inside the work queue,
-  compact recommended-command records, and handoff-integrity verification commands,
-  plus the compact recommended-command list mirror against the full work queue. The status artifact now persists `status_integrity` plus
+  compact recommended-command records, handoff-integrity verification commands,
+  status/handoff compact output-mode mappings, plus the compact recommended-command
+  list mirror against the full work queue. The status artifact now persists `status_integrity` plus
   `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the
   digest for top-level embedded-check polling, and source-artifact verification
   now checks that the persisted integrity payload/SHA still match the recomputed

@@ -1490,6 +1490,21 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(handoff_summary, dict)
             and status.get("handoff_summary_sha256") == _stable_json_sha256(handoff_summary)
         ),
+        "status_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("summary_only") == "handoff_summary"
+            and compact_output_modes.get("handoff_summary_sha_only")
+            == "handoff_summary_sha256"
+            and compact_output_modes.get("status_integrity_only") == "status_integrity"
+            and compact_output_modes.get("status_integrity_sha_only")
+            == "status_integrity_sha256"
+            and compact_output_modes.get("status_integrity_failures_only")
+            == "status_integrity.failed_checks"
+            and compact_output_modes.get("persisted_status_integrity_only")
+            == "persisted_status_integrity"
+            and compact_output_modes.get("persisted_status_integrity_failures_only")
+            == "persisted_status_integrity.failed_checks"
+        ),
         "readiness_summary_sha256": (
             isinstance(readiness_summary, dict)
             and status.get("readiness_summary_sha256") == _stable_json_sha256(readiness_summary)
