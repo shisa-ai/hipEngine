@@ -63911,3 +63911,25 @@ GPU1 / RX 7900 XTX controls:
   - `batch_gemv_selected_ab`: `/tmp/hipengine-e2e-native-c2-512-128-batch_gemv_selected_ab-selected-state-moe-full-per-row.json` → `[137,104]`
 
 Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with selected-c1 projection/state/MoE diagnostics plus per-row full attention (`[137,137]`). Conclusion: selected-c1 linear projection is still required for the correctness-default equality gate. Do not replace it with native/batch, batch-GEMV, QKV/Z-only, or A/B-only projection paths yet. No performance/scaling claim.
+
+## 2026-06-02 — CONCURRENCY default native segmented linear state
+
+Moved the correctness-first retained/hidden default one step closer to native linear decode: selected-c1 linear projections and selected-c1 linear output remain forced, but the default linear conv/GDN/recurrent state path is now native `batch_segments` instead of selected-c1 state replay.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native-state equality matrix `/tmp/hipengine-e2e-native-c2-c4-c8-selected-proj-native-state-selected-out-perrow-moe-full-per-row-matrix.json` passed with selected-c1 projections/output, native segmented state, per-row c1 linear MoE, and per-row full attention:
+  - c=2: `[137,137]`
+  - c=4: `[137,137,137,137]`
+  - c=8: `[137,137,137,137,137,137,137,137]`
+- Default matrix after the change `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` remains generated-equality green and now reports `linear_attention_state_path=native_segments` in child decode metadata for c=2/c=4/c=8.
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains `status=blocked`, `generated_token_equality.passed=true`, and `[137,137]` with `workload.batch_decode_linear_state_path=batch_segments`, `workload.batch_decode_linear_output_path=selected_c1`, and decode metadata `linear_attention_state_path=native_segments`.
+- Negative control with native/batch linear projections under the new native-state + selected-output default shape failed at `/tmp/hipengine-e2e-native-c2-c4-c8-native-proj-native-state-selected-out-perrow-moe-full-per-row-matrix.json`:
+  - c=2: `[137,104]`
+  - c=4: `[137,104,137,116]`
+  - c=8: `[137,104,137,116,137,11,40,137]`
+- Batch-GEMV linear output under selected projections/state/MoE and per-row full attention failed at `/tmp/hipengine-e2e-native-c2-c4-c8-selected-proj-state-moe-batch-gemv-out-full-per-row-matrix.json` with c=2 `[137,104]`, c=4 `[137,104,137,118]`, c=8 `[137,104,137,118,137,11,40,137]`.
+
+Conclusion: selected-c1 state replay is no longer required for the correctness-default equality gate. The active linear blockers are still selected-c1 projections and selected-c1 output; per-row c1 linear MoE and per-row full attention also remain non-retained. No performance/scaling claim.
+
+Validation: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py scripts/qwen35_batch_equality_matrix.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q` passed. Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

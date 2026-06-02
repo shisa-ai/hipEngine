@@ -5683,7 +5683,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--batch-decode-linear-path",
         choices=("batch_segments", "per_row"),
         default="batch_segments",
-        help="Linear-attention decode path for c>N batch decode; batch_segments is the correctness-first default when paired with selected-c1 projection/state/MoE diagnostics, while per_row remains available as a broader row replay fallback.",
+        help="Linear-attention decode path for c>N batch decode; batch_segments is the correctness-first default when paired with selected-c1 projection/output and per-row MoE diagnostics, while per_row remains available as a broader row replay fallback.",
     )
     parser.add_argument(
         "--batch-decode-linear-projection-path",
@@ -5694,8 +5694,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-linear-state-path",
         choices=("batch_segments", "selected_c1"),
-        default="selected_c1",
-        help="Diagnostic linear-attention conv/GDN/state path for c>N batch decode; selected_c1 is the correctness-first default and forces token-1 state kernels per row.",
+        default="batch_segments",
+        help="Diagnostic linear-attention conv/GDN/state path for c>N batch decode; batch_segments is the correctness-first default, while selected_c1 forces token-1 state kernels per row.",
     )
     parser.add_argument(
         "--batch-decode-linear-moe-path",
@@ -5706,8 +5706,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-decode-linear-output-path",
         choices=("auto", "batch", "batch_gemv", "selected_c1"),
-        default="auto",
-        help="Diagnostic linear-attention output projection path for c>N batch decode; auto follows selected-c1 state replay for compatibility.",
+        default="selected_c1",
+        help="Diagnostic linear-attention output projection path for c>N batch decode; selected_c1 is the correctness-first default with native segmented state, while auto follows selected-c1 state replay for compatibility.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-path",
