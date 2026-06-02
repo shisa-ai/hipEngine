@@ -1743,6 +1743,10 @@ roll-up/status view.
       `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-primary-variability/summary.json`
       preserves the prefix-82/prefix-104 mismatch windows and confirms the
       failing sample still used `batched_lm_head` plus `batch_gemv` output.
+      The explicit `serial_lm_head` sampler control matrix also passes
+      c=2/c=4/c=8 (`benchmarks/results/2026-06-02-hipengine-qwen35-native-serial-sampler-control-matrix/summary.json`),
+      isolating the intermittent primary issue toward the row-aware sampler or
+      sampler/decode interaction; the control is not a native-sampler claim.
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 

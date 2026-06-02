@@ -64364,3 +64364,24 @@ Validation:
 
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
 - Fingerprint assertions checked schema/status/performance flags, `[82,137,137]`, row mismatch indices 82/104, `batched_lm_head`, `batch_gemv`, finite JSON values, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY serial sampler control matrix
+
+Captured an explicit `serial_lm_head` sampler control matrix under `benchmarks/results/2026-06-02-hipengine-qwen35-native-serial-sampler-control-matrix/` on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. This isolates the remaining intermittent c=2 primary variability against the older serial LM-head sampler path while keeping the same native c>N decode path. It is diagnostic control evidence only (`performance_claim=false`, `retained_ready=false`) and does not make a native-sampler, throughput/scaling, or deterministic-stability claim.
+
+Command:
+
+`HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_equality_matrix.py --batch-sizes 2,4,8 --batch-sample-mode serial_lm_head --output-dir benchmarks/results/2026-06-02-hipengine-qwen35-native-serial-sampler-control-matrix/artifacts --json benchmarks/results/2026-06-02-hipengine-qwen35-native-serial-sampler-control-matrix/summary.json --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build`
+
+Evidence:
+
+- `summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`, and top-level `workload.batch_sample_mode=serial_lm_head`.
+- c=2/c=4/c=8 child artifacts all pass generated-token equality vs independent c=1 with min prefix `137`: `[137,137]`, `[137,137,137,137]`, and `[137,137,137,137,137,137,137,137]`.
+- Each compact row reports `sampler_execution.mode=serial_lm_head` and `native_row_aware_lm_head=false`; this is an isolation control for the batched sampler path, not a promoted runtime path.
+- Raw per-run logs were deleted before staging.
+- A fresh no-flag primary verifier run after the control printed `137`.
+
+Validation:
+
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
+- Artifact assertions loaded all JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes plus serial sampler metadata, and `git diff --check` passed.
