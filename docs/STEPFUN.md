@@ -647,7 +647,8 @@ reporting.
   oracle blocker. The correctness status `source_artifacts` now tracks this
   wrapper-timeout artifact as `oracle_wrapper_timeout`, and
   `tests/test_stepfun_oracle_wrapper_timeout.py` locks the artifact schema,
-  unchanged-canonical-artifact SHA, and source-artifact provenance.
+  unchanged-canonical-artifact SHA, source-artifact provenance, and a stale
+  wrapper-timeout source hash verification failure.
   A default-device Vulkan oracle attempt is recorded separately in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-vulkan-harness-timeout.json`;
   it exceeded the pi tool supervision window before helper JSON was produced, so

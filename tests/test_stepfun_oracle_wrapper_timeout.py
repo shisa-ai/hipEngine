@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from scripts.stepfun_correctness_status import build_status
+from scripts.stepfun_correctness_status import build_status, main
 
 
 CANONICAL_ORACLE = Path(
@@ -69,3 +69,28 @@ def test_stepfun_correctness_status_tracks_oracle_wrapper_timeout_source_artifac
         WRAPPER_TIMEOUT_ARTIFACT.read_bytes()
     ).hexdigest()
     assert status["status_integrity"]["checks"]["source_artifacts_sha256"] is True
+
+
+def test_stepfun_oracle_wrapper_timeout_source_artifact_drift_is_detected(
+    tmp_path: Path,
+) -> None:
+    status = build_status(
+        Path("benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json"),
+        CANONICAL_ORACLE,
+    )
+    status["source_artifacts"]["oracle_wrapper_timeout"]["sha256"] = "stale"
+    status_path = tmp_path / "status.json"
+    verify_path = tmp_path / "verify.json"
+    status_path.write_text(json.dumps(status))
+
+    rc = main(["--verify-source-artifacts", str(status_path), "--output", str(verify_path)])
+
+    assert rc == 1
+    verification = json.loads(verify_path.read_text())
+    assert verification["status"] == "mismatch"
+    assert verification["all_match"] is False
+    assert verification["source_artifacts_all_match"] is False
+    assert verification["source_artifact_failed_records"] == ["oracle_wrapper_timeout"]
+    assert verification["records"]["oracle_wrapper_timeout"]["match"] is False
+    assert verification["records"]["oracle_wrapper_timeout"]["matches"]["sha256"] is False
+    assert "source_artifacts_sha256" in verification["status_integrity"]["failed_checks"]

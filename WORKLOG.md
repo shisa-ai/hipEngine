@@ -31758,3 +31758,27 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted oracle-wrapper/status-helper tests passed (`118 passed`); source/status verification returned `match` with `records.oracle_wrapper_timeout.match=true` and `checked_count=5`; the full StepFun guard passed (`222` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper provenance/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-02 — StepFun oracle wrapper-timeout source drift coverage
+
+Added explicit source-artifact verification drift coverage for the recorded 180 s llama.cpp wrapper-timeout evidence. `tests/test_stepfun_oracle_wrapper_timeout.py` now mutates `source_artifacts.oracle_wrapper_timeout.sha256` to `stale` and verifies `--verify-source-artifacts` fails with `source_artifact_failed_records=["oracle_wrapper_timeout"]`, `records.oracle_wrapper_timeout.match=false`, and the per-field SHA match false. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_oracle_wrapper_timeout.py tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-wrapper-source-drift-test.json
+python3 - <<'PY'
+import json
+v=json.load(open('/tmp/stepfun-source-verify-wrapper-source-drift-test.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['records']['oracle_wrapper_timeout']['match'] is True
+print('wrapper source drift coverage verify ok', v['records']['oracle_wrapper_timeout']['current']['sha256'])
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted oracle-wrapper/status-helper tests passed (`119 passed`); source/status verification returned `match` with `records.oracle_wrapper_timeout.match=true`; the full StepFun guard passed (`223` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
