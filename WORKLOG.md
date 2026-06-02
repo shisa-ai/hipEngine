@@ -31666,3 +31666,32 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`116 passed`); source/status verification returned `match` with `kv_streaming_loop_next_action_sha256` true; the full StepFun guard passed (`220` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-02 — StepFun 180s llama.cpp oracle wrapper timeout
+
+Ran a bounded longer llama.cpp oracle helper attempt for the canonical StepFun Q3_K_L prompt to strengthen the remaining oracle blocker evidence. Command used `scripts/stepfun_llamacpp_oracle.py` with `--timeout-s 180.0`, CPU/no-GPU llama.cpp args (`--device none --gpu-layers 0`), and canonical output `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`; the outer pi bash wrapper timed out after 240 s before the helper rewrote the canonical oracle artifact. Added `benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json` documenting the command, wrapper timeout, unchanged canonical oracle artifact SHA `20e4827c088946bc85ea5502f7eef120da7ba198b81159c238e82eee89899c21`, canonical `timeout_s=60.0`, readiness impact false, and explicit no-claim statement. Updated `docs/STEPFUN.md` and refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No oracle parity, e2e correctness, or performance claim is made.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 180.0 --diagnostic-logs --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-180s-wrapper-timeout-doc.json
+python3 - <<'PY'
+import json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+v=json.load(open('/tmp/stepfun-source-verify-180s-wrapper-timeout-doc.json'))
+a=json.load(open('benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json'))
+assert s['docs_checklist']['open_or_partial_count_p0_p12'] == 2
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert a['status'] == 'blocked'
+assert a['wrapper_result'] == 'timeout'
+assert a['output_artifact_timeout_s_after_attempt'] == 60.0
+print('wrapper-timeout artifact ok', a['output_artifact_sha256_after_attempt'])
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: the oracle helper attempt did not complete within the 240 s wrapper and did not rewrite the canonical 60 s timeout JSON; P0-P12 open/partial checklist count stayed at `2`; source/status verification returned `match`; the full StepFun guard passed (`220` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: no StepFun performance/e2e correctness claim was made; runtime torch/import and backend/quant special-casing checks remained clean aside from the pre-existing kernel-local quant shape selection noted in the loop measurement.

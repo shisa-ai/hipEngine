@@ -640,6 +640,11 @@ reporting.
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
   timed out after a bounded 60 s attempt (recorded `elapsed_s=62.44`) before
   producing a comparable token (`oracle_blocker_kind=llama_cpp_oracle_timeout`).
+  A 2026-06-01 bounded 180 s rerun attempt is recorded in
+  `benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json`;
+  the outer pi wrapper timed out at 240 s before the helper rewrote the canonical
+  oracle JSON, so the 60 s artifact remains the canonical machine-readable
+  oracle blocker.
   A default-device Vulkan oracle attempt is recorded separately in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-vulkan-harness-timeout.json`;
   it exceeded the pi tool supervision window before helper JSON was produced, so
