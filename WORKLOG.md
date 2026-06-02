@@ -63801,3 +63801,31 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: the c=2 512/128 generated-token equality gate is green when linear-attention and full-attention both use row-c1 correctness fallbacks. Native batch linear and native batch full-attention remain separate blockers for retained/scaling work; next correctness step is to extend the equality gate to c=4/c=8 under these fallback defaults before any profiler/scaling claim.
 
 Guard passed with the required pytest bundle (`401 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY c2/c4/c8 equality matrix green under fallbacks
+
+Added `scripts/qwen35_batch_equality_matrix.py`, a correctness-only matrix wrapper around `scripts/qwen35_batch_retained_bench.py`. The wrapper runs the retained bench for requested c>N sizes, extracts generated-token equality vs independent c=1, and writes a compact summary with `performance_claim=false`. It treats retained artifacts marked `blocked` as equality-passing only when `correctness.generated_token_equality.passed=true`; per-row diagnostic fallbacks still block retained/performance claims.
+
+GPU1 / RX 7900 XTX command:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_equality_matrix.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-sizes 2,4,8 --decode-tokens 128 \
+  --warmup-decode-tokens 8 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --output-dir /tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix \
+  --json /tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json
+```
+
+Result: `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json` reports `status=passed`, `generated_equality_passed=true`, `device.env.HIP_VISIBLE_DEVICES=1`, and all rows green:
+
+- c=2: `min_equal_prefix_tokens=137`, `prefix_lengths=[137,137]`, `first_mismatch_indices=[null,null]`, child artifact `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix/native-equality-c2-p512-d128.json`.
+- c=4: `min_equal_prefix_tokens=137`, `prefix_lengths=[137,137,137,137]`, `first_mismatch_indices=[null,null,null,null]`, child artifact `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix/native-equality-c4-p512-d128.json`.
+- c=8: `min_equal_prefix_tokens=137`, `prefix_lengths=[137,137,137,137,137,137,137,137]`, `first_mismatch_indices=[null,null,null,null,null,null,null,null]`, child artifact `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix/native-equality-c8-p512-d128.json`.
+
+Primary c=2 verifier refresh `/tmp/hipengine-e2e-native-c2-512-128.json` remains green with `prefix_lengths=[137,137]`, `workload.batch_decode_linear_path=per_row`, and `workload.batch_decode_full_attention_path=per_row`. The retained artifacts all exit with return code 1/status `blocked` because linear/full-attention per-row correctness fallbacks are active, so this is not a retained/scaling claim. Next step: profiler/scaling evidence and native batch linear/full-attention/projection closure without non-retained per-row fallbacks.
+
+Validation: targeted equality-matrix CPU tests pass; required guard passed with the expanded pytest bundle (`403 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

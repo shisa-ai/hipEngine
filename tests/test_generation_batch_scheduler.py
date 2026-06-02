@@ -53,6 +53,7 @@ from scripts import qwen35_batch_artifact_schema as artifact_schema
 from scripts import qwen35_batch_hidden_artifact_compare as hidden_artifact_compare
 from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
+from scripts import qwen35_batch_equality_matrix as equality_matrix
 from scripts import qwen35_batch_gguf_diagnostic as gguf_diagnostic
 from scripts import qwen35_batch_int8_diagnostic as int8_diagnostic
 from scripts import qwen35_batch_packed_prefill_correctness as packed_prefill_correctness
@@ -3519,6 +3520,87 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
             batch_decode_linear_path="batch_segments",
         )
     )
+
+
+def test_qwen35_batch_equality_matrix_dry_run_records_c2_c4_c8(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    summary_path = tmp_path / "summary.json"
+    output_dir = tmp_path / "artifacts"
+
+    rc = equality_matrix.main(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2,4,8",
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+            "--compiler-version-file",
+            "/tmp/hipcc-version.txt",
+            "--require-cached-build",
+            "--output-dir",
+            str(output_dir),
+            "--json",
+            str(summary_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "planned"
+    assert payload["performance_claim"] is False
+    assert payload["generated_equality_passed"] is False
+    assert payload["device"]["env"]["HIP_VISIBLE_DEVICES"] == "1"
+    assert payload["workload"]["batch_sizes"] == [2, 4, 8]
+    assert [row["batch_size"] for row in payload["commands"]] == [2, 4, 8]
+    assert all(row["status"] == "planned" for row in payload["commands"])
+    assert all("HIP_VISIBLE_DEVICES=1" in row["command"] for row in payload["commands"])
+    assert all("scripts/qwen35_batch_retained_bench.py" in row["command"] for row in payload["commands"])
+    assert "--batch-size 4" in payload["commands"][1]["command"]
+    assert "--require-cached-build" in payload["commands"][0]["command"]
+    assert payload["commands"][2]["artifact_path"].endswith("native-equality-c8-p16-d2.json")
+
+
+def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "native-equality-c2.json"
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "status": "blocked",
+                "workload": {
+                    "batch_decode_linear_path": "per_row",
+                    "batch_decode_full_attention_path": "per_row",
+                    "native_caware_decode": False,
+                },
+                "correctness": {
+                    "generated_token_equality": {
+                        "passed": True,
+                        "prefix_lengths": [137, 137],
+                        "first_mismatch_indices": [None, None],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = equality_matrix._equality_summary(artifact_path)
+
+    assert summary["passed"] is True
+    assert summary["retained_artifact_status"] == "blocked"
+    assert summary["min_equal_prefix_tokens"] == 137
+    assert summary["prefix_lengths"] == [137, 137]
+    assert summary["workload"]["batch_decode_linear_path"] == "per_row"
+    assert summary["workload"]["batch_decode_full_attention_path"] == "per_row"
 
 
 def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

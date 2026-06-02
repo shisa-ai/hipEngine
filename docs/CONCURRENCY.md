@@ -102,9 +102,11 @@ What is in place:
 What is still not green:
 
 - The retained Qwen/PARO native c>N decode path is experimental. BF16 primitive
-  c=2/4/8 KV append/full-attention correctness passes, but generated-token
-  equality is still missing for the full c=2 512/128 gate and therefore for
-  c=4/c=8.
+  c=2/4/8 KV append/full-attention correctness passes, and generated-token
+  equality now passes for the c=2/c=4/c=8 512/128 gates under the
+  correctness-first per-row linear/full-attention fallbacks. These artifacts
+  remain blocked for retained/scaling claims until the native batch linear/full
+  attention/projection paths and profiler/scaling evidence are green.
 - Hidden-state bisection now separates generated-token equality from hidden drift:
   focused L4/L8 controls keep tokens green, and the selected-c1 output replay
   diagnostic now consumes the segmented state's gated `recurrent_bf16` instead of
@@ -143,8 +145,9 @@ What is still not green:
   projection exactness/amplification, fused native output, and native
   full-attention hidden parity; paged KV row
   setup, grouped-compact MoE, and the segmented state update itself under selected
-  projections remain lower on the list. C2.3/C2.4/C2.5 remain the correctness
-  priority.
+  projections remain lower on the list. C2.3 and retained/performance evidence
+  remain the priority; C2.4/C2.5 generated-token equality is green only under
+  the non-retained correctness fallback defaults.
 - Long-context c>N still uses a per-row split-K fallback label; no long-context
   native c>N claim is allowed until the split-K reducer is row-aware.
 - INT8 c>N parity, runtime projection dispatch evidence, native LM-head/sampler,
@@ -549,7 +552,7 @@ cell at c=2/4/8 are not c>N-eligible regardless of the engine-loop work.
 
 | (model, quant, KV) | c=1 long | c=2 512/128 | c=4 512/128 | c=8 512/128 |
 | --- | --- | --- | --- | --- |
-| Qwen3.5/PARO × w4_paro × BF16 | retained | rejected_correctness *(experimental)* | not_started | not_started |
+| Qwen3.5/PARO × w4_paro × BF16 | retained | eq_ok *(blocked fallback)* | eq_ok *(blocked fallback)* | eq_ok *(blocked fallback)* |
 | Qwen3.5/PARO × w4_paro × INT8/per-token-head | retained (capacity) | not_started | not_started | not_started |
 | GGUF × Q4_K × BF16 | retained | not_started | not_started | not_started |
 | GGUF × Q5_K × BF16 | retained | not_started | not_started | not_started |
@@ -558,8 +561,9 @@ cell at c=2/4/8 are not c>N-eligible regardless of the engine-loop work.
 | W8A16 dense × BF16 | partial | not_started | not_started | not_started |
 
 Status legend: `not_started`, `primitive_ok` (kernel correctness only),
-`eq_ok` (generated-token equality vs c=1, blocked on protocol shape),
-`retained` (accepted retained row), `rejected_correctness` (equality failed).
+`eq_ok` (generated-token equality vs c=1, blocked on protocol shape or
+correctness fallbacks), `retained` (accepted retained row),
+`rejected_correctness` (equality failed).
 
 GGUF c>N coverage is required for the repo's namesake quant path. It can
 follow the Qwen3.5/PARO equality template once the engine loop and per-row
@@ -1430,15 +1434,24 @@ roll-up/status view.
       output/full-attention parity without diagnostic flags; do not change
       paged-KV writer code yet. Do not re-open row setup, native linear segment
       metadata, output trace/copy semantics, or grouped MoE output yet.
-- [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
+- [x] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
       passes; if timing is still not retained, artifact is `blocked` for a
-      non-correctness reason.
-- [ ] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
+      non-correctness reason. Evidence: `/tmp/hipengine-e2e-native-c2-512-128.json`
+      reports `generated_token_equality.passed=true`, `prefix_lengths=[137,137]`,
+      `workload.batch_decode_linear_path=per_row`, and
+      `workload.batch_decode_full_attention_path=per_row`; status remains
+      `blocked` because diagnostic fallbacks prevent retained/perf claims.
+- [x] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.
-      Progress: primitive GPU correctness now has c=4 and c=8 artifacts at
+      Evidence: `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json`
+      reports c=2/c=4/c=8 generated equality green with min equal-prefix `137`
+      for every row; the child retained artifacts live under
+      `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix/` and remain
+      non-retained/blocking while per-row fallback defaults are active. Progress:
+      primitive GPU correctness now has c=4 and c=8 artifacts at
       `/tmp/hipengine-multiloop-c4-correctness.json` (`rows=4`,
       `context_lens=[1,2,3,4]`) and `/tmp/hipengine-multiloop-c8-correctness.json`
       (`rows=8`, `context_lens=[1,2,3,4,1,2,3,4]`); both artifacts report
@@ -1506,8 +1519,9 @@ roll-up/status view.
       serial/packed/sparse correctness smokes, and serial-bridge baseline JSON
       serializers now reject non-finite values instead of emitting `NaN`/`Infinity`; c-sweep, retained-bench, and
       accepted-artifact gates reject profiler/correctness command labels that
-      drop or change that env prefix. This does not close C2.5 because
-      generated-token equality vs independent c=1 for c=4/c=8 is still missing.
+      drop or change that env prefix. The next retained/scaling step is profiler
+      evidence plus native batch linear/full-attention/projection closure without
+      non-retained per-row correctness fallbacks.
 - [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU
       structural tests for invalid slot orders/duplicates/out-of-range ids,
       INT8 KV rejection, and the current `max_context >= 1024` per-row split-K
