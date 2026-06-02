@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-02
 
+- [diagnostic preflight] hipENGINE / Qwen3.6-35B-A3B PARO / native c=2 512/128: profiler gate missing -> captured compact `rocprofv3 --kernel-trace` summary (`total native-batch kernel 0.994s`, sampler `batch_argmax_stage{1,2}` 3.337 ms) with generated equality `[137,137]`, c=1 native `134.112 tok/s`, c=2 serial `79.851/39.925 tok/s`, and c=2 native diagnostic `62.941/31.470 tok/s`; still `performance_claim=false` because projection/MoE/full-attention/graph-replay gates remain blocked; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/summary.json` and `profiler-c2.json`.
 - [diagnostic preflight] hipENGINE / Qwen3.6-35B-A3B PARO / native c=2 512/128: retained c=1 native and c=2 serial-bridge scaling baselines for the c>N retained gate (`c1 decode 133.441 tok/s`, `c2 serial aggregate/per-request 113.886/56.943 tok/s`); native c=2 retained execution remains blocked by missing profiler summary, so `performance_claim=false`; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-baseline-preflight/summary.json`.
 
 ## 2026-05-25

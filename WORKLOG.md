@@ -64205,3 +64205,26 @@ GPU correctness/equality checks after the preflight:
 - `/tmp/hipengine-e2e-native-c2-c4-c8-batched-lm-head-baseline-preflight-matrix.json` is `status=passed`, `generated_equality_passed=true`, with c=2/c=4/c=8 all at min equal prefix `137` and `sampler_execution.mode=batched_lm_head` / no sampler blockers.
 
 Validation: required guard passed (`407 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. Updated benchmark rollup/changelog with the blocked diagnostic preflight row. No c>N throughput/scaling claim is made.
+
+## 2026-06-02 — CONCURRENCY c=2 retained profiler preflight + batched argmax
+
+Replaced the native batched-LM-head sampler's per-row `argmax_f32` loop with a row-aware HIP `hipengine_batch_argmax_f32` entry point. The new launch writes row-major stage-1 reductions and one stage-2 result per row; `Qwen35ParoResidentSession._sample_batch_from_hidden` now uses one batched argmax call after the W8A16 batched logits GEMV. Added registry coverage for `KernelKey("hip_gfx1100", "argmax", "w4_paro", "batch_f32")` and a HIP-guarded CPU-oracle test with tie-to-lowest-index semantics.
+
+Captured the next repo-scoped c=2 retained-gate preflight artifacts under `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/` on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX. This remains diagnostic runtime evidence only (`performance_claim=false`):
+
+- `summary.json` validates with `scripts/qwen35_batch_c_sweep.py --validate-summary-json` and reports `status=passed`, with primitive c=2, serial bridge c=2, and native diagnostic c=2 commands all passing their pre/postconditions.
+- `native-diagnostic-c2.json` is still `status=blocked`, `performance_claim=false`, but generated-token equality is green with prefixes `[137,137]` and no mismatches.
+- c=1 native scaling reference: `134.1118139970783 tok/s`; c=2 serial bridge: `79.85063957880106 tok/s` aggregate / `39.92531978940053 tok/s` per request; c=2 native diagnostic: `62.941 tok/s` aggregate / `31.470 tok/s` per request; c=2 native diagnostic peak `18.466 GiB`.
+- Compact profiler evidence is present: native-batch kernel total `994320847 ns`; native batch attention dominates (`971796639 ns`), KV write `16331988 ns`, and the sampler now appears as `batch_argmax_stage1_kernel` + `batch_argmax_stage2_kernel` totaling `3336594 ns`. The full raw rocprof dump is not retained; the repo artifact keeps the compact kernel summary needed by validation.
+- Retained promotion remains blocked by non-full-native decode/projection/MoE and missing graph-replay profiler evidence; no c>N throughput/scaling claim is made.
+
+GPU correctness/equality checks after the sampler change:
+
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json`: `status=blocked`, `performance_claim=false`, metric `137`, prefixes `[137,137]`, first mismatches `[None,None]`, default `batch_sample_mode=serial_lm_head` unchanged.
+- Matrix `/tmp/hipengine-e2e-native-c2-c4-c8-batch-argmax-matrix.json`: `status=passed`, `generated_equality_passed=true`; c=2/c=4/c=8 all have min equal prefix `137` under `--batch-sample-mode batched_lm_head` with `/tmp/hipengine-c{c}-batch-argmax-sampler-equality.json` sampler proof artifacts.
+
+Validation:
+
+- `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine/kernels/hip_gfx1100/linear/lm_head.py hipengine/runtime/qwen35_paro_runner.py tests/test_lm_head_plan.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_lm_head_plan.py -q` passed (`5` tests).
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_lm_head_plan.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` both passed on AMD Radeon RX 7900 XTX with `attn_batch_aa_max_abs=0.0`.
+- Artifact/rollup validation passed: `python3 scripts/qwen35_batch_c_sweep.py --validate-summary-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/summary.json`, all new JSON artifacts loaded with finite values, profiler/equality assertions passed, and `git diff --check` passed.

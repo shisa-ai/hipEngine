@@ -138,6 +138,87 @@ __global__ void argmax_stage2_kernel(
   }
 }
 
+__global__ void batch_argmax_stage1_kernel(
+    const float* __restrict__ logits,
+    float* __restrict__ block_values,
+    int64_t* __restrict__ block_indices,
+    int64_t vocab_size,
+    int64_t stage1_blocks) {
+  extern __shared__ unsigned char shared_raw[];
+  float* values = reinterpret_cast<float*>(shared_raw);
+  int64_t* indices = reinterpret_cast<int64_t*>(values + blockDim.x);
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t block = static_cast<int64_t>(blockIdx.x);
+  const int64_t chunk = static_cast<int64_t>(blockDim.x) * 4;
+  const int64_t begin = block * chunk;
+  const int64_t end = min(begin + chunk, vocab_size);
+  const float* row_logits = logits + row * vocab_size;
+
+  float best_value = -3.4028234663852886e+38F;
+  int64_t best_index = INT64_MAX;
+  for (int64_t i = begin + tid; i < end; i += blockDim.x) {
+    const float value = row_logits[i];
+    if (better_pair(value, i, best_value, best_index)) {
+      best_value = value;
+      best_index = i;
+    }
+  }
+  values[tid] = best_value;
+  indices[tid] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride && better_pair(values[tid + stride], indices[tid + stride], values[tid], indices[tid])) {
+      values[tid] = values[tid + stride];
+      indices[tid] = indices[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    const int64_t out = row * stage1_blocks + block;
+    block_values[out] = values[0];
+    block_indices[out] = indices[0];
+  }
+}
+
+__global__ void batch_argmax_stage2_kernel(
+    const float* __restrict__ block_values,
+    const int64_t* __restrict__ block_indices,
+    int64_t num_blocks,
+    int64_t* __restrict__ out_index,
+    float* __restrict__ out_value) {
+  extern __shared__ unsigned char shared_raw[];
+  float* values = reinterpret_cast<float*>(shared_raw);
+  int64_t* indices = reinterpret_cast<int64_t*>(values + blockDim.x);
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  const int64_t row_base = row * num_blocks;
+  float best_value = -3.4028234663852886e+38F;
+  int64_t best_index = INT64_MAX;
+  for (int64_t i = tid; i < num_blocks; i += blockDim.x) {
+    const float value = block_values[row_base + i];
+    const int64_t index = block_indices[row_base + i];
+    if (better_pair(value, index, best_value, best_index)) {
+      best_value = value;
+      best_index = index;
+    }
+  }
+  values[tid] = best_value;
+  indices[tid] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride && better_pair(values[tid + stride], indices[tid + stride], values[tid], indices[tid])) {
+      values[tid] = values[tid + stride];
+      indices[tid] = indices[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    out_index[row] = indices[0];
+    out_value[row] = values[0];
+  }
+}
+
 bool valid_threads(int64_t threads) {
   return threads == 128 || threads == 256 || threads == 512;
 }
@@ -177,6 +258,55 @@ extern "C" int hipengine_argmax_f32(
   hipLaunchKernelGGL(
       argmax_stage2_kernel,
       dim3(1),
+      dim3(t),
+      argmax_smem,
+      stream,
+      block_values,
+      block_indices,
+      stage1_blocks,
+      out_index,
+      out_value);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_batch_argmax_f32(
+    const float* logits,
+    float* block_values,
+    int64_t* block_indices,
+    int64_t* out_index,
+    float* out_value,
+    int64_t rows,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || vocab_size <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t stage1_blocks = (vocab_size + threads * 4 - 1) / (threads * 4);
+  if (rows > 2147483647LL || stage1_blocks > 2147483647LL) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  const size_t argmax_smem = static_cast<size_t>(threads) * (sizeof(float) + sizeof(int64_t));
+  hipLaunchKernelGGL(
+      batch_argmax_stage1_kernel,
+      dim3(static_cast<unsigned int>(stage1_blocks), static_cast<unsigned int>(rows)),
+      dim3(t),
+      argmax_smem,
+      stream,
+      logits,
+      block_values,
+      block_indices,
+      vocab_size,
+      stage1_blocks);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+
+  hipLaunchKernelGGL(
+      batch_argmax_stage2_kernel,
+      dim3(static_cast<unsigned int>(rows)),
       dim3(t),
       argmax_smem,
       stream,

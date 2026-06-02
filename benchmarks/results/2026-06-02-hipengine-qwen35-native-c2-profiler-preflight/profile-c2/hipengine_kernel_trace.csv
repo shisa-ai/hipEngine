@@ -1,0 +1,8 @@
+Kernel_Name,DurationNs,Calls
+"(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",971796639,4080
+"void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",16331988,4080
+"(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)",2139380,408
+"void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)",1414171,120
+"(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)",1374413,408
+"(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)",1197214,408
+"(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)",67042,3

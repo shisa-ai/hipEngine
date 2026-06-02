@@ -32,6 +32,7 @@ from hipengine.kernels.backends import (
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
+    batch_argmax_f32,
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
 )
@@ -5788,24 +5789,19 @@ class Qwen35ParoResidentSession:
             library=self.libraries["w8a16"],
             runtime=self.runtime,
         )
-        for row in range(rows):
-            logits_ptr = self.batch_lm_logits.ptr + row * self.vocab_size * DType.FP32.itemsize
-            block_values_ptr = self.batch_lm_block_values.ptr + row * self.lm_head_stage1_blocks * DType.FP32.itemsize
-            block_indices_ptr = self.batch_lm_block_indices.ptr + row * self.lm_head_stage1_blocks * DType.INT64.itemsize
-            out_index_ptr = self.batch_lm_out_index.ptr + row * DType.INT64.itemsize
-            out_value_ptr = self.batch_lm_out_value.ptr + row * DType.FP32.itemsize
-            argmax_f32(
-                logits_ptr,
-                block_values_ptr,
-                block_indices_ptr,
-                out_index_ptr,
-                out_value_ptr,
-                self.vocab_size,
-                threads=self.lm_head_threads,
-                stream=stream,
-                library=self.libraries["lm_head"],
-                runtime=self.runtime,
-            )
+        batch_argmax_f32(
+            self.batch_lm_logits.ptr,
+            self.batch_lm_block_values.ptr,
+            self.batch_lm_block_indices.ptr,
+            self.batch_lm_out_index.ptr,
+            self.batch_lm_out_value.ptr,
+            rows,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            stream=stream,
+            library=self.libraries["lm_head"],
+            runtime=self.runtime,
+        )
         self.runtime.device_synchronize()
         index_host = np.empty((rows,), dtype=np.int64)
         value_host = np.empty((rows,), dtype=np.float32)
