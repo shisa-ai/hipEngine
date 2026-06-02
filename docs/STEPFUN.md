@@ -723,7 +723,9 @@ reporting.
   records plus digest, so KV automation can poll the first runtime blocker,
   validated upload/launch prerequisites, required evidence artifacts, and
   no-claim policy without reading the full resource plan; status integrity also
-  cross-checks the blocker-summary digest/recorded flag, recomputes its
+  verifies the KV compact output-mode mappings for blocker names, blocker records,
+  first blocker, blueprint, loop status/next-action, blocker summary, and resource
+  refresh command routes; cross-checks the blocker-summary digest/recorded flag; recomputes its
   first-blocker/upload/launch mirror invariants against the resource-plan gap
   report, and continues to check the mirrored blueprint digest, loop-status
   digest, loop next-action digest, mirrored first KV blocker digest, full KV

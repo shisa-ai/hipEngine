@@ -1529,6 +1529,41 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "readiness_summary_docs_checklist_count_mirror": (
             docs_open_or_partial_count == readiness_open_or_partial_count
         ),
+        "kv_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("kv_streaming_blockers_only")
+            == "kv_streaming_runner_blocker_names"
+            and compact_output_modes.get("kv_streaming_blockers_sha_only")
+            == "kv_streaming_runner_blocker_names_sha256"
+            and compact_output_modes.get("kv_streaming_blocker_records_only")
+            == "kv_backed_decode_gap_report.streaming_runner_blockers"
+            and compact_output_modes.get("kv_streaming_blocker_records_sha_only")
+            == "kv_backed_decode_gap_report.streaming_runner_blockers_sha256"
+            and compact_output_modes.get("kv_first_streaming_blocker_only")
+            == "kv_backed_decode_gap_report.first_streaming_runner_blocker"
+            and compact_output_modes.get("kv_first_streaming_blocker_sha_only")
+            == "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256"
+            and compact_output_modes.get("kv_streaming_blueprint_only")
+            == "kv_backed_decode_gap_report.streaming_decode_loop_blueprint"
+            and compact_output_modes.get("kv_streaming_blueprint_sha_only")
+            == "kv_backed_decode_gap_report.streaming_decode_loop_blueprint_sha256"
+            and compact_output_modes.get("kv_streaming_loop_status_only")
+            == "kv_backed_decode_gap_report.streaming_decode_loop_status"
+            and compact_output_modes.get("kv_streaming_loop_status_sha_only")
+            == "kv_backed_decode_gap_report.streaming_decode_loop_status_sha256"
+            and compact_output_modes.get("kv_streaming_loop_next_action_only")
+            == "kv_backed_decode_gap_report.streaming_decode_loop_status.next_action"
+            and compact_output_modes.get("kv_streaming_loop_next_action_sha_only")
+            == "kv_backed_decode_gap_report.streaming_decode_loop_status.next_action_sha256"
+            and compact_output_modes.get("kv_decode_blocker_summary_only")
+            == "kv_backed_decode_gap_report.kv_decode_blocker_summary"
+            and compact_output_modes.get("kv_decode_blocker_summary_sha_only")
+            == "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256"
+            and compact_output_modes.get("kv_resource_command_only")
+            == "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
+            and compact_output_modes.get("kv_resource_command_sha_only")
+            == "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command_sha256"
+        ),
         "readiness_gates_sha256": (
             isinstance(readiness_gates, dict)
             and status.get("readiness_gates_sha256") == _stable_json_sha256(readiness_gates)
