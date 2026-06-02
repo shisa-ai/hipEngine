@@ -303,6 +303,12 @@ What is still not green:
   retained blockers are batch-level eligibility/provenance/observability rather
   than missing projection candidate evidence
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json`).
+  An all-available-evidence c=8 validation now uses repo-relative output and
+  compiler-version provenance, so those earlier path blockers are gone; it stays
+  blocked by batch-level `throughput_claim_eligible=false`, stale profiler-command
+  provenance that needs an exact-command rocprof recapture, stable-block-id audit,
+  per-request bucket context-axis mismatches, and graph-replay profiler buckets
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-all-evidence-blockers/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

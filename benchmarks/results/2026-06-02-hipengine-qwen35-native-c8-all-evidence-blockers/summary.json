@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-all-evidence-blockers/summary.json",
+  "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-all-evidence-blockers/blocked-retained-c8-all-evidence.json",
+  "source_sha256": "81aec7f6a1827bb6a52cf8e0c072fb8c78dde8ce1407a11d6ff4f4e903309a3f",
+  "source_size_bytes": 418773,
+  "created_at": "2026-06-02T19:24:09.579631Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "All available c=8 retained evidence wired with repo-relative output/compiler provenance; artifact remains blocked only by remaining runtime observability/eligibility/profiler-command gates.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "workload": {
+    "rows": 8,
+    "shape": "c=8 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
+  },
+  "correctness": {
+    "generated_token_equality_passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "primitive_passed": null
+  },
+  "decode_execution": {
+    "native_caware_decode": true,
+    "linear_attention_projection_path": "native_batch",
+    "linear_attention_state_path": "native_segments",
+    "linear_attention_output_path": "batch_gemv",
+    "moe_decode_path": "grouped_compact",
+    "full_attention_decode_path": "native_batch",
+    "full_attention_context_decode_path": "native_batch"
+  },
+  "projection_dispatch": {
+    "rows": 8,
+    "selected_candidate": "batch",
+    "path": "benchmark_accepted_caware_projection",
+    "selection": {
+      "layer": "linear",
+      "quant": "w4_paro",
+      "variant": "batch"
+    },
+    "throughput_claim_eligible": true,
+    "blockers": [],
+    "evidence": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+      "aggregate_vs_row_gemv": 1.1446009208707775,
+      "per_request_vs_row_gemv": 1.1446009208707775,
+      "accepted": true
+    }
+  },
+  "profiler": {
+    "status": "captured",
+    "expected_kernels_present": true,
+    "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/profiler-c8.json"
+  },
+  "scaling": {
+    "complete": true,
+    "native": {
+      "decode_tok_s_aggregate": 209.70513883771105,
+      "decode_tok_s_per_request": 26.21314235471388
+    },
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json",
+      "status": "baseline",
+      "run_tag": null,
+      "workload_concurrency": 1,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 133.91159204248916,
+      "decode_tok_s_per_request": 133.91159204248916,
+      "reason": null
+    },
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json",
+      "status": "baseline",
+      "run_tag": null,
+      "workload_concurrency": 8,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 104.431831201549,
+      "decode_tok_s_per_request": 13.053978900193625,
+      "reason": null
+    },
+    "ratios": {
+      "aggregate_vs_c1": 1.5659969061615902,
+      "per_request_vs_c1": 0.19574961327019877,
+      "aggregate_vs_serial_bridge": 2.0080576623519035,
+      "per_request_vs_serial_bridge": 2.0080576623519035
+    }
+  },
+  "measurements": {
+    "decode_tok_s_aggregate": 209.70513883771105,
+    "decode_tok_s_per_request": 26.21314235471388
+  },
+  "provenance_blockers_removed": {
+    "artifact_path_repo_relative": true,
+    "compiler_version_file_repo_relative": true,
+    "projection_dispatch_non_row_gemv": true
+  },
+  "remaining_blockers": [
+    "batch_execution.throughput_claim_eligible=false",
+    "profiler command --json must match retained artifact path",
+    "profiler command --compiler-version-file must match retained compiler-version-file",
+    "memory.stable_block_id.passed is not true",
+    "observability.per_request.0.bucket_key context axis must match scheduler decode shape key",
+    "observability.per_request.1.bucket_key context axis must match scheduler decode shape key",
+    "observability.per_request.2.bucket_key context axis must match scheduler decode shape key",
+    "observability.per_request.3.bucket_key context axis must match scheduler decode shape key",
+    "observability.per_request.4.bucket_key context axis must match scheduler decode shape key",
+    "observability.per_request.5.bucket_key context axis must match scheduler decode shape key",
+    "observability.per_request.6.bucket_key context axis must match scheduler decode shape key",
+    "observability.per_request.7.bucket_key context axis must match scheduler decode shape key",
+    "profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive",
+    "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive",
+    "profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive",
+    "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive"
+  ],
+  "commands": {
+    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-all-evidence-blockers/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/profiler-c8.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-all-evidence-blockers/blocked-retained-c8-all-evidence.json",
+    "compiler_version_file": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-all-evidence-blockers/hipcc-version.txt"
+  },
+  "notes": [
+    "No retained c>N performance/scaling claim is made.",
+    "The profiler trace is reused from iteration 96, so profiler command provenance still intentionally identifies the need for a fresh exact-command rocprof capture.",
+    "The repo-relative compiler-version file removes the prior compiler-version-file path blocker."
+  ]
+}
