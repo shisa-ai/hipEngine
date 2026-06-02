@@ -32771,3 +32771,40 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted blocker command-metadata/status-integrity tests passed (`5` tests); command metadata integrity smoke passed with `status_integrity_sha256=9a5ed9ac60aa0c3cfe20c37616c00aa8982ccc1f394601c12c55ebc09fc55a68`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); the full correctness-status test file passed (`133` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`248` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun remaining-blocker report integrity checks
+
+Added status-integrity coverage for the compact remaining-blocker routing reports. `scripts/stepfun_correctness_status.py` now verifies `remaining_blockers_report_sha256`, `first_remaining_blocker_report_sha256`, and recomputes `first_remaining_blocker_report` from `remaining_blockers_report` so stale front-blocker compact routing metadata fails source-artifact verification even if its own digest is recomputed. New drift regressions cover both a stale remaining-report digest and a stale first-report mirror. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, KV-backed token/logit artifact, e2e correctness, or Step throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_remaining_blockers_report_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_first_remaining_blocker_report_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_remaining_blockers_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_first_remaining_blocker_mirror_drift
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+checks=s['status_integrity']['checks']
+assert checks['remaining_blockers_report_sha256'] is True
+assert checks['first_remaining_blocker_report_sha256'] is True
+assert checks['first_remaining_blocker_report_mirror'] is True
+print('remaining report integrity ok', s['status_integrity_sha256'])
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+assert p['checks']['remaining_blockers_report_sha256'] is True
+assert p['checks']['first_remaining_blocker_report_sha256'] is True
+assert p['checks']['first_remaining_blocker_report_mirror'] is True
+print('status integrity ok')
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted remaining-blocker status-integrity tests passed (`5` tests); compact report integrity smoke passed with `status_integrity_sha256=d1b5cbe3b8cc39d1af05dcb3615c61acb5173a93c9d1161a893c5ee6821dc8a0`, `remaining_blockers_report_sha256=5b742f9ef4218aa50bed413c272fdf69609c97fb7dd6967c5a68ba4dae2115af`, and `first_remaining_blocker_report_sha256=66a893dda06776b4308953c20b5c3ff4b9c700ed5fc9afb6396c348d0b1ad769`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); the full correctness-status test file passed (`135` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`250` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.

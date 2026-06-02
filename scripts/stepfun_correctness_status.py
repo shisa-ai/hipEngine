@@ -901,6 +901,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             elif item.get("blocker_kind") == "kv_backed_decode_not_wired":
                 kv_work_item = item
     remaining_blockers_report = status.get("remaining_blockers_report", {})
+    remaining_blockers_report_sha256 = status.get("remaining_blockers_report_sha256")
     remaining_oracle_item: dict[str, object] = {}
     if isinstance(remaining_blockers_report, dict):
         for item in remaining_blockers_report.get("items", []):
@@ -908,6 +909,9 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
                 remaining_oracle_item = item
                 break
     first_remaining_blocker_report = status.get("first_remaining_blocker_report", {})
+    first_remaining_blocker_report_sha256 = status.get(
+        "first_remaining_blocker_report_sha256"
+    )
     kv_streaming_mirror_records: list[dict[str, object]] = []
     if isinstance(kv_gap_report, dict):
         kv_streaming_mirror_records.append(kv_gap_report)
@@ -1080,6 +1084,22 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     blocker_recommended_commands_mirror_work_queue = (
         isinstance(blocker_recommended_commands, list)
         and blocker_recommended_commands == blocker_recommended_commands_from_queue
+    )
+    remaining_blockers_report_sha256_match = (
+        isinstance(remaining_blockers_report, dict)
+        and remaining_blockers_report_sha256
+        == _stable_json_sha256(remaining_blockers_report)
+    )
+    first_remaining_blocker_report_sha256_match = (
+        isinstance(first_remaining_blocker_report, dict)
+        and first_remaining_blocker_report_sha256
+        == _stable_json_sha256(first_remaining_blocker_report)
+    )
+    first_remaining_blocker_report_mirror = (
+        isinstance(remaining_blockers_report, dict)
+        and isinstance(first_remaining_blocker_report, dict)
+        and first_remaining_blocker_report
+        == _first_remaining_blocker_report(remaining_blockers_report)
     )
     blocker_recommended_commands_meta_mirror = (
         isinstance(blocker_meta, dict)
@@ -1385,6 +1405,11 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "blocker_recommended_commands_mirror_work_queue": (
             blocker_recommended_commands_mirror_work_queue
         ),
+        "remaining_blockers_report_sha256": remaining_blockers_report_sha256_match,
+        "first_remaining_blocker_report_sha256": (
+            first_remaining_blocker_report_sha256_match
+        ),
+        "first_remaining_blocker_report_mirror": first_remaining_blocker_report_mirror,
         "blocker_work_queue_command_metadata": blocker_work_queue_command_metadata,
         "blocker_recommended_commands_command_metadata": (
             blocker_recommended_commands_command_metadata

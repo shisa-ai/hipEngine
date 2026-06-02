@@ -755,7 +755,9 @@ reporting.
   their readiness gates, missing evidence, and recommended commands; compact
   `--first-remaining-blocker-report-only` /
   `--first-remaining-blocker-report-sha-only` emits/digests just the front
-  blocker report for immediate oracle/KV routing.
+  blocker report for immediate oracle/KV routing; status integrity verifies both
+  report digests and recomputes the front report from `remaining_blockers_report`
+  so stale compact routing metadata fails source-artifact verification.
   `next_action_commands_sha256` gives handoff pollers a compact digest of the
   command bundle itself, with length/SHA-256 metadata for the helper/resource/status refresh commands plus
   compact source-artifact verification, verification-status, verification

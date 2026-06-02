@@ -2727,10 +2727,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
     "schema_version": 1,
-    "source_artifacts_sha256": "6f309aa374554412a2d2981c40bad1f2ef2aa1a1852d325da6cbf745e89b97cf",
+    "source_artifacts_sha256": "dea80c5ddc39415b35914e2fcc57d7b284ee8f47e5eac42707a25b7e3ceea746",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "3895b39fa65f3770982cc8d749684b3b9a5b77a435dadaf820f83db3740a07e3",
+  "readiness_summary_sha256": "a3b26ab2c6fc14a24a05b936db2f97822721ddcfdbb0ed6d9af926ced5eb593d",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2848,8 +2848,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "a0e92e606dbcddc9efd24bf8f7783c8319126f498c43e8e54fccb8934effb36f",
-      "size_bytes": 65693
+      "sha256": "be3a3f741a542ced7d90c11d400372e72525fa23f644e13f522bf11d635b87b2",
+      "size_bytes": 65878
     },
     "oracle": {
       "exists": true,
@@ -2876,7 +2876,7 @@
       "size_bytes": 52292
     }
   },
-  "source_artifacts_sha256": "6f309aa374554412a2d2981c40bad1f2ef2aa1a1852d325da6cbf745e89b97cf",
+  "source_artifacts_sha256": "dea80c5ddc39415b35914e2fcc57d7b284ee8f47e5eac42707a25b7e3ceea746",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
@@ -2894,6 +2894,8 @@
       "first_blocker_work_item_sha256": true,
       "first_kv_streaming_runner_blocker_mirrors": true,
       "first_kv_streaming_runner_blocker_sha256": true,
+      "first_remaining_blocker_report_mirror": true,
+      "first_remaining_blocker_report_sha256": true,
       "handoff_summary_sha256": true,
       "kv_decode_blocker_summary_mirrors_run_plan": true,
       "kv_decode_blocker_summary_recorded": true,
@@ -2912,6 +2914,7 @@
       "oracle_partial_output_handoff_mirrors": true,
       "readiness_gates_sha256": true,
       "readiness_summary_sha256": true,
+      "remaining_blockers_report_sha256": true,
       "resource_refresh_atomic_output_command_metadata": true,
       "resource_refresh_atomic_output_handoff_mirrors": true,
       "schema_versions": true,
@@ -2921,7 +2924,7 @@
     },
     "failed_checks": []
   },
-  "status_integrity_sha256": "9a5ed9ac60aa0c3cfe20c37616c00aa8982ccc1f394601c12c55ebc09fc55a68",
+  "status_integrity_sha256": "d1b5cbe3b8cc39d1af05dcb3615c61acb5173a93c9d1161a893c5ee6821dc8a0",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 }
