@@ -77,8 +77,8 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 
 **hipEngine now has most host-side continuous-batching scaffolding in code, but
 it still must not claim true retained c>N throughput.** Qwen/PARO BF16 c=2/c=4/c=8
-generated-token equality vs independent c=1 is green, and the first c=2 retained
-profiler preflight is captured. The remaining hard gate is native execution
+generated-token equality vs independent c=1 is green, and c=2/c=4 retained
+profiler preflights are captured. The remaining hard gate is native execution
 closure (projection, MoE, full-attention output, graph replay, and residual
 serial fallbacks) plus accepted retained scaling evidence.
 
@@ -110,8 +110,8 @@ What is still not green:
   for c=2/c=4; full selected-c1 projection replay for c=8), native segmented
   linear state, batch-GEMV/Marlin linear output, per-row linear MoE, and native
   full-attention decode with batch-GEMV full-attention output and per-row
-  full-attention MoE diagnostics. The c=2 profiler preflight now captures a
-  compact `rocprofv3 --kernel-trace` summary with native batch attention, KV
+  full-attention MoE diagnostics. The c=2/c=4 profiler preflights now capture
+  compact `rocprofv3 --kernel-trace` summaries with native batch attention, KV
   write, and `batch_argmax_stage{1,2}` sampler kernels. These artifacts remain
   blocked for retained/scaling claims until the native batch linear/full-attention/
   projection/MoE paths, graph-replay profiler evidence, and scaling evidence are
@@ -173,7 +173,7 @@ What is still not green:
 - Long-context c>N still uses a per-row split-K fallback label; no long-context
   native c>N claim is allowed until the split-K reducer is row-aware.
 - INT8 c>N parity, runtime projection dispatch evidence, graph replay buckets,
-  residual-serial-loop removal, broader c=4/c=8 profiler/scaling coverage, and
+  residual-serial-loop removal, remaining c=8 profiler/scaling coverage, and
   retained scoreboard promotion remain open performance/coverage work.
 
 ## Readiness matrix
@@ -190,7 +190,7 @@ What is still not green:
 | MoE / quant kernels | Grouped compact MoE scratch replaced selected-MoE c1 wrappers for `tokens>1`; the all-selected-c1 control regresses a previously green selected-c1 linear replay, so grouped-compact MoE stays the preferred path while linear-attention parity is fixed. | `hipengine/runtime/qwen35_paro.py`; `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-proj-state-atol4e-3-focus1269.json`; `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-all-selected-c1-atol4e-3-focus1269.json`. | c=2/4/8 equality; c-aware projection/MoE evidence after native linear-attention parity is resolved. |
 | KV pool | Chunked grow/shrink, append-only block ids, current admission capacity, prefix refcounts, and copy-on-write forks are implemented in host tests. | `hipengine/kvcache/pool.py:ChunkedKVPool`, `admit_with_shared_prefix`, `fork_copy_on_write`; `pytest -q tests/test_kvcache_policy.py -q`. | Device/runtime retained equality and perf, not the host allocator contract. |
 | Prefix / radix cache | `RadixCache` indexes block-aligned token prefixes; server exposes prefix-cache mode and `n>1` lowering uses distinct row seeds/request ids. | `hipengine/kvcache/radix.py:RadixCache`; `hipengine/server/api.py`; kvcache/server tests. | Broader retained coverage and future DMS/KVTC policy work; no flat prefix-LRU peer path. |
-| Observability | Completion artifacts and `/metrics` include request/pool counters; graph-bucket stats exist for scheduler observability, and the c=2 profiler preflight is captured as compact JSON rather than retaining raw rocprof dumps. | `CompletedRequest.to_json_dict`, `KVPoolStats.to_json_dict`, `GraphBucketCache`, `_render_prometheus_metrics`; server/scheduler tests; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/profiler-c2.json`. | Accepted retained rows still need graph-replay profiler evidence and accepted benchmark rollup promotion. |
+| Observability | Completion artifacts and `/metrics` include request/pool counters; graph-bucket stats exist for scheduler observability, and the c=2/c=4 profiler preflights are captured as compact JSON rather than retaining raw rocprof dumps. | `CompletedRequest.to_json_dict`, `KVPoolStats.to_json_dict`, `GraphBucketCache`, `_render_prometheus_metrics`; server/scheduler tests; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c{2,4}-profiler-preflight/profiler-c{2,4}.json`. | Accepted retained rows still need graph-replay profiler evidence and accepted benchmark rollup promotion. |
 
 DMS / compact KV serving status lives in [`KVCACHE.md`](KVCACHE.md) and is not
 mirrored in this matrix.
@@ -1561,11 +1561,11 @@ roll-up/status view.
       serial/packed/sparse correctness smokes, and serial-bridge baseline JSON
       serializers now reject non-finite values instead of emitting `NaN`/`Infinity`; c-sweep, retained-bench, and
       accepted-artifact gates reject profiler/correctness command labels that
-      drop or change that env prefix. The c=2 profiler preflight now records
+      drop or change that env prefix. The c=2 and c=4 profiler preflights now record
       compact native-batch kernel timing, including `batch_argmax_stage{1,2}`;
-      the next retained/scaling step is graph-replay profiler evidence plus
-      native batch linear/full-attention/projection closure without non-retained
-      per-row correctness fallbacks.
+      the next retained/scaling step is c=8 profiler evidence, graph-replay
+      profiler evidence, and native batch linear/full-attention/projection
+      closure without non-retained per-row correctness fallbacks.
 - [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU
       structural tests for invalid slot orders/duplicates/out-of-range ids,
       INT8 KV rejection, and the current `max_context >= 1024` per-row split-K
