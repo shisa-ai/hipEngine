@@ -675,7 +675,8 @@ reporting.
   text ` |`, top-5 expected tokens, timeout 60 s, elapsed 61.75 s, generated text
   length 0, `timeout_termination` recorded, and the llama.cpp command shell). It carries explicit status,
   readiness-summary, and handoff-summary schema versions plus compact
-  `schema_versions` / `schema_versions_sha256` handoff payloads, records both blockers
+  `schema_versions` / `schema_versions_sha256` handoff payloads, verifies those
+  compact schema-version output-mode mappings in status integrity, records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
   all-layer prompt smoke, exposes compact `--blocker-kinds-only` /
   `--blocker-kinds-sha-only` outputs for polling that blocker-kind list, lists

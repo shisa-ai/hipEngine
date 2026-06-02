@@ -899,6 +899,11 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     )
     schema_versions = status.get("schema_versions", {})
     schema_versions_sha256 = status.get("schema_versions_sha256")
+    compact_output_modes = (
+        handoff_summary.get("compact_output_modes", {})
+        if isinstance(handoff_summary, dict)
+        else {}
+    )
     blocker_meta = (
         handoff_summary.get("blocker_work_queue_meta", {})
         if isinstance(handoff_summary, dict)
@@ -1592,6 +1597,12 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "schema_versions_sha256": (
             isinstance(schema_versions, dict)
             and schema_versions_sha256 == _stable_json_sha256(schema_versions)
+        ),
+        "schema_versions_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("schema_versions_only") == "schema_versions"
+            and compact_output_modes.get("schema_versions_sha_only")
+            == "schema_versions_sha256"
         ),
     }
     failed_checks = [name for name, passed in checks.items() if not passed]
