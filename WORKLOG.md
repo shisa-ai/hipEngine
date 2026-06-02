@@ -63845,3 +63845,33 @@ GPU1 / RX 7900 XTX evidence after the change:
 Conclusion: the equality gate is reproducible for c=2/c=4/c=8 under fallback defaults, and the matrix now carries explicit retained-readiness blockers. Native batch linear/full-attention remains the retained blocker; no performance/scaling claim is made.
 
 Validation: focused equality-matrix tests pass; required guard passed (`403 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY native-batch equality repeat evidence
+
+Added `--repeat-runs` to `scripts/qwen35_batch_equality_matrix.py` so native-batch equality can be checked for reproducibility with distinct child artifacts instead of overwriting a single c>N result. Repeat summaries record `repeat_index` per child command and `workload.repeat_runs` at top level.
+
+GPU1 / RX 7900 XTX native-batch reproducibility command:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_equality_matrix.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-sizes 2 --repeat-runs 3 --decode-tokens 128 \
+  --warmup-decode-tokens 8 --max-layers 40 \
+  --batch-decode-linear-path batch_segments \
+  --batch-decode-full-attn-path native_batch \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --output-dir /tmp/hipengine-e2e-native-c2-equality-native-batch-repeat3 \
+  --json /tmp/hipengine-e2e-native-c2-equality-native-batch-repeat3.json
+```
+
+Result: `/tmp/hipengine-e2e-native-c2-equality-native-batch-repeat3.json` is `status=failed`, `generated_equality_passed=false`, and `retained_ready=false`. All three opt-in native-batch repeats fail the same way while recording `workload.native_caware_decode=true` and `decode_execution.native_caware_decode=true`:
+
+- repeat 0: `prefix_lengths=[82,137]`, `first_mismatch_indices=[82,null]`, child artifact `native-equality-c2-p512-d128-r0.json`.
+- repeat 1: `prefix_lengths=[82,137]`, `first_mismatch_indices=[82,null]`, child artifact `native-equality-c2-p512-d128-r1.json`.
+- repeat 2: `prefix_lengths=[82,137]`, `first_mismatch_indices=[82,null]`, child artifact `native-equality-c2-p512-d128-r2.json`.
+
+This resolves the previous one-off c=2 native-batch pass as non-reproducible/stale evidence: repeated c=2 native batch remains blocked at row0 token 82, so the correctness-first per-row linear/full-attention fallback defaults should stay in place while native batch linear/full-attention closure continues separately. Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` remains green under fallback defaults with `prefix_lengths=[137,137]` and `status=blocked`.
+
+Validation: focused repeat-run matrix tests pass; required guard passed (`404 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX. No performance/scaling claim.

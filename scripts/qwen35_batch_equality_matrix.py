@@ -58,6 +58,16 @@ def _parse_batch_sizes(value: str) -> tuple[int, ...]:
     return tuple(sizes)
 
 
+def _parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value, 10)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be positive")
+    return parsed
+
+
 def _command_env_prefix_parts() -> tuple[str, ...]:
     value = os.environ.get("HIP_VISIBLE_DEVICES")
     if value is None or not value.strip():
@@ -198,13 +208,15 @@ def _retained_command(args: argparse.Namespace, batch_size: int, artifact_path: 
     return argv
 
 
-def _run_one(args: argparse.Namespace, batch_size: int, output_dir: Path) -> dict[str, Any]:
-    artifact_path = output_dir / f"native-equality-c{batch_size}-p{args.prompt_length}-d{args.decode_tokens}.json"
+def _run_one(args: argparse.Namespace, batch_size: int, output_dir: Path, *, repeat_index: int) -> dict[str, Any]:
+    repeat_suffix = f"-r{repeat_index}" if args.repeat_runs > 1 else ""
+    artifact_path = output_dir / f"native-equality-c{batch_size}-p{args.prompt_length}-d{args.decode_tokens}{repeat_suffix}.json"
     log_path = artifact_path.with_suffix(".log")
     argv = _retained_command(args, batch_size, artifact_path)
     command = _display_command(argv)
     row: dict[str, Any] = {
         "batch_size": batch_size,
+        "repeat_index": repeat_index,
         "artifact_path": str(artifact_path),
         "log_path": str(log_path),
         "command": command,
@@ -248,6 +260,7 @@ def _build_summary(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
             "decode_tokens": args.decode_tokens,
             "warmup_decode_tokens": args.warmup_decode_tokens,
             "max_layers": args.max_layers,
+            "repeat_runs": args.repeat_runs,
             "batch_decode_linear_path": args.batch_decode_linear_path,
             "batch_decode_full_attn_path": args.batch_decode_full_attn_path,
         },
@@ -268,6 +281,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-decode-tokens", type=int, default=8)
     parser.add_argument("--max-layers", type=int, default=40)
     parser.add_argument("--batch-sizes", type=_parse_batch_sizes, default=DEFAULT_BATCH_SIZES)
+    parser.add_argument("--repeat-runs", type=_parse_positive_int, default=1)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/hipengine-e2e-native-equality-matrix"))
@@ -282,7 +296,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     args.json.parent.mkdir(parents=True, exist_ok=True)
-    rows = [_run_one(args, batch_size, args.output_dir) for batch_size in args.batch_sizes]
+    rows = [
+        _run_one(args, batch_size, args.output_dir, repeat_index=repeat_index)
+        for repeat_index in range(args.repeat_runs)
+        for batch_size in args.batch_sizes
+    ]
     summary = _build_summary(args, rows)
     args.json.write_text(json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n", encoding="utf-8")
     if args.dry_run:

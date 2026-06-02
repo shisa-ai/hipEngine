@@ -3571,6 +3571,35 @@ def test_qwen35_batch_equality_matrix_dry_run_records_c2_c4_c8(tmp_path: Path, m
     assert payload["commands"][2]["artifact_path"].endswith("native-equality-c8-p16-d2.json")
 
 
+def test_qwen35_batch_equality_matrix_repeat_runs_are_distinct(tmp_path: Path) -> None:
+    summary_path = tmp_path / "summary.json"
+    output_dir = tmp_path / "artifacts"
+
+    rc = equality_matrix.main(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2,4",
+            "--repeat-runs",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--json",
+            str(summary_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    commands = payload["commands"]
+    assert payload["workload"]["repeat_runs"] == 2
+    assert [(row["repeat_index"], row["batch_size"]) for row in commands] == [(0, 2), (0, 4), (1, 2), (1, 4)]
+    assert commands[0]["artifact_path"].endswith("native-equality-c2-p512-d128-r0.json")
+    assert commands[1]["artifact_path"].endswith("native-equality-c4-p512-d128-r0.json")
+    assert commands[2]["artifact_path"].endswith("native-equality-c2-p512-d128-r1.json")
+    assert commands[3]["artifact_path"].endswith("native-equality-c4-p512-d128-r1.json")
+
+
 def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_path: Path) -> None:
     artifact_path = tmp_path / "native-equality-c2.json"
     artifact_path.write_text(
