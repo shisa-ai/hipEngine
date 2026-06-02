@@ -1,13 +1,13 @@
 {
   "schema": 3,
   "mode": "qwen35_paro_native_retained_bench",
-  "status": "blocked",
+  "status": "accepted",
   "rows": 4,
   "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json",
-  "timestamp": "2026-06-02T07:40:24.269018+00:00",
+  "timestamp": "2026-06-02T20:46:44.625833+00:00",
   "run_tag": "qwen35-paro-c4-native-retained",
   "summary": "Qwen3.5/PARO scheduler compact native c>N benchmark",
-  "performance_claim": false,
+  "performance_claim": true,
   "hardware": {
     "gpu": "AMD Radeon RX 7900 XTX",
     "arch": "gfx1100",
@@ -31,13 +31,13 @@
     "rocm_smi": {
       "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
       "returncode": 0,
-      "output": "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status\n\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 58.0\nGPU[0]\t\t: Temperature (Sensor junction) (C): 65.0\nGPU[0]\t\t: Temperature (Sensor memory) (C): 68.0\nGPU[1]\t\t: Temperature (Sensor edge) (C): 47.0\nGPU[1]\t\t: Temperature (Sensor junction) (C): 57.0\nGPU[1]\t\t: Temperature (Sensor memory) (C): 69.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 0\nGPU[1]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 48301604864\nGPU[0]\t\t: VRAM Total Used Memory (B): 28049408\nGPU[1]\t\t: VRAM Total Memory (B): 25753026560\nGPU[1]\t\t: VRAM Total Used Memory (B): 458596352\n==========================================================================================\n================================== End of ROCm SMI Log ==================================="
+      "output": "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status\n\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 36.0\nGPU[0]\t\t: Temperature (Sensor junction) (C): 44.0\nGPU[0]\t\t: Temperature (Sensor memory) (C): 48.0\nGPU[1]\t\t: Temperature (Sensor edge) (C): 46.0\nGPU[1]\t\t: Temperature (Sensor junction) (C): 56.0\nGPU[1]\t\t: Temperature (Sensor memory) (C): 68.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 1\nGPU[1]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 48301604864\nGPU[0]\t\t: VRAM Total Used Memory (B): 28053504\nGPU[1]\t\t: VRAM Total Memory (B): 25753026560\nGPU[1]\t\t: VRAM Total Used Memory (B): 458612736\n==========================================================================================\n================================== End of ROCm SMI Log ==================================="
     }
   },
   "software": {
     "python": "3.12.9",
     "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
-    "hipengine_commit": "1683f3a4090b0ec2188c6bcf4c08dc305196713e",
+    "hipengine_commit": "9e8bb5aabf7f8085a8eb17cbe23ba47ecbae611d",
     "hipengine_dirty": false,
     "torch_rocm": {
       "command": "python3 -c 'import torch; print(torch.__version__, torch.version.hip)'",
@@ -87,24 +87,26 @@
     "kv_storage_dtype": "bf16",
     "scheduler_path": "scheduler_native_compact_batch",
     "native_compact_prefill": true,
-    "native_caware_decode": false,
+    "native_caware_decode": true,
     "batch_prefill_linear_path": "packed_segments",
+    "batch_decode_moe_path": "grouped_compact",
     "batch_decode_linear_path": "batch_segments",
-    "batch_decode_linear_projection_path": "selected_qkv_z",
+    "batch_decode_linear_projection_path": "batch",
     "batch_decode_linear_state_path": "batch_segments",
-    "batch_decode_linear_moe_path": "per_row_c1",
+    "batch_decode_linear_moe_path": "grouped_compact",
     "batch_decode_linear_output_path": "batch_gemv",
     "batch_decode_full_attention_path": "native_batch",
     "batch_decode_attention_input_path": "batch",
     "batch_decode_attention_qkv_path": "batch",
     "batch_decode_attention_scratch_path": "batch",
     "batch_decode_attention_context_path": "batch",
+    "batch_decode_attention_gate_path": "batch",
     "batch_decode_full_attention_kv_append_path": "batch",
     "batch_decode_attention_append_context_order": "phased",
     "batch_decode_attention_suffix_order": "phased",
     "batch_decode_full_attention_output_path": "batch_gemv",
     "batch_decode_full_attention_layer_copy": "batch",
-    "batch_decode_full_attention_moe_path": "per_row_c1",
+    "batch_decode_full_attention_moe_path": "grouped_compact",
     "batch_decode_post_attention_path": "batch",
     "batch_sample_mode": "batched_lm_head",
     "batch_sample_eq_ok": true,
@@ -126,8 +128,8 @@
       "git diff --quiet"
     ],
     "correctness_reference": "inline generated-token equality vs independent c=1 plus env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --seed 1234 --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/primitive-c4.json",
-    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/hipcc-version.txt --require-cached-build --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/serial-bridge-c4.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/primitive-c4.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profiler-c4.json",
-    "profiler": "rocprofv3 --kernel-trace --output-format csv -d <profile-dir> -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/hipcc-version.txt --require-cached-build --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/serial-bridge-c4.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/primitive-c4.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profiler-c4.json"
+    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/serial-bridge-c4.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/primitive-c4.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profiler-c4.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json",
+    "profiler": "rocprofv3 --kernel-trace --output-format csv -d benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profile-c4 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/serial-bridge-c4.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/primitive-c4.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profiler-c4.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json"
   },
   "correctness": {
     "passed": true,
@@ -1319,7 +1321,7 @@
     "batch_execution": {
       "path": "scheduler_native_compact_batch",
       "scheduler_owned": true,
-      "row_execution": "native_batch_with_diagnostic_fallback",
+      "row_execution": "native_compact_caware_layers",
       "native_prefill_plan": {
         "path": "single_request_native_full",
         "layer_limit": 40,
@@ -1330,18 +1332,9 @@
         "blockers": []
       },
       "native_compact_prefill": true,
-      "native_caware_decode": false,
-      "throughput_claim_eligible": false,
-      "blockers": [
-        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
-        "native c>N decode is experimental and blocked until generated-token equality passes",
-        "linear-attention MoE forced to per-row selected-c1 diagnostic path",
-        "linear-attention QKV/Z projections forced to selected-c1 diagnostic path",
-        "linear-attention output projection forced to batch GEMV diagnostic path",
-        "full-attention MoE forced to per-row selected-c1 diagnostic path",
-        "full-attention O projection forced to batch GEMV diagnostic path",
-        "projection dispatch: no c-aware projection candidate applies to this row count"
-      ],
+      "native_caware_decode": true,
+      "throughput_claim_eligible": true,
+      "blockers": [],
       "decode_execution": {
         "rows": 4,
         "slots": [
@@ -1359,7 +1352,7 @@
         "full_attention_context_decode_path": "native_batch",
         "full_attention_kv_append_decode_path": "native_batch",
         "post_attention_decode_path": "native_batch",
-        "native_caware_decode": false,
+        "native_caware_decode": true,
         "linear_attention_segment_metadata": {
           "cu_seqlens": [
             0,
@@ -1375,13 +1368,13 @@
             3
           ]
         },
-        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_projection_path": "native_batch",
         "linear_attention_state_path": "native_segments",
         "linear_attention_output_path": "batch_gemv",
-        "moe_decode_path": "selected_c1_per_row_moe_fallback",
+        "moe_decode_path": "grouped_compact",
         "moe_decode_rows": 4,
-        "moe_grouped_compact_layers": 0,
-        "moe_selected_c1_fallback_layers": 40,
+        "moe_grouped_compact_layers": 40,
+        "moe_selected_c1_fallback_layers": 0,
         "layer_executions": [
           {
             "layer_index": 0,
@@ -1432,11 +1425,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 1,
@@ -1487,11 +1480,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 2,
@@ -1542,11 +1535,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 3,
@@ -1560,8 +1553,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 3,
@@ -1668,11 +1661,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 5,
@@ -1723,11 +1716,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 6,
@@ -1778,11 +1771,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 7,
@@ -1796,8 +1789,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 7,
@@ -1904,11 +1897,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 9,
@@ -1959,11 +1952,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 10,
@@ -2014,11 +2007,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 11,
@@ -2032,8 +2025,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 11,
@@ -2140,11 +2133,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 13,
@@ -2195,11 +2188,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 14,
@@ -2250,11 +2243,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 15,
@@ -2268,8 +2261,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 15,
@@ -2376,11 +2369,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 17,
@@ -2431,11 +2424,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 18,
@@ -2486,11 +2479,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 19,
@@ -2504,8 +2497,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 19,
@@ -2612,11 +2605,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 21,
@@ -2667,11 +2660,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 22,
@@ -2722,11 +2715,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 23,
@@ -2740,8 +2733,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 23,
@@ -2848,11 +2841,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 25,
@@ -2903,11 +2896,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 26,
@@ -2958,11 +2951,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 27,
@@ -2976,8 +2969,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 27,
@@ -3084,11 +3077,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 29,
@@ -3139,11 +3132,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 30,
@@ -3194,11 +3187,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 31,
@@ -3212,8 +3205,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 31,
@@ -3320,11 +3313,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 33,
@@ -3375,11 +3368,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 34,
@@ -3430,11 +3423,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 35,
@@ -3448,8 +3441,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 35,
@@ -3556,11 +3549,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 37,
@@ -3611,11 +3604,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 38,
@@ -3666,11 +3659,11 @@
               }
             ],
             "full_attention_decode_path": "not_applicable",
-            "native_caware_decode": false,
-            "linear_attention_projection_path": "selected_c1_qkv_z",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
             "linear_attention_state_path": "native_segments",
             "linear_attention_output_path": "batch_gemv",
-            "moe_decode_path": "selected_c1_per_row_moe_fallback"
+            "moe_decode_path": "grouped_compact"
           },
           {
             "layer_index": 39,
@@ -3684,8 +3677,8 @@
             ],
             "max_context": 648,
             "full_attention_decode_path": "native_batch",
-            "native_caware_decode": false,
-            "moe_decode_path": "selected_c1_per_row_moe_fallback",
+            "native_caware_decode": true,
+            "moe_decode_path": "grouped_compact",
             "full_attention_output_decode_path": "batch_gemv",
             "full_attention_segment_metadata": {
               "layer_index": 39,
@@ -3744,13 +3737,7 @@
             }
           }
         ],
-        "blockers": [
-          "linear-attention MoE forced to per-row selected-c1 diagnostic path",
-          "linear-attention QKV/Z projections forced to selected-c1 diagnostic path",
-          "linear-attention output projection forced to batch GEMV diagnostic path",
-          "full-attention MoE forced to per-row selected-c1 diagnostic path",
-          "full-attention O projection forced to batch GEMV diagnostic path"
-        ],
+        "blockers": [],
         "sampler_execution": {
           "rows": 4,
           "requested_mode": "batched_lm_head",
@@ -3764,18 +3751,21 @@
       },
       "projection_dispatch": {
         "rows": 4,
-        "selected_candidate": "row_gemv",
-        "path": "row_gemv_until_caware_benchmark",
+        "selected_candidate": "batch",
+        "path": "benchmark_accepted_caware_projection",
         "selection": {
           "layer": "linear",
           "quant": "w4_paro",
-          "variant": "row_gemv"
+          "variant": "batch"
         },
-        "throughput_claim_eligible": false,
-        "blockers": [
-          "no c-aware projection candidate applies to this row count"
-        ],
-        "evidence": null
+        "throughput_claim_eligible": true,
+        "blockers": [],
+        "evidence": {
+          "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-projection-dispatch-evidence/summary.json",
+          "aggregate_vs_row_gemv": 1.1826672856807932,
+          "per_request_vs_row_gemv": 1.1826672856807932,
+          "accepted": true
+        }
       }
     },
     "scheduler_metadata": {
@@ -3840,6 +3830,7 @@
         "entries": 1,
         "hits": 1,
         "misses": 1,
+        "replay_kernel_hits": 0,
         "replay_hit_rate": 0.5,
         "miss_reasons": {
           "cache_absent": 1
@@ -3852,6 +3843,44 @@
           "gt_10ms": 2
         }
       },
+      "decode_shape_keys_observed": [
+        {
+          "mode": "decode",
+          "active_c": 4,
+          "context_bucket": 512,
+          "active_mask": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "kv_storage_dtype": "bf16",
+          "layer_plan": "max_layers=40",
+          "top_k": 0,
+          "experts_per_token": 0,
+          "replay_steps": 1,
+          "draft_depth": 0,
+          "tree_shape": []
+        },
+        {
+          "mode": "decode",
+          "active_c": 4,
+          "context_bucket": 768,
+          "active_mask": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "kv_storage_dtype": "bf16",
+          "layer_plan": "max_layers=40",
+          "top_k": 0,
+          "experts_per_token": 0,
+          "replay_steps": 1,
+          "draft_depth": 0,
+          "tree_shape": []
+        }
+      ],
       "active_count_after_completion": 0,
       "slot_to_request_after_completion": [
         null,
@@ -4518,7 +4547,7 @@
         "finished": true,
         "finish_reason": "length",
         "observability": {
-          "queue_seconds": 0.00020636292174458504,
+          "queue_seconds": 0.0001566619612276554,
           "prefill_seconds": 0.0,
           "decode_seconds": 0.0,
           "kv_pages_owned": 3,
@@ -4526,9 +4555,9 @@
           "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
           "admission_blocked_reason": null,
           "finish_reason": "length",
-          "submitted_timestamp": 693694.924846254,
-          "admitted_timestamp": 693694.925052617,
-          "completion_timestamp": 693724.040572751
+          "submitted_timestamp": 740877.774749127,
+          "admitted_timestamp": 740877.774905789,
+          "completion_timestamp": 740904.687397762
         }
       },
       {
@@ -5188,7 +5217,7 @@
         "finished": true,
         "finish_reason": "length",
         "observability": {
-          "queue_seconds": 0.00014442310202866793,
+          "queue_seconds": 0.00010704202577471733,
           "prefill_seconds": 0.0,
           "decode_seconds": 0.0,
           "kv_pages_owned": 3,
@@ -5196,9 +5225,9 @@
           "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
           "admission_blocked_reason": null,
           "finish_reason": "length",
-          "submitted_timestamp": 693694.924915375,
-          "admitted_timestamp": 693694.925059798,
-          "completion_timestamp": 693724.040653122
+          "submitted_timestamp": 740877.774804147,
+          "admitted_timestamp": 740877.774911189,
+          "completion_timestamp": 740904.687475373
         }
       },
       {
@@ -5858,7 +5887,7 @@
         "finished": true,
         "finish_reason": "length",
         "observability": {
-          "queue_seconds": 8.934200741350651e-05,
+          "queue_seconds": 6.315100472420454e-05,
           "prefill_seconds": 0.0,
           "decode_seconds": 0.0,
           "kv_pages_owned": 3,
@@ -5866,9 +5895,9 @@
           "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
           "admission_blocked_reason": null,
           "finish_reason": "length",
-          "submitted_timestamp": 693694.924974986,
-          "admitted_timestamp": 693694.925064328,
-          "completion_timestamp": 693724.040721923
+          "submitted_timestamp": 740877.774851618,
+          "admitted_timestamp": 740877.774914769,
+          "completion_timestamp": 740904.687540704
         }
       },
       {
@@ -6528,7 +6557,7 @@
         "finished": true,
         "finish_reason": "length",
         "observability": {
-          "queue_seconds": 2.7750968001782894e-05,
+          "queue_seconds": 2.043996937572956e-05,
           "prefill_seconds": 0.0,
           "decode_seconds": 0.0,
           "kv_pages_owned": 3,
@@ -6536,9 +6565,9 @@
           "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
           "admission_blocked_reason": null,
           "finish_reason": "length",
-          "submitted_timestamp": 693694.925039847,
-          "admitted_timestamp": 693694.925067598,
-          "completion_timestamp": 693724.040787494
+          "submitted_timestamp": 740877.774896619,
+          "admitted_timestamp": 740877.774917059,
+          "completion_timestamp": 740904.687602865
         }
       }
     ],
@@ -9137,30 +9166,30 @@
   },
   "observability": {
     "admission_timestamps": {
-      "0": 693694.925052617,
-      "1": 693694.925059798,
-      "2": 693694.925064328,
-      "3": 693694.925067598
+      "0": 740877.774905789,
+      "1": 740877.774911189,
+      "2": 740877.774914769,
+      "3": 740877.774917059
     },
     "completion_timestamps": {
-      "0": 693724.040572751,
-      "1": 693724.040653122,
-      "2": 693724.040721923,
-      "3": 693724.040787494
+      "0": 740904.687397762,
+      "1": 740904.687475373,
+      "2": 740904.687540704,
+      "3": 740904.687602865
     },
     "request_latency_seconds": {
-      "p50": 29.115625459467992,
-      "p95": 29.11571989604272,
+      "p50": 26.91259505954804,
+      "p95": 26.912685806048103,
       "samples": [
-        29.115520133986138,
-        29.115593323949724,
-        29.11565759498626,
-        29.11571989604272
+        26.91249197302386,
+        26.912564184051007,
+        26.91262593504507,
+        26.912685806048103
       ]
     },
     "per_request": {
       "0": {
-        "queue_seconds": 0.00020636292174458504,
+        "queue_seconds": 0.0001566619612276554,
         "prefill_seconds": 0.0,
         "decode_seconds": 0.0,
         "kv_pages_owned": 3,
@@ -9168,12 +9197,12 @@
         "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
         "admission_blocked_reason": null,
         "finish_reason": "length",
-        "submitted_timestamp": 693694.924846254,
-        "admitted_timestamp": 693694.925052617,
-        "completion_timestamp": 693724.040572751
+        "submitted_timestamp": 740877.774749127,
+        "admitted_timestamp": 740877.774905789,
+        "completion_timestamp": 740904.687397762
       },
       "1": {
-        "queue_seconds": 0.00014442310202866793,
+        "queue_seconds": 0.00010704202577471733,
         "prefill_seconds": 0.0,
         "decode_seconds": 0.0,
         "kv_pages_owned": 3,
@@ -9181,12 +9210,12 @@
         "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
         "admission_blocked_reason": null,
         "finish_reason": "length",
-        "submitted_timestamp": 693694.924915375,
-        "admitted_timestamp": 693694.925059798,
-        "completion_timestamp": 693724.040653122
+        "submitted_timestamp": 740877.774804147,
+        "admitted_timestamp": 740877.774911189,
+        "completion_timestamp": 740904.687475373
       },
       "2": {
-        "queue_seconds": 8.934200741350651e-05,
+        "queue_seconds": 6.315100472420454e-05,
         "prefill_seconds": 0.0,
         "decode_seconds": 0.0,
         "kv_pages_owned": 3,
@@ -9194,12 +9223,12 @@
         "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
         "admission_blocked_reason": null,
         "finish_reason": "length",
-        "submitted_timestamp": 693694.924974986,
-        "admitted_timestamp": 693694.925064328,
-        "completion_timestamp": 693724.040721923
+        "submitted_timestamp": 740877.774851618,
+        "admitted_timestamp": 740877.774914769,
+        "completion_timestamp": 740904.687540704
       },
       "3": {
-        "queue_seconds": 2.7750968001782894e-05,
+        "queue_seconds": 2.043996937572956e-05,
         "prefill_seconds": 0.0,
         "decode_seconds": 0.0,
         "kv_pages_owned": 3,
@@ -9207,180 +9236,180 @@
         "bucket_key": "decode:c=4:ctx=768:mask=1111:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
         "admission_blocked_reason": null,
         "finish_reason": "length",
-        "submitted_timestamp": 693694.925039847,
-        "admitted_timestamp": 693694.925067598,
-        "completion_timestamp": 693724.040787494
+        "submitted_timestamp": 740877.774896619,
+        "admitted_timestamp": 740877.774917059,
+        "completion_timestamp": 740904.687602865
       }
     }
   },
   "measurements": {
-    "load_seconds": 22.946023134049028,
-    "prefill_seconds": 0.6730393400648609,
-    "warmup_decode_seconds": 0.37092790799215436,
-    "decode_seconds": 5.125648161978461,
-    "prefill_tok_s": 3042.91276614326,
-    "decode_tok_s_aggregate": 99.88980589771342,
-    "decode_tok_s_per_request": 24.972451474428354,
+    "load_seconds": 22.721597083029337,
+    "prefill_seconds": 0.6728651060257107,
+    "warmup_decode_seconds": 0.2358294550795108,
+    "decode_seconds": 3.282324420986697,
+    "prefill_tok_s": 3043.700708596032,
+    "decode_tok_s_aggregate": 155.98701844532724,
+    "decode_tok_s_per_request": 38.99675461133181,
     "decode_step_seconds": {
       "samples": [
-        0.045960537041537464,
-        0.04478353797458112,
-        0.04639226198196411,
-        0.041122641996480525,
-        0.03908354102168232,
-        0.038997789029963315,
-        0.03856372192967683,
-        0.04174989101011306,
-        0.03910340100992471,
-        0.039802771992981434,
-        0.038552112062461674,
-        0.04022650793194771,
-        0.03868770401459187,
-        0.040390020003542304,
-        0.04054321290459484,
-        0.04000208398792893,
-        0.03877951600588858,
-        0.03858779289294034,
-        0.03869892400689423,
-        0.03866458393167704,
-        0.03882562695071101,
-        0.038835886982269585,
-        0.03866822400595993,
-        0.03940679493825883,
-        0.04833980300463736,
-        0.04758473101537675,
-        0.03815488610416651,
-        0.04022477800026536,
-        0.039950974052771926,
-        0.03813077509403229,
-        0.03870432497933507,
-        0.03842473996337503,
-        0.03820513701066375,
-        0.04018320806790143,
-        0.03792874200735241,
-        0.03826033789664507,
-        0.038518532062880695,
-        0.03824436804279685,
-        0.03886945697013289,
-        0.03858766192570329,
-        0.039242831990122795,
-        0.03874591598287225,
-        0.03849089099094272,
-        0.0388164259493351,
-        0.03918967198114842,
-        0.03895404899958521,
-        0.04303957102820277,
-        0.041157882078550756,
-        0.03892557800281793,
-        0.048510835971683264,
-        0.052702908986248076,
-        0.03796580305788666,
-        0.039654730004258454,
-        0.04020969697739929,
-        0.03813660598825663,
-        0.03812461602501571,
-        0.037934452993795276,
-        0.03786737099289894,
-        0.037583258002996445,
-        0.03785916103515774,
-        0.03771434992086142,
-        0.03760235698428005,
-        0.037689518998377025,
-        0.03767346893437207,
-        0.03776576998643577,
-        0.03755964699666947,
-        0.037536906893365085,
-        0.037738690036349,
-        0.03777004999574274,
-        0.03758028708398342,
-        0.0446107960306108,
-        0.050685288035310805,
-        0.05150698102079332,
-        0.04475040698889643,
-        0.039217262994498014,
-        0.03876358491834253,
-        0.04364610102493316,
-        0.06032445596065372,
-        0.06102164799813181,
-        0.03901253896765411,
-        0.03879598597995937,
-        0.03837230906356126,
-        0.03930206398945302,
-        0.038898988044820726,
-        0.03937750495970249,
-        0.03880748595111072,
-        0.03888042701873928,
-        0.03892267809715122,
-        0.038679904071614146,
-        0.03872750501614064,
-        0.039069790043868124,
-        0.03891996794845909,
-        0.038704824983142316,
-        0.0389396179234609,
-        0.03870772500522435,
-        0.03875789500307292,
-        0.039030730025842786,
-        0.03923272201791406,
-        0.03887787798885256,
-        0.03874527500011027,
-        0.0387685049790889,
-        0.041490157949738204,
-        0.03968552907463163,
-        0.03873112495057285,
-        0.038484441000036895,
-        0.038782414980232716,
-        0.03887289797421545,
-        0.03879755607340485,
-        0.03868053399492055,
-        0.03903316892683506,
-        0.038657963974401355,
-        0.03859025298152119,
-        0.038729864987544715,
-        0.03888926701620221,
-        0.03853833198081702,
-        0.038772325962781906,
-        0.03829082800075412,
-        0.0391239708987996,
-        0.03899988892953843,
-        0.03923417301848531,
-        0.03932190395426005,
-        0.03926286299247295,
-        0.03919655201025307,
-        0.03911187092307955,
-        0.038953489041887224,
-        0.03894872800447047,
-        0.03854016191326082,
-        0.039336604066193104
+        0.02484809304587543,
+        0.024781764019280672,
+        0.02610197092872113,
+        0.025085047003813088,
+        0.025368622038513422,
+        0.024990364909172058,
+        0.025119867059402168,
+        0.025229049962945282,
+        0.02522101905196905,
+        0.025041355984285474,
+        0.025092578027397394,
+        0.02502747590187937,
+        0.025188399013131857,
+        0.025236099027097225,
+        0.0253648420330137,
+        0.025038776104338467,
+        0.025106757995672524,
+        0.025163147947750986,
+        0.02516432898119092,
+        0.02553167298901826,
+        0.025718166027218103,
+        0.025355851044878364,
+        0.0251182479551062,
+        0.025150608038529754,
+        0.025279989931732416,
+        0.025170639040879905,
+        0.02503217605408281,
+        0.025057216989807785,
+        0.024989615892991424,
+        0.02489497500937432,
+        0.0252073589945212,
+        0.02524015901144594,
+        0.025001846021041274,
+        0.025014507002197206,
+        0.02493797498755157,
+        0.02497431600932032,
+        0.025159138021990657,
+        0.025217738933861256,
+        0.025068906950764358,
+        0.025018995977006853,
+        0.0251839489210397,
+        0.02523459994699806,
+        0.02509230689611286,
+        0.025308590033091605,
+        0.02504337695427239,
+        0.025073657045140862,
+        0.025165348080918193,
+        0.02512978797312826,
+        0.02513975801412016,
+        0.025476463022641838,
+        0.02521511900704354,
+        0.02563727495726198,
+        0.0255160330561921,
+        0.025556094013154507,
+        0.02576663694344461,
+        0.025729305925779045,
+        0.02548812294844538,
+        0.02560715493746102,
+        0.025559013010933995,
+        0.02572748705279082,
+        0.027728303102776408,
+        0.028618486947380006,
+        0.02814832900185138,
+        0.02542033197823912,
+        0.02544142201077193,
+        0.025325590977445245,
+        0.026683219941332936,
+        0.02541702101007104,
+        0.025322130997665226,
+        0.025259369984269142,
+        0.025305290007963777,
+        0.025333510944619775,
+        0.02676556003279984,
+        0.025337061029858887,
+        0.02528236003126949,
+        0.025341490982100368,
+        0.025356331025250256,
+        0.025434821960516274,
+        0.02660944906529039,
+        0.026655618916265666,
+        0.02634692401625216,
+        0.025444522965699434,
+        0.02542913192883134,
+        0.026041339966468513,
+        0.02615219191648066,
+        0.025296060019172728,
+        0.02577469707466662,
+        0.025532044004648924,
+        0.02553999295923859,
+        0.026849841931834817,
+        0.02547042304649949,
+        0.025509892962872982,
+        0.025580594083294272,
+        0.02545489207841456,
+        0.025416412041522563,
+        0.02691753301769495,
+        0.025571313919499516,
+        0.025495293084532022,
+        0.02689224190544337,
+        0.02555491402745247,
+        0.025556394015438855,
+        0.02692835300695151,
+        0.025536522967740893,
+        0.026987144025042653,
+        0.0285552249988541,
+        0.027622282970696688,
+        0.025839447043836117,
+        0.02636611496564001,
+        0.025531913968734443,
+        0.02576435694936663,
+        0.025752885965630412,
+        0.025698245968669653,
+        0.02698801294900477,
+        0.025779786985367537,
+        0.025787136983126402,
+        0.02552720403764397,
+        0.02546829206403345,
+        0.025387421948835254,
+        0.026743509923107922,
+        0.026052661007270217,
+        0.0254453020170331,
+        0.025603075046092272,
+        0.025935129029676318,
+        0.0260643910150975,
+        0.025929518043994904,
+        0.025934248929843307,
+        0.02611914207227528,
+        0.02636722498573363
       ],
-      "median": 0.03887117747217417,
-      "p95": 0.04833980300463736,
-      "min": 0.037536906893365085,
-      "max": 0.06102164799813181,
-      "stdev": 0.003811351539543169
+      "median": 0.025442972488235682,
+      "p95": 0.026987144025042653,
+      "min": 0.024781764019280672,
+      "max": 0.028618486947380006,
+      "stdev": 0.0007208357328085258
     },
     "warmup_step_seconds": {
       "samples": [
-        0.07209315698128194,
-        0.039807231980375946,
-        0.040579412947408855,
-        0.03788949199952185,
-        0.03859450307209045,
-        0.04708697402384132,
-        0.04781972407363355,
-        0.04705240298062563
+        0.05556454893667251,
+        0.025856918073259294,
+        0.027764944010414183,
+        0.025113628013059497,
+        0.02490492502693087,
+        0.02584691799711436,
+        0.025974479038268328,
+        0.024799074046313763
       ],
-      "median": 0.04381590796401724,
-      "p95": 0.07209315698128194,
-      "min": 0.03788949199952185,
-      "max": 0.07209315698128194,
-      "stdev": 0.011172288737241558
+      "median": 0.025851918035186827,
+      "p95": 0.05556454893667251,
+      "min": 0.024799074046313763,
+      "max": 0.05556454893667251,
+      "stdev": 0.010582109913719837
     }
   },
   "scaling": {
     "complete": true,
     "native": {
-      "decode_tok_s_aggregate": 99.88980589771342,
-      "decode_tok_s_per_request": 24.972451474428354
+      "decode_tok_s_aggregate": 155.98701844532724,
+      "decode_tok_s_per_request": 38.99675461133181
     },
     "c1_baseline": {
       "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json",
@@ -9407,10 +9436,10 @@
       "reason": null
     },
     "ratios": {
-      "aggregate_vs_c1": 0.7502286466706503,
-      "per_request_vs_c1": 0.18755716166766256,
-      "aggregate_vs_serial_bridge": 0.9052304556105931,
-      "per_request_vs_serial_bridge": 0.9052304556105931
+      "aggregate_vs_c1": 1.1715502767746038,
+      "per_request_vs_c1": 0.29288756919365094,
+      "aggregate_vs_serial_bridge": 1.4135997012667523,
+      "per_request_vs_serial_bridge": 1.4135997012667523
     }
   },
   "memory": {
@@ -9454,8 +9483,8 @@
       }
     },
     "stable_block_id": {
-      "passed": false,
-      "audit": "not captured in retained bench"
+      "passed": true,
+      "audit": "fixed-session stable block identity verified: request_ids=[0, 1, 2, 3], slot_map={0: 0, 1: 1, 2: 2, 3: 3}, decode_slots=[0, 1, 2, 3], prefill_slabs=1"
     },
     "prefix_sharing": {
       "enabled": false,
@@ -9464,10 +9493,10 @@
     "allocator_memory_stats": {
       "current_allocated_bytes": 0,
       "peak_allocated_bytes": 20555134200,
-      "total_allocated_bytes": 20601463976,
-      "total_freed_bytes": 20601463976,
+      "total_allocated_bytes": 20607632536,
+      "total_freed_bytes": 20607632536,
       "active_allocations": 0,
-      "peak_allocations": 5133
+      "peak_allocations": 5543
     }
   },
   "profiler": {
@@ -9562,11 +9591,29 @@
     ]
   },
   "decision": {
-    "accepted": false,
-    "reason": "batch_execution.throughput_claim_eligible=false; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int; execution.batch_execution.decode_execution.moe_selected_c1_fallback_layers must be zero; execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode; execution.batch_execution.decode_execution.linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[0].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[0].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[0].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[0].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[1].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[1].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[1].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[2].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[2].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[2].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[2].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[4].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[4].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[4].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[4].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[5].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[5].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[5].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[5].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[6].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[6].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[6].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[6].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[8].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[8].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[8].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[8].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[9].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[9].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[9].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[9].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[10].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[10].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[10].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[10].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[12].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[12].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[12].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[12].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[13].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[13].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[13].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[13].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[14].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[14].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[14].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[14].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[16].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[16].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[16].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[16].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[17].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[17].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[17].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[17].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[18].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[18].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[18].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[18].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[20].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[20].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[20].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[20].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[21].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[21].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[21].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[21].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[22].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[22].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[22].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[22].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[24].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[24].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[24].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[24].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[25].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[25].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[25].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[25].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[26].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[26].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[26].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[26].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[28].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[28].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[28].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[28].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[29].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[29].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[29].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[29].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[30].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[30].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[30].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[30].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[32].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[32].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[32].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[32].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[33].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[33].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[33].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[33].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[34].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[34].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[34].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[34].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[36].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[36].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[36].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[36].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[37].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[37].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[37].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[37].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[38].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[38].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[38].linear_attention_projection_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[38].linear_attention_output_path must be native_batch or absent; execution.batch_execution.decode_execution.layer_executions[39].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[39].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.blockers must be empty; execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection; execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv; execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true; execution.batch_execution.projection_dispatch.blockers must be empty; execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv; execution.batch_execution.projection_dispatch.evidence is missing; projection_dispatch_candidates must include selected projection candidate; memory.stable_block_id.passed is not true; observability.per_request.0.bucket_key context axis must match scheduler decode shape key; observability.per_request.1.bucket_key context axis must match scheduler decode shape key; observability.per_request.2.bucket_key context axis must match scheduler decode shape key; observability.per_request.3.bucket_key context axis must match scheduler decode shape key; profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive; profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive; profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive; profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive"
+    "accepted": true,
+    "reason": "correctness/protocol passed"
   },
   "notes": [
     "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
     "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024."
+  ],
+  "projection_dispatch_candidates": [
+    {
+      "name": "batch",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "batch"
+      },
+      "min_rows": 2,
+      "max_rows": 8,
+      "evidence": {
+        "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-projection-dispatch-evidence/summary.json",
+        "aggregate_vs_row_gemv": 1.1826672856807932,
+        "per_request_vs_row_gemv": 1.1826672856807932,
+        "accepted": true
+      }
+    }
   ]
 }

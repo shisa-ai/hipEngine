@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/retained-c4-summary.json",
+  "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json",
+  "source_sha256": "aa28918f9a275bf5a05c8ba5b9ce85d86904a0da4950fc72b9c36a490318521d",
+  "source_size_bytes": 222438,
+  "profiler_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profiler-c4.json",
+  "profiler_sha256": "975862367a8224cce75a6a962933975ee8155040fc1be5ed57498d4227860b44",
+  "created_at": "2026-06-02T20:49:24.180277Z",
+  "status": "accepted",
+  "performance_claim": true,
+  "summary": "c=4 retained validation accepted after generated-token equality, primitive correctness, profiler provenance, scaling baselines, projection dispatch, observed context bucket, and stable block-id gates passed.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "9e8bb5aabf7f8085a8eb17cbe23ba47ecbae611d",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "rows": 4,
+    "shape": "c=4 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "quant": "w4_paro",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "correctness": {
+    "passed": true,
+    "generated_token_equality_passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "min_equal_prefix_tokens": 137,
+    "primitive_passed": true,
+    "primitive_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/primitive-c4.json"
+  },
+  "projection_dispatch": {
+    "rows": 4,
+    "selected_candidate": "batch",
+    "path": "benchmark_accepted_caware_projection",
+    "selection": {
+      "layer": "linear",
+      "quant": "w4_paro",
+      "variant": "batch"
+    },
+    "throughput_claim_eligible": true,
+    "blockers": [],
+    "evidence": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-projection-dispatch-evidence/summary.json",
+      "aggregate_vs_row_gemv": 1.1826672856807932,
+      "per_request_vs_row_gemv": 1.1826672856807932,
+      "accepted": true
+    }
+  },
+  "batch_execution": {
+    "path": "scheduler_native_compact_batch",
+    "scheduler_owned": true,
+    "native_compact_prefill": true,
+    "native_caware_decode": true,
+    "throughput_claim_eligible": true,
+    "blockers": []
+  },
+  "scheduler_metadata": {
+    "decode_shape_key": {
+      "mode": "decode",
+      "active_c": 4,
+      "context_bucket": 512,
+      "active_mask": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "kv_storage_dtype": "bf16",
+      "layer_plan": "max_layers=40",
+      "top_k": 0,
+      "experts_per_token": 0,
+      "replay_steps": 1,
+      "draft_depth": 0,
+      "tree_shape": []
+    },
+    "decode_shape_keys_observed": [
+      {
+        "mode": "decode",
+        "active_c": 4,
+        "context_bucket": 512,
+        "active_mask": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "kv_storage_dtype": "bf16",
+        "layer_plan": "max_layers=40",
+        "top_k": 0,
+        "experts_per_token": 0,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      },
+      {
+        "mode": "decode",
+        "active_c": 4,
+        "context_bucket": 768,
+        "active_mask": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "kv_storage_dtype": "bf16",
+        "layer_plan": "max_layers=40",
+        "top_k": 0,
+        "experts_per_token": 0,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      }
+    ],
+    "graph_bucket_stats": {
+      "entries": 1,
+      "hits": 1,
+      "misses": 1,
+      "replay_kernel_hits": 0,
+      "replay_hit_rate": 0.5,
+      "miss_reasons": {
+        "cache_absent": 1
+      },
+      "kernel_time_histogram_ns": {
+        "le_10us": 0,
+        "le_100us": 0,
+        "le_1ms": 1,
+        "le_10ms": 4,
+        "gt_10ms": 2
+      }
+    }
+  },
+  "measurements": {
+    "prefill_tok_s": 3043.700708596032,
+    "decode_tok_s_aggregate": 155.98701844532724,
+    "decode_tok_s_per_request": 38.99675461133181,
+    "peak_reserved_gib": 19.143460504710674
+  },
+  "scaling": {
+    "complete": true,
+    "native": {
+      "decode_tok_s_aggregate": 155.98701844532724,
+      "decode_tok_s_per_request": 38.99675461133181
+    },
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json",
+      "status": "loaded",
+      "run_tag": null,
+      "workload_concurrency": 1,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 133.14581673334177,
+      "decode_tok_s_per_request": 133.14581673334177,
+      "reason": null
+    },
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/serial-bridge-c4.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/serial-bridge-c4.json",
+      "status": "blocked",
+      "run_tag": "qwen35-paro-c4-scheduler-serial-bridge",
+      "workload_concurrency": 4,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 110.34737649247127,
+      "decode_tok_s_per_request": 27.586844123117817,
+      "reason": null
+    },
+    "ratios": {
+      "aggregate_vs_c1": 1.1715502767746038,
+      "per_request_vs_c1": 0.29288756919365094,
+      "aggregate_vs_serial_bridge": 1.4135997012667523,
+      "per_request_vs_serial_bridge": 1.4135997012667523
+    }
+  },
+  "profiler": {
+    "status": "captured",
+    "expected_kernels_present": true,
+    "expected_kernel_names": [
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)",
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)",
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)",
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)"
+    ],
+    "trace_files": [
+      "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profile-c4/hipengine_kernel_trace.csv"
+    ],
+    "trace_dir": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profile-c4",
+    "kernel_duration_categories_ns": {
+      "attention": 1641279934.0,
+      "moe": 0.0,
+      "projection": 0.0,
+      "sampling": 5856463.0,
+      "graph_replay": 0.0,
+      "other": 5322664.0
+    },
+    "kernel_duration_category_shares": {
+      "attention": 0.9932348538830155,
+      "moe": 0.0,
+      "projection": 0.0,
+      "sampling": 0.0035440896166322633,
+      "graph_replay": 0.0,
+      "other": 0.003221056500352235
+    },
+    "kernel_durations_ns": {
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)": 1617951913.0,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 23328021.0,
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)": 3841880.0,
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)": 2816308.0,
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)": 2392515.0,
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 2014583.0,
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)": 113841.0
+    }
+  },
+  "benchmark_rollup": {
+    "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json",
+    "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json",
+    "readme_path": "benchmarks/README.md",
+    "changelog_path": "benchmarks/CHANGELOG.md"
+  }
+}
