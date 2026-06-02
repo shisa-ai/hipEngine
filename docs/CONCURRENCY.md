@@ -1729,6 +1729,9 @@ roll-up/status view.
       c=2/c=4/c=8 512/128 runs with `--batch-sample-mode batched_lm_head`
       stayed generated-token equal (all rows prefix 137) using same-row sampler
       equality artifacts under `benchmarks/results/2026-06-02-hipengine-qwen35-c{2,4,8}-native-batch-sampler-equality.json`.
+      After the retained-bench default-evidence change, the no-flag c=2/c=4/c=8
+      equality matrix is also green with row-aware sampler metadata
+      (`benchmarks/results/2026-06-02-hipengine-qwen35-native-default-sampler-equality-matrix/summary.json`).
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 

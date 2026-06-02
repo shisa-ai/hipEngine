@@ -64284,3 +64284,22 @@ Validation:
 - `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_defaults_to_valid_batched_sampler_artifact tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env -q` passed.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` both passed on AMD Radeon RX 7900 XTX.
 - `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY no-flag sampler equality matrix
+
+Captured a repo-retained no-flag c=2/c=4/c=8 generated-token equality matrix after the retained-bench default sampler-evidence change. Command:
+
+`HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_equality_matrix.py --batch-sizes 2,4,8 --output-dir benchmarks/results/2026-06-02-hipengine-qwen35-native-default-sampler-equality-matrix/artifacts --json benchmarks/results/2026-06-02-hipengine-qwen35-native-default-sampler-equality-matrix/summary.json --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build`
+
+Evidence:
+
+- `summary.json` reports `status=passed`, `generated_equality_passed=true`, `retained_ready=false`.
+- c=2/c=4/c=8 child retained artifacts all have generated-token equality min prefix `137`; prefixes are `[137,137]`, `[137,137,137,137]`, and `[137,137,137,137,137,137,137,137]`.
+- All three no-flag child artifacts record `workload.batch_sample_mode=batched_lm_head` and `sampler_execution.mode=batched_lm_head`, with blockers empty and equality artifacts under `benchmarks/results/2026-06-02-hipengine-qwen35-c{2,4,8}-native-batch-sampler-equality.json`.
+- Raw per-run logs were deleted before staging; the committed artifact set keeps the summary plus JSON child artifacts only. Performance claims remain false / retained-ready remains false.
+
+Validation:
+
+- Primary c=2 verifier printed `137` after the matrix capture.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed.
+- Artifact assertions loaded all JSON, verified finite values, confirmed c=2/c=4/c=8 prefixes and row-aware sampler metadata, and `git diff --check` passed.
