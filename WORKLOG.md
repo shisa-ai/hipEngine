@@ -64610,3 +64610,20 @@ Validation:
 - Compact artifact assertions verified that the selected/per-row native-batch oracle rows are hidden green and each grouped-compact MoE variant is hidden red with `performance_claim=false`.
 - Primary verifier remained `137` with c=2 prefixes `[137,137]` and generated-token equality green.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY grouped-compact decode GEMV attempt rejected
+
+Tried a focused grouped-compact MoE decode change for c<=8: temporarily routed compact sorted MoE rows through the existing selected AWQ transposed GEMV kernels using `sorted_experts` (instead of compact WMMA) while preserving grouped scatter/gather and `weighted_lanes_sum_out`. The change was not retained and the patch was reverted after measurement.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier stayed unchanged: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137` with generated equality prefixes `[137,137]`.
+- Focused all-grouped hidden oracle with the temporary GEMV substitution stayed red: `/tmp/hipengine-hidden-all-grouped-nativec1-l40-d1-iter75.json` reported `status=mismatch_found`; first strict hidden bit drift at layer-limit 40 was `max_abs=0.0078125`, `elements_over_atol=40` at `hidden_atol=0.001`.
+- Focused linear-grouped 512/128 generated-token probe also stayed red: `/tmp/hipengine-e2e-native-c2-512-128-linear-grouped-iter75.json` remained prefixes `[82,137]`.
+- Prompt verifier failed: the attempt did not improve the primary equal-prefix metric and did not make grouped-compact MoE hidden/generated parity green.
+
+Validation:
+
+- Narrow unit expectations passed while the temporary patch was present: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py && pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_linear_attention_moe_layer_chain -q`.
+- Required guard passed while the temporary patch was present: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Patch reverted after `multiloop_measure`/`multiloop_decide(action=log)`. Worktree code is back to the prior grouped-WMMA implementation; next actionable path is a narrower grouped metadata/weighted-lane/shared-combine oracle or a true grouped MoE math fix.
