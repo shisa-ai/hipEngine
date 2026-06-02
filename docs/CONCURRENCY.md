@@ -156,6 +156,9 @@ What is still not green:
   post-attention, and batch layer-copy while using batch-GEMV full-attention
   output plus per-row full-attention MoE is generated-token green for c=2/c=4/c=8
   (`/tmp/hipengine-e2e-native-c{2,4,8}-512-128-selected-linear-native-full-batch-gemv-output-moe-native-post.json`, all rows prefix `137`).
+  A current-default retest of grouped-compact linear MoE remains red
+  (`/tmp/hipengine-e2e-native-c{2,4,8}-512-128-selected-linear-grouped-linear-moe-current-fullattn.json`:
+  c=2/c=4 row 0 stops at prefix `82`, c=8 rows stop at `82/11/40`).
   Therefore the current C2.3/C2.4 blockers are native QKV/Z bit exactness, c=8
   native A/B projection exactness/amplification, fused native full-attention
   output, and grouped-compact linear/full-attention MoE under this shape; paged KV row

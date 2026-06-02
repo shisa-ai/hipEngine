@@ -162,6 +162,10 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
         "workload": {
             "batch_decode_linear_path": workload.get("batch_decode_linear_path"),
             "batch_decode_full_attention_path": workload.get("batch_decode_full_attention_path"),
+            "batch_decode_full_attention_output_path": workload.get("batch_decode_full_attention_output_path"),
+            "batch_decode_full_attention_layer_copy": workload.get("batch_decode_full_attention_layer_copy"),
+            "batch_decode_full_attention_moe_path": workload.get("batch_decode_full_attention_moe_path"),
+            "batch_decode_post_attention_path": workload.get("batch_decode_post_attention_path"),
             "native_caware_decode": workload.get("native_caware_decode"),
         },
         "decode_execution": {
@@ -171,6 +175,8 @@ def _equality_summary(artifact_path: Path) -> dict[str, Any]:
             "linear_attention_state_path": decode_execution.get("linear_attention_state_path"),
             "linear_attention_output_path": decode_execution.get("linear_attention_output_path"),
             "full_attention_decode_path": decode_execution.get("full_attention_decode_path"),
+            "full_attention_output_path": decode_execution.get("full_attention_output_path"),
+            "post_attention_decode_path": decode_execution.get("post_attention_decode_path"),
             "moe_decode_path": decode_execution.get("moe_decode_path"),
         },
     }
@@ -213,6 +219,14 @@ def _retained_command(args: argparse.Namespace, batch_size: int, artifact_path: 
         argv.extend(("--batch-decode-linear-output-path", str(args.batch_decode_linear_output_path)))
     if args.batch_decode_full_attn_path != "default":
         argv.extend(("--batch-decode-full-attn-path", str(args.batch_decode_full_attn_path)))
+    if args.batch_decode_full_attn_output_path != "default":
+        argv.extend(("--batch-decode-full-attn-output-path", str(args.batch_decode_full_attn_output_path)))
+    if args.batch_decode_full_attn_layer_copy != "default":
+        argv.extend(("--batch-decode-full-attn-layer-copy", str(args.batch_decode_full_attn_layer_copy)))
+    if args.batch_decode_full_attn_moe_path != "default":
+        argv.extend(("--batch-decode-full-attn-moe-path", str(args.batch_decode_full_attn_moe_path)))
+    if args.batch_decode_post_attn_path != "default":
+        argv.extend(("--batch-decode-post-attn-path", str(args.batch_decode_post_attn_path)))
     return argv
 
 
@@ -275,6 +289,10 @@ def _build_summary(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
             "batch_decode_linear_moe_path": args.batch_decode_linear_moe_path,
             "batch_decode_linear_output_path": args.batch_decode_linear_output_path,
             "batch_decode_full_attn_path": args.batch_decode_full_attn_path,
+            "batch_decode_full_attn_output_path": args.batch_decode_full_attn_output_path,
+            "batch_decode_full_attn_layer_copy": args.batch_decode_full_attn_layer_copy,
+            "batch_decode_full_attn_moe_path": args.batch_decode_full_attn_moe_path,
+            "batch_decode_post_attn_path": args.batch_decode_post_attn_path,
         },
         "commands": rows,
         "notes": (
@@ -321,6 +339,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="default",
     )
     parser.add_argument("--batch-decode-full-attn-path", choices=("default", "native_batch", "per_row"), default="default")
+    parser.add_argument(
+        "--batch-decode-full-attn-output-path",
+        choices=("default", "batch", "batch_gemv", "per_row"),
+        default="default",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-layer-copy",
+        choices=("default", "batch", "per_row"),
+        default="default",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-moe-path",
+        choices=("default", "grouped_compact", "per_row_c1"),
+        default="default",
+    )
+    parser.add_argument("--batch-decode-post-attn-path", choices=("default", "batch", "per_row"), default="default")
     return parser
 
 

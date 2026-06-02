@@ -3667,7 +3667,15 @@ def test_qwen35_batch_equality_matrix_dry_run_records_linear_diagnostics(tmp_pat
             "--batch-decode-linear-output-path",
             "selected_c1",
             "--batch-decode-full-attn-path",
-            "per_row",
+            "native_batch",
+            "--batch-decode-full-attn-output-path",
+            "batch_gemv",
+            "--batch-decode-full-attn-layer-copy",
+            "batch",
+            "--batch-decode-full-attn-moe-path",
+            "per_row_c1",
+            "--batch-decode-post-attn-path",
+            "batch",
             "--output-dir",
             str(output_dir),
             "--json",
@@ -3683,12 +3691,21 @@ def test_qwen35_batch_equality_matrix_dry_run_records_linear_diagnostics(tmp_pat
     assert payload["workload"]["batch_decode_linear_state_path"] == "selected_c1"
     assert payload["workload"]["batch_decode_linear_moe_path"] == "per_row_c1"
     assert payload["workload"]["batch_decode_linear_output_path"] == "selected_c1"
+    assert payload["workload"]["batch_decode_full_attn_path"] == "native_batch"
+    assert payload["workload"]["batch_decode_full_attn_output_path"] == "batch_gemv"
+    assert payload["workload"]["batch_decode_full_attn_layer_copy"] == "batch"
+    assert payload["workload"]["batch_decode_full_attn_moe_path"] == "per_row_c1"
+    assert payload["workload"]["batch_decode_post_attn_path"] == "batch"
     assert "--batch-decode-linear-path batch_segments" in command
     assert "--batch-decode-linear-projection-path selected_c1" in command
     assert "--batch-decode-linear-state-path selected_c1" in command
     assert "--batch-decode-linear-moe-path per_row_c1" in command
     assert "--batch-decode-linear-output-path selected_c1" in command
-    assert "--batch-decode-full-attn-path per_row" in command
+    assert "--batch-decode-full-attn-path native_batch" in command
+    assert "--batch-decode-full-attn-output-path batch_gemv" in command
+    assert "--batch-decode-full-attn-layer-copy batch" in command
+    assert "--batch-decode-full-attn-moe-path per_row_c1" in command
+    assert "--batch-decode-post-attn-path batch" in command
 
 
 def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_path: Path) -> None:
@@ -3699,7 +3716,11 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
                 "status": "blocked",
                 "workload": {
                     "batch_decode_linear_path": "per_row",
-                    "batch_decode_full_attention_path": "per_row",
+                    "batch_decode_full_attention_path": "native_batch",
+                    "batch_decode_full_attention_output_path": "batch_gemv",
+                    "batch_decode_full_attention_layer_copy": "batch",
+                    "batch_decode_full_attention_moe_path": "per_row_c1",
+                    "batch_decode_post_attention_path": "batch",
                     "native_caware_decode": False,
                 },
                 "performance_claim": False,
@@ -3710,7 +3731,9 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
                         "blockers": ["full-attention decode used a per-row fallback"],
                         "decode_execution": {
                             "native_caware_decode": False,
-                            "full_attention_decode_path": "per_row_context_fallback",
+                            "full_attention_decode_path": "native_batch",
+                            "full_attention_output_path": "batch_gemv",
+                            "post_attention_decode_path": "native_batch",
                             "linear_attention_projection_path": "native_batch",
                             "moe_decode_path": "mixed_grouped_compact_with_per_row_linear_and_full_attention_fallback",
                             "blockers": ["linear-attention decode forced to per-row diagnostic path"],
@@ -3738,8 +3761,14 @@ def test_qwen35_batch_equality_matrix_extracts_blocked_retained_equality(tmp_pat
     assert summary["min_equal_prefix_tokens"] == 137
     assert summary["prefix_lengths"] == [137, 137]
     assert summary["workload"]["batch_decode_linear_path"] == "per_row"
-    assert summary["workload"]["batch_decode_full_attention_path"] == "per_row"
-    assert summary["decode_execution"]["full_attention_decode_path"] == "per_row_context_fallback"
+    assert summary["workload"]["batch_decode_full_attention_path"] == "native_batch"
+    assert summary["workload"]["batch_decode_full_attention_output_path"] == "batch_gemv"
+    assert summary["workload"]["batch_decode_full_attention_layer_copy"] == "batch"
+    assert summary["workload"]["batch_decode_full_attention_moe_path"] == "per_row_c1"
+    assert summary["workload"]["batch_decode_post_attention_path"] == "batch"
+    assert summary["decode_execution"]["full_attention_decode_path"] == "native_batch"
+    assert summary["decode_execution"]["full_attention_output_path"] == "batch_gemv"
+    assert summary["decode_execution"]["post_attention_decode_path"] == "native_batch"
     assert summary["decode_execution"]["linear_attention_projection_path"] == "native_batch"
     assert summary["retained_blockers"] == [
         "full-attention decode used a per-row fallback",
