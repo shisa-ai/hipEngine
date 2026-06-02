@@ -783,6 +783,11 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     )
     readiness_gates = status.get("readiness_gates", {})
     next_action_commands = status.get("next_action_commands", {})
+    handoff_integrity_commands = (
+        next_action_commands.get("handoff_integrity", {})
+        if isinstance(next_action_commands, dict)
+        else {}
+    )
     blocker_kinds = status.get("blocker_kinds", [])
     blocked_gates = status.get("blocked_gates", [])
     handoff_open_blockers = (
@@ -1282,6 +1287,24 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             for item in blocker_recommended_commands
         )
     )
+    handoff_integrity_command_metadata = (
+        isinstance(handoff_integrity_commands, dict)
+        and all(
+            _command_metadata_matches(
+                handoff_integrity_commands,
+                command_key=command_key,
+                nchars_key=f"{command_key}_nchars",
+                sha256_key=f"{command_key}_sha256",
+            )
+            for command_key in (
+                "source_artifacts_verify_command",
+                "verification_status_command",
+                "verification_exit_code_command",
+                "verification_failures_command",
+                "verification_failures_sha_command",
+            )
+        )
+    )
     blocker_work_queue_meta_mirror = (
         isinstance(blocker_meta, dict)
         and isinstance(blocker_work_queue, list)
@@ -1463,6 +1486,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(next_action_commands, dict)
             and status.get("next_action_commands_sha256") == _stable_json_sha256(next_action_commands)
         ),
+        "handoff_integrity_command_metadata": handoff_integrity_command_metadata,
         "blocker_kinds_sha256": (
             isinstance(blocker_kinds, list)
             and status.get("blocker_kinds_sha256") == _stable_json_sha256(blocker_kinds)

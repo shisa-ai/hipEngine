@@ -3689,6 +3689,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "readiness_summary_docs_checklist_count_mirror": True,
             "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
+            "handoff_integrity_command_metadata": True,
             "blocker_kinds_sha256": True,
             "blocker_kinds_mirror_handoff": True,
             "blocker_kinds_mirror_work_queue": True,
@@ -6064,6 +6065,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "readiness_summary_docs_checklist_count_mirror": True,
             "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
+            "handoff_integrity_command_metadata": True,
             "blocker_kinds_sha256": True,
             "blocker_kinds_mirror_handoff": True,
             "blocker_kinds_mirror_work_queue": True,
@@ -7441,6 +7443,72 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_blocked_gates
     assert checks["blocked_gates_mirror_remaining_report"] is False
 
 
+def test_stepfun_correctness_status_source_artifact_verify_detects_handoff_integrity_command_metadata_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    handoff_integrity = status_payload["next_action_commands"]["handoff_integrity"]
+    handoff_integrity["verification_status_command_sha256"] = "stale"
+    status_payload["next_action_commands_sha256"] = _stable_json_sha256(
+        status_payload["next_action_commands"]
+    )
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["failed_checks"] == [
+        "handoff_integrity_command_metadata"
+    ]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["next_action_commands_sha256"] is True
+    assert checks["handoff_integrity_command_metadata"] is False
+    assert checks["blocker_work_queue_command_metadata"] is True
+    assert checks["blocker_recommended_commands_command_metadata"] is True
+    assert checks["schema_versions_sha256"] is True
+
+
 def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest_drift(
     capsys,
     tmp_path: Path,
@@ -7503,6 +7571,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": False,
+        "handoff_integrity_command_metadata": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
         "blocker_kinds_mirror_work_queue": True,
@@ -7615,6 +7684,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
+        "handoff_integrity_command_metadata": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
         "blocker_kinds_mirror_work_queue": True,
@@ -7859,6 +7929,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
+        "handoff_integrity_command_metadata": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
         "blocker_kinds_mirror_work_queue": True,
@@ -8332,6 +8403,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
+        "handoff_integrity_command_metadata": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
         "blocker_kinds_mirror_work_queue": True,
@@ -8443,6 +8515,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
+        "handoff_integrity_command_metadata": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
         "blocker_kinds_mirror_work_queue": True,
@@ -8555,6 +8628,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
+        "handoff_integrity_command_metadata": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
         "blocker_kinds_mirror_work_queue": True,
@@ -8666,6 +8740,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "readiness_summary_docs_checklist_count_mirror": True,
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
+        "handoff_integrity_command_metadata": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
         "blocker_kinds_mirror_work_queue": True,
