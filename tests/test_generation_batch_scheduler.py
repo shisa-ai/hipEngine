@@ -3468,6 +3468,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
         batch_decode_full_attn_path="per_row",
         batch_decode_attn_input_path="per_row",
         batch_decode_attn_qkv_path="per_row",
+        batch_decode_attn_scratch_path="per_row",
         batch_decode_attn_context_path="per_row",
         batch_decode_full_attn_kv_append_path="per_row",
         batch_decode_attn_append_context_order="interleaved",
@@ -3482,6 +3483,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_APPEND_CONTEXT"] == "1"
@@ -3496,6 +3498,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_APPEND_CONTEXT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SUFFIX"] == "0"
@@ -11915,6 +11918,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
     assert payload["workload"]["batch_decode_attention_input_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_qkv_path"] == "batch"
+    assert payload["workload"]["batch_decode_attention_scratch_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_context_path"] == "batch"
     assert payload["workload"]["batch_decode_full_attention_kv_append_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_append_context_order"] == "phased"

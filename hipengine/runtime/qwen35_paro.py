@@ -4053,6 +4053,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_moe: bool = False,
         force_per_row_input_rmsnorm: bool = False,
         force_per_row_qkv_scratch: bool = False,
+        force_per_row_layer_scratch: bool = False,
         force_per_row_context: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_kv_append: bool = False,
@@ -4083,7 +4084,7 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        elif tokens > 1 and not (force_selected_c1_moe or force_per_row_moe):
+        elif tokens > 1 and not (force_selected_c1_moe or force_per_row_moe or force_per_row_layer_scratch):
             if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
                 moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
@@ -4102,6 +4103,133 @@ class Qwen35ParoDecodeState:
         )
         if post_input_rmsnorm_trace is not None:
             post_input_rmsnorm_trace(attention_scratch)
+        if force_per_row_layer_scratch and tokens > 1:
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            if dense_mlp:
+                raise NotImplementedError("per-row full-attention scratch diagnostic is currently wired for MoE layers")
+            if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+                raise ValueError("per-row full-attention scratch diagnostic requires token-row MoE scratch")
+            row_moe_scratch = self.reserve_moe_c1_scratch(
+                tokens=1,
+                activation_dtype=hidden.dtype,
+                prefix="moe.decode_row_layer_scratch",
+            )
+            runtime = self.runtime or get_hip_runtime()
+            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
+                zip(per_row_append_contexts, per_row_contexts, strict=True)
+            ):
+                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple
+                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
+                    raise ValueError("per-row full-attention scratch diagnostics must use matching row cache views")
+                row_hidden = self._row_tensor_view(hidden, row)
+                row_scratch = self._decode_row_full_attention_temp_scratch(attention_scratch)
+                self.input_rmsnorm_fp16(
+                    row_hidden,
+                    row_scratch.attn_input,
+                    tokens=1,
+                    library=library,
+                    stream=stream,
+                )
+                row_position = Tensor.from_handle(
+                    positions.ptr + row * DType.INT64.itemsize,
+                    (1,),
+                    DType.INT64,
+                    positions.device,
+                )
+                self.rotate_full_attention_inputs_fp16(
+                    row_scratch.attn_input,
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                if input_scratch_trace is not None:
+                    input_scratch_trace("attn_input_after_rotate", row, row_scratch)
+
+                def producer_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
+                    if qkv_tensor_trace is not None:
+                        qkv_tensor_trace(stage, _row, tensor)
+
+                self.project_full_attention_qkv_fp16(
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    producer_trace=producer_trace if qkv_tensor_trace is not None else None,
+                    library=library,
+                    stream=stream,
+                )
+                if input_scratch_trace is not None:
+                    input_scratch_trace("attn_input_after_project", row, row_scratch)
+                _row_query, _row_key, _row_value, row_gate = self.prepare_full_attention_qkv_fp16(
+                    row_scratch,
+                    cos_table=cos_table,
+                    sin_table=sin_table,
+                    position=row_position,
+                    max_positions=max_positions,
+                    tokens=1,
+                    producer_trace=producer_trace if qkv_tensor_trace is not None else None,
+                    library=library,
+                    stream=stream,
+                )
+                if input_scratch_trace is not None:
+                    input_scratch_trace("attn_input_after_prepare", row, row_scratch)
+                self.append_full_attention_kv_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_append_spans,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                self.decode_full_attention_context_gate_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_decode_spans,
+                    gate=row_gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_attn_out = self.project_full_attention_o_fp16(
+                    row_scratch.gated_attn,
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_mlp_input, row_residual = self.post_attention_add_rmsnorm_fp16(
+                    row_hidden,
+                    row_attn_out,
+                    row_moe_scratch,
+                    tokens=1,
+                    library=library,
+                    stream=stream,
+                )
+                row_out = self.run_moe_c1_fp16(
+                    row_mlp_input,
+                    row_residual,
+                    scratch=row_moe_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                dst = self._row_tensor_view(moe_scratch.moe_out, row)
+                runtime.memcpy_async(
+                    dst.ptr,
+                    row_out.ptr,
+                    row_out.numel * row_out.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            return moe_scratch.moe_out
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16_decode_rows(
             attention_scratch,
             cos_table=cos_table,

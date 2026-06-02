@@ -63656,3 +63656,25 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: post-context row-wide O/post/MoE stage ordering is not the sole native batch blocker. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. Since suffix interleaving still fails but complete row-layer replay passes, the remaining gap is likely before/at QKV/context scratch lifetime or another full-layer side effect avoided only by a fully independent token-1 attention scratch.
 
 Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention layer-scratch diagnostic
+
+Added a focused full-attention decode layer-scratch diagnostic:
+
+- Runtime env: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SCRATCH=1`.
+- Retained/hidden scripts: `--batch-decode-attn-scratch-path {batch,per_row}`.
+- Runtime path: inside the native-batch full-attention layer, each row now can replay input RMSNorm, QKV/rotary/head-norm, KV append, context/gate, O projection, post-attention RMSNorm, and MoE on an independent token-1 attention/MoE scratch before copying the final row back.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention batch path with all exposed substages forced to row replay plus independent per-row layer scratch:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-layer-scratch.json`
+  - `batch_decode_full_attention_path=native_batch`, `attention_input=qkv=scratch=context=output=per_row`, `full_attention_kv_append=per_row`, `attention_append_context_order=interleaved`, `attention_suffix_order=interleaved`, `full_attention_moe=per_row_c1`, `post_attention=per_row`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Complete full-attention row replay with the new scratch-path metadata:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-rowdiag-layer-scratch.json`
+  - Generated-token equality remains green: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `first_mismatch_indices=[null, null]`, `generated_token_equality.passed=true`.
+
+Conclusion: independent token-1 scratch inside the native-batch full-attention layer is still not equivalent to the outer per-row full-attention fallback. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. The remaining blocker is now outside the obvious full-attention math substage/scratch ordering: likely runner/session side effects that differ between the native-batch branch and the outer per-row fallback.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
