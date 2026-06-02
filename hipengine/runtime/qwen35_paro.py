@@ -4149,6 +4149,8 @@ class Qwen35ParoDecodeState:
         force_per_row_layer_scratch: bool = False,
         force_per_row_context: bool = False,
         force_per_row_context_only: bool = False,
+        force_batch_temp_context: bool = False,
+        force_batch_compact_context: bool = False,
         force_per_row_gate: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_kv_append: bool = False,
@@ -4506,6 +4508,150 @@ class Qwen35ParoDecodeState:
                         HipMemcpyKind.DEVICE_TO_DEVICE,
                         stream,
                     )
+                qwen35_full_attn_gate_mul_fp16(
+                    attention_scratch.query_raw.ptr,
+                    gate.ptr,
+                    attention_scratch.gated_attn.ptr,
+                    tokens * self.config.num_attention_heads * self.config.head_dim,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                gated = attention_scratch.gated_attn
+            elif force_batch_temp_context and tokens > 1:
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("temp-output full-attention context diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("temp-output full-attention context diagnostic does not cover split-K decode")
+                temp_context = self.workspace.reserve_tensor(
+                    "attn.decode.batch_context_tmp",
+                    (tokens, self.config.num_attention_heads, self.config.head_dim),
+                    DType.FP32,
+                )
+                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                    attention_scratch.query.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    temp_context.ptr,
+                    decode_spans,
+                    tokens,
+                    decode_spans.max_live_count,
+                    block_size,
+                    self.config.num_attention_heads,
+                    self.config.num_key_value_heads,
+                    self.config.head_dim,
+                    self.config.head_dim ** -0.5,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                runtime = self.runtime or get_hip_runtime()
+                runtime.memcpy_async(
+                    attention_scratch.query_raw.ptr,
+                    temp_context.ptr,
+                    temp_context.numel * DType.FP32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                qwen35_full_attn_gate_mul_fp16(
+                    attention_scratch.query_raw.ptr,
+                    gate.ptr,
+                    attention_scratch.gated_attn.ptr,
+                    tokens * self.config.num_attention_heads * self.config.head_dim,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                gated = attention_scratch.gated_attn
+            elif force_batch_compact_context and tokens > 1:
+                if per_row_contexts is None or len(per_row_contexts) != tokens:
+                    raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("compact-cache full-attention context diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("compact-cache full-attention context diagnostic does not cover split-K decode")
+                row_blocks = int(per_row_contexts[0][2].base_offsets.numel)
+                if row_blocks <= 0:
+                    raise ValueError("compact-cache full-attention context diagnostic requires non-empty block tables")
+                compact_key_cache = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_key_cache",
+                    (tokens * row_blocks, block_size, self.config.num_key_value_heads, self.config.head_dim),
+                    DType.BF16,
+                )
+                compact_value_cache = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_value_cache",
+                    (tokens * row_blocks, block_size, self.config.num_key_value_heads, self.config.head_dim),
+                    DType.BF16,
+                )
+                compact_block_table = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_block_table",
+                    (tokens, row_blocks),
+                    DType.INT32,
+                )
+                compact_live_counts = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_live_counts",
+                    (tokens,),
+                    DType.INT64,
+                )
+                row_cache_bytes = row_blocks * block_size * self.config.num_key_value_heads * self.config.head_dim * DType.BF16.itemsize
+                row_table_bytes = row_blocks * DType.INT32.itemsize
+                runtime = self.runtime or get_hip_runtime()
+                for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                    if row_decode_spans.storage_dtype != DType.BF16:
+                        raise NotImplementedError("compact-cache full-attention context diagnostic currently requires BF16 KV")
+                    if int(row_decode_spans.base_offsets.numel) != row_blocks:
+                        raise ValueError("compact-cache full-attention context diagnostic requires uniform row block-table length")
+                    runtime.memcpy_async(
+                        compact_key_cache.ptr + row * row_cache_bytes,
+                        row_key_cache.ptr,
+                        row_cache_bytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        compact_value_cache.ptr + row * row_cache_bytes,
+                        row_value_cache.ptr,
+                        row_cache_bytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        compact_block_table.ptr + row * row_table_bytes,
+                        row_decode_spans.base_offsets.ptr,
+                        row_table_bytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        compact_live_counts.ptr + row * DType.INT64.itemsize,
+                        row_decode_spans.live_counts.ptr,
+                        DType.INT64.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                compact_spans = KVLiveSpans.paged_uniform(
+                    block_table=compact_block_table,
+                    live_counts=compact_live_counts,
+                    max_live_count=decode_spans.max_live_count,
+                    storage_dtype=DType.BF16,
+                )
+                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                    attention_scratch.query.ptr,
+                    compact_key_cache.ptr,
+                    compact_value_cache.ptr,
+                    attention_scratch.query_raw.ptr,
+                    compact_spans,
+                    tokens,
+                    decode_spans.max_live_count,
+                    block_size,
+                    self.config.num_attention_heads,
+                    self.config.num_key_value_heads,
+                    self.config.head_dim,
+                    self.config.head_dim ** -0.5,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
                 qwen35_full_attn_gate_mul_fp16(
                     attention_scratch.query_raw.ptr,
                     gate.ptr,

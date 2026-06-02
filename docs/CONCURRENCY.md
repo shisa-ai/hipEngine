@@ -277,6 +277,12 @@ What is still not green:
   when fed per-row context outputs and pinning the blocker to native batch
   context output integration before gate
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-only-split/summary.json`).
+  Follow-up batch-context staging diagnostics (`batch_temp_output` and
+  `batch_compact_cache`) stayed hidden-red, ruling out query_raw destination
+  aliasing and simple all-slots cache compaction as sufficient fixes; in the
+  same run the no-flag native generated-token equality gate passed for c=2,
+  c=4, and c=8 at 512/128 with min equal-prefix `137` on every row
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-c4-c8-equality-and-context-staging/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

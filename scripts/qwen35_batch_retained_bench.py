@@ -3885,6 +3885,12 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT_ONLY"] = (
         "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "per_row_context_only" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_BATCH_TEMP_FULL_ATTN_CONTEXT"] = (
+        "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "batch_temp_output" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_BATCH_COMPACT_FULL_ATTN_CONTEXT"] = (
+        "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "batch_compact_cache" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_GATE"] = (
         "1" if getattr(args, "batch_decode_attn_gate_path", "batch") == "per_row" else "0"
     )
@@ -4539,9 +4545,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--batch-decode-attn-context-path",
-        choices=("batch", "per_row", "per_row_context_only"),
+        choices=("batch", "per_row", "per_row_context_only", "batch_temp_output", "batch_compact_cache"),
         default="batch",
-        help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context+gate kernels, per_row_context_only forces only token-1 context kernels before the batch gate, and both block retained claims.",
+        help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context+gate kernels, per_row_context_only forces only token-1 context kernels before the batch gate, batch_temp_output writes native batch context into a fresh FP32 buffer before copying into the normal context scratch, batch_compact_cache runs the native batch context kernel on compact copied row caches, and all non-batch modes block retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-gate-path",
