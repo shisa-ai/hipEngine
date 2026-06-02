@@ -31830,3 +31830,51 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: the three targeted tests passed; compact source-only/SHA-only outputs and their `--verify-source-artifacts` variants returned SHA `121aec84265bd295f6c7c3bb318f2755478bde2a7653b7ca415b0bdb17a654b0`; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`226` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; this logical unit changes docs/scripts/tests/status artifact only and adds no `hipengine/` runtime or engine-wide backend/quant dispatch branch; docs continue to state StepFun throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun text-resource source compact outputs
+
+Added compact correctness-status outputs for the KV resource/run-plan source artifact. `scripts/stepfun_correctness_status.py` now supports `--text-resource-source-only` and `--text-resource-source-sha-only` for direct polling of `source_artifacts.text_resource`, including the `--verify-source-artifacts` path. Updated `docs/STEPFUN.md`, compact-output mode expectations, the canonical status artifact, and focused status-helper tests. This documents the KV dry-run plan provenance for the still-missing KV-backed decode loop; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No e2e correctness, oracle parity, or performance claim is made.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import hashlib, json, subprocess
+from pathlib import Path
+artifact = Path('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json')
+status = Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json')
+expected_sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
+record = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--text-resource-source-only',
+]))
+sha = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--text-resource-source-sha-only',
+]))
+verify_record = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--verify-source-artifacts', str(status),
+    '--text-resource-source-only',
+]))
+verify_sha = json.loads(subprocess.check_output([
+    'python3', 'scripts/stepfun_correctness_status.py',
+    '--verify-source-artifacts', str(status),
+    '--text-resource-source-sha-only',
+]))
+assert record['path'] == str(artifact)
+assert record['sha256'] == expected_sha
+assert sha == expected_sha
+assert verify_record['match'] is True
+assert verify_record['recorded']['sha256'] == expected_sha
+assert verify_record['current']['sha256'] == expected_sha
+assert verify_sha == expected_sha
+print('compact text resource source outputs ok', expected_sha)
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_summary_only_writes_handoff tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_text_resource_source_outputs
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: compact text-resource source-only/SHA-only outputs and their `--verify-source-artifacts` variants returned matching SHA `b5ce6a8636b80a71c16ccc10b339463bb91c365cf67e3ea07060248280491450`; targeted status-helper tests passed; P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`227` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.

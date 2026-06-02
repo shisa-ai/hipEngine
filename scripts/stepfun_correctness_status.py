@@ -174,6 +174,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--text-resource-source-only",
+        action="store_true",
+        help=(
+            "Emit only source_artifacts.text_resource for compact KV resource/run-plan "
+            "provenance polling. Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--text-resource-source-sha-only",
+        action="store_true",
+        help=(
+            "Emit only source_artifacts.text_resource.sha256 for compact KV resource/run-plan "
+            "provenance drift polling. Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--source-artifacts-sha-only",
         action="store_true",
         help=(
@@ -2292,6 +2308,8 @@ def _handoff_summary(
             "oracle_wrapper_timeout_source_sha_only": (
                 "source_artifacts.oracle_wrapper_timeout.sha256"
             ),
+            "text_resource_source_only": "source_artifacts.text_resource",
+            "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
             "next_action_commands_sha_only": "next_action_commands_sha256",
             "blocker_kinds_only": "blocker_kinds",
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
@@ -2785,6 +2803,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = dict(oracle_wrapper_timeout_record.get("current", {})).get("sha256")
         elif args.oracle_wrapper_timeout_source_only:
             result = verification["records"].get("oracle_wrapper_timeout")
+        elif args.text_resource_source_sha_only:
+            text_resource_record = verification["records"].get("text_resource", {})
+            result = dict(text_resource_record.get("current", {})).get("sha256")
+        elif args.text_resource_source_only:
+            result = verification["records"].get("text_resource")
         elif args.source_artifact_failures_only:
             result = verification["source_artifact_failed_records"]
         elif args.persisted_status_integrity_failures_only:
@@ -2907,6 +2930,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["source_artifacts"].get("oracle_wrapper_timeout", {}).get("sha256")
     elif args.oracle_wrapper_timeout_source_only:
         result = status["source_artifacts"].get("oracle_wrapper_timeout")
+    elif args.text_resource_source_sha_only:
+        result = status["source_artifacts"].get("text_resource", {}).get("sha256")
+    elif args.text_resource_source_only:
+        result = status["source_artifacts"].get("text_resource")
     elif args.source_artifacts_sha_only:
         result = status["source_artifacts_sha256"]
     elif args.verification_status_command_sha_only:

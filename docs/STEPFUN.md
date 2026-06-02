@@ -721,7 +721,11 @@ reporting.
   check the freshly built status without rechecking filesystem provenance. The
   `source_artifacts_sha256` digest gives
   readiness pollers a compact digest
-  of the same prompt/oracle/resource/docs provenance. The status also exposes
+  of the same prompt/oracle/resource/docs provenance, while compact
+  `--text-resource-source-only` / `--text-resource-source-sha-only` outputs
+  expose the resource-plan (`source_artifacts.text_resource`) record and digest
+  directly so KV decode handoff automation can poll the dry-run plan provenance
+  without reading the full status. The status also exposes
   `handoff_summary_sha256` so pollers can detect blocker-summary or
   compact-output metadata drift before trusting the remaining handoff queue. The
   status also includes `next_action_commands` for rerunning the oracle command

@@ -1297,6 +1297,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_wrapper_timeout_source_sha_only": (
             "source_artifacts.oracle_wrapper_timeout.sha256"
         ),
+        "text_resource_source_only": "source_artifacts.text_resource",
+        "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
@@ -3168,6 +3170,125 @@ def test_stepfun_correctness_status_source_artifacts_sha_only(capsys, tmp_path: 
 
 
 
+def test_stepfun_correctness_status_text_resource_source_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    source_output = tmp_path / "text-resource-source.json"
+    sha_output = tmp_path / "text-resource-source-sha.json"
+    verify_source_output = tmp_path / "verify-text-resource-source.json"
+    verify_sha_output = tmp_path / "verify-text-resource-source-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    expected = status["source_artifacts"]["text_resource"]
+    assert isinstance(expected, dict)
+    expected_sha = expected["sha256"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(source_output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--source-artifacts-sha-only",
+            "--text-resource-source-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(source_output.read_text()) == expected
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--source-artifacts-sha-only",
+            "--text-resource-source-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(sha_output.read_text()) == expected_sha
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_source_output),
+            "--text-resource-source-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    verified = json.loads(verify_source_output.read_text())
+    assert verified["path"] == str(resource)
+    assert verified["match"] is True
+    assert verified["recorded"] == expected
+    assert verified["current"] == expected
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_sha_output),
+            "--text-resource-source-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(verify_sha_output.read_text()) == expected_sha
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
 def test_stepfun_correctness_status_next_action_commands_sha_only(
     capsys,
     tmp_path: Path,
@@ -3368,6 +3489,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "oracle_wrapper_timeout_source_sha_only": (
             "source_artifacts.oracle_wrapper_timeout.sha256"
         ),
+        "text_resource_source_only": "source_artifacts.text_resource",
+        "text_resource_source_sha_only": "source_artifacts.text_resource.sha256",
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
