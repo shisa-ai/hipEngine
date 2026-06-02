@@ -3713,6 +3713,15 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] = (
         "1" if linear_projection_path == "selected_qkv_z" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ_INPUT"] = (
+        "1" if linear_projection_path == "selected_qkv_z_input" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKV"] = (
+        "1" if linear_projection_path == "selected_qkv" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_Z"] = (
+        "1" if linear_projection_path == "selected_z" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_AB"] = (
         "1" if linear_projection_path in {"selected_ab", "batch_gemv_selected_ab"} else "0"
     )
@@ -4314,7 +4323,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--batch-decode-linear-projection-path",
-        choices=("auto", "batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_ab", "batch_gemv_selected_ab"),
+        choices=("auto", "batch", "batch_gemv", "selected_c1", "selected_qkv_z", "selected_qkv_z_input", "selected_qkv", "selected_z", "selected_ab", "batch_gemv_selected_ab"),
         default="auto",
         help="Diagnostic linear-attention projection path for c>N batch decode; auto uses selected-QKV/Z with native A/B for c<=4 and full selected-c1 replay for c>=8.",
     )

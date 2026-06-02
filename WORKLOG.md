@@ -63979,3 +63979,22 @@ Updated retained and hidden-bisect projection defaults to `auto`: c=2/c=4 resolv
 Conclusion: selected-c1 A/B projection replay is no longer required for c=2/c=4 generated-token equality, but c=8 still needs full selected-c1 projection replay. Remaining blockers are native QKV/Z projection parity, c=8 native A/B stability, grouped compact linear MoE under this shape, native/fused output retention, and native full attention. No performance/scaling claim.
 
 Validation: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q` passed. Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY QKV/Z projection split diagnostics
+
+Added projection-split diagnostics for the remaining selected-c1 QKV/Z linear-attention fallback: selected token-1 rotary inputs only (`selected_qkv_z_input`), selected token-1 QKV only (`selected_qkv`), and selected token-1 Z only (`selected_z`). These are diagnostic/blocking modes only; the correctness default remains selected-QKV/Z for c=2/c=4 and full selected-c1 projection replay for c=8.
+
+GPU1 / RX 7900 XTX evidence with native segmented state, batch-GEMV/Marlin linear output, per-row c1 linear MoE, and per-row full attention:
+
+- `/tmp/hipengine-e2e-native-c2-512-128-selected-qkvz-input-native-ab-state-marlin-out-perrow-moe-full-per-row.json`: `linear_attention_projection_path=selected_c1_qkv_z_input`, `status=rejected_correctness`, prefixes `[137,104]`.
+- `/tmp/hipengine-e2e-native-c2-512-128-selected_qkv-native-other-state-marlin-out-perrow-moe-full-per-row.json`: `linear_attention_projection_path=selected_c1_qkv`, `status=rejected_correctness`, prefixes `[137,104]`.
+- `/tmp/hipengine-e2e-native-c2-512-128-selected_z-native-other-state-marlin-out-perrow-moe-full-per-row.json`: `linear_attention_projection_path=selected_c1_z`, `status=rejected_correctness`, prefixes `[137,104]`.
+
+Primary/default correctness remained green after adding the diagnostics:
+
+- `/tmp/hipengine-e2e-native-c2-512-128.json`: metric `137`, `generated_token_equality.passed=true`, prefixes `[137,137]`, decode projection path `selected_c1_qkv_z`.
+- `/tmp/hipengine-e2e-native-c2-c4-c8-equality-matrix.json`: `status=passed`, c=2/c=4/c=8 all min equal-prefix `137`; c=2/c=4 use `selected_c1_qkv_z`, c=8 uses `selected_c1_forced`.
+
+Conclusion: the c=2 projection problem is not just the rotary input stage, QKV alone, or Z alone. The current c=2/c=4 fallback still needs the complete selected-c1 QKV/Z pair; c=8 still needs full selected-c1 projection replay from the prior native-A/B matrix. No performance/scaling claim.
+
+Validation: focused compile/tests passed (`python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py -q`). Required guard passed (`405 passed`) plus primitive c=2/c=8 correctness green on HIP_VISIBLE_DEVICES=1 / AMD Radeon RX 7900 XTX.

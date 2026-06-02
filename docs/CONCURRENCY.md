@@ -140,7 +140,14 @@ What is still not green:
   stays hidden-only red at step 11
   (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`).
   The selected-all projection control is green, so both QKV/Z bit exactness and
-  A/B exactness/amplification remain in the linear-projection closure set.
+  A/B exactness/amplification remain in the linear-projection closure set. A
+  projection-split refresh added selected-rotary-input, selected-QKV-only, and
+  selected-Z-only diagnostics; all three still fail the c=2 512/128 generated
+  gate at row 1 / prefix 104 (`/tmp/hipengine-e2e-native-c2-512-128-selected-qkvz-input-native-ab-state-marlin-out-perrow-moe-full-per-row.json`,
+  `/tmp/hipengine-e2e-native-c2-512-128-selected_qkv-native-other-state-marlin-out-perrow-moe-full-per-row.json`,
+  `/tmp/hipengine-e2e-native-c2-512-128-selected_z-native-other-state-marlin-out-perrow-moe-full-per-row.json`),
+  so the remaining c=2 projection fallback is the complete selected-c1 QKV/Z
+  pair rather than rotary input alone or only one of QKV/Z.
   Re-enabling native full-attention decode under the selected-projection/
   batch-GEMV-output control keeps tokens green but returns hidden red at step 6
   (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`),
@@ -1459,8 +1466,10 @@ roll-up/status view.
       not c=8 (`/tmp/hipengine-e2e-native-c2-c4-c8-selected-qkvz-native-ab-state-marlin-out-perrow-moe-full-per-row-matrix.json`: c=8 row 5 prefix `0`).
       Therefore selected-c1 state and selected-c1 output replay are no longer
       part of the correctness-default gate, and selected-c1 A/B projection replay
-      is no longer needed for c=2/c=4; selected-c1 QKV/Z and c=8 full selected
-      projection replay remain required.
+      is no longer needed for c=2/c=4. The follow-up selected-rotary-input,
+      selected-QKV-only, and selected-Z-only diagnostics all fail c=2 at the same
+      row-1 prefix-104 boundary, so selected-c1 QKV/Z remains required as a
+      complete pair; c=8 full selected projection replay also remains required.
 - [x] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.

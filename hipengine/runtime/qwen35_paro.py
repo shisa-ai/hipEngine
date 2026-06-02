@@ -2794,6 +2794,95 @@ class Qwen35ParoDecodeState:
                 )
         return scratch.qkv, scratch.z
 
+    def project_linear_attention_decode_rows_qkv_z_subset_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        copy_qkv: bool,
+        copy_z: bool,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Replay selected QKV/Z projection outputs with token-1 rows."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if not copy_qkv and not copy_z:
+            return scratch.qkv, scratch.z
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.rotate_linear_attention_inputs_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            self.project_linear_attention_qkv_z_fp16(
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            copies: list[tuple[Tensor, Tensor]] = []
+            if copy_qkv:
+                copies.append((self._row_tensor_view(scratch.qkv, row), row_scratch.qkv))
+            if copy_z:
+                copies.append((self._row_tensor_view(scratch.z, row), row_scratch.z))
+            for dst, src in copies:
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.qkv, scratch.z
+
+    def rotate_linear_attention_decode_rows_qkv_z_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Replay only the QKV/Z rotary-input stage with token-1 rows."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.rotate_linear_attention_inputs_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            for dst, src in (
+                (self._row_tensor_view(scratch.qkv_rot, row), row_scratch.qkv_rot),
+                (self._row_tensor_view(scratch.z_rot, row), row_scratch.z_rot),
+            ):
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.qkv_rot, scratch.z_rot
+
     def project_linear_attention_decode_rows_ab_fp16(
         self,
         hidden: Tensor,
@@ -5612,6 +5701,9 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         force_selected_c1_projections: bool = False,
         force_selected_c1_qkv_z_projections: bool = False,
+        force_selected_c1_qkv_z_input: bool = False,
+        force_selected_c1_qkv_projections: bool = False,
+        force_selected_c1_z_projections: bool = False,
         force_selected_c1_ab_projections: bool = False,
         force_batch_gemv_projections: bool = False,
         force_selected_c1_state: bool = False,
@@ -5641,7 +5733,17 @@ class Qwen35ParoDecodeState:
                     stream=stream,
                 )
             else:
-                self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+                if force_selected_c1_qkv_z_input:
+                    self.rotate_linear_attention_decode_rows_qkv_z_fp16(
+                        hidden,
+                        scratch,
+                        tokens=tokens,
+                        group_size=group_size,
+                        library=library,
+                        stream=stream,
+                    )
+                else:
+                    self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
                 self.project_linear_attention_qkv_z_fp16(
                     scratch,
                     tokens=tokens,
@@ -5650,6 +5752,17 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
+                if force_selected_c1_qkv_projections or force_selected_c1_z_projections:
+                    self.project_linear_attention_decode_rows_qkv_z_subset_fp16(
+                        hidden,
+                        scratch,
+                        tokens=tokens,
+                        copy_qkv=force_selected_c1_qkv_projections,
+                        copy_z=force_selected_c1_z_projections,
+                        group_size=group_size,
+                        library=library,
+                        stream=stream,
+                    )
             if force_selected_c1_ab_projections:
                 self.project_linear_attention_decode_rows_ab_fp16(
                     hidden,
@@ -5697,6 +5810,9 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         force_selected_c1_projections: bool = False,
         force_selected_c1_qkv_z_projections: bool = False,
+        force_selected_c1_qkv_z_input: bool = False,
+        force_selected_c1_qkv_projections: bool = False,
+        force_selected_c1_z_projections: bool = False,
         force_selected_c1_ab_projections: bool = False,
         force_batch_gemv_projections: bool = False,
         force_selected_c1_state: bool = False,
@@ -5720,6 +5836,9 @@ class Qwen35ParoDecodeState:
             group_size=group_size,
             force_selected_c1_projections=force_selected_c1_projections,
             force_selected_c1_qkv_z_projections=force_selected_c1_qkv_z_projections,
+            force_selected_c1_qkv_z_input=force_selected_c1_qkv_z_input,
+            force_selected_c1_qkv_projections=force_selected_c1_qkv_projections,
+            force_selected_c1_z_projections=force_selected_c1_z_projections,
             force_selected_c1_ab_projections=force_selected_c1_ab_projections,
             force_batch_gemv_projections=force_batch_gemv_projections,
             force_selected_c1_state=force_selected_c1_state,
@@ -6053,6 +6172,9 @@ class Qwen35ParoDecodeState:
         force_selected_c1_moe: bool = False,
         force_selected_c1_linear_projections: bool = False,
         force_selected_c1_qkv_z_linear_projections: bool = False,
+        force_selected_c1_qkv_z_linear_input: bool = False,
+        force_selected_c1_qkv_linear_projections: bool = False,
+        force_selected_c1_z_linear_projections: bool = False,
         force_selected_c1_ab_linear_projections: bool = False,
         force_batch_gemv_linear_projections: bool = False,
         force_selected_c1_linear_state: bool = False,
@@ -6090,6 +6212,9 @@ class Qwen35ParoDecodeState:
             group_size=group_size,
             force_selected_c1_projections=force_selected_c1_linear_projections,
             force_selected_c1_qkv_z_projections=force_selected_c1_qkv_z_linear_projections,
+            force_selected_c1_qkv_z_input=force_selected_c1_qkv_z_linear_input,
+            force_selected_c1_qkv_projections=force_selected_c1_qkv_linear_projections,
+            force_selected_c1_z_projections=force_selected_c1_z_linear_projections,
             force_selected_c1_ab_projections=force_selected_c1_ab_linear_projections,
             force_batch_gemv_projections=force_batch_gemv_linear_projections,
             force_selected_c1_state=force_selected_c1_linear_state,

@@ -3961,6 +3961,24 @@ class Qwen35ParoResidentSession:
             and not force_selected_c1_linear_projections
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ")
         )
+        force_selected_c1_qkv_z_linear_input = (
+            rows > 1
+            and not force_selected_c1_linear_projections
+            and not force_selected_c1_qkv_z_linear_projections
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ_INPUT")
+        )
+        force_selected_c1_qkv_linear_projections = (
+            rows > 1
+            and not force_selected_c1_linear_projections
+            and not force_selected_c1_qkv_z_linear_projections
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKV")
+        )
+        force_selected_c1_z_linear_projections = (
+            rows > 1
+            and not force_selected_c1_linear_projections
+            and not force_selected_c1_qkv_z_linear_projections
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_Z")
+        )
         force_selected_c1_ab_linear_projections = (
             rows > 1
             and not force_selected_c1_linear_projections
@@ -4003,7 +4021,15 @@ class Qwen35ParoResidentSession:
                 "selected_c1_qkv_z"
                 if force_selected_c1_qkv_z_linear_projections
                 else (
-                    "batch_gemv_selected_c1_ab"
+                    "selected_c1_qkv_z_input"
+                    if force_selected_c1_qkv_z_linear_input
+                    else "selected_c1_qkv"
+                    if force_selected_c1_qkv_linear_projections and not force_selected_c1_z_linear_projections
+                    else "selected_c1_z"
+                    if force_selected_c1_z_linear_projections and not force_selected_c1_qkv_linear_projections
+                    else "selected_c1_qkv_plus_z"
+                    if force_selected_c1_qkv_linear_projections and force_selected_c1_z_linear_projections
+                    else "batch_gemv_selected_c1_ab"
                     if force_batch_gemv_linear_projections and force_selected_c1_ab_linear_projections
                     else (
                         "batch_gemv"
@@ -4210,6 +4236,9 @@ class Qwen35ParoResidentSession:
                             force_selected_c1_moe=force_selected_c1_moe,
                             force_selected_c1_linear_projections=force_selected_c1_linear_projections,
                             force_selected_c1_qkv_z_linear_projections=force_selected_c1_qkv_z_linear_projections,
+                            force_selected_c1_qkv_z_linear_input=force_selected_c1_qkv_z_linear_input,
+                            force_selected_c1_qkv_linear_projections=force_selected_c1_qkv_linear_projections,
+                            force_selected_c1_z_linear_projections=force_selected_c1_z_linear_projections,
                             force_selected_c1_ab_linear_projections=force_selected_c1_ab_linear_projections,
                             force_batch_gemv_linear_projections=use_batch_gemv_linear_projections,
                             force_selected_c1_linear_state=force_selected_c1_linear_state,
@@ -4257,6 +4286,9 @@ class Qwen35ParoResidentSession:
                                     or force_per_row_linear_moe
                                     or force_selected_c1_linear_projections
                                     or force_selected_c1_qkv_z_linear_projections
+                                    or force_selected_c1_qkv_z_linear_input
+                                    or force_selected_c1_qkv_linear_projections
+                                    or force_selected_c1_z_linear_projections
                                     or force_selected_c1_ab_linear_projections
                                     or force_batch_gemv_linear_projections
                                     or force_selected_c1_linear_state
@@ -4674,6 +4706,12 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("linear-attention projections forced to selected-c1 diagnostic path")
             if force_selected_c1_qkv_z_linear_projections:
                 decode_blockers.append("linear-attention QKV/Z projections forced to selected-c1 diagnostic path")
+            if force_selected_c1_qkv_z_linear_input:
+                decode_blockers.append("linear-attention QKV/Z rotary inputs forced to selected-c1 diagnostic path")
+            if force_selected_c1_qkv_linear_projections:
+                decode_blockers.append("linear-attention QKV projections forced to selected-c1 diagnostic path")
+            if force_selected_c1_z_linear_projections:
+                decode_blockers.append("linear-attention Z projection forced to selected-c1 diagnostic path")
             if force_selected_c1_ab_linear_projections:
                 decode_blockers.append("linear-attention A/B projections forced to selected-c1 diagnostic path")
             if force_batch_gemv_linear_projections:
@@ -4746,6 +4784,9 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_linear_moe
                 and not force_selected_c1_linear_projections
                 and not force_selected_c1_qkv_z_linear_projections
+                and not force_selected_c1_qkv_z_linear_input
+                and not force_selected_c1_qkv_linear_projections
+                and not force_selected_c1_z_linear_projections
                 and not force_selected_c1_ab_linear_projections
                 and not force_batch_gemv_linear_projections
                 and not force_selected_c1_linear_state
