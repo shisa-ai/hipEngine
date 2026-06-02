@@ -597,7 +597,9 @@ reporting.
   emits a tiny top-level readiness/blocker digest for scheduler polling, `--readiness-summary-sha-only`
   emits just that readiness-summary digest for drift polling, `--docs-checklist-only` /
   `--docs-checklist-sha-only` expose the exact P0-P12 open/partial checklist payload
-  and digest used by the loop metric, `--status-refresh-command-only`
+  and digest used by the loop metric, and status integrity verifies the checklist
+  count against its item list plus the readiness-summary metric mirror,
+  `--status-refresh-command-only`
   / `--status-refresh-command-sha-only` emit the consolidated status refresh command or digest,
   `--kv-resource-command-only` / `--kv-resource-command-sha-only` emit the KV resource
   refresh command or digest, `--oracle-helper-command-only` emits just the oracle JSON refresh command,

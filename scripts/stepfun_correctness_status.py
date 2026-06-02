@@ -758,6 +758,21 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     readiness_summary = status.get("readiness_summary", {})
     docs_checklist = status.get("docs_checklist", {})
     docs_checklist_sha256 = status.get("docs_checklist_sha256")
+    docs_open_or_partial_items = (
+        docs_checklist.get("open_or_partial_items_p0_p12", [])
+        if isinstance(docs_checklist, dict)
+        else []
+    )
+    docs_open_or_partial_count = (
+        docs_checklist.get("open_or_partial_count_p0_p12")
+        if isinstance(docs_checklist, dict)
+        else None
+    )
+    readiness_open_or_partial_count = (
+        readiness_summary.get("open_or_partial_items_p0_p12")
+        if isinstance(readiness_summary, dict)
+        else None
+    )
     readiness_gates = status.get("readiness_gates", {})
     next_action_commands = status.get("next_action_commands", {})
     blocker_kinds = status.get("blocker_kinds", [])
@@ -1369,6 +1384,13 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "docs_checklist_sha256": (
             isinstance(docs_checklist, dict)
             and docs_checklist_sha256 == _stable_json_sha256(docs_checklist)
+        ),
+        "docs_checklist_count_matches_items": (
+            isinstance(docs_open_or_partial_items, list)
+            and docs_open_or_partial_count == len(docs_open_or_partial_items)
+        ),
+        "readiness_summary_docs_checklist_count_mirror": (
+            docs_open_or_partial_count == readiness_open_or_partial_count
         ),
         "readiness_gates_sha256": (
             isinstance(readiness_gates, dict)

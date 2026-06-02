@@ -32845,3 +32845,43 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted docs-checklist/status-integrity tests passed (`5` tests); compact docs checklist smoke returned `docs_checklist_sha256=401438e44fd5259a311859614b60babc7c178135aeb926e2c73893830d1ab145`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks, `status_integrity_sha256=b748b1babee53c52835643d604aa4c58499cc398179dc4f9a1d5111cd5d07d9f`); the full correctness-status test file passed (`137` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`252` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun docs checklist metric mirror checks
+
+Added status-integrity coverage for the P0-P12 open/partial metric mirror between `docs_checklist` and `readiness_summary`. `scripts/stepfun_correctness_status.py` now verifies `docs_checklist_count_matches_items` and `readiness_summary_docs_checklist_count_mirror`, so a stale `readiness_summary.open_or_partial_items_p0_p12` cannot be hidden behind a recomputed `readiness_summary_sha256`, and a stale docs checklist count cannot be hidden behind a recomputed `docs_checklist_sha256`. New drift regressions cover both stale readiness-summary metric mirrors and docs-checklist count drift. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, KV-backed token/logit artifact, e2e correctness, or Step throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_docs_checklist_digest_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_readiness_docs_metric_mirror_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_source_artifact_verify_detects_docs_checklist_count_drift tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_docs_checklist_outputs
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json, subprocess
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+checks=s['status_integrity']['checks']
+for key in ['docs_checklist_sha256','docs_checklist_count_matches_items','readiness_summary_docs_checklist_count_mirror']:
+    assert checks[key] is True, (key, checks[key])
+assert s['docs_checklist']['open_or_partial_count_p0_p12'] == s['readiness_summary']['open_or_partial_items_p0_p12'] == 2
+checklist=json.loads(subprocess.check_output(['python3','scripts/stepfun_correctness_status.py','--docs-checklist-only']))
+sha=json.loads(subprocess.check_output(['python3','scripts/stepfun_correctness_status.py','--docs-checklist-sha-only']))
+assert checklist == s['docs_checklist']
+assert sha == s['docs_checklist_sha256']
+print('docs metric mirror ok', sha)
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+assert p['checks']['docs_checklist_count_matches_items'] is True
+assert p['checks']['readiness_summary_docs_checklist_count_mirror'] is True
+print('status integrity ok')
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted docs metric mirror/status-integrity tests passed (`5` tests); compact docs checklist smoke returned `docs_checklist_sha256=e9844186da3eb9e84fe4328c9e0c7b6b9249ef893b7f0022812a39b4d47fe185`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks, `status_integrity_sha256=1e8ee334471edd38ba5b5f47e2d32d315b76f9b237bc4148e1d58a75147fd90b`); the full correctness-status test file passed (`139` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`254` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.
