@@ -1531,6 +1531,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_helper_long_timeout_command_sha_only": (
             "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command_sha256"
         ),
+        "oracle_timeout_termination_only": "oracle_gap_report.timeout_termination",
+        "oracle_timeout_termination_sha_only": (
+            "oracle_gap_report.timeout_termination_sha256"
+        ),
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -4286,6 +4290,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "oracle_helper_long_timeout_command_sha_only": (
             "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command_sha256"
         ),
+        "oracle_timeout_termination_only": "oracle_gap_report.timeout_termination",
+        "oracle_timeout_termination_sha_only": (
+            "oracle_gap_report.timeout_termination_sha256"
+        ),
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -5429,6 +5437,105 @@ def test_stepfun_correctness_status_oracle_helper_long_timeout_command_sha_only(
         "oracle_helper_long_timeout_command_sha256"
     ]
     assert payload == hashlib.sha256(expected.encode()).hexdigest()
+
+
+
+def test_stepfun_correctness_status_oracle_timeout_termination_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "oracle-timeout-termination.json"
+    sha_output = tmp_path / "oracle-timeout-termination-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle, diagnostic_logs=True)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    termination = {
+        "timeout_reached": True,
+        "timeout_s": 60.0,
+        "process_group_started": True,
+        "termination_method": "os.killpg",
+        "termination_signal": "SIGKILL",
+        "termination_signal_number": 9,
+        "termination_path": "killpg_sigkill_then_communicate",
+        "communicate_after_signal_timeout_s": 10.0,
+        "process_exited_before_signal": False,
+        "fallback_proc_kill_used": False,
+    }
+    oracle_payload = json.loads(oracle.read_text())
+    oracle_payload.update(
+        {
+            "status": "timeout",
+            "returncode": None,
+            "stderr": "",
+            "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+            "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
+            "step35_supported": None,
+            "timeout_termination": termination,
+        }
+    )
+    oracle.write_text(json.dumps(oracle_payload))
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--oracle-timeout-termination-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(output.read_text()) == termination
+    assert status["handoff_summary"]["compact_output_modes"][
+        "oracle_timeout_termination_only"
+    ] == "oracle_gap_report.timeout_termination"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--oracle-timeout-termination-only",
+            "--oracle-timeout-termination-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(sha_output.read_text()) == status["oracle_gap_report"][
+        "timeout_termination_sha256"
+    ]
+    assert json.loads(sha_output.read_text()) == _stable_json_sha256(termination)
 
 
 

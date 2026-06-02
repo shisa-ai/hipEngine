@@ -32558,3 +32558,44 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted correctness-status tests passed; the refreshed oracle helper attempt timed out after `elapsed_s=61.7501613649074` and wrote `timeout_termination` with `termination_method=os.killpg`, `termination_signal=SIGKILL`, `process_group_started=true`, and no fallback `proc.kill`; wrapper-timeout/source-handoff focused tests passed; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`242` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, `tests/test_stepfun_correctness_status.py`, and `tests/test_stepfun_oracle_wrapper_timeout.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-02 — StepFun oracle timeout termination compact handoff
+
+Exposed compact correctness-status outputs for the current llama.cpp oracle timeout cleanup evidence. `scripts/stepfun_correctness_status.py` now supports `--oracle-timeout-termination-only` and `--oracle-timeout-termination-sha-only`, returning `oracle_gap_report.timeout_termination` and its stable digest directly; `handoff_summary.compact_output_modes` advertises both modes. This documents the current oracle blocker without rerunning the long oracle command: the canonical 60 s oracle artifact still has `status=timeout`, `oracle_blocker_kind=llama_cpp_oracle_timeout`, empty `generated_text`, and `timeout_termination_sha256=4b2b9123034ed210a2079712636ea8e8fcde9646c20c2c367805cbe02b8eca1c` for the `os.killpg` / `SIGKILL` process-group cleanup path. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, KV-backed token/logit artifact, e2e correctness, or Step throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_oracle_timeout_termination_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_summary_only_writes_handoff
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json, subprocess
+from pathlib import Path
+status_path=Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json')
+s=json.loads(status_path.read_text())
+termination=json.loads(subprocess.check_output([
+    'python3','scripts/stepfun_correctness_status.py','--oracle-timeout-termination-only'
+]))
+sha=json.loads(subprocess.check_output([
+    'python3','scripts/stepfun_correctness_status.py','--oracle-timeout-termination-sha-only'
+]))
+assert termination == s['oracle_gap_report']['timeout_termination']
+assert sha == s['oracle_gap_report']['timeout_termination_sha256']
+assert s['handoff_summary']['compact_output_modes']['oracle_timeout_termination_only'] == 'oracle_gap_report.timeout_termination'
+assert s['handoff_summary']['compact_output_modes']['oracle_timeout_termination_sha_only'] == 'oracle_gap_report.timeout_termination_sha256'
+print('oracle timeout compact outputs ok', sha)
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --status-integrity-only >/tmp/stepfun-status-integrity.json && python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-status-integrity.json'))
+assert p['all_match'] is True
+assert p['failed_checks'] == []
+print('status integrity ok')
+PY
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted compact-output/status tests passed; compact output smoke returned the current timeout termination digest `4b2b9123034ed210a2079712636ea8e8fcde9646c20c2c367805cbe02b8eca1c`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); the full correctness-status test file passed (`128` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`243` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.

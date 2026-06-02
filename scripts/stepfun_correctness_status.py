@@ -610,6 +610,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-timeout-termination-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_gap_report.timeout_termination for compact oracle timeout cleanup "
+            "handoff. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-timeout-termination-sha-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_gap_report.timeout_termination_sha256 for oracle timeout cleanup "
+            "drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--first-blocker-sha-only",
         action="store_true",
         help=(
@@ -3183,6 +3199,10 @@ def _handoff_summary(
             "oracle_helper_long_timeout_command_sha_only": (
                 "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command_sha256"
             ),
+            "oracle_timeout_termination_only": "oracle_gap_report.timeout_termination",
+            "oracle_timeout_termination_sha_only": (
+                "oracle_gap_report.timeout_termination_sha256"
+            ),
             "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
             "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -3712,6 +3732,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_long_timeout_command"
         )
+    elif args.oracle_timeout_termination_sha_only:
+        result = status["oracle_gap_report"].get("timeout_termination_sha256")
+    elif args.oracle_timeout_termination_only:
+        result = status["oracle_gap_report"].get("timeout_termination")
     elif args.atomic_output_handoff_sha_only:
         result = status["atomic_output_handoff_sha256"]
     elif args.atomic_output_handoff_only:

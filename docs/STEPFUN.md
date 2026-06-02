@@ -653,7 +653,9 @@ reporting.
   wrapper-timeout artifact as `oracle_wrapper_timeout`, and
   Compact `--oracle-wrapper-timeout-source-only` /
   `--oracle-wrapper-timeout-source-sha-only` outputs expose that provenance
-  record/digest directly. `tests/test_stepfun_oracle_wrapper_timeout.py` locks
+  record/digest directly, while `--oracle-timeout-termination-only` /
+  `--oracle-timeout-termination-sha-only` expose the canonical timeout cleanup
+  payload/digest from `oracle_gap_report`. `tests/test_stepfun_oracle_wrapper_timeout.py` locks
   the artifact schema, historical after-attempt canonical SHA (which now differs
   from the refreshed timeout-termination canonical artifact), source-artifact
   provenance, compact source outputs, and a stale wrapper-timeout source hash
