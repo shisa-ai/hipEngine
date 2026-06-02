@@ -800,7 +800,9 @@ reporting.
   canonical oracle output JSON) with length/SHA-256 metadata and mirrors it in
   the first blocker work item. The blocker queue now also exposes a generic
   `recommended_command` / digest for the first blocker, selecting that 900 s
-  oracle helper while oracle parity is the front-of-queue blocker. Compact
+  oracle helper while oracle parity is the front-of-queue blocker. Status integrity
+  verifies the oracle compact output-mode mappings for helper command, long-timeout
+  helper command, and timeout-termination payload/digest routes. Compact
   `--oracle-helper-long-timeout-command-only` /
   `--oracle-helper-long-timeout-command-sha-only` and
   `--first-blocker-recommended-command-only` /

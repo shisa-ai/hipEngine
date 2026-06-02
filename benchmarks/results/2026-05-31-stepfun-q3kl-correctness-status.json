@@ -2732,10 +2732,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
     "schema_version": 1,
-    "source_artifacts_sha256": "227bc957c1d0b33d01ca2059f18bb424e0d3fdfcd453c73246852d2802ea73ba",
+    "source_artifacts_sha256": "92e4c30ad4a1320db55a65be81a56c764a108b3094af24c3fa2ee09468a2b3b4",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "0826e9d8c029e3261ebba763f27ca1cb7fc4c4257e0d9a24f1e576cdf7bb3604",
+  "readiness_summary_sha256": "3c372306cf190ebe2210a8636dbe6f751ea1e4b3bda241c97e303cb4d0cb3ea3",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2854,8 +2854,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "d04219572eeeb6287cebc94e1f659e6a1c9abd1b615b20917c2a4c9045597167",
-      "size_bytes": 67039
+      "sha256": "d8ff79e3a1b31a4c5601f7fb71e68ad7bd20319c49513b35cc8e1fbd7fd0e4d4",
+      "size_bytes": 67205
     },
     "oracle": {
       "exists": true,
@@ -2882,7 +2882,7 @@
       "size_bytes": 52292
     }
   },
-  "source_artifacts_sha256": "227bc957c1d0b33d01ca2059f18bb424e0d3fdfcd453c73246852d2802ea73ba",
+  "source_artifacts_sha256": "92e4c30ad4a1320db55a65be81a56c764a108b3094af24c3fa2ee09468a2b3b4",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
@@ -2926,6 +2926,7 @@
       "kv_streaming_runner_blocker_records_mirrors": true,
       "kv_streaming_runner_blockers_sha256": true,
       "next_action_commands_sha256": true,
+      "oracle_compact_output_modes": true,
       "oracle_partial_output_command_metadata": true,
       "oracle_partial_output_handoff_mirrors": true,
       "readiness_compact_output_modes": true,
@@ -2945,7 +2946,7 @@
     },
     "failed_checks": []
   },
-  "status_integrity_sha256": "077e54cabb6a19eab77d9c36a4d7349f688decb82f3e337f3f201edc0b9760a7",
+  "status_integrity_sha256": "a992e0fc47ba3942ee0576767eb6b960502dc5812c192fa75c0b3745c6446286",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 }

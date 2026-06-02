@@ -1573,6 +1573,21 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             and status.get("next_action_commands_sha256") == _stable_json_sha256(next_action_commands)
         ),
         "handoff_integrity_command_metadata": handoff_integrity_command_metadata,
+        "oracle_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("oracle_helper_command_only")
+            == "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
+            and compact_output_modes.get("oracle_helper_command_sha_only")
+            == "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256"
+            and compact_output_modes.get("oracle_helper_long_timeout_command_only")
+            == "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
+            and compact_output_modes.get("oracle_helper_long_timeout_command_sha_only")
+            == "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command_sha256"
+            and compact_output_modes.get("oracle_timeout_termination_only")
+            == "oracle_gap_report.timeout_termination"
+            and compact_output_modes.get("oracle_timeout_termination_sha_only")
+            == "oracle_gap_report.timeout_termination_sha256"
+        ),
         "blocker_kinds_sha256": (
             isinstance(blocker_kinds, list)
             and status.get("blocker_kinds_sha256") == _stable_json_sha256(blocker_kinds)
