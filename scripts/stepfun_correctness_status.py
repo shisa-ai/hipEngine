@@ -1636,6 +1636,27 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         ),
         "blocker_work_queue_sha256": blocker_work_queue_sha256_match,
         "blocker_work_queue_meta_mirror": blocker_work_queue_meta_mirror,
+        "blocker_work_queue_compact_output_modes": (
+            isinstance(compact_output_modes, dict)
+            and compact_output_modes.get("blocker_work_queue_only")
+            == "handoff_summary.blocker_work_queue"
+            and compact_output_modes.get("blocker_work_queue_meta_only")
+            == "handoff_summary.blocker_work_queue_meta"
+            and compact_output_modes.get("blocker_work_queue_sha_only")
+            == "handoff_summary.blocker_work_queue_sha256"
+            and compact_output_modes.get("blocker_recommended_commands_only")
+            == "handoff_summary.blocker_recommended_commands"
+            and compact_output_modes.get("blocker_recommended_commands_sha_only")
+            == "handoff_summary.blocker_recommended_commands_sha256"
+            and compact_output_modes.get("first_blocker_sha_only")
+            == "handoff_summary.first_blocker_work_item_sha256"
+            and compact_output_modes.get("first_blocker_only")
+            == "handoff_summary.first_blocker_work_item"
+            and compact_output_modes.get("first_blocker_recommended_command_only")
+            == "handoff_summary.first_blocker_work_item.recommended_command"
+            and compact_output_modes.get("first_blocker_recommended_command_sha_only")
+            == "handoff_summary.first_blocker_work_item.recommended_command_sha256"
+        ),
         "first_blocker_work_item_sha256": first_blocker_work_item_sha256_match,
         "first_blocker_work_item_mirror": first_blocker_work_item_mirror,
         "blocker_recommended_commands_sha256": (

@@ -3754,6 +3754,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "kv_decode_blocker_summary_mirrors_run_plan": True,
             "blocker_work_queue_sha256": True,
             "blocker_work_queue_meta_mirror": True,
+            "blocker_work_queue_compact_output_modes": True,
             "first_blocker_work_item_sha256": True,
             "first_blocker_work_item_mirror": True,
             "blocker_recommended_commands_sha256": True,
@@ -6139,6 +6140,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "kv_decode_blocker_summary_mirrors_run_plan": True,
             "blocker_work_queue_sha256": True,
             "blocker_work_queue_meta_mirror": True,
+            "blocker_work_queue_compact_output_modes": True,
             "first_blocker_work_item_sha256": True,
             "first_blocker_work_item_mirror": True,
             "blocker_recommended_commands_sha256": True,
@@ -8088,6 +8090,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_work_queue_sha256": True,
         "blocker_work_queue_meta_mirror": True,
+        "blocker_work_queue_compact_output_modes": True,
         "first_blocker_work_item_sha256": True,
         "first_blocker_work_item_mirror": True,
         "blocker_recommended_commands_sha256": True,
@@ -8207,6 +8210,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "kv_decode_blocker_summary_mirrors_run_plan": False,
         "blocker_work_queue_sha256": True,
         "blocker_work_queue_meta_mirror": True,
+        "blocker_work_queue_compact_output_modes": True,
         "first_blocker_work_item_sha256": True,
         "first_blocker_work_item_mirror": True,
         "blocker_recommended_commands_sha256": True,
@@ -8458,6 +8462,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_work_queue_sha256": True,
         "blocker_work_queue_meta_mirror": True,
+        "blocker_work_queue_compact_output_modes": True,
         "first_blocker_work_item_sha256": True,
         "first_blocker_work_item_mirror": True,
         "blocker_recommended_commands_sha256": True,
@@ -8541,6 +8546,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_recommended_c
     checks = payload["status_integrity"]["checks"]
     assert checks["blocker_work_queue_sha256"] is True
     assert checks["blocker_work_queue_meta_mirror"] is False
+    assert checks["blocker_work_queue_compact_output_modes"] is True
     assert checks["first_blocker_work_item_sha256"] is True
     assert checks["first_blocker_work_item_mirror"] is True
     assert checks["blocker_recommended_commands_sha256"] is False
@@ -8549,6 +8555,81 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_recommended_c
     assert checks["blocker_recommended_commands_command_metadata"] is True
     assert checks["blocker_recommended_commands_meta_mirror"] is False
     assert checks["schema_versions"] is True
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_blocker_queue_compact_mode_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    compact_modes = status_payload["handoff_summary"]["compact_output_modes"]
+    compact_modes["first_blocker_recommended_command_sha_only"] = "stale.first.command.sha"
+    status_payload["handoff_summary_sha256"] = _stable_json_sha256(
+        status_payload["handoff_summary"]
+    )
+    status_payload["readiness_summary"]["handoff_summary_sha256"] = status_payload[
+        "handoff_summary_sha256"
+    ]
+    status_payload["readiness_summary_sha256"] = _stable_json_sha256(
+        status_payload["readiness_summary"]
+    )
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["failed_checks"] == [
+        "blocker_work_queue_compact_output_modes"
+    ]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["handoff_summary_sha256"] is True
+    assert checks["readiness_summary_sha256"] is True
+    assert checks["blocker_work_queue_sha256"] is True
+    assert checks["blocker_work_queue_meta_mirror"] is True
+    assert checks["blocker_work_queue_compact_output_modes"] is False
+    assert checks["first_blocker_work_item_sha256"] is True
+    assert checks["first_blocker_work_item_mirror"] is True
+    assert checks["blocker_recommended_commands_mirror_work_queue"] is True
 
 
 def test_stepfun_correctness_status_source_artifact_verify_detects_recommended_command_metadata_drift(
@@ -8624,6 +8705,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_recommended_c
     assert checks["handoff_summary_sha256"] is True
     assert checks["blocker_work_queue_sha256"] is True
     assert checks["blocker_work_queue_meta_mirror"] is True
+    assert checks["blocker_work_queue_compact_output_modes"] is True
     assert checks["first_blocker_work_item_sha256"] is True
     assert checks["first_blocker_work_item_mirror"] is True
     assert checks["blocker_recommended_commands_sha256"] is True
@@ -8707,6 +8789,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_recommended_c
     assert checks["handoff_summary_sha256"] is True
     assert checks["blocker_work_queue_sha256"] is True
     assert checks["blocker_work_queue_meta_mirror"] is True
+    assert checks["blocker_work_queue_compact_output_modes"] is True
     assert checks["first_blocker_work_item_sha256"] is True
     assert checks["first_blocker_work_item_mirror"] is True
     assert checks["blocker_recommended_commands_sha256"] is True
@@ -8938,6 +9021,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_work_queue_sha256": True,
         "blocker_work_queue_meta_mirror": True,
+        "blocker_work_queue_compact_output_modes": True,
         "first_blocker_work_item_sha256": True,
         "first_blocker_work_item_mirror": True,
         "blocker_recommended_commands_sha256": True,
@@ -9056,6 +9140,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_work_queue_sha256": True,
         "blocker_work_queue_meta_mirror": True,
+        "blocker_work_queue_compact_output_modes": True,
         "first_blocker_work_item_sha256": True,
         "first_blocker_work_item_mirror": True,
         "blocker_recommended_commands_sha256": True,
@@ -9175,6 +9260,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_work_queue_sha256": True,
         "blocker_work_queue_meta_mirror": True,
+        "blocker_work_queue_compact_output_modes": True,
         "first_blocker_work_item_sha256": True,
         "first_blocker_work_item_mirror": True,
         "blocker_recommended_commands_sha256": True,
@@ -9293,6 +9379,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "kv_decode_blocker_summary_mirrors_run_plan": True,
         "blocker_work_queue_sha256": True,
         "blocker_work_queue_meta_mirror": True,
+        "blocker_work_queue_compact_output_modes": True,
         "first_blocker_work_item_sha256": True,
         "first_blocker_work_item_mirror": True,
         "blocker_recommended_commands_sha256": True,
