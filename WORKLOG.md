@@ -64886,3 +64886,20 @@ Required loop verification:
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 
 Conclusion: the focused full-attention blocker is now narrowed to native context/gate decode. The next correctness bite should inspect the batched context/gate kernel inputs/current-token KV source rather than replaying all full-attention or revisiting linear projections.
+
+## 2026-06-02 — CONCURRENCY full-attention context vs KV-append isolation
+
+Ran iteration 90 for `concurrency-e2e/native-c2-e2e` to decide whether the focused full-attention blocker from iteration 89 is the standalone KV append/current-token source path or the native context/gate batch path.
+
+GPU1 / RX 7900 XTX evidence:
+
+- KV-append-only diagnostic: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-kvappend-iter90.json` stayed hidden red (`status=mismatch_found`, `hidden_passed=false`, `token_passed=true`) and reproduced the native control exactly: L8 decode step 11 / generated index 12 / row 0, `max_abs=0.010427474975585938`, `max_abs_flat_index=1543`, `elements_over_atol=931`, `bit_mismatch=2041`. Decode metadata changed only `full_attention_kv_append_decode_path=per_row_kv_append_fallback`; `full_attention_context_decode_path=native_batch`, `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, and `moe_decode_path=grouped_compact` were preserved.
+- Context/gate-only rerun: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-rerun-iter90.json` passed (`status=eq_ok`, `hidden_passed=true`, `token_passed=true`) with native KV append and only `full_attention_context_decode_path=per_row_context_gate_fallback` changed.
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-vs-kvappend-isolation/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Conclusion before final guard: standalone KV append is not sufficient to explain or fix the L8 hidden mismatch; the next native correctness target is the batched full-attention context/gate path (paged context kernel/gate/output staging). No performance claim.
+
+Required loop verification for iteration 90:
+
+- Primary no-flag c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and metadata `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, `full_attention_decode_path=native_batch`, `native_caware_decode=true`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
