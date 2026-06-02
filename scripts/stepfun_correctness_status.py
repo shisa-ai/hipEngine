@@ -847,6 +847,26 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(handoff_summary, dict)
         else {}
     )
+    blocker_work_queue = (
+        handoff_summary.get("blocker_work_queue", [])
+        if isinstance(handoff_summary, dict)
+        else []
+    )
+    blocker_work_queue_sha256 = (
+        handoff_summary.get("blocker_work_queue_sha256")
+        if isinstance(handoff_summary, dict)
+        else None
+    )
+    first_blocker_work_item = (
+        handoff_summary.get("first_blocker_work_item")
+        if isinstance(handoff_summary, dict)
+        else None
+    )
+    first_blocker_work_item_sha256 = (
+        handoff_summary.get("first_blocker_work_item_sha256")
+        if isinstance(handoff_summary, dict)
+        else None
+    )
     blocker_recommended_commands = (
         handoff_summary.get("blocker_recommended_commands", [])
         if isinstance(handoff_summary, dict)
@@ -872,8 +892,8 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     )
     oracle_work_item: dict[str, object] = {}
     kv_work_item: dict[str, object] = {}
-    if isinstance(handoff_summary, dict):
-        for item in handoff_summary.get("blocker_work_queue", []):
+    if isinstance(blocker_work_queue, list):
+        for item in blocker_work_queue:
             if not isinstance(item, dict):
                 continue
             if item.get("blocker_kind") == "oracle_parity_blocked":
@@ -899,10 +919,11 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         handoff_gap_report = handoff_summary.get("kv_backed_decode_gap_report", {})
         if isinstance(handoff_gap_report, dict):
             kv_streaming_mirror_records.append(handoff_gap_report)
-        for item in handoff_summary.get("blocker_work_queue", []):
-            if isinstance(item, dict) and item.get("blocker_kind") == "kv_backed_decode_not_wired":
-                kv_streaming_mirror_records.append(item)
-                break
+        if isinstance(blocker_work_queue, list):
+            for item in blocker_work_queue:
+                if isinstance(item, dict) and item.get("blocker_kind") == "kv_backed_decode_not_wired":
+                    kv_streaming_mirror_records.append(item)
+                    break
     kv_streaming_runner_blocker_mirrors = (
         bool(kv_streaming_mirror_records)
         and isinstance(kv_streaming_blocker_names, list)
@@ -1014,13 +1035,88 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         and kv_decode_blocker_summary.get("launch_stage_count")
         == kv_streaming_blueprint.get("stage_count")
     )
+    blocker_work_queue_sha256_match = (
+        isinstance(blocker_work_queue, list)
+        and blocker_work_queue_sha256 == _stable_json_sha256(blocker_work_queue)
+    )
+    first_blocker_work_item_from_queue = (
+        blocker_work_queue[0]
+        if isinstance(blocker_work_queue, list) and blocker_work_queue
+        else None
+    )
+    first_blocker_work_item_mirror = (
+        first_blocker_work_item == first_blocker_work_item_from_queue
+    )
+    first_blocker_work_item_sha256_match = (
+        first_blocker_work_item_sha256
+        == (
+            _stable_json_sha256(first_blocker_work_item)
+            if first_blocker_work_item is not None
+            else None
+        )
+    )
     blocker_recommended_commands_sha256_match = (
         isinstance(blocker_recommended_commands, list)
         and blocker_recommended_commands_sha256
         == _stable_json_sha256(blocker_recommended_commands)
     )
+    blocker_recommended_commands_from_queue = (
+        [
+            {
+                "blocker_kind": item.get("blocker_kind"),
+                "queue_index": item.get("queue_index"),
+                "recommended_command_kind": item.get("recommended_command_kind"),
+                "recommended_command": item.get("recommended_command"),
+                "recommended_command_nchars": item.get("recommended_command_nchars"),
+                "recommended_command_sha256": item.get("recommended_command_sha256"),
+                "recommended_command_reason": item.get("recommended_command_reason"),
+            }
+            for item in blocker_work_queue
+            if isinstance(item, dict)
+        ]
+        if isinstance(blocker_work_queue, list)
+        else []
+    )
+    blocker_recommended_commands_mirror_work_queue = (
+        isinstance(blocker_recommended_commands, list)
+        and blocker_recommended_commands == blocker_recommended_commands_from_queue
+    )
     blocker_recommended_commands_meta_mirror = (
         isinstance(blocker_meta, dict)
+        and blocker_meta.get("recommended_commands_sha256")
+        == blocker_recommended_commands_sha256
+    )
+    blocker_work_queue_meta_mirror = (
+        isinstance(blocker_meta, dict)
+        and isinstance(blocker_work_queue, list)
+        and blocker_meta.get("count") == len(blocker_work_queue)
+        and blocker_meta.get("sha256") == blocker_work_queue_sha256
+        and blocker_meta.get("first_blocker_kind")
+        == (
+            first_blocker_work_item_from_queue.get("blocker_kind")
+            if isinstance(first_blocker_work_item_from_queue, dict)
+            else None
+        )
+        and blocker_meta.get("first_work_item_schema_version")
+        == (
+            first_blocker_work_item_from_queue.get("work_item_schema_version")
+            if isinstance(first_blocker_work_item_from_queue, dict)
+            else None
+        )
+        and blocker_meta.get("first_work_item_sha256")
+        == first_blocker_work_item_sha256
+        and blocker_meta.get("first_recommended_command_kind")
+        == (
+            first_blocker_work_item_from_queue.get("recommended_command_kind")
+            if isinstance(first_blocker_work_item_from_queue, dict)
+            else None
+        )
+        and blocker_meta.get("first_recommended_command_sha256")
+        == (
+            first_blocker_work_item_from_queue.get("recommended_command_sha256")
+            if isinstance(first_blocker_work_item_from_queue, dict)
+            else None
+        )
         and blocker_meta.get("recommended_commands_sha256")
         == blocker_recommended_commands_sha256
     )
@@ -1199,8 +1295,15 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "kv_decode_blocker_summary_mirrors_run_plan": (
             kv_decode_blocker_summary_mirror_recomputed
         ),
+        "blocker_work_queue_sha256": blocker_work_queue_sha256_match,
+        "blocker_work_queue_meta_mirror": blocker_work_queue_meta_mirror,
+        "first_blocker_work_item_sha256": first_blocker_work_item_sha256_match,
+        "first_blocker_work_item_mirror": first_blocker_work_item_mirror,
         "blocker_recommended_commands_sha256": (
             blocker_recommended_commands_sha256_match
+        ),
+        "blocker_recommended_commands_mirror_work_queue": (
+            blocker_recommended_commands_mirror_work_queue
         ),
         "blocker_recommended_commands_meta_mirror": (
             blocker_recommended_commands_meta_mirror
