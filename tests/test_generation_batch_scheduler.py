@@ -177,7 +177,7 @@ from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_sa
 
 def _clear_qwen35_batch_env() -> None:
     for key in list(os.environ):
-        if key.startswith("HIPENGINE_QWEN35_BATCH_"):
+        if key.startswith("HIPENGINE_QWEN35_BATCH_") or key == "HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV":
             os.environ.pop(key, None)
 
 
@@ -3639,6 +3639,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     monkeypatch.delenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, raising=False)
     args = SimpleNamespace(
         projection_dispatch_artifact=None,
+        batch_decode_moe_path="grouped_compact",
         batch_decode_full_attn_path="per_row",
         batch_decode_attn_input_path="per_row",
         batch_decode_attn_qkv_path="per_row",
@@ -3656,6 +3657,8 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     retained_bench._apply_runtime_env_args(args)
 
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] == "1"
@@ -3679,6 +3682,14 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "1"
+
+    retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="selected_c1"))
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "0"
+
+    retained_bench._apply_runtime_env_args(args)
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "serial_lm_head"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] == "0"
     assert "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT" not in os.environ
@@ -3687,6 +3698,8 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     defaults = SimpleNamespace(projection_dispatch_artifact=None)
     retained_bench._apply_runtime_env_args(defaults)
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ"] == "1"
@@ -3694,7 +3707,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_Z"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] == "batch_gemv"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] == "0"
@@ -3707,7 +3720,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"] == "0"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "serial_lm_head"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] == "0"

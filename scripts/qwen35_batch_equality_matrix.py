@@ -232,6 +232,8 @@ def _retained_command(args: argparse.Namespace, batch_size: int, artifact_path: 
         argv.extend(("--compiler-version-file", str(args.compiler_version_file)))
     if args.require_cached_build:
         argv.append("--require-cached-build")
+    if args.batch_decode_moe_path != "default":
+        argv.extend(("--batch-decode-moe-path", str(args.batch_decode_moe_path)))
     if args.batch_decode_linear_path != "default":
         argv.extend(("--batch-decode-linear-path", str(args.batch_decode_linear_path)))
     if args.batch_decode_linear_projection_path != "default":
@@ -336,6 +338,7 @@ def _build_summary(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
             "warmup_decode_tokens": args.warmup_decode_tokens,
             "max_layers": args.max_layers,
             "repeat_runs": args.repeat_runs,
+            "batch_decode_moe_path": args.batch_decode_moe_path,
             "batch_decode_linear_path": args.batch_decode_linear_path,
             "batch_decode_linear_projection_path": args.batch_decode_linear_projection_path,
             "batch_decode_linear_state_path": args.batch_decode_linear_state_path,
@@ -374,6 +377,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/hipengine-e2e-native-equality-matrix"))
     parser.add_argument("--json", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--batch-decode-moe-path", choices=("default", "grouped_compact", "selected_c1"), default="default")
     parser.add_argument("--batch-decode-linear-path", choices=("default", "batch_segments", "per_row"), default="default")
     parser.add_argument(
         "--batch-decode-linear-projection-path",

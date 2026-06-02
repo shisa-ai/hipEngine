@@ -6706,7 +6706,10 @@ class Qwen35ParoDecodeState:
 
         gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
-        if tokens == 1:
+        use_batch_gemv = tokens == 1 or (
+            tokens <= 8 and _env_flag("HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV", False)
+        )
+        if use_batch_gemv:
             gemv_awq_dual_pack8_transposed_fp16(
                 scratch.shared_gate_input.ptr,
                 scratch.shared_up_input.ptr,
@@ -6773,7 +6776,7 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
 
-        if tokens != 1:
+        if not use_batch_gemv:
             paro_rotate1_fp16(
                 scratch.shared_intermediate.ptr,
                 scratch.shared_down_input.ptr,
@@ -6789,7 +6792,7 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
-        if tokens == 1:
+        if use_batch_gemv:
             gemv_awq_pack8_transposed_fp16(
                 scratch.shared_down_input.ptr,
                 down_qweight.ptr,

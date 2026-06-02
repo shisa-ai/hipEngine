@@ -64466,3 +64466,30 @@ Validation:
 - Focused tests passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_artifact_schema.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_output_paths_update_native_metadata tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2 and c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Artifact assertions loaded the new matrix JSONs, verified finite values, confirmed c=2/c=4/c=8 prefixes and absence of the linear-output batch-GEMV blocker, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY batched selected-c1 MoE default
+
+Replaced the correctness-default per-row MoE replay with a batched selected-c1 MoE diagnostic for Qwen/PARO native c>N retained-bench equality runs. The retained target remains grouped-compact MoE, so artifacts stay non-retained and blocked, but the c=2/c=4/c=8 equality path no longer uses host per-row linear/full-attention MoE fallbacks.
+
+Changes:
+
+- `scripts/qwen35_batch_retained_bench.py` now exposes `--batch-decode-moe-path {selected_c1,grouped_compact}` and defaults to `selected_c1` for correctness-first c>N equality probes.
+- `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE=1` now suppresses the per-row linear/full-attention MoE fallback envs in retained-bench setup, and records `workload.batch_decode_moe_path=selected_c1`.
+- `hipengine/runtime/qwen35_paro.py` can force packed PARO W4 shared expert rows through the row-aware GEMV path for `tokens<=8` via `HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV`; retained-bench selected-c1 MoE sets this so c=2/c=4/c=8 selected-MoE replay is batched rather than per-row.
+- `scripts/qwen35_batch_equality_matrix.py` forwards/records the global MoE path; docs, benchmark rollup, changelog, and env-var docs were updated.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Primary verifier `/tmp/hipengine-e2e-native-c2-512-128.json` prints metric `137`; generated equality prefixes are `[137,137]`; `workload.batch_decode_moe_path=selected_c1`; decode metadata records `moe_decode_path=selected_c1_forced` with blockers limited to selected-c1 MoE and selected-QKV/Z projection.
+- `benchmarks/results/2026-06-02-hipengine-qwen35-native-batched-selected-moe-matrix/summary.json` passed c=2/c=4/c=8 generated-token equality vs independent c=1:
+  - c=2 prefixes `[137,137]`.
+  - c=4 prefixes `[137,137,137,137]`.
+  - c=8 prefixes `[137,137,137,137,137,137,137,137]`.
+- Child artifacts retain `performance_claim=false`, `retained_ready=false`, `moe_decode_path=selected_c1_forced`, and the selected-c1 MoE diagnostic blocker, but no longer list `linear-attention MoE forced to per-row selected-c1 diagnostic path` or `full-attention MoE forced to per-row selected-c1 diagnostic path`.
+- Negative grouped-compact probes remain red: current-default full-attention grouped MoE c=2 prefixes `[82,137]`; shared-expert GEMV improves grouped-linear to `[103,137]` but does not close grouped compact MoE.
+
+Validation:
+
+- Focused tests passed: `python3 -m compileall -q hipengine/runtime/qwen35_paro.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_equality_matrix.py scripts/qwen35_batch_constants.py scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py`; `pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env tests/test_generation_batch_scheduler.py::test_qwen35_batch_equality_matrix_dry_run_records_linear_diagnostics tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Artifact assertions loaded the matrix and child JSONs, verified finite c=2/c=4/c=8 prefix sets, selected-c1 MoE metadata, absence of the per-row MoE blockers, and `git diff --check` passed.
