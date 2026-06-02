@@ -266,6 +266,11 @@ What is still not green:
   scratch/cache/gate tensors, not standalone primitive context arithmetic or QKV
   prep
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-context-primitive-realshape/summary.json`).
+  A new gate-only diagnostic (`--batch-decode-attn-gate-path per_row`) keeps
+  native batch context while applying the sigmoid gate per row; it still fails
+  hidden parity, so the blocker is before/at native batch context output
+  integration rather than the contiguous batch gate multiply alone
+  (`benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-gate-split-isolation/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

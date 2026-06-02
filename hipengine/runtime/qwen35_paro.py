@@ -4148,6 +4148,7 @@ class Qwen35ParoDecodeState:
         force_per_row_qkv_scratch: bool = False,
         force_per_row_layer_scratch: bool = False,
         force_per_row_context: bool = False,
+        force_per_row_gate: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_kv_append: bool = False,
         per_row_append_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
@@ -4454,6 +4455,43 @@ class Qwen35ParoDecodeState:
                         self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
                         HipMemcpyKind.DEVICE_TO_DEVICE,
                         stream,
+                    )
+                gated = attention_scratch.gated_attn
+            elif force_per_row_gate and tokens > 1:
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("per-row full-attention gate diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("per-row full-attention gate diagnostic does not cover split-K decode")
+                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                    attention_scratch.query.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    attention_scratch.query_raw.ptr,
+                    decode_spans,
+                    tokens,
+                    decode_spans.max_live_count,
+                    block_size,
+                    self.config.num_attention_heads,
+                    self.config.num_key_value_heads,
+                    self.config.head_dim,
+                    self.config.head_dim ** -0.5,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                q_width = self.config.num_attention_heads * self.config.head_dim
+                for row in range(tokens):
+                    row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                    row_gate = self._row_tensor_view(gate, row)
+                    row_gated = self._row_tensor_view(attention_scratch.gated_attn, row)
+                    qwen35_full_attn_gate_mul_fp16(
+                        row_context.ptr,
+                        row_gate.ptr,
+                        row_gated.ptr,
+                        q_width,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
                     )
                 gated = attention_scratch.gated_attn
             else:

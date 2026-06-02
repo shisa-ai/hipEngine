@@ -12469,6 +12469,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_attention_qkv_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_scratch_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_context_path"] == "batch"
+    assert payload["workload"]["batch_decode_attention_gate_path"] == "batch"
     assert payload["workload"]["batch_decode_full_attention_kv_append_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_append_context_order"] == "phased"
     assert payload["workload"]["batch_decode_attention_suffix_order"] == "phased"
@@ -12652,6 +12653,30 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     )
     assert per_row_attn_context_payload["workload"]["batch_decode_attention_context_path"] == "per_row"
     assert per_row_attn_context_payload["workload"]["native_caware_decode"] is False
+
+    per_row_attn_gate = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-attn-gate-path",
+            "per_row",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    per_row_attn_gate_payload = run_hidden_bisect(
+        per_row_attn_gate,
+        ["--dry-run", "--batch-decode-attn-gate-path", "per_row", "--layer-limits", "8"],
+    )
+    assert per_row_attn_gate_payload["workload"]["batch_decode_attention_gate_path"] == "per_row"
+    assert per_row_attn_gate_payload["workload"]["native_caware_decode"] is False
 
     selected_c1_moe = build_hidden_bisect_parser().parse_args(
         [

@@ -64921,3 +64921,20 @@ Required loop verification for iteration 91:
 
 - Primary no-flag c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and metadata `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, `full_attention_decode_path=native_batch`, `native_caware_decode=true`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY full-attention gate split diagnostic
+
+Ran iteration 92 for `concurrency-e2e/native-c2-e2e` to split the native full-attention context/gate blocker after iteration 91 showed the raw context primitive is green at the real multi-block shape. Added a focused diagnostic path, `--batch-decode-attn-gate-path per_row`, wired through `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_GATE`. This keeps native batch context decode but applies `qwen35_full_attn_gate_mul_fp16` row-by-row over each row's context/gate tensors.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Gate-only diagnostic: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-gate-iter92.json` stayed hidden red (`status=mismatch_found`, `hidden_passed=false`, `token_passed=true`) with `full_attention_context_decode_path=native_batch`, `full_attention_gate_decode_path=per_row_gate_fallback`, `full_attention_kv_append_decode_path=native_batch`, `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, and `moe_decode_path=grouped_compact`. First hidden mismatch moved to L8 decode step 6 / row 0 / flat index 1269, `max_abs=0.028076171875`, `elements_over_atol=1044`, `bit_mismatch=2041`.
+- Known context/gate-only control remains green: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-perrow-context-rerun-iter90.json` (`status=eq_ok`, `hidden_passed=true`, `token_passed=true`).
+- Compact repo artifact: `benchmarks/results/2026-06-02-hipengine-qwen35-native-full-attention-gate-split-isolation/summary.json` (`status=passed`, `performance_claim=false`, `retained_ready=false`).
+
+Required loop verification:
+
+- Primary no-flag c=2 512/128 verifier stayed green: `/tmp/hipengine-e2e-native-c2-512-128.json` printed metric `137`, prefixes `[137,137]`, `generated_token_equality.passed=true`, and metadata `linear_attention_projection_path=native_batch`, `linear_attention_state_path=native_segments`, `linear_attention_output_path=batch_gemv`, `moe_decode_path=grouped_compact`, `full_attention_decode_path=native_batch`, `full_attention_context_decode_path=native_batch`, `native_caware_decode=true`.
+- Required guard passed after updating focused host tests for the new diagnostic metadata: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+
+Conclusion: per-row gate alone is not sufficient; the remaining full-attention target is native batch context output integration with actual model scratch/cache/gate tensors before gate, not the contiguous batch gate multiply alone. No retained performance claim.

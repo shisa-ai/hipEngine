@@ -3882,6 +3882,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
         "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "per_row" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_GATE"] = (
+        "1" if getattr(args, "batch_decode_attn_gate_path", "batch") == "per_row" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND"] = (
         "1" if getattr(args, "batch_decode_full_attn_kv_append_path", "batch") == "per_row" else "0"
     )
@@ -4366,6 +4369,7 @@ def _build_payload(
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
             "batch_decode_attention_context_path": str(getattr(args, "batch_decode_attn_context_path", "batch")),
+            "batch_decode_attention_gate_path": str(getattr(args, "batch_decode_attn_gate_path", "batch")),
             "batch_decode_full_attention_kv_append_path": str(getattr(args, "batch_decode_full_attn_kv_append_path", "batch")),
             "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
             "batch_decode_attention_suffix_order": str(getattr(args, "batch_decode_attn_suffix_order", "phased")),
@@ -4535,6 +4539,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("batch", "per_row"),
         default="batch",
         help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context kernels and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-attn-gate-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention gate path for c>N batch decode; per_row keeps the native batch context kernel but applies the sigmoid gate row-by-row and blocks retained claims.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-kv-append-path",

@@ -5754,6 +5754,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context kernels and blocks retained claims.",
     )
     parser.add_argument(
+        "--batch-decode-attn-gate-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention gate path for c>N batch decode; per_row keeps the native batch context kernel but applies the sigmoid gate row-by-row and blocks retained claims.",
+    )
+    parser.add_argument(
         "--batch-decode-full-attn-kv-append-path",
         choices=("batch", "per_row"),
         default="batch",
@@ -5879,6 +5885,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_attention_qkv_path": str(args.batch_decode_attn_qkv_path),
             "batch_decode_attention_scratch_path": str(args.batch_decode_attn_scratch_path),
             "batch_decode_attention_context_path": str(args.batch_decode_attn_context_path),
+            "batch_decode_attention_gate_path": str(args.batch_decode_attn_gate_path),
             "batch_decode_full_attention_kv_append_path": str(args.batch_decode_full_attn_kv_append_path),
             "batch_decode_attention_append_context_order": str(args.batch_decode_attn_append_context_order),
             "batch_decode_attention_suffix_order": str(args.batch_decode_attn_suffix_order),
@@ -5899,6 +5906,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_attn_qkv_path == "batch"
                 and args.batch_decode_attn_scratch_path == "batch"
                 and args.batch_decode_attn_context_path == "batch"
+                and args.batch_decode_attn_gate_path == "batch"
                 and args.batch_decode_full_attn_kv_append_path == "batch"
                 and args.batch_decode_attn_append_context_order == "phased"
                 and args.batch_decode_attn_suffix_order == "phased"
@@ -6006,6 +6014,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
         "1" if args.batch_decode_attn_context_path == "per_row" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_GATE"] = (
+        "1" if args.batch_decode_attn_gate_path == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND"] = (
         "1" if args.batch_decode_full_attn_kv_append_path == "per_row" else "0"
