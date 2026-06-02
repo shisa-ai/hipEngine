@@ -3659,7 +3659,12 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
             "blocker_kinds_sha256": True,
+            "blocker_kinds_mirror_handoff": True,
+            "blocker_kinds_mirror_work_queue": True,
+            "blocker_kinds_mirror_remaining_report": True,
             "blocked_gates_sha256": True,
+            "blocked_gates_mirror_handoff": True,
+            "blocked_gates_mirror_remaining_report": True,
             "kv_streaming_runner_blocker_names_sha256": True,
             "kv_streaming_runner_blocker_mirrors": True,
             "kv_streaming_runner_blockers_sha256": True,
@@ -6027,7 +6032,12 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
             "blocker_kinds_sha256": True,
+            "blocker_kinds_mirror_handoff": True,
+            "blocker_kinds_mirror_work_queue": True,
+            "blocker_kinds_mirror_remaining_report": True,
             "blocked_gates_sha256": True,
+            "blocked_gates_mirror_handoff": True,
+            "blocked_gates_mirror_remaining_report": True,
             "kv_streaming_runner_blocker_names_sha256": True,
             "kv_streaming_runner_blocker_mirrors": True,
             "kv_streaming_runner_blockers_sha256": True,
@@ -7197,6 +7207,146 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_docs_checklis
     assert checks["readiness_gates_sha256"] is True
 
 
+def test_stepfun_correctness_status_source_artifact_verify_detects_blocker_kind_mirror_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["blocker_kinds"] = [
+        "kv_backed_decode_not_wired",
+        "oracle_parity_blocked",
+    ]
+    status_payload["blocker_kinds_sha256"] = _stable_json_sha256(
+        status_payload["blocker_kinds"]
+    )
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["failed_checks"] == [
+        "blocker_kinds_mirror_handoff",
+        "blocker_kinds_mirror_work_queue",
+        "blocker_kinds_mirror_remaining_report",
+    ]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["blocker_kinds_sha256"] is True
+    assert checks["blocker_kinds_mirror_handoff"] is False
+    assert checks["blocker_kinds_mirror_work_queue"] is False
+    assert checks["blocker_kinds_mirror_remaining_report"] is False
+    assert checks["blocked_gates_sha256"] is True
+    assert checks["blocked_gates_mirror_handoff"] is True
+    assert checks["blocked_gates_mirror_remaining_report"] is True
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_blocked_gates_mirror_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["blocked_gates"] = ["oracle_parity"]
+    status_payload["blocked_gates_sha256"] = _stable_json_sha256(
+        status_payload["blocked_gates"]
+    )
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["failed_checks"] == [
+        "blocked_gates_mirror_handoff",
+        "blocked_gates_mirror_remaining_report",
+    ]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["blocker_kinds_sha256"] is True
+    assert checks["blocker_kinds_mirror_handoff"] is True
+    assert checks["blocker_kinds_mirror_work_queue"] is True
+    assert checks["blocker_kinds_mirror_remaining_report"] is True
+    assert checks["blocked_gates_sha256"] is True
+    assert checks["blocked_gates_mirror_handoff"] is False
+    assert checks["blocked_gates_mirror_remaining_report"] is False
+
+
 def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest_drift(
     capsys,
     tmp_path: Path,
@@ -7260,7 +7410,12 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": False,
         "blocker_kinds_sha256": True,
+        "blocker_kinds_mirror_handoff": True,
+        "blocker_kinds_mirror_work_queue": True,
+        "blocker_kinds_mirror_remaining_report": True,
         "blocked_gates_sha256": True,
+        "blocked_gates_mirror_handoff": True,
+        "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
@@ -7366,7 +7521,12 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "blocker_kinds_sha256": True,
+        "blocker_kinds_mirror_handoff": True,
+        "blocker_kinds_mirror_work_queue": True,
+        "blocker_kinds_mirror_remaining_report": True,
         "blocked_gates_sha256": True,
+        "blocked_gates_mirror_handoff": True,
+        "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": False,
         "kv_streaming_runner_blocker_mirrors": False,
         "kv_streaming_runner_blockers_sha256": True,
@@ -7604,7 +7764,12 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "blocker_kinds_sha256": True,
+        "blocker_kinds_mirror_handoff": True,
+        "blocker_kinds_mirror_work_queue": True,
+        "blocker_kinds_mirror_remaining_report": True,
         "blocked_gates_sha256": True,
+        "blocked_gates_mirror_handoff": True,
+        "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
@@ -8071,7 +8236,12 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "blocker_kinds_sha256": True,
+        "blocker_kinds_mirror_handoff": True,
+        "blocker_kinds_mirror_work_queue": True,
+        "blocker_kinds_mirror_remaining_report": True,
         "blocked_gates_sha256": True,
+        "blocked_gates_mirror_handoff": True,
+        "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
@@ -8176,7 +8346,12 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "blocker_kinds_sha256": True,
+        "blocker_kinds_mirror_handoff": True,
+        "blocker_kinds_mirror_work_queue": True,
+        "blocker_kinds_mirror_remaining_report": True,
         "blocked_gates_sha256": True,
+        "blocked_gates_mirror_handoff": True,
+        "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
@@ -8282,7 +8457,12 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "blocker_kinds_sha256": True,
+        "blocker_kinds_mirror_handoff": True,
+        "blocker_kinds_mirror_work_queue": True,
+        "blocker_kinds_mirror_remaining_report": True,
         "blocked_gates_sha256": True,
+        "blocked_gates_mirror_handoff": True,
+        "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
@@ -8387,7 +8567,12 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "readiness_gates_sha256": True,
         "next_action_commands_sha256": True,
         "blocker_kinds_sha256": True,
+        "blocker_kinds_mirror_handoff": True,
+        "blocker_kinds_mirror_work_queue": True,
+        "blocker_kinds_mirror_remaining_report": True,
         "blocked_gates_sha256": True,
+        "blocked_gates_mirror_handoff": True,
+        "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": False,
         "kv_streaming_runner_blockers_sha256": True,

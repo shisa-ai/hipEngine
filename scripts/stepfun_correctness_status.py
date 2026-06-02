@@ -777,6 +777,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     next_action_commands = status.get("next_action_commands", {})
     blocker_kinds = status.get("blocker_kinds", [])
     blocked_gates = status.get("blocked_gates", [])
+    handoff_open_blockers = (
+        handoff_summary.get("open_blockers", [])
+        if isinstance(handoff_summary, dict)
+        else []
+    )
+    handoff_blocked_gates = (
+        handoff_summary.get("blocked_gates", [])
+        if isinstance(handoff_summary, dict)
+        else []
+    )
     kv_gap_report = status.get("kv_backed_decode_gap_report", {})
     kv_streaming_blocker_names = (
         kv_gap_report.get("streaming_runner_blocker_names", [])
@@ -935,6 +945,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
                 kv_work_item = item
     remaining_blockers_report = status.get("remaining_blockers_report", {})
     remaining_blockers_report_sha256 = status.get("remaining_blockers_report_sha256")
+    remaining_blocker_kinds = (
+        remaining_blockers_report.get("remaining_blocker_kinds", [])
+        if isinstance(remaining_blockers_report, dict)
+        else []
+    )
+    remaining_blocked_gates = (
+        remaining_blockers_report.get("blocked_gates", [])
+        if isinstance(remaining_blockers_report, dict)
+        else []
+    )
     remaining_oracle_item: dict[str, object] = {}
     if isinstance(remaining_blockers_report, dict):
         for item in remaining_blockers_report.get("items", []):
@@ -1075,6 +1095,40 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     blocker_work_queue_sha256_match = (
         isinstance(blocker_work_queue, list)
         and blocker_work_queue_sha256 == _stable_json_sha256(blocker_work_queue)
+    )
+    blocker_kinds_from_work_queue = (
+        [item.get("blocker_kind") for item in blocker_work_queue if isinstance(item, dict)]
+        if isinstance(blocker_work_queue, list)
+        else []
+    )
+    blocker_kinds_mirror_handoff = (
+        isinstance(blocker_kinds, list)
+        and isinstance(handoff_open_blockers, list)
+        and blocker_kinds == handoff_open_blockers
+        and isinstance(handoff_summary, dict)
+        and handoff_summary.get("open_blocker_count") == len(blocker_kinds)
+    )
+    blocker_kinds_mirror_work_queue = (
+        isinstance(blocker_kinds, list)
+        and blocker_kinds == blocker_kinds_from_work_queue
+    )
+    blocker_kinds_mirror_remaining_report = (
+        isinstance(blocker_kinds, list)
+        and isinstance(remaining_blocker_kinds, list)
+        and blocker_kinds == remaining_blocker_kinds
+        and isinstance(remaining_blockers_report, dict)
+        and remaining_blockers_report.get("remaining_blocker_count")
+        == len(blocker_kinds)
+    )
+    blocked_gates_mirror_handoff = (
+        isinstance(blocked_gates, list)
+        and isinstance(handoff_blocked_gates, list)
+        and blocked_gates == handoff_blocked_gates
+    )
+    blocked_gates_mirror_remaining_report = (
+        isinstance(blocked_gates, list)
+        and isinstance(remaining_blocked_gates, list)
+        and blocked_gates == remaining_blocked_gates
     )
     first_blocker_work_item_from_queue = (
         blocker_work_queue[0]
@@ -1404,10 +1458,17 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(blocker_kinds, list)
             and status.get("blocker_kinds_sha256") == _stable_json_sha256(blocker_kinds)
         ),
+        "blocker_kinds_mirror_handoff": blocker_kinds_mirror_handoff,
+        "blocker_kinds_mirror_work_queue": blocker_kinds_mirror_work_queue,
+        "blocker_kinds_mirror_remaining_report": (
+            blocker_kinds_mirror_remaining_report
+        ),
         "blocked_gates_sha256": (
             isinstance(blocked_gates, list)
             and status.get("blocked_gates_sha256") == _stable_json_sha256(blocked_gates)
         ),
+        "blocked_gates_mirror_handoff": blocked_gates_mirror_handoff,
+        "blocked_gates_mirror_remaining_report": blocked_gates_mirror_remaining_report,
         "kv_streaming_runner_blocker_names_sha256": (
             isinstance(kv_streaming_blocker_names, list)
             and kv_streaming_blocker_names_sha256

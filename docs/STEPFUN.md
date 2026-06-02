@@ -811,9 +811,11 @@ reporting.
   and digest without requiring the full command bundle. Status integrity validates
   those command-level atomic metadata fields and their blocker-work-queue mirrors.
   Status integrity also verifies the blocker work-queue digest, queue-meta mirror,
-  first work-item digest/mirror, recommended-command list digest, command length/SHA
-  metadata inside the work queue and compact recommended-command records, and the
-  compact recommended-command list mirror against the full work queue. The status artifact now persists `status_integrity` plus
+  first work-item digest/mirror, blocker-kind and blocked-gate mirrors across the
+  compact top-level fields, handoff summary, work queue, and remaining-blocker report,
+  recommended-command list digest, command length/SHA metadata inside the work queue
+  and compact recommended-command records, and the compact recommended-command list
+  mirror against the full work queue. The status artifact now persists `status_integrity` plus
   `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the
   digest for top-level embedded-check polling, and source-artifact verification
   now checks that the persisted integrity payload/SHA still match the recomputed
