@@ -64573,3 +64573,21 @@ Validation:
 - Focused retained-bench helper test passed: `python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_drops_satisfied_correctness_gate_blockers -q`.
 - Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
 - Artifact assertions loaded the promoted context-gate matrix and child JSONs, verified c=2/c=4/c=8 prefix sets, `full_attention_decode_path=native_batch`, BF16 KV, `max_full_attention_context < 1024`, absence of stale generated-equality/context blockers from `batch_execution.blockers` and decision reasons, and `git diff --check` passed.
+
+## 2026-06-02 — CONCURRENCY grouped-compact MoE red probe preserved
+
+Captured a focused grouped-compact MoE blocker probe for the c=2 512/128 native Qwen/PARO equality gate. The goal was to keep the currently green selected-QKV/Z projection, native segmented linear state, batch-GEMV outputs, native full-attention context, and sampler path fixed while varying only the MoE subpath.
+
+GPU1 / RX 7900 XTX evidence:
+
+- `benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/summary.json` reports `status=blocked`, `performance_claim=false`, `retained_ready=false`.
+- Global `--batch-decode-moe-path grouped_compact` with the retained bench's default per-row selected-c1 linear/full-attention MoE subpaths remains generated-token green: prefixes `[137,137]`, `moe_grouped_compact_layers=0`, `moe_selected_c1_fallback_layers=40`.
+- Enabling grouped-compact MoE in linear-attention layers only is red: prefixes `[82,137]`, `moe_grouped_compact_layers=30`, `moe_selected_c1_fallback_layers=10`.
+- Enabling grouped-compact MoE in full-attention layers only is red: prefixes `[82,137]`, `moe_grouped_compact_layers=10`, `moe_selected_c1_fallback_layers=30`.
+- Enabling grouped-compact MoE in all layers is red: prefixes `[82,137]`, `moe_grouped_compact_layers=40`, `moe_selected_c1_fallback_layers=0`.
+
+Validation:
+
+- Artifact assertions loaded the grouped-MoE red-probe summary and child JSONs, verified the green per-row fallback and all three grouped-MoE red prefix sets, and confirmed `performance_claim=false` / `retained_ready=false`.
+- Required guard passed: `HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts`; `HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q`; primitive c=2/c=8 correctness artifacts `/tmp/hipengine-e2e-primitive-c{2,8}.json` passed on AMD Radeon RX 7900 XTX.
+- Prompt verifier failed intentionally for this iteration: the probe narrowed the grouped-MoE blocker but did not eliminate it or improve the primary equal-prefix metric. Next actionable work is a grouped-MoE kernel/math fix or a narrower hidden-state oracle before another retained-promotion attempt.
