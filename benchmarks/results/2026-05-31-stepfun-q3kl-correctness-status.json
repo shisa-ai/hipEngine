@@ -102,7 +102,7 @@
     {
       "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "detail": "llama.cpp oracle timed out before producing a comparable token",
-      "elapsed_s": 62.44178174599074,
+      "elapsed_s": 61.7501613649074,
       "expected_next_token_id": 369,
       "expected_next_token_text": " |",
       "first_missing_evidence": "oracle_completed_successfully",
@@ -346,7 +346,7 @@
         "current_returncode": null,
         "current_status": "timeout",
         "diagnostic_logs": true,
-        "elapsed_s": 62.44178174599074,
+        "elapsed_s": 61.7501613649074,
         "first_missing_evidence": "oracle_completed_successfully",
         "first_missing_precondition": null,
         "gap_report_status": "blocked",
@@ -465,13 +465,13 @@
       "first_recommended_command_kind": "oracle_helper_long_timeout_command",
       "first_recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
       "first_work_item_schema_version": 1,
-      "first_work_item_sha256": "f794ceeb607d4a76c891a79985cf572d9732213daea81dc8be5b390c19807ad5",
+      "first_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
       "recommended_commands_sha256": "33c72dc7e60fcc135d997fd58b1094ff878e1c6737b13ab16667badfc12baca5",
       "schema_version": 1,
-      "sha256": "a404e65524a12c97c1e7310c05dd513f274acd1cb22163e781a6793bc6e5b6f1"
+      "sha256": "7919e5605206d9f9ecab55d162693f6c53fb1cdff2780e9f0e62bcc319d11b31"
     },
     "blocker_work_queue_schema_version": 1,
-    "blocker_work_queue_sha256": "a404e65524a12c97c1e7310c05dd513f274acd1cb22163e781a6793bc6e5b6f1",
+    "blocker_work_queue_sha256": "7919e5605206d9f9ecab55d162693f6c53fb1cdff2780e9f0e62bcc319d11b31",
     "compact_output_modes": {
       "atomic_output_handoff_only": "atomic_output_handoff",
       "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
@@ -555,7 +555,7 @@
       "current_returncode": null,
       "current_status": "timeout",
       "diagnostic_logs": true,
-      "elapsed_s": 62.44178174599074,
+      "elapsed_s": 61.7501613649074,
       "first_missing_evidence": "oracle_completed_successfully",
       "first_missing_precondition": null,
       "gap_report_status": "blocked",
@@ -594,7 +594,7 @@
       "timeout_s": 60.0,
       "work_item_schema_version": 1
     },
-    "first_blocker_work_item_sha256": "f794ceeb607d4a76c891a79985cf572d9732213daea81dc8be5b390c19807ad5",
+    "first_blocker_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
     "kv_backed_decode_gap_report": {
       "first_missing_evidence": "streaming_runner_ready_flags",
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -688,7 +688,7 @@
     ],
     "open_or_partial_items_p0_p12": 2,
     "oracle_gap_report": {
-      "elapsed_s": 62.44178174599074,
+      "elapsed_s": 61.7501613649074,
       "expected_next_token_id": 369,
       "expected_next_token_text": " |",
       "first_missing_evidence": "oracle_completed_successfully",
@@ -721,7 +721,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "ea34c00976b8ee4f1a51e9f18190a477a6c76fb7f4ccac37b82d597ec160f9cb",
+  "handoff_summary_sha256": "f05aacd2efd73811b4b676e87343ad8c25f6428f6087f6765da2e73517949837",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -2078,9 +2078,9 @@
   "note": "Host-composed all-layer prompt smoke is present; true e2e inference still needs oracle parity and KV-backed decode.",
   "oracle_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
   "oracle_blocker_kind": "llama_cpp_oracle_timeout",
-  "oracle_elapsed_s": 62.44178174599074,
+  "oracle_elapsed_s": 61.7501613649074,
   "oracle_gap_report": {
-    "elapsed_s": 62.44178174599074,
+    "elapsed_s": 61.7501613649074,
     "expected_next_token_id": 369,
     "expected_next_token_text": " |",
     "first_missing_evidence": "oracle_completed_successfully",
@@ -2117,11 +2117,13 @@
     "remaining_evidence": [
       {
         "current": {
-          "elapsed_s": 62.44178174599074,
+          "elapsed_s": 61.7501613649074,
           "oracle_blocker_kind": "llama_cpp_oracle_timeout",
           "returncode": null,
           "status": "timeout",
-          "timeout_s": 60.0
+          "timeout_s": 60.0,
+          "timeout_termination_recorded": true,
+          "timeout_termination_sha256": "4b2b9123034ed210a2079712636ea8e8fcde9646c20c2c367805cbe02b8eca1c"
         },
         "name": "oracle_completed_successfully",
         "ready": false,
@@ -2153,6 +2155,20 @@
     "source": "oracle_progress",
     "status": "blocked",
     "timeout_s": 60.0,
+    "timeout_termination": {
+      "communicate_after_signal_timeout_s": 10.0,
+      "fallback_proc_kill_used": false,
+      "process_exited_before_signal": false,
+      "process_group_started": true,
+      "termination_method": "os.killpg",
+      "termination_path": "killpg_sigkill_then_communicate",
+      "termination_signal": "SIGKILL",
+      "termination_signal_number": 9,
+      "timeout_reached": true,
+      "timeout_s": 60.0
+    },
+    "timeout_termination_recorded": true,
+    "timeout_termination_sha256": "4b2b9123034ed210a2079712636ea8e8fcde9646c20c2c367805cbe02b8eca1c",
     "validated_precondition_count": 3,
     "validated_preconditions": [
       "deterministic_target_recorded",
@@ -2171,7 +2187,7 @@
       "stripped_text_match_field": "text_matches_expected_stripped"
     },
     "diagnostic_logs": true,
-    "elapsed_s": 62.44178174599074,
+    "elapsed_s": 61.7501613649074,
     "expected_next_token_id": 369,
     "expected_next_token_logit": 19.158626556396484,
     "expected_next_token_text": " |",
@@ -2230,7 +2246,21 @@
     "step35_supported_by_oracle": null,
     "text_matches_expected_exact": false,
     "text_matches_expected_stripped": false,
-    "timeout_s": 60.0
+    "timeout_s": 60.0,
+    "timeout_termination": {
+      "communicate_after_signal_timeout_s": 10.0,
+      "fallback_proc_kill_used": false,
+      "process_exited_before_signal": false,
+      "process_group_started": true,
+      "termination_method": "os.killpg",
+      "termination_path": "killpg_sigkill_then_communicate",
+      "termination_signal": "SIGKILL",
+      "termination_signal_number": 9,
+      "timeout_reached": true,
+      "timeout_s": 60.0
+    },
+    "timeout_termination_recorded": true,
+    "timeout_termination_sha256": "4b2b9123034ed210a2079712636ea8e8fcde9646c20c2c367805cbe02b8eca1c"
   },
   "oracle_status": "timeout",
   "oracle_stderr_len": 0,
@@ -2516,7 +2546,7 @@
       "expected_next_token_id": 369,
       "expected_next_token_text": " |",
       "gap_report": {
-        "elapsed_s": 62.44178174599074,
+        "elapsed_s": 61.7501613649074,
         "expected_next_token_id": 369,
         "expected_next_token_text": " |",
         "first_missing_evidence": "oracle_completed_successfully",
@@ -2553,11 +2583,13 @@
         "remaining_evidence": [
           {
             "current": {
-              "elapsed_s": 62.44178174599074,
+              "elapsed_s": 61.7501613649074,
               "oracle_blocker_kind": "llama_cpp_oracle_timeout",
               "returncode": null,
               "status": "timeout",
-              "timeout_s": 60.0
+              "timeout_s": 60.0,
+              "timeout_termination_recorded": true,
+              "timeout_termination_sha256": "4b2b9123034ed210a2079712636ea8e8fcde9646c20c2c367805cbe02b8eca1c"
             },
             "name": "oracle_completed_successfully",
             "ready": false,
@@ -2589,6 +2621,20 @@
         "source": "oracle_progress",
         "status": "blocked",
         "timeout_s": 60.0,
+        "timeout_termination": {
+          "communicate_after_signal_timeout_s": 10.0,
+          "fallback_proc_kill_used": false,
+          "process_exited_before_signal": false,
+          "process_group_started": true,
+          "termination_method": "os.killpg",
+          "termination_path": "killpg_sigkill_then_communicate",
+          "termination_signal": "SIGKILL",
+          "termination_signal_number": 9,
+          "timeout_reached": true,
+          "timeout_s": 60.0
+        },
+        "timeout_termination_recorded": true,
+        "timeout_termination_sha256": "4b2b9123034ed210a2079712636ea8e8fcde9646c20c2c367805cbe02b8eca1c",
         "validated_precondition_count": 3,
         "validated_preconditions": [
           "deterministic_target_recorded",
@@ -2600,18 +2646,18 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
-  "readiness_gates_sha256": "08504a65b516e10dcd6df0c8db477b4c9dfc952c75f25dcd4fab7016de71c890",
+  "readiness_gates_sha256": "4612ac0229a7c5fc2c22168633dd7819d6db96371948cf5bcf2c8bfceac7680a",
   "readiness_summary": {
     "blocked_gates_sha256": "5442237ae2416bd189f0635665bf630d6061793d9f5e1c52e038ae4d86804120",
     "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
     "blocker_work_queue_count": 2,
-    "blocker_work_queue_sha256": "a404e65524a12c97c1e7310c05dd513f274acd1cb22163e781a6793bc6e5b6f1",
+    "blocker_work_queue_sha256": "7919e5605206d9f9ecab55d162693f6c53fb1cdff2780e9f0e62bcc319d11b31",
     "e2e_inference_claim_allowed": false,
     "e2e_inference_ready": false,
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
-    "first_blocker_work_item_sha256": "f794ceeb607d4a76c891a79985cf572d9732213daea81dc8be5b390c19807ad5",
-    "handoff_summary_sha256": "ea34c00976b8ee4f1a51e9f18190a477a6c76fb7f4ccac37b82d597ec160f9cb",
+    "first_blocker_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
+    "handoff_summary_sha256": "f05aacd2efd73811b4b676e87343ad8c25f6428f6087f6765da2e73517949837",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "6242b0f341b0b38920e2f3aa05a78f0dd680a735eaf599a360126715ac6ca414",
@@ -2619,12 +2665,12 @@
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
-    "readiness_gates_sha256": "08504a65b516e10dcd6df0c8db477b4c9dfc952c75f25dcd4fab7016de71c890",
+    "readiness_gates_sha256": "4612ac0229a7c5fc2c22168633dd7819d6db96371948cf5bcf2c8bfceac7680a",
     "schema_version": 1,
-    "source_artifacts_sha256": "be2b7ea4c22e339c309b5e4426f4e6b2108b339b5b9e695fb13617d15f339fc5",
+    "source_artifacts_sha256": "818578845364fb9f36f8ab8ea671e6ff303c4491998695dc74816b2991c7c3c8",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "e3d4a1722ad9a751d0f5d4a84faf544d934e281f9fe10370465908c55c73cb8e",
+  "readiness_summary_sha256": "d7269473d0eb76396794782defeb0b78e3e6c71e6c22aaba6efeec6b651a024d",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2742,14 +2788,14 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "0c903525b412c1d462286e602c0161561a1a2487f3dfa9eedc8cd4b0473037b5",
-      "size_bytes": 64715
+      "sha256": "7f143b3fcd4f4e2c959564975463600ffd62f41c1a1ef2bf3cd8f43b7fedca20",
+      "size_bytes": 65085
     },
     "oracle": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
-      "sha256": "20e4827c088946bc85ea5502f7eef120da7ba198b81159c238e82eee89899c21",
-      "size_bytes": 3402
+      "sha256": "844f6939c3bb675928a904a4aa21ebd188da2510a398aea0281e5388adec494b",
+      "size_bytes": 3967
     },
     "oracle_wrapper_timeout": {
       "exists": true,
@@ -2770,7 +2816,7 @@
       "size_bytes": 52292
     }
   },
-  "source_artifacts_sha256": "be2b7ea4c22e339c309b5e4426f4e6b2108b339b5b9e695fb13617d15f339fc5",
+  "source_artifacts_sha256": "818578845364fb9f36f8ab8ea671e6ff303c4491998695dc74816b2991c7c3c8",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

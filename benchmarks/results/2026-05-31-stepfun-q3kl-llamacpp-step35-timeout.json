@@ -35,7 +35,7 @@
     "stripped_text_match_field": "text_matches_expected_stripped"
   },
   "diagnostic_logs": true,
-  "elapsed_s": 62.44178174599074,
+  "elapsed_s": 61.7501613649074,
   "expected_next_token_id": 369,
   "expected_next_token_logit": 19.158626556396484,
   "expected_next_token_text": " |",
@@ -85,6 +85,8 @@
   "note": "Dry-run oracle plan by default. Use --execute only when the machine can afford a llama.cpp one-token run over the StepFun Q3_K_L GGUF shards; compare output/tokenization manually or with a follow-up parser before claiming parity.",
   "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
   "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+  "partial_output_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+  "partial_output_written_before_launch": true,
   "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
   "prompt_length": 23,
   "status": "timeout",
@@ -93,5 +95,17 @@
   "step35_supported": null,
   "text_matches_expected_exact": false,
   "text_matches_expected_stripped": false,
-  "timeout_s": 60.0
+  "timeout_s": 60.0,
+  "timeout_termination": {
+    "communicate_after_signal_timeout_s": 10.0,
+    "fallback_proc_kill_used": false,
+    "process_exited_before_signal": false,
+    "process_group_started": true,
+    "termination_method": "os.killpg",
+    "termination_path": "killpg_sigkill_then_communicate",
+    "termination_signal": "SIGKILL",
+    "termination_signal_number": 9,
+    "timeout_reached": true,
+    "timeout_s": 60.0
+  }
 }

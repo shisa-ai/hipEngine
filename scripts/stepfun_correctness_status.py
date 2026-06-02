@@ -1417,6 +1417,10 @@ def _oracle_progress(oracle: dict[str, object]) -> dict[str, object]:
     stderr = str(oracle.get("stderr", ""))
     generated = str(oracle.get("generated_text", ""))
     expected_top_tokens = oracle.get("expected_top_tokens", [])
+    timeout_termination_raw = oracle.get("timeout_termination")
+    timeout_termination = (
+        dict(timeout_termination_raw) if isinstance(timeout_termination_raw, dict) else None
+    )
     return {
         "source": "oracle_artifact",
         "status": oracle.get("status"),
@@ -1444,6 +1448,11 @@ def _oracle_progress(oracle: dict[str, object]) -> dict[str, object]:
         "text_matches_expected_stripped": oracle.get("text_matches_expected_stripped") is True,
         "comparison_policy": dict(oracle.get("comparison_policy", {})),
         "step35_supported_by_oracle": oracle.get("step35_supported"),
+        "timeout_termination": timeout_termination,
+        "timeout_termination_recorded": timeout_termination is not None,
+        "timeout_termination_sha256": _stable_json_sha256(timeout_termination)
+        if timeout_termination is not None
+        else None,
         "note": (
             "This records the deterministic oracle target and current blocker only. "
             "It is not oracle parity unless a comparable generated token matches the expected text/logit policy."
@@ -1491,6 +1500,12 @@ def _oracle_gap_report(oracle_progress: dict[str, object]) -> dict[str, object]:
                 "oracle_blocker_kind": oracle_progress.get("oracle_blocker_kind"),
                 "elapsed_s": oracle_progress.get("elapsed_s"),
                 "timeout_s": oracle_progress.get("timeout_s"),
+                "timeout_termination_recorded": oracle_progress.get(
+                    "timeout_termination_recorded"
+                ),
+                "timeout_termination_sha256": oracle_progress.get(
+                    "timeout_termination_sha256"
+                ),
             },
         },
         {
@@ -1542,6 +1557,9 @@ def _oracle_gap_report(oracle_progress: dict[str, object]) -> dict[str, object]:
         "returncode": oracle_progress.get("returncode"),
         "elapsed_s": oracle_progress.get("elapsed_s"),
         "timeout_s": oracle_progress.get("timeout_s"),
+        "timeout_termination": oracle_progress.get("timeout_termination"),
+        "timeout_termination_recorded": oracle_progress.get("timeout_termination_recorded"),
+        "timeout_termination_sha256": oracle_progress.get("timeout_termination_sha256"),
         "expected_next_token_id": oracle_progress.get("expected_next_token_id"),
         "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
         "note": (

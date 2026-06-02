@@ -30,11 +30,15 @@ def test_stepfun_180s_oracle_wrapper_timeout_artifact_is_blocking_evidence() -> 
     assert artifact["output_artifact"] == str(CANONICAL_ORACLE)
 
     # The longer attempt was interrupted by the outer pi wrapper before the helper
-    # rewrote the canonical machine-readable oracle artifact, so the canonical
-    # 60 s timeout remains the source of truth for status automation.
+    # rewrote the canonical machine-readable oracle artifact. A later 60 s helper
+    # refresh added timeout_termination metadata, so the wrapper's historical
+    # after-attempt SHA is retained as evidence but no longer equals the current
+    # canonical artifact SHA.
     assert artifact["output_artifact_status_after_attempt"] == canonical["status"] == "timeout"
     assert artifact["output_artifact_timeout_s_after_attempt"] == canonical["timeout_s"] == 60.0
-    assert artifact["output_artifact_sha256_after_attempt"] == canonical_sha256
+    assert artifact["output_artifact_sha256_after_attempt"] != canonical_sha256
+    assert canonical["timeout_termination"]["termination_method"] == "os.killpg"
+    assert canonical["timeout_termination"]["termination_signal"] == "SIGKILL"
 
     command = artifact["command"]
     assert command[:2] == ["python3", "scripts/stepfun_llamacpp_oracle.py"]

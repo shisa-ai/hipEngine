@@ -1037,6 +1037,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert oracle_progress["text_matches_expected_stripped"] is False
     assert oracle_progress["comparison_policy"]["expected_text_field"] == "expected_next_token_text"
     assert oracle_progress["step35_supported_by_oracle"] is False
+    assert oracle_progress["timeout_termination"] is None
+    assert oracle_progress["timeout_termination_recorded"] is False
+    assert oracle_progress["timeout_termination_sha256"] is None
     projections = status["linear_projection_progress"]
     assert projections["source"] == "prompt_artifact.selected_slots"
     assert projections["execution_mode"] == "chunked"
@@ -1230,6 +1233,11 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert oracle_gap["first_missing_evidence"] == "oracle_completed_successfully"
     assert oracle_gap["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
     assert oracle_gap["returncode"] == 1
+    assert oracle_gap["timeout_termination"] is None
+    assert oracle_gap["timeout_termination_recorded"] is False
+    assert oracle_gap["timeout_termination_sha256"] is None
+    assert oracle_gap["remaining_evidence"][0]["current"]["timeout_termination_recorded"] is False
+    assert oracle_gap["remaining_evidence"][0]["current"]["timeout_termination_sha256"] is None
     assert gates["kv_backed_decode"]["ready"] is False
     assert gates["kv_backed_decode"]["blocked_by"] == "kv_backed_decode_not_wired"
     assert gates["kv_backed_decode"]["dispatch_ready"] is True
@@ -1856,6 +1864,66 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "open",
         "partial",
     ]
+
+
+def test_stepfun_correctness_status_surfaces_oracle_timeout_termination(tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle, diagnostic_logs=True)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    termination = {
+        "timeout_reached": True,
+        "timeout_s": 60.0,
+        "process_group_started": True,
+        "termination_method": "os.killpg",
+        "termination_signal": "SIGKILL",
+        "termination_signal_number": 9,
+        "termination_path": "killpg_sigkill_then_communicate",
+        "communicate_after_signal_timeout_s": 10.0,
+        "process_exited_before_signal": False,
+        "fallback_proc_kill_used": False,
+    }
+    oracle_payload = json.loads(oracle.read_text())
+    oracle_payload.update(
+        {
+            "status": "timeout",
+            "returncode": None,
+            "stderr": "",
+            "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+            "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
+            "step35_supported": None,
+            "timeout_termination": termination,
+        }
+    )
+    oracle.write_text(json.dumps(oracle_payload))
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    expected_sha = _stable_json_sha256(termination)
+    progress = status["oracle_progress"]
+    assert progress["status"] == "timeout"
+    assert progress["returncode"] is None
+    assert progress["oracle_blocker_kind"] == "llama_cpp_oracle_timeout"
+    assert progress["timeout_termination"] == termination
+    assert progress["timeout_termination_recorded"] is True
+    assert progress["timeout_termination_sha256"] == expected_sha
+    gap = status["oracle_gap_report"]
+    assert gap["timeout_termination"] == termination
+    assert gap["timeout_termination_recorded"] is True
+    assert gap["timeout_termination_sha256"] == expected_sha
+    assert gap["remaining_evidence"][0]["current"] == {
+        "status": "timeout",
+        "returncode": None,
+        "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+        "elapsed_s": 62.4,
+        "timeout_s": 60.0,
+        "timeout_termination_recorded": True,
+        "timeout_termination_sha256": expected_sha,
+    }
 
 
 def test_stepfun_correctness_status_drops_kv_blocker_when_gap_report_is_ready(tmp_path: Path) -> None:

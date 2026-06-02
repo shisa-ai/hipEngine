@@ -640,8 +640,11 @@ reporting.
   version `9197 (fcae601e4)`) accepts `step35` but the bounded CPU/no-GPU oracle
   attempt in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
-  timed out after a bounded 60 s attempt (recorded `elapsed_s=62.44`) before
-  producing a comparable token (`oracle_blocker_kind=llama_cpp_oracle_timeout`).
+  timed out after a bounded 60 s attempt (refreshed 2026-06-02 with
+  `elapsed_s=61.75`) before producing a comparable token
+  (`oracle_blocker_kind=llama_cpp_oracle_timeout`), and now records
+  `timeout_termination` for the `os.killpg` / `SIGKILL` process-group cleanup
+  path.
   A 2026-06-01 bounded 180 s rerun attempt is recorded in
   `benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json`;
   the outer pi wrapper timed out at 240 s before the helper rewrote the canonical
@@ -651,7 +654,8 @@ reporting.
   Compact `--oracle-wrapper-timeout-source-only` /
   `--oracle-wrapper-timeout-source-sha-only` outputs expose that provenance
   record/digest directly. `tests/test_stepfun_oracle_wrapper_timeout.py` locks
-  the artifact schema, unchanged-canonical-artifact SHA, source-artifact
+  the artifact schema, historical after-attempt canonical SHA (which now differs
+  from the refreshed timeout-termination canonical artifact), source-artifact
   provenance, compact source outputs, and a stale wrapper-timeout source hash
   verification failure.
   A default-device Vulkan oracle attempt is recorded separately in
@@ -662,8 +666,8 @@ reporting.
   elapsed time, stdout/stderr lengths, `oracle_progress` fields, and an `oracle_gap_report`
   that separates recorded deterministic-target prerequisites from missing run/match evidence
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
-  text ` |`, top-5 expected tokens, timeout 60 s, elapsed 62.44 s, generated text
-  length 0, and the llama.cpp command shell). It carries explicit status,
+  text ` |`, top-5 expected tokens, timeout 60 s, elapsed 61.75 s, generated text
+  length 0, `timeout_termination` recorded, and the llama.cpp command shell). It carries explicit status,
   readiness-summary, and handoff-summary schema versions plus a compact
   `schema_versions` handoff payload, records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
@@ -766,7 +770,9 @@ reporting.
   cover both successful overwrite and timeout overwrite of the pre-launch
   `status=running` artifact; timeout payloads now include `timeout_termination`
   with the exact `os.killpg` / `SIGKILL` process-group termination path used when
-  `timeout_s` is reached. JSON file writes now use a flushed same-directory
+  `timeout_s` is reached, and the correctness status mirrors that termination
+  payload plus a stable digest in `oracle_progress` and `oracle_gap_report`.
+  JSON file writes now use a flushed same-directory
   temporary file plus atomic `os.replace` so handoff pollers never consume a
   truncated partial/final artifact. The helper preserves the recorded
   `diagnostic_logs=true` setting so reruns keep llama.cpp load/error logs
