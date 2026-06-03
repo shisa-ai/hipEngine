@@ -660,6 +660,15 @@ What is still not green:
   `attn_context` failures. Append/context ordering is eliminated; the issue is
   not a phased append-then-context ordering artifact
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-append-context-order/summary.json`).
+  Forcing native batch context to write into a fresh FP32 temp buffer before
+  copying into the normal context scratch also does not change rowchunk3:
+  rowchunk2 remains generated-token green with no projection drift or
+  full-attention stage failures, while rowchunk3 keeps L5 layer4 QKV/Z drift,
+  the L6 truncated-token failure, and L8 layer7 `attn_input_pre_qkv`/
+  `attn_context` failures. Context output aliasing is eliminated; the issue is
+  not caused by in-place/native batch context writes into the standard
+  `query_raw` buffer
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-batch-temp-context/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
