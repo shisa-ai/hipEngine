@@ -575,7 +575,14 @@ What is still not green:
   already `[137,137,137,137,45]`, then c6/c7/c8 extend the same tail pattern.
   Rows 0..3 remain stable after the c4 context blocker is bypassed; rows>=5 need
   a separate full-native row-count fix
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c45678-context-threshold/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c45678-context-threshold/summary.json`). A c5 follow-up adds
+  per-row MoE, post-attention, O projection, KV append, input, QKV, scratch, and
+  input+QKV on top of context-only replay; all stay red on row 4. Explicit
+  rowchunk2, however, restores c5/c6/c7 equality (`[137]*5`, `[137]*6`,
+  `[137]*7`) with the tail-GEMV metadata. The rows>=5 residual is therefore a
+  coupled full-attention row-group/no-rowchunk interaction that rowchunk2 avoids,
+  not a simple single-stage suffix or pre-QKV fallback
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5-c7-rowchunk2-rescue/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
