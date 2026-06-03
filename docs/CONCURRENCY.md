@@ -707,6 +707,14 @@ What is still not green:
   cause; the remaining failure is inherited from the rowchunk3 layer3 trajectory
   into the next linear layer rather than a standalone O mismatch
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-o-proj/summary.json`).
+  The forwarded KV-append-only rerun has the same retained-compatible shape:
+  rowchunk2 stays token-green with no projection drift or full-attention stage
+  failures, while rowchunk3 still has L5 layer4 QKV/Z drift, the L6 token
+  failure, and L8 layer7 `attn_input_pre_qkv`/query/`attn_context`/`mlp_input`
+  failures. The layer3 full-attention trace stays within tolerance except for
+  tiny under-tolerance bit drift. KV append/live-span mutation alone is
+  eliminated as the grouped>=3 cause
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-kv-append/summary.json`).
   The forwarded whole-suffix rerun is decisively red: forcing per-row KV append,
   context+gate, O, post-attention add/RMSNorm, MoE, and suffix interleaving makes
   rowchunk2 token-red at L6, leaves rowchunk3 token-red at L6, gives both paths L5
