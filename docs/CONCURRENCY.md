@@ -379,6 +379,13 @@ What is still not green:
   `attn_context`. The context drift there is therefore inherited, not proof that
   the context kernel is the first faulty stage
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-full-attn-context-trace-rowchunk/summary.json`).
+  A clean post-commit c2/c4/c8 matrix under current auto defaults passed
+  generated-token equality at equal-prefix 137 for every row: c2 remains full
+  native, while c4/c8 use native rowchunk2. This confirms the covered c>1
+  correctness path at the current commit, but c4/c8 remain non-retained because
+  rowchunk2 reports `native_caware_decode=false` and projection evidence is
+  still missing
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-clean-c2-c4-c8-auto-matrix/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
