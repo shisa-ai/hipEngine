@@ -4097,12 +4097,11 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c=3/c=4/c=8 diagnostics show native full-attention is generated-token
-    # green when split into <=2-row native chunks, while c>=3 grouping
-    # reproduces prompt/window-sensitive failures on rows4..7. Larger unproven
-    # row counts stay on the explicit native path and fail loudly until covered
-    # by equality artifacts.
-    return 2 if int(batch_size) in {3, 4, 8} else 0
+    # c=3..c=8 diagnostics show native full-attention is generated-token green
+    # when split into <=2-row native chunks, while c>=3 grouping reproduces
+    # prompt/window-sensitive failures. Larger unproven row counts stay on the
+    # explicit native path and fail loudly until covered by equality artifacts.
+    return 2 if int(batch_size) in {3, 4, 5, 6, 7, 8} else 0
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
@@ -4827,7 +4826,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-full-attn-path",
         choices=("auto", "native_batch", "per_row"),
         default="auto",
-        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2 and uses native row-chunk2 diagnostics for covered c=3/c=4/c=8 correctness while full native grouping >=3 remains blocked there.",
+        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2 and uses native row-chunk2 diagnostics for covered c=3..c=8 correctness while full native grouping remains blocked there.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-row-chunk-size",

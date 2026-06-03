@@ -3719,10 +3719,30 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
     retained_bench._apply_runtime_env_args(
+        SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=5)
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=6)
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=7)
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
+    retained_bench._apply_runtime_env_args(
         SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=8)
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=9)
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "0"
 
     retained_bench._apply_runtime_env_args(args)
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "serial_lm_head"

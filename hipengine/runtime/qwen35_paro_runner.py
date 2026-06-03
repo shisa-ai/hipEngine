@@ -4115,7 +4115,7 @@ class Qwen35ParoResidentSession:
             raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE must be non-negative")
         full_attention_row_chunk_env_value = os.environ.get(full_attention_row_chunk_env)
         auto_full_attention_row_chunks = (
-            rows in {3, 4, 8}
+            rows in {3, 4, 5, 6, 7, 8}
             and full_attention_row_chunk_size == 0
             and (full_attention_row_chunk_env_value is None or full_attention_row_chunk_env_value.strip() == "")
         )

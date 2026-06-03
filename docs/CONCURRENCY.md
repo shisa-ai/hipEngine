@@ -589,7 +589,10 @@ What is still not green:
   is red as soon as a leading four-row group is formed (c4/c5/c8). Until the
   grouped full-attention producer is fixed, the safe diagnostic cap is therefore
   leading group <=3 and later groups <=2, which is exactly why runtime auto stays
-  at rowchunk2 (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk-boundary-c4c8/summary.json`).
+  at rowchunk2 (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk-boundary-c4c8/summary.json`). Runtime/retained-bench auto now promotes rowchunk2 to the
+  contiguous c3..c8 range; with no explicit rowchunk flag, c5 and c7 are green
+  and c6 is green across three repeats (`[137]*rows`) with tail-GEMV metadata
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c567-auto-rowchunk2/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
