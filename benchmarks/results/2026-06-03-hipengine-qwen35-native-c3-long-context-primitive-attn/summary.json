@@ -1,0 +1,86 @@
+{
+  "artifacts": {
+    "c4_c8_long_context_primitive": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/summary.json",
+      "sha256": "7ec8f2df6f5976a6f3823cce35db317e6199efef96c432aaad6c0d493afe7d9f",
+      "size_bytes": 5951
+    },
+    "c4_forwarded_preqkv": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-preqkv/summary.json",
+      "sha256": "388f7ca54fd906e4df835893577314c265a27a5e584dff16047c7b05127eddc7",
+      "size_bytes": 33889
+    },
+    "c4_rowchunk_layer_transition": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-layer-transition/summary.json",
+      "sha256": "ac4904b6484f71d0e87a120356099581f575ade4d96e818ad2a0cdf5274565c2",
+      "size_bytes": 19575
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "primitive_c3_context520": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/primitive-c3-context520.json",
+      "sha256": "68555bed40482caf17e6a0a9186e2d87c5efc572c9e7524b331e25a9ca0bbb73",
+      "size_bytes": 902
+    }
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 3 --block-size 256 --max-context-len 640 --context-lens 520,520,520 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/primitive-c3-context520.json",
+  "conclusion": "The BF16 paged KV append plus batched full-attention context primitive is green at the exact grouped>=3 threshold (c3) and retained-like context length 520: batch-vs-independent-c1 max_abs is 0.0, batch A/A max_abs is 0.0, and numpy agreement stays within the primitive gate. Combined with the c4/c8 context-520 primitive artifact, this eliminates standalone append/context primitive arithmetic for row groups of 3/4/8; the remaining E2E failure is in the coupled full-attention layer trajectory around model QKV/gate/O/post-attention/MoE, not the isolated context kernel.",
+  "created_at": "2026-06-03T19:14:49Z",
+  "git_commit": "ce82de7f4b4537faeaaefff12e4618e069a01768",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 203,
+  "kind": "native_c3_long_context_primitive_attention_parity",
+  "performance_claim": false,
+  "primitive_parity_green": true,
+  "remaining_blockers": [
+    "c4/c8 full-native E2E attention still fails when full-attention row groups contain three or more rows",
+    "rowchunk2 remains the correctness path until the grouped>=3 layer trajectory is repaired"
+  ],
+  "retained_ready": false,
+  "run": {
+    "aa_passed": true,
+    "append_batch_aa_key_mismatch": 0,
+    "append_batch_aa_value_mismatch": 0,
+    "append_key_mismatch": 0,
+    "append_value_mismatch": 0,
+    "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/primitive-c3-context520.json",
+    "artifact_sha256": "68555bed40482caf17e6a0a9186e2d87c5efc572c9e7524b331e25a9ca0bbb73",
+    "attn_batch_aa_max_abs": 0.0,
+    "attn_batch_vs_c1_max_abs": 0.0,
+    "attn_batch_vs_numpy_max_abs": 1.30385160446167e-08,
+    "block_size": 256,
+    "context_lens": [
+      520,
+      520,
+      520
+    ],
+    "device": {
+      "current_device": 0,
+      "device_name": "AMD Radeon RX 7900 XTX",
+      "env": {
+        "HIP_VISIBLE_DEVICES": "1"
+      },
+      "hipDeviceGetName_error": 0,
+      "hipGetDeviceCount_error": 0,
+      "hipGetDevice_error": 0,
+      "visible_device_count": 1
+    },
+    "head_dim": 8,
+    "max_context_len": 640,
+    "num_kv_heads": 1,
+    "num_q_heads": 4,
+    "passed": true,
+    "rows": 3
+  },
+  "schema_version": 1,
+  "workload": {
+    "block_size": 256,
+    "context_lens": "all rows at 520 tokens",
+    "coverage": "BF16 paged KV append plus batched full-attention context decode vs independent c1 and numpy at the exact grouped>=3 threshold that E2E full-native attention cannot yet use",
+    "max_context_len": 640,
+    "rows": 3
+  }
+}

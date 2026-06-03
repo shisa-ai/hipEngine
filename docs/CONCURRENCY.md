@@ -526,12 +526,13 @@ What is still not green:
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-grouped-projection-profile/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-profile/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-repeatability/summary.json`).
-  A long-context primitive check at retained-like context length 520 is green for
-  c4 and c8 BF16 paged KV append plus batched full-attention context decode:
+  Long-context primitive checks at retained-like context length 520 are green for
+  c3, c4, and c8 BF16 paged KV append plus batched full-attention context decode:
   batch-vs-independent-c1 max_abs and batch A/A max_abs are both `0.0`, so the
-  standalone append/context primitive is eliminated from the grouped>=3 E2E
-  blocker
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/summary.json`).
+  standalone append/context primitive is eliminated at the exact grouped>=3
+  threshold and larger retained row counts
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/summary.json`,
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
