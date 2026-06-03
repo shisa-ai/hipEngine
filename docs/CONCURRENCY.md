@@ -446,6 +446,13 @@ What is still not green:
   grouping>=3 fix target on upstream hidden row-group interaction / native
   grouped pre-QKV setup rather than sampler or late output
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-boundary-contrast/summary.json`).
+  The apparent duplicate `block_table_rows` in native c3 full-attention metadata
+  are not the bug: `_batch_full_spans` encodes row-relative physical-slot offsets
+  because kernels add the compact active-row base internally. Active c2 is green
+  with the same expected duplicate rows, c3 native is red with formula-consistent
+  rows, and rowchunk2's tail chunk correctly shifts to slot-2 offsets. Block-table
+  construction is therefore eliminated as the c3 grouping>=3 suspect
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-block-table-audit/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
