@@ -44,6 +44,7 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "next_action_commands_sha256"
     ]
     assert provenance["source_artifacts"]["oracle"]["path"] == str(oracle)
+    assert manifest["status_provenance_sha256"] == _stable_json_sha256(provenance)
     assert manifest["open_or_partial_items_p0_p12"] == 2
     assert manifest["remaining_blocker_count"] == 2
     assert manifest["remaining_blocker_kinds"] == [
@@ -139,6 +140,8 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "no_claim_policy_sha_only": "no_claim_policy_sha256",
         "gate_status_only": "gate_status_handoff",
         "gate_status_sha_only": "gate_status_handoff_sha256",
+        "status_provenance_only": "status_provenance",
+        "status_provenance_sha_only": "status_provenance_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -250,6 +253,8 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     no_claim_sha_output = tmp_path / "final-blocker-no-claim-policy-sha.json"
     gate_status_output = tmp_path / "final-blocker-gate-status.json"
     gate_status_sha_output = tmp_path / "final-blocker-gate-status-sha.json"
+    provenance_output = tmp_path / "final-blocker-status-provenance.json"
+    provenance_sha_output = tmp_path / "final-blocker-status-provenance-sha.json"
     expected = build_final_blocker_manifest(
         build_status(prompt, oracle, docs, resource_artifact=resource)
     )
@@ -483,6 +488,52 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert rc == 0
     assert json.loads(gate_status_sha_output.read_text()) == expected[
         "gate_status_handoff_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-provenance-only",
+            "--output",
+            str(provenance_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    provenance_payload = json.loads(provenance_output.read_text())
+    assert provenance_payload == expected["status_provenance"]
+    assert provenance_payload["source_artifacts"]["prompt"]["path"] == str(prompt)
+    assert provenance_payload["source_artifacts"]["oracle"]["path"] == str(oracle)
+    assert provenance_payload["source_artifacts"]["text_resource"]["path"] == str(
+        resource
+    )
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-provenance-sha-only",
+            "--output",
+            str(provenance_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(provenance_sha_output.read_text()) == expected[
+        "status_provenance_sha256"
     ]
 
     captured = capsys.readouterr()

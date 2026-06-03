@@ -628,10 +628,12 @@ reporting.
   parsing the full status artifact. Compact `--entries-only` /
   `--entries-sha-only`, `--artifacts-only` / `--artifacts-sha-only`,
   `--success-criteria-only` / `--success-criteria-sha-only`,
-  `--no-claim-policy-only` / `--no-claim-policy-sha-only`, and
-  `--gate-status-only` / `--gate-status-sha-only` outputs expose the two blocker
-  records, three required evidence artifacts, per-blocker completion criteria,
-  claim gate, and blocked readiness-gate chain directly. Its `--verify-manifest`
+  `--no-claim-policy-only` / `--no-claim-policy-sha-only`,
+  `--gate-status-only` / `--gate-status-sha-only`, and
+  `--status-provenance-only` / `--status-provenance-sha-only` outputs expose the
+  two blocker records, three required evidence artifacts, per-blocker completion
+  criteria, claim gate, blocked readiness-gate chain, and source/status hash
+  bundle directly. Its `--verify-manifest`
   mode compares a persisted manifest with the current
   prompt/oracle/resource/docs inputs, while `--verification-status-only` and
   `--verification-failures-only` provide compact drift routing.

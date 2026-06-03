@@ -119,6 +119,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the gate-status handoff.",
     )
+    parser.add_argument(
+        "--status-provenance-only",
+        action="store_true",
+        help="Emit only status/source provenance for compact manifest drift polling.",
+    )
+    parser.add_argument(
+        "--status-provenance-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of status/source provenance.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     return parser.parse_args(argv)
 
@@ -282,6 +292,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     )
     no_claim_policy_sha256 = status_mod._stable_json_sha256(no_claim_policy)
     gate_status_handoff_sha256 = status_mod._stable_json_sha256(gate_status_handoff)
+    status_provenance_sha256 = status_mod._stable_json_sha256(status_provenance)
     compact_output_modes = {
         "sha_only": "manifest_sha256",
         "entries_only": "entries",
@@ -294,6 +305,8 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "no_claim_policy_sha_only": "no_claim_policy_sha256",
         "gate_status_only": "gate_status_handoff",
         "gate_status_sha_only": "gate_status_handoff_sha256",
+        "status_provenance_only": "status_provenance",
+        "status_provenance_sha_only": "status_provenance_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -302,6 +315,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "schema_version": 1,
         "status": remaining.get("status", "blocked"),
         "status_provenance": status_provenance,
+        "status_provenance_sha256": status_provenance_sha256,
         "open_or_partial_items_p0_p12": remaining.get(
             "open_or_partial_items_p0_p12"
         ),
@@ -413,6 +427,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = manifest["gate_status_handoff_sha256"]
     elif args.gate_status_only:
         payload = manifest["gate_status_handoff"]
+    elif args.status_provenance_sha_only:
+        payload = manifest["status_provenance_sha256"]
+    elif args.status_provenance_only:
+        payload = manifest["status_provenance"]
     else:
         payload = status_mod._stable_json_sha256(manifest) if args.sha_only else manifest
     status_mod._emit_json(payload, pretty=args.pretty, output=args.output)
