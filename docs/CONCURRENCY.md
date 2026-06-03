@@ -605,7 +605,11 @@ What is still not green:
   auto/native/batch-GEMV linear controls, while `selected_c1` MoE plus rowchunk2
   turns c9 green (`[137]*9`); full-native/no-rowchunk remains red even with
   `selected_c1` MoE, and rowchunk1 is still tail-red
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c9-selectedc1-moe-frontier/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c9-selectedc1-moe-frontier/summary.json`). The same `selected_c1`
+  MoE + rowchunk2 diagnostic also leaves the required c4/c8 gates green
+  (`[137]*4`, `[137]*8`) while active c2 remains `[137,137]`, making it a
+  correctness-only cross-row-count control rather than a retained/default
+  promotion (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-selectedc1-moe-rowchunk2-control/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output

@@ -65780,3 +65780,8 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 ## 2026-06-03 — concurrency-e2e/native-c2-e2e iter217 c2 repeat stability
 - Ran the exact active c2 512/128 retained equality command five consecutive times on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX, then captured the final active verify result. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-current217/summary.json`.
 - All six runs are generated-token equality green at `[137,137]` with no mismatches. This increases confidence after earlier intermittent c2 flakes, but it is runtime-confidence evidence only and not a retained throughput claim.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter218 selected-c1 MoE c4/c8 control
+- Ran selected-c1 MoE + rowchunk2 controls for c4/c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX and captured the active c2 verify. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-selectedc1-moe-rowchunk2-control/summary.json`.
+- Results: active c2 `[137,137]`, c4 selected-c1 MoE rowchunk2 `[137,137,137,137]`, and c8 selected-c1 MoE rowchunk2 `[137,137,137,137,137,137,137,137]`, all with expected rowchunk tail-GEMV metadata for c4/c8.
+- Combined with the prior c9 frontier, selected-c1 MoE + rowchunk2 is a green cross-row-count diagnostic control for c4/c8/c9. No retained/default promotion: grouped-compact MoE and full-native/no-rowchunk remain the retained targets.
