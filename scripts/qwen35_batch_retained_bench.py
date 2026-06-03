@@ -4074,6 +4074,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     )
     batch_decode_full_attn_path = _resolved_batch_decode_full_attn_path(args)
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = "0" if batch_decode_full_attn_path == "per_row" else "1"
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(
+        int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0)
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
     )
@@ -4595,6 +4598,7 @@ def _build_payload(
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
             "batch_decode_full_attention_path": _resolved_batch_decode_full_attn_path(args),
+            "batch_decode_full_attention_row_chunk_size": int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -4745,6 +4749,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("auto", "native_batch", "per_row"),
         default="auto",
         help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2/c=4, uses per_row for c=8 correctness while native batch full-attention remains blocked there, and leaves larger unproven row counts on native_batch.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic full-attention native row chunk size for c>N batch decode; a positive value below batch size runs native full-attention in row sub-batches and blocks retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",

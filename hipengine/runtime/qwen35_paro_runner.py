@@ -4106,6 +4106,13 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_moe = (not dense_mlp) and rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"
         )
+        full_attention_row_chunk_size = _env_int(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE",
+            0,
+        )
+        if full_attention_row_chunk_size < 0:
+            raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE must be non-negative")
+        force_full_attention_row_chunks = rows > 1 and 0 < full_attention_row_chunk_size < rows
         full_attention_input_decode_path = (
             "per_row_rmsnorm_fallback" if force_per_row_full_attention_input else "native_batch"
         )
@@ -4333,7 +4340,7 @@ class Qwen35ParoResidentSession:
                     max_full_attention_context = max(max_full_attention_context, max_context)
                     native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True) and max_context < 1024
                     if native_full:
-                        full_attention_decode_path = "native_batch"
+                        full_attention_decode_path = "native_batch_row_chunks" if force_full_attention_row_chunks else "native_batch"
                         native_full_attention_layers += 1
                         persistent_attention_scratch = self.full_scratch[layer_id] if force_per_row_full_attention_persistent_scratch else None
                         persistent_moe_scratch = self.moe_scratch[layer_id] if force_per_row_full_attention_persistent_scratch else None
@@ -4342,13 +4349,16 @@ class Qwen35ParoResidentSession:
                             key_cache = value_cache = position_tensor = append_spans = decode_spans = None
                         else:
                             key_cache, value_cache = self._full_cache_all_slots(layer_id)
-                            position_tensor, append_spans, decode_spans = self._batch_full_spans(
-                                layer_id,
-                                rows=rows,
-                                positions=positions,
-                                slots=slots,
-                            )
-                            batch_full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
+                            if force_full_attention_row_chunks:
+                                position_tensor = append_spans = decode_spans = None
+                            else:
+                                position_tensor, append_spans, decode_spans = self._batch_full_spans(
+                                    layer_id,
+                                    rows=rows,
+                                    positions=positions,
+                                    slots=slots,
+                                )
+                                batch_full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
                         attention_scratch = (
                             persistent_attention_scratch
                             if force_per_row_full_attention_persistent_scratch
@@ -4439,7 +4449,77 @@ class Qwen35ParoResidentSession:
                                 )
 
                         copied_full_attention_output = False
-                        if force_per_row_full_attention_persistent_scratch:
+                        if force_full_attention_row_chunks:
+                            chunk_records: list[dict[str, Any]] = []
+                            chunk_size = int(full_attention_row_chunk_size)
+                            if key_cache is None or value_cache is None:
+                                key_cache, value_cache = self._full_cache_all_slots(layer_id)
+                            for chunk_start in range(0, rows, chunk_size):
+                                chunk_end = min(rows, chunk_start + chunk_size)
+                                chunk_rows = int(chunk_end - chunk_start)
+                                chunk_slots = tuple(int(slot) for slot in slots[chunk_start:chunk_end])
+                                chunk_positions = tuple(int(position) for position in positions[chunk_start:chunk_end])
+                                chunk_hidden = Tensor.from_handle(
+                                    hidden.ptr + chunk_start * self.hidden_nbytes,
+                                    (chunk_rows, self.config.hidden_size),
+                                    hidden.dtype,
+                                    hidden.device,
+                                )
+                                chunk_position_tensor, chunk_append_spans, chunk_decode_spans = self._batch_full_spans(
+                                    layer_id,
+                                    rows=chunk_rows,
+                                    positions=chunk_positions,
+                                    slots=chunk_slots,
+                                )
+                                chunk_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
+                                chunk_records.append(
+                                    {
+                                        "row_start": int(chunk_start),
+                                        "rows": int(chunk_rows),
+                                        "slots": [int(slot) for slot in chunk_slots],
+                                        "positions": [int(position) for position in chunk_positions],
+                                        "segment_metadata": chunk_metadata,
+                                    }
+                                )
+                                chunk_attention_scratch = self._ensure_full_decode_batch_scratch(layer_id, chunk_rows)
+                                chunk_moe_scratch = self._ensure_moe_decode_batch_scratch(
+                                    layer_id,
+                                    chunk_rows,
+                                    force_selected_c1_moe=force_selected_c1_moe,
+                                )
+                                chunk_out = state.run_full_attention_moe_decode_batch_layer_fp16(
+                                    chunk_hidden,
+                                    key_cache=key_cache,
+                                    value_cache=value_cache,
+                                    append_spans=chunk_append_spans,
+                                    decode_spans=chunk_decode_spans,
+                                    cos_table=self.cos,
+                                    sin_table=self.sin,
+                                    positions=chunk_position_tensor,
+                                    max_positions=self.max_sequence_length,
+                                    attention_scratch=chunk_attention_scratch,
+                                    moe_scratch=chunk_moe_scratch,
+                                    tokens=chunk_rows,
+                                    force_selected_c1_moe=force_selected_c1_moe,
+                                    force_batch_gemv_output=force_batch_gemv_full_attention_output,
+                                    library=self.libraries,
+                                    stream=stream,
+                                )
+                                self.runtime.memcpy_async(
+                                    next_hidden.ptr + chunk_start * self.hidden_nbytes,
+                                    chunk_out.ptr,
+                                    chunk_rows * self.hidden_nbytes,
+                                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                                    stream,
+                                )
+                            batch_full_spans_metadata = {
+                                "row_chunk_size": int(chunk_size),
+                                "chunks": chunk_records,
+                            }
+                            attention_scratch = self._ensure_full_decode_batch_scratch(layer_id, min(chunk_size, rows))
+                            out = next_hidden
+                            copied_full_attention_output = True
+                        elif force_per_row_full_attention_persistent_scratch:
                             if dense_mlp:
                                 raise NotImplementedError(
                                     "persistent c1 full-attention scratch diagnostic is currently wired for MoE layers"
@@ -4545,17 +4625,22 @@ class Qwen35ParoResidentSession:
                                 library=self.libraries,
                                 stream=stream,
                             )
+                        trace_rows = (
+                            1
+                            if force_per_row_full_attention_persistent_scratch
+                            else min(int(full_attention_row_chunk_size), rows) if force_full_attention_row_chunks else rows
+                        )
                         self._trace_decode_full_attention_scratch(
                             layer_id=layer_id,
                             attention_scratch=attention_scratch,
-                            rows=1 if force_per_row_full_attention_persistent_scratch else rows,
+                            rows=trace_rows,
                             context=getattr(attention_scratch, "query_raw", None),
                             stream=stream,
                         )
                         self._trace_decode_full_attention_moe_scratch(
                             layer_id=layer_id,
                             moe_scratch=moe_scratch,
-                            rows=1 if force_per_row_full_attention_persistent_scratch else rows,
+                            rows=trace_rows,
                             stream=stream,
                         )
                         self._trace_decode_full_attention(
@@ -4581,9 +4666,10 @@ class Qwen35ParoResidentSession:
                             "rows": int(rows),
                             "slots": [int(slot) for slot in slots],
                             "max_context": int(max_context),
-                            "full_attention_decode_path": "native_batch",
+                            "full_attention_decode_path": "native_batch_row_chunks" if force_full_attention_row_chunks else "native_batch",
                             "native_caware_decode": not (
-                                force_per_row_full_attention_moe
+                                force_full_attention_row_chunks
+                                or force_per_row_full_attention_moe
                                 or force_per_row_full_attention_input
                                 or force_per_row_full_attention_qkv
                                 or force_per_row_full_attention_scratch
@@ -4605,6 +4691,8 @@ class Qwen35ParoResidentSession:
                         }
                         if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
                             layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
+                        if force_full_attention_row_chunks:
+                            layer_execution["full_attention_row_chunk_size"] = int(full_attention_row_chunk_size)
                         if force_per_row_full_attention_input:
                             layer_execution["full_attention_input_decode_path"] = full_attention_input_decode_path
                         if force_per_row_full_attention_qkv:
@@ -4756,6 +4844,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention input RMSNorm forced to per-row diagnostic path")
             if force_per_row_full_attention_moe:
                 decode_blockers.append("full-attention MoE forced to per-row selected-c1 diagnostic path")
+            if force_full_attention_row_chunks:
+                decode_blockers.append("full-attention decode forced to native row-chunk diagnostic path")
             if force_per_row_full_attention_qkv:
                 decode_blockers.append("full-attention QKV prep forced to per-row scratch diagnostic path")
             if force_per_row_full_attention_scratch:
@@ -4808,6 +4898,7 @@ class Qwen35ParoResidentSession:
                 "full_attention_kv_append_decode_path": full_attention_kv_append_decode_path,
                 "post_attention_decode_path": post_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
+                and not force_full_attention_row_chunks
                 and not force_per_row_linear_moe
                 and not force_selected_c1_linear_projections
                 and not force_selected_c1_qkv_z_linear_projections
@@ -4847,6 +4938,8 @@ class Qwen35ParoResidentSession:
                 "layer_executions": layer_executions,
                 "blockers": decode_blockers,
             }
+            if force_full_attention_row_chunks:
+                self.last_batch_decode_execution["full_attention_row_chunk_size"] = int(full_attention_row_chunk_size)
             if force_per_row_full_attention_gate:
                 self.last_batch_decode_execution["full_attention_gate_decode_path"] = full_attention_gate_decode_path
             return hidden
