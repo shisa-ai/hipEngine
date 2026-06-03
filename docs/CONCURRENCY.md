@@ -677,6 +677,15 @@ What is still not green:
   is eliminated; the issue is not caused by the original rowchunk cache/table
   layout seen by the batch context kernel
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-batch-compact-cache/summary.json`).
+  Forcing the full-attention input RMSNorm and QKV prep/scratch to per-row also
+  does not change rowchunk3: rowchunk2 remains generated-token green with no
+  projection drift and no full-attention stage failures or bit drift, while
+  rowchunk3 keeps L5 layer4 QKV/Z drift, the L6 truncated-token failure, and L8
+  layer7 `attn_input_pre_qkv`/`attn_context` failures. Pre-QKV setup is
+  eliminated; with this diagnostic the strict layer3 drift first appears after
+  context/gate at layer3 `gated_attn`/O/residual/MLP/output under tolerance, then
+  is amplified by the later layer7 input/pre-QKV path
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-preqkv/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
