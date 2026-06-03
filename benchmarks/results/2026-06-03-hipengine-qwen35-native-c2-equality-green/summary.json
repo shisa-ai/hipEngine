@@ -1,0 +1,123 @@
+{
+  "artifacts": {
+    "hipcc-version.txt": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-equality-green/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    }
+  },
+  "bench_status": "blocked",
+  "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-equality-green/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-equality-green/native-c2-512x128.json",
+  "comparison_artifacts": {
+    "prior_c2_c4_c8_equality_green": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-c4-c8-equality-and-context-staging/summary.json"
+  },
+  "conclusion": "The active native c2 512/128 gate has no generated-token mismatch: both rows match independent c1 for all 137 generated tokens (8 warmup + 128 measured + initial token accounting). The benchmark remains status=blocked only for retained/performance eligibility: projection dispatch falls back to row_gemv because no c-aware projection candidate evidence applies to rows=2, grouped-compact MoE is not selected in this current gate, primitive/profiler/baseline artifacts are not supplied, and no throughput claim is made. The next correctness milestone should therefore be c4/c8 equality under the current gate or a retained-dispatch evidence/code path, not another c2 mismatch hunt.",
+  "correctness": {
+    "finite_logits": true,
+    "passed": false,
+    "primitive_batch_correctness": {
+      "artifact_path": null,
+      "passed": false,
+      "reason": "no primitive correctness artifact path provided",
+      "status": "missing"
+    }
+  },
+  "created_utc": "2026-06-03T16:24:19Z",
+  "decision_reason": "batch_execution.throughput_claim_eligible=false; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int; execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode; execution.batch_execution.decode_execution.layer_executions[0].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[1].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[2].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[3].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[4].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[5].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[6].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[7].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[8].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[9].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[10].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[11].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[12].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[13].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[14].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[15].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[16].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[17].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[18].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[19].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[20].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[21].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[22].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[23].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[24].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[25].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[26].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[27].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[28].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[29].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[30].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[31].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[32].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[33].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[34].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[35].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[36].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[37].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[38].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[39].moe_decode_path must be grouped_compact; execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection; execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv; execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true; execution.batch_execution.projection_dispatch.blockers must be empty; execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv; execution.batch_execution.projection_dispatch.evidence is missing; projection_dispatch_candidates must include selected projection candidate; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+  "execution": {
+    "blockers": [
+      "projection dispatch: no c-aware projection candidate applies to this row count"
+    ],
+    "decode_execution": {
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_input_decode_path": "native_batch",
+      "full_attention_kv_append_decode_path": "native_batch",
+      "full_attention_qkv_decode_path": "native_batch",
+      "full_attention_scratch_decode_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_state_path": "native_segments",
+      "max_full_attention_context": 648,
+      "moe_decode_path": "selected_c1_batch",
+      "moe_decode_rows": 2,
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "native_full_attention_layers": 10,
+      "post_attention_decode_path": "native_batch",
+      "rows": 2,
+      "slots": [
+        0,
+        1
+      ]
+    },
+    "native_caware_decode": true,
+    "path": "scheduler_native_compact_batch",
+    "projection_dispatch": {
+      "blockers": [
+        "no c-aware projection candidate applies to this row count"
+      ],
+      "evidence": null,
+      "path": "row_gemv_until_caware_benchmark",
+      "rows": 2,
+      "selected_candidate": "row_gemv",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "row_gemv"
+      },
+      "throughput_claim_eligible": false
+    },
+    "row_execution": "native_compact_caware_layers",
+    "throughput_claim_eligible": false
+  },
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "generated_token_equality": {
+    "comparison": "native_batch_vs_independent_c1",
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "gen_tokens_per_request": 128,
+    "min_equal_prefix_tokens": 137,
+    "mismatch_count": 0,
+    "mismatch_summaries": [],
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "rows": 2,
+    "tokens_per_sequence": 137,
+    "warmup_decode_tokens": 8
+  },
+  "git_commit": "96881304db8eb8120128c0e7c3ccc2b00dd6f848",
+  "hardware": {
+    "device": "GPU1",
+    "gpu": "RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "kind": "native_c2_512x128_generated_token_equality_audit",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "notes": [
+    "Diagnostic/audit artifact only; no throughput/scaling claim.",
+    "Raw benchmark JSON was compacted out after hashing/summarizing."
+  ],
+  "performance_claim": false,
+  "raw_output": {
+    "removed_after_summary": true,
+    "sha256": "22370c069653bcc0aa2c43e53af7f854cbb3df6e4d14e7963c7142bb0421c216",
+    "size_bytes": 139416
+  },
+  "retained_ready": false,
+  "schema_version": 1,
+  "status": "correctness_green_retained_blocked",
+  "workload": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

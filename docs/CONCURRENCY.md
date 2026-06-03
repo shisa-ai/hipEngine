@@ -439,6 +439,15 @@ What is still not green:
   rowchunk2 full attention and remain correctness-only, not retained/scaling
   rows
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-mismatch-summary-matrix/summary.json`).
+  A later active-loop c2 512/128 audit confirms there is no current c2 generated-
+  token mismatch to chase: both rows match independent c1 for all 137 generated
+  tokens. The artifact remains `status=blocked` only for retained/performance
+  eligibility (row-GEMV projection dispatch without rows=2 c-aware evidence,
+  selected-c1 batch MoE in the current gate, and missing profiler/baseline/
+  primitive repo artifacts), so the next correctness work should target current
+  c4/c8 equality or retained-dispatch evidence rather than another c2 mismatch
+  hunt
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-equality-green/summary.json`).
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7
