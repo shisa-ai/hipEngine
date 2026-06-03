@@ -89,6 +89,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of artifacts_to_collect.",
     )
+    parser.add_argument(
+        "--success-criteria-only",
+        action="store_true",
+        help="Emit only the compact success criteria for each remaining blocker.",
+    )
+    parser.add_argument(
+        "--success-criteria-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the success-criteria handoff.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     return parser.parse_args(argv)
 
@@ -211,14 +221,31 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
             artifacts_to_collect.extend(kv_required_artifacts)
         entries.append(entry)
 
+    success_criteria_handoff = [
+        {
+            "blocker_kind": entry.get("blocker_kind"),
+            "readiness_gate": entry.get("readiness_gate"),
+            "gate_ready": entry.get("gate_ready"),
+            "first_missing_evidence": entry.get("first_missing_evidence"),
+            "success_criteria": list(entry.get("success_criteria", [])),
+            "recommended_command_kind": entry.get("recommended_command_kind"),
+            "recommended_command_sha256": entry.get("recommended_command_sha256"),
+        }
+        for entry in entries
+    ]
     entries_sha256 = status_mod._stable_json_sha256(entries)
     artifacts_to_collect_sha256 = status_mod._stable_json_sha256(artifacts_to_collect)
+    success_criteria_handoff_sha256 = status_mod._stable_json_sha256(
+        success_criteria_handoff
+    )
     compact_output_modes = {
         "sha_only": "manifest_sha256",
         "entries_only": "entries",
         "entries_sha_only": "entries_sha256",
         "artifacts_only": "artifacts_to_collect",
         "artifacts_sha_only": "artifacts_to_collect_sha256",
+        "success_criteria_only": "success_criteria_handoff",
+        "success_criteria_sha_only": "success_criteria_handoff_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -237,6 +264,8 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "entries_sha256": entries_sha256,
         "artifacts_to_collect": artifacts_to_collect,
         "artifacts_to_collect_sha256": artifacts_to_collect_sha256,
+        "success_criteria_handoff": success_criteria_handoff,
+        "success_criteria_handoff_sha256": success_criteria_handoff_sha256,
         "compact_output_modes": compact_output_modes,
         "artifact_count": len(artifacts_to_collect),
         "entry_count": len(entries),
@@ -321,6 +350,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = manifest["artifacts_to_collect_sha256"]
     elif args.artifacts_only:
         payload = manifest["artifacts_to_collect"]
+    elif args.success_criteria_sha_only:
+        payload = manifest["success_criteria_handoff_sha256"]
+    elif args.success_criteria_only:
+        payload = manifest["success_criteria_handoff"]
     else:
         payload = status_mod._stable_json_sha256(manifest) if args.sha_only else manifest
     status_mod._emit_json(payload, pretty=args.pretty, output=args.output)

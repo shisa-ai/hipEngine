@@ -61,12 +61,50 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["artifacts_to_collect_sha256"] == _stable_json_sha256(
         manifest["artifacts_to_collect"]
     )
+    assert manifest["success_criteria_handoff_sha256"] == _stable_json_sha256(
+        manifest["success_criteria_handoff"]
+    )
+    entries = {entry["blocker_kind"]: entry for entry in manifest["entries"]}
+    success_criteria_by_blocker = {
+        record["blocker_kind"]: record
+        for record in manifest["success_criteria_handoff"]
+    }
+    assert success_criteria_by_blocker["oracle_parity_blocked"] == {
+        "blocker_kind": "oracle_parity_blocked",
+        "readiness_gate": "oracle_parity",
+        "gate_ready": False,
+        "first_missing_evidence": "oracle_completed_successfully",
+        "success_criteria": entries["oracle_parity_blocked"]["success_criteria"],
+        "recommended_command_kind": entries["oracle_parity_blocked"][
+            "recommended_command_kind"
+        ],
+        "recommended_command_sha256": entries["oracle_parity_blocked"][
+            "recommended_command_sha256"
+        ],
+    }
+    assert success_criteria_by_blocker["kv_backed_decode_not_wired"] == {
+        "blocker_kind": "kv_backed_decode_not_wired",
+        "readiness_gate": "kv_backed_decode",
+        "gate_ready": False,
+        "first_missing_evidence": "streaming_runner_ready_flags",
+        "success_criteria": entries["kv_backed_decode_not_wired"][
+            "success_criteria"
+        ],
+        "recommended_command_kind": entries["kv_backed_decode_not_wired"][
+            "recommended_command_kind"
+        ],
+        "recommended_command_sha256": entries["kv_backed_decode_not_wired"][
+            "recommended_command_sha256"
+        ],
+    }
     assert manifest["compact_output_modes"] == {
         "sha_only": "manifest_sha256",
         "entries_only": "entries",
         "entries_sha_only": "entries_sha256",
         "artifacts_only": "artifacts_to_collect",
         "artifacts_sha_only": "artifacts_to_collect_sha256",
+        "success_criteria_only": "success_criteria_handoff",
+        "success_criteria_sha_only": "success_criteria_handoff_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -76,7 +114,6 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "no_claim_policy"
     ]
 
-    entries = {entry["blocker_kind"]: entry for entry in manifest["entries"]}
     oracle_entry = entries["oracle_parity_blocked"]
     assert oracle_entry["readiness_gate"] == "oracle_parity"
     assert oracle_entry["gate_ready"] is False
@@ -173,6 +210,8 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     entries_sha_output = tmp_path / "final-blocker-entries-sha.json"
     artifacts_output = tmp_path / "final-blocker-artifacts.json"
     artifacts_sha_output = tmp_path / "final-blocker-artifacts-sha.json"
+    success_criteria_output = tmp_path / "final-blocker-success-criteria.json"
+    success_criteria_sha_output = tmp_path / "final-blocker-success-criteria-sha.json"
     expected = build_final_blocker_manifest(
         build_status(prompt, oracle, docs, resource_artifact=resource)
     )
@@ -264,6 +303,55 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert rc == 0
     assert json.loads(artifacts_sha_output.read_text()) == expected[
         "artifacts_to_collect_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--success-criteria-only",
+            "--output",
+            str(success_criteria_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    success_criteria_payload = json.loads(success_criteria_output.read_text())
+    assert success_criteria_payload == expected["success_criteria_handoff"]
+    assert [record["readiness_gate"] for record in success_criteria_payload] == [
+        "oracle_parity",
+        "kv_backed_decode",
+    ]
+    assert "oracle_parity is true" in success_criteria_payload[0]["success_criteria"]
+    assert "kv_backed_decode_ready is true" in success_criteria_payload[1][
+        "success_criteria"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--success-criteria-sha-only",
+            "--output",
+            str(success_criteria_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(success_criteria_sha_output.read_text()) == expected[
+        "success_criteria_handoff_sha256"
     ]
 
     captured = capsys.readouterr()

@@ -41,6 +41,8 @@
     "entries_only": "entries",
     "entries_sha_only": "entries_sha256",
     "sha_only": "manifest_sha256",
+    "success_criteria_only": "success_criteria_handoff",
+    "success_criteria_sha_only": "success_criteria_handoff_sha256",
     "verification_failures_only": "verification.verification_failures",
     "verification_status_only": "verification.status"
   },
@@ -161,13 +163,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "12bd8161997d567e1d7cecd72ccd315ee7b570035b82453bf30d3d1b9581ef1d",
+    "readiness_summary_sha256": "5fd888bc997db629d531a961061969e5ecd9173b7b6abab8fb8d53cfb2dce35b",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "886436026330bff3aa6bd32dd99a8ce4ae4eea24486ca565c41d1003e5a18c13",
-        "size_bytes": 69578
+        "sha256": "09b237b36dce9838b9c7a18b55747185662e76dfb96c72a59b1fadccbf9b4a54",
+        "size_bytes": 69676
       },
       "oracle": {
         "exists": true,
@@ -194,7 +196,40 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "10dc68657fb5d836dedd1650d5caf44be15ec1df1313c43151785b0998c560b2",
+    "source_artifacts_sha256": "083c84debff5ce4a636393f06f88ac403b155ee75b0ebaf435ced5b11d8830f5",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
-  }
+  },
+  "success_criteria_handoff": [
+    {
+      "blocker_kind": "oracle_parity_blocked",
+      "first_missing_evidence": "oracle_completed_successfully",
+      "gate_ready": false,
+      "readiness_gate": "oracle_parity",
+      "recommended_command_kind": "oracle_helper_long_timeout_command",
+      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "success_criteria": [
+        "oracle_gap_report.status is ready",
+        "oracle_gap_report.missing_preconditions is empty",
+        "oracle_gap_report.missing_evidence is empty",
+        "oracle_parity is true",
+        "readiness_gates.oracle_parity.ready is true"
+      ]
+    },
+    {
+      "blocker_kind": "kv_backed_decode_not_wired",
+      "first_missing_evidence": "streaming_runner_ready_flags",
+      "gate_ready": false,
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "success_criteria": [
+        "kv_backed_decode_gap_report.status is ready",
+        "kv_backed_decode_gap_report.missing_evidence is empty",
+        "kv_backed_decode_ready is true",
+        "readiness_gates.kv_backed_decode.ready is true",
+        "e2e_inference_ready is true only after oracle_parity is also true"
+      ]
+    }
+  ],
+  "success_criteria_handoff_sha256": "6eb5966887a0cee64a956c2c8ac12b342adf5ca8a4670015b500b55243f1d3d9"
 }
