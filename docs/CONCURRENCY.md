@@ -439,7 +439,11 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-current217/summary.json`). A later active verify during the rowchunk2 MoE-boundary sweep
   flaked red again at `[103,137]` before the immediate final verify returned
   `[137,137]`, so the intermittent c2 flake risk remains open
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`). A follow-up c2 stress check ran five default selected-c1-MoE
+  repeats and five explicit grouped-compact-MoE repeats; all ten were green at
+  `[137,137]`, so the flake is not trivially reproduced by toggling c2 MoE mode
+  in isolated repeat runs
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

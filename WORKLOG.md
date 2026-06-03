@@ -65791,3 +65791,7 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Grouped-compact MoE + rowchunk2 is green for c5 `[137]*5`, c6 `[137]*6`, c7 `[137]*7`, and c8 `[137]*8`, but red at the derived c9 fixture (`[137,137,137,118,137,31,81,137,137]`).
 - Replacing only MoE with `selected_c1` restores c9 rowchunk2 equality (`[137]*9`). No default extension or throughput claim: the post-c8 boundary is grouped-compact MoE row-count behavior layered on the rowchunk2 full-attention diagnostic.
 - During final verification, one active c2 verify flaked red at `[103,137]` on row0 before the immediate final active verify returned `[137,137]`; recorded in the same artifact so the intermittent c2 flake risk remains open despite the final metric being green.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter220 c2 default/grouped repeat stress
+- Ran five exact active c2 512/128 default repeats and five explicit c2 grouped-compact-MoE repeats on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/summary.json`.
+- All ten runs are generated-token equality green at `[137,137]` with empty mismatch summaries. This does not prove the intermittent c2 flake fixed (iter219 captured `[103,137]`), but it shows the flake is not trivially reproduced by switching c2 between selected-c1 MoE and grouped-compact MoE in isolated repeat runs. No throughput claim.

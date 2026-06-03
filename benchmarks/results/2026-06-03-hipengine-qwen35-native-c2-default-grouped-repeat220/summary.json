@@ -1,0 +1,393 @@
+{
+  "artifacts": {
+    "c2-default-repeat1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat1.json",
+      "sha256": "0dbc6843ffe5322b25d57f08e523acc249722881bbef8ab028cefd139972b0e8",
+      "size_bytes": 1231
+    },
+    "c2-default-repeat2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat2.json",
+      "sha256": "9cb3f41df53f4a4f0a51a671f3f0829d275d9ec5f7539935b55072ae70945a55",
+      "size_bytes": 1231
+    },
+    "c2-default-repeat3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat3.json",
+      "sha256": "22d0676c54eadd957d4f0289ac7ac55c2570230bbc64f57322ae5134e29a1aa4",
+      "size_bytes": 1231
+    },
+    "c2-default-repeat4": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat4.json",
+      "sha256": "19fdcd5cf3c3367dc9b03d34cc642aecd433dc7e6fea4ae2336cdde95ff49c6a",
+      "size_bytes": 1231
+    },
+    "c2-default-repeat5": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat5.json",
+      "sha256": "3342bc0ec5f1f28b1fd983476a0ef029f2fb1bbf90a550c23a45949b0d96c190",
+      "size_bytes": 1231
+    },
+    "c2-grouped-repeat1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat1.json",
+      "sha256": "4f1f3147beb842cd1517cb145df09067979975d439c78283909c54c784179c5c",
+      "size_bytes": 1234
+    },
+    "c2-grouped-repeat2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat2.json",
+      "sha256": "5192761a359712db3819b82750e9dc28cfdce87f486e597a05b1c0b1d4bb46d8",
+      "size_bytes": 1234
+    },
+    "c2-grouped-repeat3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat3.json",
+      "sha256": "4606b63fab40699c28fc84dd089fc87559f2f697ae40dc797cebaebbd705e1a8",
+      "size_bytes": 1234
+    },
+    "c2-grouped-repeat4": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat4.json",
+      "sha256": "d5ff64cf7b9a3a4deca7703fdf9b4305652b139fc2ebea8091b7de672e6dca7b",
+      "size_bytes": 1234
+    },
+    "c2-grouped-repeat5": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat5.json",
+      "sha256": "e04f03621ee41610350943b4368c36acb1bbf05120b495c8b34cf01dbcff01e8",
+      "size_bytes": 1234
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_c2_flake_artifact": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json",
+      "sha256": "b1e4e9a4a49ac6f89ef0d5784aa92d75f5b17216b0d14dc0a7bdea786e414bab",
+      "size_bytes": 24781
+    }
+  },
+  "conclusion": "The active c2 512/128 equality command was stress-tested with five default selected_c1-MoE repeats and five explicit grouped-compact-MoE repeats. All ten runs were generated-token-equality green at [137,137] with empty mismatch summaries. This does not prove the intermittent c2 flake fixed (iter219 still captured [103,137]), but it shows the flake is not trivially reproduced by switching the c2 MoE mode between selected_c1 and grouped_compact in isolated repeat runs. No throughput claim is made.",
+  "created_at": "2026-06-03T23:35:54Z",
+  "git_commit_before_result_commit": "66e509b574e6786e08f73d99c2a55fb8a0043e0f",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 220,
+  "kind": "native_c2_default_vs_grouped_moe_repeat_stress",
+  "observations": {
+    "all_ten_runs_green": true,
+    "default_green_count": 5,
+    "default_selected_c1_repeats_all_green": true,
+    "grouped_compact_repeats_all_green": true,
+    "grouped_green_count": 5,
+    "run_count": 10
+  },
+  "performance_claim": false,
+  "remaining_blockers": [
+    "intermittent c2 equality flake risk remains open because iter219 captured [103,137] before immediate green final verify",
+    "default c2 artifact still lacks attached projection-dispatch/profiler/scaling evidence for retained promotion",
+    "full-native/no-rowchunk grouped full-attention remains the retained c4/c8 blocker"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat1.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 1,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat2.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 2,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat3.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 3,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat4.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 4,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-default-repeat5.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 5,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat1.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "grouped",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 1,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "grouped_compact"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat2.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "grouped",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 2,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "grouped_compact"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat3.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "grouped",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 3,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "grouped_compact"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat4.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "grouped",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 4,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "grouped_compact"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/diagnostics/c2-grouped-repeat5.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "grouped",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 5,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "grouped_compact"
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "batch_size": 2,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "modes": {
+      "default": "auto selected_c1 MoE",
+      "grouped": "--batch-decode-moe-path grouped_compact"
+    },
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}
