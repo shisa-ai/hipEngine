@@ -106,11 +106,50 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "final_blocker_manifest_summary_sha256": report[
             "final_blocker_manifest_summary_sha256"
         ],
+        "action_summary_sha256": report["action_summary_sha256"],
         "exit_code_policy_sha256": report["exit_code_policy_sha256"],
         "verification_failures_sha256": report["verification_failures_sha256"],
         "source_artifacts_sha256": report["summary"]["source_artifacts_sha256"],
         "manifest_sha256": report["summary"]["manifest_sha256"],
     }
+    current_manifest = build_final_blocker_manifest(
+        build_status(prompt, oracle, docs, resource_artifact=resource)
+    )
+    assert report["action_summary_sha256"] == _stable_json_sha256(
+        report["action_summary"]
+    )
+    assert report["action_summary"] == {
+        "schema_version": 1,
+        "status": "blocked_verified",
+        "remaining_blocker_count": 2,
+        "remaining_blocker_kinds": [
+            "oracle_parity_blocked",
+            "kv_backed_decode_not_wired",
+        ],
+        "recommended_commands": current_manifest["recommended_commands_handoff"],
+        "recommended_commands_sha256": current_manifest[
+            "recommended_commands_handoff_sha256"
+        ],
+        "required_artifacts": current_manifest["artifacts_to_collect"],
+        "required_artifacts_sha256": current_manifest[
+            "artifacts_to_collect_sha256"
+        ],
+        "success_criteria": current_manifest["success_criteria_handoff"],
+        "success_criteria_sha256": current_manifest[
+            "success_criteria_handoff_sha256"
+        ],
+        "no_claim_policy": current_manifest["no_claim_policy"],
+        "no_claim_policy_sha256": current_manifest["no_claim_policy_sha256"],
+    }
+    assert report["action_summary"]["recommended_commands"][0][
+        "recommended_command_kind"
+    ] == "oracle_helper_long_timeout_command"
+    assert report["action_summary"]["required_artifacts"][1]["name"] == (
+        "kv_kernel_trace_artifact"
+    )
+    assert report["action_summary"]["success_criteria"][1]["readiness_gate"] == (
+        "kv_backed_decode"
+    )
     assert report["artifact_verification"] == {
         "schema_version": 1,
         "status": "match",
@@ -191,6 +230,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     readiness_summary_sha_output = tmp_path / "handoff-readiness-summary-sha.json"
     final_blocker_summary_output = tmp_path / "handoff-final-blocker-summary.json"
     final_blocker_summary_sha_output = tmp_path / "handoff-final-blocker-summary-sha.json"
+    action_summary_output = tmp_path / "handoff-action-summary.json"
+    action_summary_sha_output = tmp_path / "handoff-action-summary-sha.json"
     exit_code_policy_output = tmp_path / "handoff-exit-code-policy.json"
     exit_code_policy_sha_output = tmp_path / "handoff-exit-code-policy-sha.json"
     digest_summary_output = tmp_path / "handoff-digest-summary.json"
@@ -575,6 +616,64 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert rc == 0
     assert json.loads(final_blocker_summary_sha_output.read_text()) == expected[
         "final_blocker_manifest_summary_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--action-summary-only",
+            "--output",
+            str(action_summary_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    action_summary_payload = json.loads(action_summary_output.read_text())
+    assert action_summary_payload == expected["action_summary"]
+    assert [
+        record["recommended_command_kind"]
+        for record in action_summary_payload["recommended_commands"]
+    ] == ["oracle_helper_long_timeout_command", "resource_plan_refresh_command"]
+    assert [artifact["name"] for artifact in action_summary_payload["required_artifacts"]] == [
+        "llama_cpp_oracle_success_artifact",
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--action-summary-sha-only",
+            "--output",
+            str(action_summary_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(action_summary_sha_output.read_text()) == expected[
+        "action_summary_sha256"
     ]
 
     rc = main(

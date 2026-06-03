@@ -131,6 +131,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of final blocker summary.",
     )
     parser.add_argument(
+        "--action-summary-only",
+        action="store_true",
+        help="Emit only recommended commands, required artifacts, and success criteria.",
+    )
+    parser.add_argument(
+        "--action-summary-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the action summary.",
+    )
+    parser.add_argument(
         "--exit-code-policy-only",
         action="store_true",
         help="Emit only handoff verifier exit-code policy for CI routing.",
@@ -270,6 +280,26 @@ def build_handoff_check(
         "blocked_gates": blocked_gates,
         "no_claim_policy": current_manifest.get("no_claim_policy"),
     }
+    action_summary = {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "status": status,
+        "remaining_blocker_count": remaining_blocker_count,
+        "remaining_blocker_kinds": remaining_blocker_kinds,
+        "recommended_commands": current_manifest.get("recommended_commands_handoff"),
+        "recommended_commands_sha256": current_manifest.get(
+            "recommended_commands_handoff_sha256"
+        ),
+        "required_artifacts": current_manifest.get("artifacts_to_collect"),
+        "required_artifacts_sha256": current_manifest.get(
+            "artifacts_to_collect_sha256"
+        ),
+        "success_criteria": current_manifest.get("success_criteria_handoff"),
+        "success_criteria_sha256": current_manifest.get(
+            "success_criteria_handoff_sha256"
+        ),
+        "no_claim_policy": current_manifest.get("no_claim_policy"),
+        "no_claim_policy_sha256": current_manifest.get("no_claim_policy_sha256"),
+    }
     exit_code_policy = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "ready": status_mod.READY_EXIT_CODE,
@@ -319,6 +349,7 @@ def build_handoff_check(
         "final_blocker_manifest_summary_sha256": status_mod._stable_json_sha256(
             final_blocker_manifest_summary
         ),
+        "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
         "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
         "source_artifacts_sha256": current_status.get("source_artifacts_sha256"),
@@ -340,6 +371,8 @@ def build_handoff_check(
         "final_blocker_manifest_summary_sha256": status_mod._stable_json_sha256(
             final_blocker_manifest_summary
         ),
+        "action_summary": action_summary,
+        "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
         "exit_code_policy": exit_code_policy,
         "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
         "digest_summary": digest_summary,
@@ -438,6 +471,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["final_blocker_manifest_summary_sha256"]
     elif args.final_blocker_summary_only:
         payload = report["final_blocker_manifest_summary"]
+    elif args.action_summary_sha_only:
+        payload = report["action_summary_sha256"]
+    elif args.action_summary_only:
+        payload = report["action_summary"]
     elif args.exit_code_policy_sha_only:
         payload = report["exit_code_policy_sha256"]
     elif args.exit_code_policy_only:
