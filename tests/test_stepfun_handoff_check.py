@@ -583,6 +583,53 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert json.loads(capsys.readouterr().out) == "blocked_verified"
 
 
+def test_stepfun_handoff_check_verifies_default_persisted_report_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    prompt, oracle, docs, resource, status_artifact, manifest_artifact = _write_inputs(
+        tmp_path
+    )
+    default_report = tmp_path / "benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json"
+    default_report.parent.mkdir(parents=True)
+    current_report = build_handoff_check(
+        prompt_artifact=prompt,
+        oracle_artifact=oracle,
+        resource_artifact=resource,
+        docs=docs,
+        status_artifact=status_artifact,
+        manifest_artifact=manifest_artifact,
+    )
+    default_report.write_text(json.dumps(current_report, indent=2, sort_keys=True) + "\n")
+    status_output = tmp_path / "default-report-verification-status.json"
+    monkeypatch.chdir(tmp_path)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--verify-handoff-report",
+            "--report-verification-status-only",
+            "--output",
+            str(status_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    assert json.loads(status_output.read_text()) == "match"
+
+
 def test_stepfun_handoff_check_reports_handoff_report_mismatch(
     capsys,
     tmp_path: Path,

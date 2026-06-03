@@ -72,8 +72,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--verify-handoff-report",
         type=Path,
+        nargs="?",
+        const=DEFAULT_HANDOFF_ARTIFACT,
         default=None,
-        help="Compare a persisted handoff-check report with current inputs.",
+        help=(
+            "Compare a persisted handoff-check report with current inputs. "
+            f"If no path is supplied, uses {DEFAULT_HANDOFF_ARTIFACT}."
+        ),
     )
     parser.add_argument(
         "--report-verification-status-only",

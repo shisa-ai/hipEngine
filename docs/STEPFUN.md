@@ -645,9 +645,10 @@ reporting.
   `--readiness-summary-only` / `--readiness-summary-sha-only`,
   `--final-blocker-summary-only` / `--final-blocker-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
-  polling, and `--verify-handoff-report` with
-  `--report-verification-status-only` / `--report-verification-failures-only`
-  detects drift in a persisted handoff report. The full verified-blocked report is persisted as
+  polling, and `--verify-handoff-report` (defaulting to the persisted handoff
+  artifact when no path is supplied) with `--report-verification-status-only` /
+  `--report-verification-failures-only` detects drift in a persisted handoff
+  report. The full verified-blocked report is persisted as
   `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` alongside the
   status and final-blocker artifacts. `--fail-on-blocked` returns the documented
   blocked exit code when CI should fail until oracle/KV readiness is real.
