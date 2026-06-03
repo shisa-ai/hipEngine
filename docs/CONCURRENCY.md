@@ -582,7 +582,14 @@ What is still not green:
   `[137]*7`) with the tail-GEMV metadata. The rows>=5 residual is therefore a
   coupled full-attention row-group/no-rowchunk interaction that rowchunk2 avoids,
   not a simple single-stage suffix or pre-QKV fallback
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5-c7-rowchunk2-rescue/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5-c7-rowchunk2-rescue/summary.json`). A current default-output
+  rowchunk boundary sweep sharpens the cap: rowchunk1/2 are green for c5/c8;
+  rowchunk3 is green while the non-leading segment has at most two rows (c4/c5)
+  but red once the second segment has rows 3..5 (c6/c7/c8); rowchunk4/full-native
+  is red as soon as a leading four-row group is formed (c4/c5/c8). Until the
+  grouped full-attention producer is fixed, the safe diagnostic cap is therefore
+  leading group <=3 and later groups <=2, which is exactly why runtime auto stays
+  at rowchunk2 (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk-boundary-c4c8/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
