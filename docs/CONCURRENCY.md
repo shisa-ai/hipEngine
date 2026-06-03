@@ -690,10 +690,15 @@ What is still not green:
   the grouped>=3 issue is downstream/inherited from the layer3 trajectory rather
   than unforwarded diagnostic metadata
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-preqkv/summary.json`).
-  A pre-forwarding suffix-interleave attempt changed token shape via the
-  O-bearing path but is no longer used as proof that the full per-row suffix ran;
-  rerun suffix-specific probes after the forwarding fix if they become relevant
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/summary.json`).
+  The forwarded whole-suffix rerun is decisively red: forcing per-row KV append,
+  context+gate, O, post-attention add/RMSNorm, MoE, and suffix interleaving makes
+  rowchunk2 token-red at L6, leaves rowchunk3 token-red at L6, gives both paths L5
+  layer4 QKV/Z drift, and is already over tolerance in layer3
+  `attn_context`/residual/`mlp_input` (context max_abs about 9.03). Whole-suffix
+  per-row interleaving is eliminated as a retained-compatible path and as a
+  hidden-parity repair; the earlier pre-forwarding suffix token movement is
+  superseded
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-suffix-interleaved/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
