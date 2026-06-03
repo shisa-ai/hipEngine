@@ -501,6 +501,14 @@ What is still not green:
   but the row remains blocked on throughput-claim/profiler/rollup gates and makes
   no retained performance claim
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/summary.json`).
+  A current c2 retained profiler rerun now captures `rocprofv3 --kernel-trace`
+  evidence with grouped-compact MoE, explicit batched LM-head sampler evidence,
+  generated-token equality `[137,137]`, complete scaling refs, and synthesized
+  profiler duration fields from a compact kernel trace. This removes the stale
+  profiler-not-captured, sampler-profiler-command, and selected-c1 MoE blockers;
+  the retained row is still blocked by projection dispatch (`row_gemv_until_caware_benchmark`)
+  and graph replay evidence (`replay_kernel_hits=0`)
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-profiler-current/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
