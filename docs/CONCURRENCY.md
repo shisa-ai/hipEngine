@@ -453,6 +453,14 @@ What is still not green:
   rows, and rowchunk2's tail chunk correctly shifts to slot-2 offsets. Block-table
   construction is therefore eliminated as the c3 grouping>=3 suspect
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-block-table-audit/summary.json`).
+  Context-side diagnostics are also not the fix: forcing native c3 full-attention
+  context through compact-cache copies or through a temporary context output
+  buffer leaves rows4/5/6 red at `[45,11,137]`, and paired L40 decode-step-0
+  traces keep the first full-attention failure at layer 7 `attn_input_pre_qkv`
+  (`max_abs=0.015625`). This eliminates context-cache copying/output-buffer
+  aliasing and keeps the target upstream of context at hidden/pre-QKV grouped
+  setup
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-context-diagnostics-red/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
