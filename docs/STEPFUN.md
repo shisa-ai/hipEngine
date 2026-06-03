@@ -624,8 +624,11 @@ reporting.
   evidence manifest (and `--sha-only` digest) that joins the two remaining P11
   partial checklist items to their readiness gates, first missing evidence,
   recommended-command digests, oracle rerun artifact path, KV runtime artifacts,
-  launch-trace digests, and the no-claim policy without parsing the full status
-  artifact.
+  launch-trace digests, status/source provenance, and the no-claim policy without
+  parsing the full status artifact. Its `--verify-manifest` mode compares a
+  persisted manifest with the current prompt/oracle/resource/docs inputs, while
+  `--verification-status-only` and `--verification-failures-only` provide compact
+  drift routing.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
   one-token decode path.

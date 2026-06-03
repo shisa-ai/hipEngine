@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -48,6 +49,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Write JSON output to this path instead of stdout.",
     )
     parser.add_argument(
+        "--verify-manifest",
+        type=Path,
+        default=None,
+        help="Compare a persisted final-blocker manifest with the current inputs.",
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-manifest, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-manifest, emit only verification_failures.",
+    )
+    parser.add_argument(
         "--sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the manifest.",
@@ -74,6 +91,18 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     kv_launch_trace_summary = dict(
         kv_gap_report.get("streaming_decode_launch_trace_summary", {})
     )
+    status_provenance = {
+        "source_artifacts_sha256": status.get("source_artifacts_sha256"),
+        "status_integrity_sha256": status.get("status_integrity_sha256"),
+        "handoff_summary_sha256": status.get("handoff_summary_sha256"),
+        "readiness_summary_sha256": status.get("readiness_summary_sha256"),
+        "next_action_commands_sha256": status.get("next_action_commands_sha256"),
+        "oracle_progress_sha256": status.get("oracle_progress_sha256"),
+        "oracle_partial_output_handoff_sha256": status.get(
+            "oracle_partial_output_handoff_sha256"
+        ),
+        "source_artifacts": source_artifacts,
+    }
 
     entries: list[dict[str, object]] = []
     artifacts_to_collect: list[dict[str, object]] = []
@@ -165,6 +194,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     return {
         "schema_version": 1,
         "status": remaining.get("status", "blocked"),
+        "status_provenance": status_provenance,
         "open_or_partial_items_p0_p12": remaining.get(
             "open_or_partial_items_p0_p12"
         ),
@@ -185,6 +215,43 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     }
 
 
+def verify_final_blocker_manifest(
+    manifest_path: Path,
+    *,
+    current_manifest: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted final-blocker manifest with the current one."""
+
+    persisted = json.loads(manifest_path.read_text())
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_manifest)
+    failures: list[dict[str, object]] = []
+    if persisted != current_manifest:
+        failures.append(
+            {
+                "name": "final_blocker_manifest_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": "Persisted final-blocker manifest differs from current prompt/oracle/resource/docs inputs.",
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "manifest_path": str(manifest_path),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_manifest_sha256": persisted_sha256,
+        "current_manifest_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failure_count": len(failures),
+        "current_status_provenance": current_manifest.get("status_provenance"),
+        "persisted_status_provenance": persisted.get("status_provenance")
+        if isinstance(persisted, dict)
+        else None,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     status = status_mod.build_status(
@@ -194,7 +261,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         resource_artifact=args.resource_artifact,
     )
     manifest = build_final_blocker_manifest(status)
-    payload: object = status_mod._stable_json_sha256(manifest) if args.sha_only else manifest
+    if args.verify_manifest is not None:
+        verification = verify_final_blocker_manifest(
+            args.verify_manifest,
+            current_manifest=manifest,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        else:
+            payload = verification
+        status_mod._emit_json(payload, pretty=args.pretty, output=args.output)
+        return (
+            status_mod.READY_EXIT_CODE
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
+    payload = status_mod._stable_json_sha256(manifest) if args.sha_only else manifest
     status_mod._emit_json(payload, pretty=args.pretty, output=args.output)
     return 0
 

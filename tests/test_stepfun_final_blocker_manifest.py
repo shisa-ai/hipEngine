@@ -35,6 +35,15 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
 
     assert manifest["schema_version"] == 1
     assert manifest["status"] == "blocked"
+    provenance = manifest["status_provenance"]
+    assert provenance["source_artifacts_sha256"] == status["source_artifacts_sha256"]
+    assert provenance["status_integrity_sha256"] == status["status_integrity_sha256"]
+    assert provenance["handoff_summary_sha256"] == status["handoff_summary_sha256"]
+    assert provenance["readiness_summary_sha256"] == status["readiness_summary_sha256"]
+    assert provenance["next_action_commands_sha256"] == status[
+        "next_action_commands_sha256"
+    ]
+    assert provenance["source_artifacts"]["oracle"]["path"] == str(oracle)
     assert manifest["open_or_partial_items_p0_p12"] == 2
     assert manifest["remaining_blocker_count"] == 2
     assert manifest["remaining_blocker_kinds"] == [
@@ -140,3 +149,124 @@ def test_stepfun_final_blocker_manifest_cli_outputs_payload_and_sha(
     assert captured.out == ""
     assert captured.err == ""
     assert json.loads(sha_output.read_text()) == _stable_json_sha256(expected)
+
+
+def test_stepfun_final_blocker_manifest_cli_verifies_persisted_manifest(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt, oracle, docs, resource = _write_inputs(tmp_path)
+    output = tmp_path / "final-blocker-manifest.json"
+    verification_output = tmp_path / "final-blocker-verification.json"
+    status_output = tmp_path / "final-blocker-verification-status.json"
+    failures_output = tmp_path / "final-blocker-verification-failures.json"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--verify-manifest",
+            str(output),
+            "--output",
+            str(verification_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    verification = json.loads(verification_output.read_text())
+    assert verification["schema_version"] == 1
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_manifest_sha256"] == _stable_json_sha256(
+        json.loads(output.read_text())
+    )
+    assert verification["current_manifest_sha256"] == verification[
+        "persisted_manifest_sha256"
+    ]
+    assert verification["current_status_provenance"] == verification[
+        "persisted_status_provenance"
+    ]
+
+    persisted = json.loads(output.read_text())
+    persisted["status"] = "stale"
+    output.write_text(json.dumps(persisted, sort_keys=True) + "\n")
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--verify-manifest",
+            str(output),
+            "--output",
+            str(status_output),
+            "--verification-status-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 1
+    assert json.loads(status_output.read_text()) == "mismatch"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--verify-manifest",
+            str(output),
+            "--output",
+            str(failures_output),
+            "--verification-failures-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 1
+    failures = json.loads(failures_output.read_text())
+    assert failures == [
+        {
+            "actual_sha256": _stable_json_sha256(persisted),
+            "evidence": (
+                "Persisted final-blocker manifest differs from current "
+                "prompt/oracle/resource/docs inputs."
+            ),
+            "expected_sha256": verification["current_manifest_sha256"],
+            "name": "final_blocker_manifest_drift",
+        }
+    ]
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
