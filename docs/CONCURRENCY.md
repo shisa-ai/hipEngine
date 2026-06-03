@@ -698,6 +698,12 @@ What is still not green:
   Context+gate alone is eliminated as a retained-compatible hidden/token repair,
   and pre-forwarding context/gate evidence is superseded
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-context-gate/summary.json`).
+  The forwarded gate-only rerun keeps rowchunk2 token-green with no projection
+  drift or full-attention stage failures, while rowchunk3 still has L5 layer4
+  QKV/Z drift, the L6 token failure, and L8 layer7
+  `attn_input_pre_qkv`/query/`attn_context`/`mlp_input` failures. Gate multiply
+  alone is eliminated as the grouped>=3 cause and as a standalone gate mismatch
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-gate/summary.json`).
   The forwarded O-projection-only rerun keeps the rowchunk2 control token-green
   with no projection drift or full-attention stage/bit failures, but rowchunk3
   still has L5 layer4 QKV/Z drift, the L6 token failure, and L8 layer7
