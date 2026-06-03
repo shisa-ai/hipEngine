@@ -2529,6 +2529,7 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
     assert [call[0].shape for call in state.calls] == [(2, 8), (2, 8)]
     assert [call[1]["tokens"] for call in state.calls] == [2, 2]
     assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True, True]
+    assert [call[1]["force_batch_gemv_output"] for call in state.calls] == [False, True]
     assert all(call[1]["post_input_rmsnorm_trace"] is not None for call in state.calls)
     assert all(call[1]["input_scratch_trace"] is not None for call in state.calls)
     assert all(call[1]["qkv_tensor_trace"] is not None for call in state.calls)
@@ -2553,9 +2554,16 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
     assert session.last_batch_decode_execution["full_attention_row_chunk_size"] == 2
     assert session.last_batch_decode_execution["full_attention_row_chunk_source"] == expected_source
     assert not session.last_batch_decode_execution["native_caware_decode"]
-    assert session.last_batch_decode_execution["blockers"] == [expected_blocker]
+    assert session.last_batch_decode_execution["blockers"] == [
+        expected_blocker,
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+    ]
     assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_size"] == 2
     assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_source"] == expected_source
+    assert (
+        session.last_batch_decode_execution["layer_executions"][0]["full_attention_output_decode_path"]
+        == "native_batch_with_tail_batch_gemv"
+    )
 
 
 def test_qwen35_resident_rowchunk_decode_forwards_full_attention_diagnostics(monkeypatch) -> None:

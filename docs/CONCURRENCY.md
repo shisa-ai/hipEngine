@@ -535,23 +535,27 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/summary.json`).
-  A c4/c8 full-attention output-path contrast shows the row-aware `batch_gemv`
-  O-projection path is required for the green rowchunk2 grouped/projection path:
-  `batch_gemv` keeps c4/c8 equality green, while forcing the native `batch`
-  output path turns the same workload red (`c4=[137,137,137,118]`,
-  `c8=[137,137,137,118,45,137,68,137]`). The same contrast at c3 keeps both
-  output paths green (`[137,137,137]`), so the native batch O-output bug is a
-  c4/c8 issue rather than the exact grouped>=3 threshold. Do not promote native
-  batch O-output for c4/c8 until that parity is repaired
+  A c4/c8 full-attention output-path contrast first showed the row-aware
+  `batch_gemv` O-projection path was required for the green rowchunk2
+  grouped/projection path: `batch_gemv` kept c4/c8 equality green, while forcing
+  native `batch` output made the same workload red (`c4=[137,137,137,118]`,
+  `c8=[137,137,137,118,45,137,68,137]`). The same contrast at c3 kept both
+  output paths green (`[137,137,137]`), so the native batch O-output bug was a
+  c4/c8 issue rather than the exact grouped>=3 threshold
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-fullattn-output-batch-control/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-fullattn-output-path-contrast/summary.json`). A rowchunk3
-  follow-up narrows the split: c4 with native `batch` O-output is green under
-  rowchunk3 (`[137,137,137,137]`), but c4 full-native/no-chunk native output is
-  still red (`[137,137,137,118]`), c4 rowchunk3 plus `batch_gemv` output is red
-  (`[82,137,137,137]`), and c8 rowchunk3 remains red for both output modes. The
-  O-output issue is therefore coupled to row-chunk partitioning and row count;
-  rowchunk2 `batch_gemv` remains the correctness path for c4/c8
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-c8-rowchunk3-output-contrast/summary.json`).
+  follow-up narrowed the split further: c4 with native `batch` O-output was green
+  under rowchunk3 (`[137,137,137,137]`), but c4 full-native/no-chunk native output
+  was still red (`[137,137,137,118]`), c4 rowchunk3 plus `batch_gemv` output was
+  red (`[82,137,137,137]`), and c8 rowchunk3 remained red for both output modes
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-c8-rowchunk3-output-contrast/summary.json`). The current
+  runtime therefore keeps native batch O projection on the leading row chunk but
+  forces row-aware `batch_gemv` for nonzero multi-row chunks; with CLI output path
+  `batch`, c4/c8 rowchunk2 now preserve equality (`[137]*4`, `[137]*8`) while
+  recording `native_batch_with_tail_batch_gemv`. This is correctness-only evidence:
+  rowchunk full attention remains `native_caware_decode=false`, and full-native
+  no-chunk grouped>=3 attention is still the retained blocker
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-tail-gemv-output-fix/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
