@@ -469,6 +469,14 @@ What is still not green:
   pre-QKV setup rather than context cache/output aliasing or post-attention
   residual/RMSNorm handoff
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-postattn-red/summary.json`).
+  A layer-limit transition probe over L4-L8 localizes the first over-tolerance
+  hidden transition for both native and rowchunk2 to layer limit 8 (the second
+  full-attention layer, index 7); L4-L7 stay hidden/token green. Native full
+  first fails `attn_input_pre_qkv`, while rowchunk2 clears the pre-QKV/QKV/prepare
+  suite and first fails later at `attn_input`/context/output, so rowchunk2 removes
+  the native pre-QKV over-tolerance path but remains a hidden-red/token-green
+  diagnostic fallback rather than retained closure
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-layer7-transition/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
