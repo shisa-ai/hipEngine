@@ -698,6 +698,13 @@ What is still not green:
   Context+gate alone is eliminated as a retained-compatible hidden/token repair,
   and pre-forwarding context/gate evidence is superseded
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-context-gate/summary.json`).
+  The forwarded context-only rerun is likewise unsafe: swapping only the context
+  kernel to per-row with the batch gate poisons rowchunk2 at L6, leaves rowchunk3
+  token-red at L6, and gives both paths L5 layer4 QKV/Z drift. It does not create
+  the huge layer3 context mismatch from the whole-suffix rerun, but it is
+  eliminated as a retained-compatible repair and as a trustworthy oracle for
+  native batch context arithmetic
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-context-only/summary.json`).
   The forwarded gate-only rerun keeps rowchunk2 token-green with no projection
   drift or full-attention stage failures, while rowchunk3 still has L5 layer4
   QKV/Z drift, the L6 token failure, and L8 layer7
