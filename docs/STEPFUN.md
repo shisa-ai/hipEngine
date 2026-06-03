@@ -645,8 +645,10 @@ reporting.
   `--readiness-summary-only` / `--readiness-summary-sha-only`,
   `--final-blocker-summary-only` / `--final-blocker-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
-  polling. `--fail-on-blocked` returns the documented blocked exit code when CI
-  should fail until oracle/KV readiness is real.
+  polling. The full verified-blocked report is persisted as
+  `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` alongside the
+  status and final-blocker artifacts. `--fail-on-blocked` returns the documented
+  blocked exit code when CI should fail until oracle/KV readiness is real.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
   one-token decode path.

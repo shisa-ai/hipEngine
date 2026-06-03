@@ -147,6 +147,7 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     prompt, oracle, docs, resource, status_artifact, manifest_artifact = _write_inputs(
         tmp_path
     )
+    full_output = tmp_path / "handoff-check.json"
     summary_output = tmp_path / "handoff-summary.json"
     summary_sha_output = tmp_path / "handoff-summary-sha.json"
     artifact_verification_output = tmp_path / "handoff-artifact-verification.json"
@@ -166,6 +167,32 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
         status_artifact=status_artifact,
         manifest_artifact=manifest_artifact,
     )
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--output",
+            str(full_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    full_payload = json.loads(full_output.read_text())
+    assert full_payload == expected
+    assert full_payload["status"] == "blocked_verified"
+    assert full_payload["artifact_verification"]["status"] == "match"
+    assert full_payload["verification_failures"] == []
 
     rc = main(
         [
