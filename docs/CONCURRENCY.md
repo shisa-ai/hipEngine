@@ -108,11 +108,12 @@ What is still not green:
   equality now passes for the c=2/c=4/c=8 512/128 gates under the
   correctness-first auto projection path (no-selected batch metadata using the
   128-thread batch-GEMV QKV/Z diagnostic for c=2/c=4/c=8), native segmented
-  linear state, batch-GEMV/Marlin linear output, grouped-compact MoE using compact-row selected
-  GEMV for c<=8 decode batches, and native full-attention decode with row-aware
-  batch-GEMV full-attention output. The c=2/c=4/c=8 profiler preflights now capture
-  compact `rocprofv3 --kernel-trace` summaries with native batch attention, KV
-  write, and `batch_argmax_stage{1,2}` sampler kernels. These artifacts remain
+  linear state, batch-GEMV/Marlin linear output, selected-c1 batch MoE for
+  c<=8 auto decode, native full-attention decode for c=2/c=4, and native
+  row-chunked full-attention diagnostics for c=8. The c=2/c=4/c=8 profiler
+  preflights now capture compact `rocprofv3 --kernel-trace` summaries with
+  native batch attention, KV write, and `batch_argmax_stage{1,2}` sampler
+  kernels. These artifacts remain
   blocked for retained/scaling claims until the native batch linear/full-attention/
   projection/native-dispatch paths, graph-replay profiler evidence, and scaling evidence are
   green.
@@ -328,6 +329,13 @@ What is still not green:
   control is green; the remaining blocker is therefore prompt/window-sensitive
   native full-attention behavior, not only c=8 batch size or physical slot id
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-row-window-isolation/summary.json`).
+  The current c=8 auto path now uses native full-attention row chunks of 2
+  instead of the older per-row full-attention fallback; c=2/c=4/c=8 equality
+  remains green, c2 pair controls are mostly green, c3 windows over original
+  rows 4..7 reproduce the native-full red pattern, and row-chunk-2 controls are
+  green. This is still non-retained because row chunking is a diagnostic
+  fallback (`native_caware_decode=false`)
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-auto-pair-sweep/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
