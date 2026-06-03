@@ -84,6 +84,22 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["missing_artifacts_handoff_sha256"] == _stable_json_sha256(
         manifest["missing_artifacts_handoff"]
     )
+    assert manifest["validator_commands_handoff_sha256"] == _stable_json_sha256(
+        manifest["validator_commands_handoff"]
+    )
+    assert [
+        record["validator_command_kind"]
+        for record in manifest["validator_commands_handoff"]
+    ] == [
+        "oracle_artifact_check_command",
+        "kv_trace_check_command",
+        "kv_next_token_check_command",
+    ]
+    assert [record["artifact_name"] for record in manifest["validator_commands_handoff"]] == [
+        "llama_cpp_oracle_success_artifact",
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
     assert manifest["all_required_artifacts_satisfied"] is False
     assert manifest["missing_artifact_count"] == 3
     assert [record["name"] for record in manifest["artifact_status_handoff"]] == [
@@ -267,6 +283,8 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "artifact_status_sha_only": "artifact_status_handoff_sha256",
         "missing_artifacts_only": "missing_artifacts_handoff",
         "missing_artifacts_sha_only": "missing_artifacts_handoff_sha256",
+        "validator_commands_only": "validator_commands_handoff",
+        "validator_commands_sha_only": "validator_commands_handoff_sha256",
         "success_criteria_only": "success_criteria_handoff",
         "success_criteria_sha_only": "success_criteria_handoff_sha256",
         "no_claim_policy_only": "no_claim_policy",
@@ -405,6 +423,8 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     artifact_status_sha_output = tmp_path / "final-blocker-artifact-status-sha.json"
     missing_artifacts_output = tmp_path / "final-blocker-missing-artifacts.json"
     missing_artifacts_sha_output = tmp_path / "final-blocker-missing-artifacts-sha.json"
+    validator_commands_output = tmp_path / "final-blocker-validator-commands.json"
+    validator_commands_sha_output = tmp_path / "final-blocker-validator-commands-sha.json"
     success_criteria_output = tmp_path / "final-blocker-success-criteria.json"
     success_criteria_sha_output = tmp_path / "final-blocker-success-criteria-sha.json"
     no_claim_output = tmp_path / "final-blocker-no-claim-policy.json"
@@ -618,6 +638,59 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert rc == 0
     assert json.loads(missing_artifacts_sha_output.read_text()) == expected[
         "missing_artifacts_handoff_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--validator-commands-only",
+            "--output",
+            str(validator_commands_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    validator_commands_payload = json.loads(validator_commands_output.read_text())
+    assert validator_commands_payload == expected["validator_commands_handoff"]
+    assert [
+        record["validator_command_kind"] for record in validator_commands_payload
+    ] == [
+        "oracle_artifact_check_command",
+        "kv_trace_check_command",
+        "kv_next_token_check_command",
+    ]
+    assert validator_commands_payload[0]["missing"] is True
+    assert validator_commands_payload[0]["validator_failure_exit_code"] == 2
+    assert "scripts/stepfun_oracle_artifact_check.py" in validator_commands_payload[0][
+        "validator_command"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--validator-commands-sha-only",
+            "--output",
+            str(validator_commands_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(validator_commands_sha_output.read_text()) == expected[
+        "validator_commands_handoff_sha256"
     ]
 
     rc = main(

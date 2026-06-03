@@ -111,6 +111,36 @@ def _summarize_required_artifacts(
     return [_summarize_required_artifact(artifact) for artifact in artifacts]
 
 
+def _summarize_validator_commands(
+    artifact_status: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Return compact validator commands for required evidence artifacts."""
+
+    return [
+        {
+            "artifact_name": record.get("name"),
+            "readiness_gate": record.get("readiness_gate"),
+            "required_for": record.get("required_for"),
+            "missing": record.get("missing"),
+            "missing_reason": record.get("missing_reason"),
+            "evidence_satisfied": record.get("evidence_satisfied"),
+            "validator_command_kind": record.get("validator_command_kind"),
+            "validator_command": record.get("validator_command"),
+            "validator_command_sha256": record.get("validator_command_sha256"),
+            "validator_expected_kernel_families_sha256": record.get(
+                "validator_expected_kernel_families_sha256"
+            ),
+            "validator_expected_evidence_checks_sha256": record.get(
+                "validator_expected_evidence_checks_sha256"
+            ),
+            "validator_success_status": record.get("validator_success_status"),
+            "validator_failure_exit_code": record.get("validator_failure_exit_code"),
+        }
+        for record in artifact_status
+        if record.get("validator_command_kind") not in (None, "")
+    ]
+
+
 def _oracle_validator_handoff(prompt_artifact: object) -> dict[str, object]:
     """Return the validation command for a retained llama.cpp oracle artifact."""
 
@@ -314,6 +344,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--missing-artifacts-sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of missing artifact status.",
+    )
+    parser.add_argument(
+        "--validator-commands-only",
+        action="store_true",
+        help="Emit only validator commands for required evidence artifacts.",
+    )
+    parser.add_argument(
+        "--validator-commands-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of validator commands.",
     )
     parser.add_argument(
         "--success-criteria-only",
@@ -545,6 +585,9 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     missing_artifacts_handoff = [
         record for record in artifact_status_handoff if record.get("missing") is True
     ]
+    validator_commands_handoff = _summarize_validator_commands(
+        artifact_status_handoff
+    )
     entry_by_gate = {
         str(entry.get("readiness_gate")): entry
         for entry in entries
@@ -575,6 +618,9 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     missing_artifacts_handoff_sha256 = status_mod._stable_json_sha256(
         missing_artifacts_handoff
     )
+    validator_commands_handoff_sha256 = status_mod._stable_json_sha256(
+        validator_commands_handoff
+    )
     success_criteria_handoff_sha256 = status_mod._stable_json_sha256(
         success_criteria_handoff
     )
@@ -594,6 +640,8 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "artifact_status_sha_only": "artifact_status_handoff_sha256",
         "missing_artifacts_only": "missing_artifacts_handoff",
         "missing_artifacts_sha_only": "missing_artifacts_handoff_sha256",
+        "validator_commands_only": "validator_commands_handoff",
+        "validator_commands_sha_only": "validator_commands_handoff_sha256",
         "success_criteria_only": "success_criteria_handoff",
         "success_criteria_sha_only": "success_criteria_handoff_sha256",
         "no_claim_policy_only": "no_claim_policy",
@@ -627,6 +675,8 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "artifact_status_handoff_sha256": artifact_status_handoff_sha256,
         "missing_artifacts_handoff": missing_artifacts_handoff,
         "missing_artifacts_handoff_sha256": missing_artifacts_handoff_sha256,
+        "validator_commands_handoff": validator_commands_handoff,
+        "validator_commands_handoff_sha256": validator_commands_handoff_sha256,
         "all_required_artifacts_satisfied": not missing_artifacts_handoff,
         "missing_artifact_count": len(missing_artifacts_handoff),
         "recommended_commands_handoff": recommended_commands_handoff,
@@ -728,6 +778,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = manifest["missing_artifacts_handoff_sha256"]
     elif args.missing_artifacts_only:
         payload = manifest["missing_artifacts_handoff"]
+    elif args.validator_commands_sha_only:
+        payload = manifest["validator_commands_handoff_sha256"]
+    elif args.validator_commands_only:
+        payload = manifest["validator_commands_handoff"]
     elif args.success_criteria_sha_only:
         payload = manifest["success_criteria_handoff_sha256"]
     elif args.success_criteria_only:

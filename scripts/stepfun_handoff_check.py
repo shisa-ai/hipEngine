@@ -223,6 +223,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of missing artifact status.",
     )
     parser.add_argument(
+        "--validator-commands-only",
+        action="store_true",
+        help="Emit only validator commands for required evidence artifacts.",
+    )
+    parser.add_argument(
+        "--validator-commands-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of validator commands.",
+    )
+    parser.add_argument(
         "--exit-code-policy-only",
         action="store_true",
         help="Emit only handoff verifier exit-code policy for CI routing.",
@@ -361,6 +371,7 @@ def build_handoff_check(
     artifacts_to_collect = current_manifest.get("artifacts_to_collect")
     artifact_status_handoff = current_manifest.get("artifact_status_handoff")
     missing_artifacts_handoff = current_manifest.get("missing_artifacts_handoff")
+    validator_commands_handoff = current_manifest.get("validator_commands_handoff")
     success_criteria_handoff = current_manifest.get("success_criteria_handoff")
     final_blocker_manifest_summary = {
         "remaining_blocker_count": remaining_blocker_count,
@@ -442,6 +453,24 @@ def build_handoff_check(
         "no_claim_policy": no_claim_policy,
         "no_claim_policy_sha256": current_manifest.get("no_claim_policy_sha256"),
     }
+    validator_command_summary = {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "status": status,
+        "remaining_blocker_count": remaining_blocker_count,
+        "remaining_blocker_kinds": remaining_blocker_kinds,
+        "validator_command_count": len(validator_commands_handoff)
+        if isinstance(validator_commands_handoff, list)
+        else None,
+        "validator_commands": validator_commands_handoff,
+        "validator_commands_sha256": current_manifest.get(
+            "validator_commands_handoff_sha256"
+        ),
+        "all_required_artifacts_satisfied": current_manifest.get(
+            "all_required_artifacts_satisfied"
+        ),
+        "no_claim_policy": no_claim_policy,
+        "no_claim_policy_sha256": current_manifest.get("no_claim_policy_sha256"),
+    }
     action_summary = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "status": status,
@@ -462,6 +491,10 @@ def build_handoff_check(
         "missing_artifacts": missing_artifacts_handoff,
         "missing_artifacts_sha256": current_manifest.get(
             "missing_artifacts_handoff_sha256"
+        ),
+        "validator_commands": validator_commands_handoff,
+        "validator_commands_sha256": current_manifest.get(
+            "validator_commands_handoff_sha256"
         ),
         "success_criteria": success_criteria_handoff,
         "success_criteria_sha256": current_manifest.get(
@@ -535,6 +568,9 @@ def build_handoff_check(
         "missing_artifact_summary_sha256": status_mod._stable_json_sha256(
             missing_artifact_summary
         ),
+        "validator_command_summary_sha256": status_mod._stable_json_sha256(
+            validator_command_summary
+        ),
         "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
         "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
@@ -566,6 +602,10 @@ def build_handoff_check(
         "missing_artifact_summary": missing_artifact_summary,
         "missing_artifact_summary_sha256": status_mod._stable_json_sha256(
             missing_artifact_summary
+        ),
+        "validator_command_summary": validator_command_summary,
+        "validator_command_summary_sha256": status_mod._stable_json_sha256(
+            validator_command_summary
         ),
         "action_summary": action_summary,
         "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
@@ -687,6 +727,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["missing_artifact_summary"]["missing_artifacts_sha256"]
     elif args.missing_artifacts_only:
         payload = report["missing_artifact_summary"]["missing_artifacts"]
+    elif args.validator_commands_sha_only:
+        payload = report["validator_command_summary"]["validator_commands_sha256"]
+    elif args.validator_commands_only:
+        payload = report["validator_command_summary"]["validator_commands"]
     elif args.exit_code_policy_sha_only:
         payload = report["exit_code_policy_sha256"]
     elif args.exit_code_policy_only:

@@ -266,6 +266,8 @@
     "status_provenance_sha_only": "status_provenance_sha256",
     "success_criteria_only": "success_criteria_handoff",
     "success_criteria_sha_only": "success_criteria_handoff_sha256",
+    "validator_commands_only": "validator_commands_handoff",
+    "validator_commands_sha_only": "validator_commands_handoff_sha256",
     "verification_failures_only": "verification.verification_failures",
     "verification_status_only": "verification.status"
   },
@@ -688,13 +690,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "741b2fd83c62bdc38ab894a6a6e1f54c14a6a6dec0d3b1cd17e6f919c470524a",
+    "readiness_summary_sha256": "3bf22f77af43fb5f28177e1c15c9f78bf6f2dae9bae2ce23ae53fb25037fb65c",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "ae1ae3add7f8c647b7d850e9b2819a2987b8e7fd3f618ea456cbdc9f1c6bd369",
-        "size_bytes": 73587
+        "sha256": "fee70e6bb8a26e7cea055a9307ae14ddb987e99ee9501609d74dea7a2306a212",
+        "size_bytes": 73652
       },
       "oracle": {
         "exists": true,
@@ -721,10 +723,10 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "c608d8dfe493e6314558505b48c97638290e89f4abd25fe1652a925069ea0bed",
+    "source_artifacts_sha256": "1bfd6b1e682532e5d6585a0751a0f860a03a9e79675afc71ea43ee0db465b4ba",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
   },
-  "status_provenance_sha256": "4f9d00b0403ce88996dbb7dcc77d3aa39d1ed2081959363ed9091f2edd215958",
+  "status_provenance_sha256": "138ebca397b178e946e7538b224f7d26172f9246405dfd820bea301d820cbf7e",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",
@@ -757,5 +759,53 @@
       ]
     }
   ],
-  "success_criteria_handoff_sha256": "6eb5966887a0cee64a956c2c8ac12b342adf5ca8a4670015b500b55243f1d3d9"
+  "success_criteria_handoff_sha256": "6eb5966887a0cee64a956c2c8ac12b342adf5ca8a4670015b500b55243f1d3d9",
+  "validator_commands_handoff": [
+    {
+      "artifact_name": "llama_cpp_oracle_success_artifact",
+      "evidence_satisfied": false,
+      "missing": true,
+      "missing_reason": "oracle_completed_successfully",
+      "readiness_gate": "oracle_parity",
+      "required_for": "oracle_parity_blocked",
+      "validator_command": "python3 scripts/stepfun_oracle_artifact_check.py --artifact <llama_cpp_oracle_success_artifact.json> --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
+      "validator_command_kind": "oracle_artifact_check_command",
+      "validator_command_sha256": "6247d58c660f67ffaeb6f889bc44220350e3595dd8e480a00009350d6a23912f",
+      "validator_expected_evidence_checks_sha256": "70dec905aa8d364ab611ace916e6066e71f13969a72ec2e204ce62d5d99dcecd",
+      "validator_expected_kernel_families_sha256": null,
+      "validator_failure_exit_code": 2,
+      "validator_success_status": "passed"
+    },
+    {
+      "artifact_name": "kv_kernel_trace_artifact",
+      "evidence_satisfied": false,
+      "missing": true,
+      "missing_reason": "kv_kernel_trace_artifact_missing",
+      "readiness_gate": "kv_backed_decode",
+      "required_for": "kv_kernel_trace_artifact_missing",
+      "validator_command": "python3 scripts/stepfun_kv_trace_check.py --trace <kv_kernel_trace_artifact.csv-or-json> --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+      "validator_command_kind": "kv_trace_check_command",
+      "validator_command_sha256": "f114adb04cc88f038bb9c1c7fa365d5602a8ab3f6f02bb92741b773ce70155e8",
+      "validator_expected_evidence_checks_sha256": null,
+      "validator_expected_kernel_families_sha256": "286f3631b5016d24b4b396a103827911e021f3adb8b219bcfec07cff516d05c0",
+      "validator_failure_exit_code": 2,
+      "validator_success_status": "passed"
+    },
+    {
+      "artifact_name": "kv_backed_next_token_artifact",
+      "evidence_satisfied": false,
+      "missing": true,
+      "missing_reason": "kv_backed_next_token_artifact_missing",
+      "readiness_gate": "kv_backed_decode",
+      "required_for": "kv_backed_next_token_artifact_missing",
+      "validator_command": "python3 scripts/stepfun_kv_next_token_check.py --artifact <kv_backed_next_token_artifact.json> --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
+      "validator_command_kind": "kv_next_token_check_command",
+      "validator_command_sha256": "15b5d32ade91933c5c5dbfbf2b475a68d2dd6fc3cc9ceecc2dfe70212ae2aa81",
+      "validator_expected_evidence_checks_sha256": "1f2adc6226a6db064b618e92969a5dc2bae1fcba95f2ab7c35d884c72beb36eb",
+      "validator_expected_kernel_families_sha256": null,
+      "validator_failure_exit_code": 2,
+      "validator_success_status": "passed"
+    }
+  ],
+  "validator_commands_handoff_sha256": "87fe2e985ead835e0766a11251f9f19cb63ba491e92ab6df17aa482ea4ecb6cc"
 }

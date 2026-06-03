@@ -66,6 +66,9 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["missing_artifact_summary_sha256"] == _stable_json_sha256(
         report["missing_artifact_summary"]
     )
+    assert report["validator_command_summary_sha256"] == _stable_json_sha256(
+        report["validator_command_summary"]
+    )
     assert report["readiness_summary"]["status"] == "blocked"
     assert report["readiness_summary"]["oracle_parity"] is False
     assert report["readiness_summary"]["kv_backed_decode_ready"] is False
@@ -122,6 +125,9 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "missing_artifact_summary_sha256": report[
             "missing_artifact_summary_sha256"
         ],
+        "validator_command_summary_sha256": report[
+            "validator_command_summary_sha256"
+        ],
         "action_summary_sha256": report["action_summary_sha256"],
         "exit_code_policy_sha256": report["exit_code_policy_sha256"],
         "verification_failures_sha256": report["verification_failures_sha256"],
@@ -157,6 +163,10 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "missing_artifacts": current_manifest["missing_artifacts_handoff"],
         "missing_artifacts_sha256": current_manifest[
             "missing_artifacts_handoff_sha256"
+        ],
+        "validator_commands": current_manifest["validator_commands_handoff"],
+        "validator_commands_sha256": current_manifest[
+            "validator_commands_handoff_sha256"
         ],
         "success_criteria": current_manifest["success_criteria_handoff"],
         "success_criteria_sha256": current_manifest[
@@ -259,6 +269,31 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "no_claim_policy": current_manifest["no_claim_policy"],
         "no_claim_policy_sha256": current_manifest["no_claim_policy_sha256"],
     }
+    assert report["validator_command_summary"] == {
+        "schema_version": 1,
+        "status": "blocked_verified",
+        "remaining_blocker_count": 2,
+        "remaining_blocker_kinds": [
+            "oracle_parity_blocked",
+            "kv_backed_decode_not_wired",
+        ],
+        "validator_command_count": 3,
+        "validator_commands": current_manifest["validator_commands_handoff"],
+        "validator_commands_sha256": current_manifest[
+            "validator_commands_handoff_sha256"
+        ],
+        "all_required_artifacts_satisfied": False,
+        "no_claim_policy": current_manifest["no_claim_policy"],
+        "no_claim_policy_sha256": current_manifest["no_claim_policy_sha256"],
+    }
+    assert [
+        record["validator_command_kind"]
+        for record in report["validator_command_summary"]["validator_commands"]
+    ] == [
+        "oracle_artifact_check_command",
+        "kv_trace_check_command",
+        "kv_next_token_check_command",
+    ]
     assert report["missing_artifact_summary"]["missing_artifacts"][0][
         "missing_reason"
     ] == "oracle_completed_successfully"
@@ -437,6 +472,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     artifact_status_sha_output = tmp_path / "handoff-artifact-status-sha.json"
     missing_artifacts_output = tmp_path / "handoff-missing-artifacts.json"
     missing_artifacts_sha_output = tmp_path / "handoff-missing-artifacts-sha.json"
+    validator_commands_output = tmp_path / "handoff-validator-commands.json"
+    validator_commands_sha_output = tmp_path / "handoff-validator-commands-sha.json"
     exit_code_policy_output = tmp_path / "handoff-exit-code-policy.json"
     exit_code_policy_sha_output = tmp_path / "handoff-exit-code-policy-sha.json"
     digest_summary_output = tmp_path / "handoff-digest-summary.json"
@@ -1125,6 +1162,69 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert json.loads(missing_artifacts_sha_output.read_text()) == expected[
         "missing_artifact_summary"
     ]["missing_artifacts_sha256"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--validator-commands-only",
+            "--output",
+            str(validator_commands_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    validator_commands_payload = json.loads(validator_commands_output.read_text())
+    assert validator_commands_payload == expected["validator_command_summary"][
+        "validator_commands"
+    ]
+    assert [
+        record["validator_command_kind"] for record in validator_commands_payload
+    ] == [
+        "oracle_artifact_check_command",
+        "kv_trace_check_command",
+        "kv_next_token_check_command",
+    ]
+    assert validator_commands_payload[0]["missing"] is True
+    assert validator_commands_payload[0]["validator_failure_exit_code"] == 2
+    assert "scripts/stepfun_oracle_artifact_check.py" in validator_commands_payload[
+        0
+    ]["validator_command"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--validator-commands-sha-only",
+            "--output",
+            str(validator_commands_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(validator_commands_sha_output.read_text()) == expected[
+        "validator_command_summary"
+    ]["validator_commands_sha256"]
 
     rc = main(
         [
