@@ -705,6 +705,16 @@ What is still not green:
   eliminated as a retained-compatible repair and as a trustworthy oracle for
   native batch context arithmetic
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-context-only/summary.json`).
+  The forwarded context-staging rerun also preserves the same shape for both
+  `batch_temp_output` and `batch_compact_cache`: rowchunk2 stays token-green with
+  no projection drift or full-attention stage failures, while rowchunk3 still has
+  L5 layer4 QKV/Z drift, the L6 token failure, and L8 layer7
+  `attn_input_pre_qkv`/query/`attn_context`/`mlp_input` failures. Fresh FP32
+  context-output staging and compact copied row-cache/block-table context
+  execution are eliminated under trustworthy forwarded execution; the blocker is
+  not simple context-output aliasing nor the original rowchunk cache/table layout
+  seen by the batch context kernel
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-context-staging/summary.json`).
   The forwarded gate-only rerun keeps rowchunk2 token-green with no projection
   drift or full-attention stage failures, while rowchunk3 still has L5 layer4
   QKV/Z drift, the L6 token failure, and L8 layer7
