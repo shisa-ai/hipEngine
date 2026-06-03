@@ -316,6 +316,12 @@ What is still not green:
   audit now passes as well. It stays blocked only by batch-level
   `throughput_claim_eligible=false`
   (`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json`).
+  A later c=8 auto refresh keeps generated-token equality green only by using
+  the per-row full-attention fallback with selected-c1 MoE; forcing the native
+  batch full-attention branch with selected-c1 MoE remains red, and an input /
+  QKV / context-gate / KV-append / output / post-attention / persistent-c1
+  branch-isolation sweep did not repair it
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-full-attn-branch-isolation/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
