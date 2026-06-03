@@ -727,6 +727,14 @@ What is still not green:
   next-layer copy/handoff is eliminated as the grouped>=3 cause and as a
   copy/aliasing bug
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-layer-copy/summary.json`).
+  The forwarded full-attention-MoE-only rerun also keeps rowchunk2 token-green
+  with no projection drift or full-attention stage failures, while rowchunk3
+  still has L5 layer4 QKV/Z drift, the L6 token failure, and L8 layer7
+  `attn_input_pre_qkv`/query/`attn_context`/`mlp_input` failures. Full-attention
+  grouped-compact MoE alone is eliminated under trustworthy forwarded execution;
+  the remaining failure is inherited before/around the context-output producer
+  rather than from the MoE suffix
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-full-moe/summary.json`).
   The forwarded KV-append-only rerun has the same retained-compatible shape:
   rowchunk2 stays token-green with no projection drift or full-attention stage
   failures, while rowchunk3 still has L5 layer4 QKV/Z drift, the L6 token
