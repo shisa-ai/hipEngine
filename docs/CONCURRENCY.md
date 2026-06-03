@@ -620,6 +620,14 @@ What is still not green:
   MoE alone is eliminated; the remaining target stays upstream/in the coupled
   context/gate/O producer behavior before MoE
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-moe/summary.json`).
+  Forcing only the full-attention gate multiply to per-row also does not move
+  rowchunk3: rowchunk2 remains the generated-token-green control with no
+  projection drift or full-attention stage failures, while rowchunk3 keeps the L5
+  layer4 QKV/Z drift, L6 truncated-token failure, and L8 layer7
+  `attn_input_pre_qkv`/`attn_context` failures. Gate alone is eliminated; the
+  remaining grouped>=3 target stays in upstream/coupled context/O behavior before
+  or around gate rather than the gate multiply itself
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-gate/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
