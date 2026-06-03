@@ -64,6 +64,11 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["success_criteria_handoff_sha256"] == _stable_json_sha256(
         manifest["success_criteria_handoff"]
     )
+    assert manifest["no_claim_policy_sha256"] == _stable_json_sha256(
+        manifest["no_claim_policy"]
+    )
+    assert manifest["no_claim_policy"]["performance_claim_allowed"] is False
+    assert manifest["no_claim_policy"]["e2e_inference_claim_allowed"] is False
     entries = {entry["blocker_kind"]: entry for entry in manifest["entries"]}
     success_criteria_by_blocker = {
         record["blocker_kind"]: record
@@ -105,6 +110,8 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "artifacts_sha_only": "artifacts_to_collect_sha256",
         "success_criteria_only": "success_criteria_handoff",
         "success_criteria_sha_only": "success_criteria_handoff_sha256",
+        "no_claim_policy_only": "no_claim_policy",
+        "no_claim_policy_sha_only": "no_claim_policy_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -212,6 +219,8 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     artifacts_sha_output = tmp_path / "final-blocker-artifacts-sha.json"
     success_criteria_output = tmp_path / "final-blocker-success-criteria.json"
     success_criteria_sha_output = tmp_path / "final-blocker-success-criteria-sha.json"
+    no_claim_output = tmp_path / "final-blocker-no-claim-policy.json"
+    no_claim_sha_output = tmp_path / "final-blocker-no-claim-policy-sha.json"
     expected = build_final_blocker_manifest(
         build_status(prompt, oracle, docs, resource_artifact=resource)
     )
@@ -352,6 +361,49 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert rc == 0
     assert json.loads(success_criteria_sha_output.read_text()) == expected[
         "success_criteria_handoff_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--no-claim-policy-only",
+            "--output",
+            str(no_claim_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    no_claim_payload = json.loads(no_claim_output.read_text())
+    assert no_claim_payload == expected["no_claim_policy"]
+    assert no_claim_payload["performance_claim_allowed"] is False
+    assert no_claim_payload["e2e_inference_claim_allowed"] is False
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--no-claim-policy-sha-only",
+            "--output",
+            str(no_claim_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(no_claim_sha_output.read_text()) == expected[
+        "no_claim_policy_sha256"
     ]
 
     captured = capsys.readouterr()

@@ -40,6 +40,8 @@
     "artifacts_sha_only": "artifacts_to_collect_sha256",
     "entries_only": "entries",
     "entries_sha_only": "entries_sha256",
+    "no_claim_policy_only": "no_claim_policy",
+    "no_claim_policy_sha_only": "no_claim_policy_sha256",
     "sha_only": "manifest_sha256",
     "success_criteria_only": "success_criteria_handoff",
     "success_criteria_sha_only": "success_criteria_handoff_sha256",
@@ -150,6 +152,7 @@
     "performance_claim_allowed": false,
     "reason": "StepFun performance or e2e readiness claims require oracle_parity and kv_backed_decode readiness gates to pass first."
   },
+  "no_claim_policy_sha256": "97439473a5f890aeb33b3b9eaf000a42171776b20a723d02b861a961be4db8bb",
   "open_or_partial_items_p0_p12": 2,
   "remaining_blocker_count": 2,
   "remaining_blocker_kinds": [
@@ -163,13 +166,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "5fd888bc997db629d531a961061969e5ecd9173b7b6abab8fb8d53cfb2dce35b",
+    "readiness_summary_sha256": "10ed6cb18ad4ab5a21f43c320aa4cd528c167f55bcadee1091ee415161191604",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "09b237b36dce9838b9c7a18b55747185662e76dfb96c72a59b1fadccbf9b4a54",
-        "size_bytes": 69676
+        "sha256": "653b21e1c69c654489b66994a871e01b6e53cb2fdd98b856d073fb5cb2559c00",
+        "size_bytes": 69747
       },
       "oracle": {
         "exists": true,
@@ -196,7 +199,7 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "083c84debff5ce4a636393f06f88ac403b155ee75b0ebaf435ced5b11d8830f5",
+    "source_artifacts_sha256": "d80a5ed7234430bfc6bdf2da003406fa5393f8fedb0065e2d8c5b2a39507162b",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
   },
   "success_criteria_handoff": [
