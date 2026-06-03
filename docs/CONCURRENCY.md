@@ -461,6 +461,14 @@ What is still not green:
   aliasing and keeps the target upstream of context at hidden/pre-QKV grouped
   setup
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-context-diagnostics-red/summary.json`).
+  The post-attention add/RMSNorm boundary is eliminated as well: forcing only
+  native c3 full-attention post-attention through the per-row diagnostic path
+  keeps rows4/5/6 red at `[45,11,137]`, and the paired L40 decode-step-0 trace
+  still first fails at layer 7 `attn_input_pre_qkv` row 0 (`max_abs=0.015625`).
+  The grouping>=3 target therefore remains upstream native grouped hidden /
+  pre-QKV setup rather than context cache/output aliasing or post-attention
+  residual/RMSNorm handoff
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-postattn-red/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

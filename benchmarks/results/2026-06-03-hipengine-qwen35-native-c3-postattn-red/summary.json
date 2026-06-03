@@ -1,0 +1,258 @@
+{
+  "commands": {
+    "retained": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-post-attn-path per_row --json /tmp/hipengine-e2e-native-c3-rows456-postattn-perrow-iter145.json",
+    "trace": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 1 --max-layers 40 --layer-limits 40 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 1 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L40-c3-rows456-postattn-perrow-step0-iter145.json"
+  },
+  "conclusion": "Forcing only the full-attention post-attention add/RMSNorm boundary to per-row diagnostic fallback leaves c3 rows4/5/6 generated-token prefixes unchanged at [45,11,137] and the L40 step-0 first full-attention failure unchanged at layer 7 attn_input_pre_qkv row 0. This eliminates post-attn as the grouping>=3 fix; target remains upstream native grouped full-attention pre-QKV/setup behavior.",
+  "created_at": "2026-06-03T07:53:52.361575+00:00",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json",
+  "git_commit": "9406f3c8916fc4362e9973a61a3a5dc1b8b95b37",
+  "goal": "Eliminate or implicate the full-attention post-attention add/RMSNorm boundary for c3 rows4/5/6 grouping>=3 red path.",
+  "hidden_bisect_trace": {
+    "decode_full_attention_failed_stages": [
+      "input",
+      "attn_input_pre_qkv",
+      "attn_input_after_rotate",
+      "attn_input_after_project",
+      "q_proj_key_after_project",
+      "value_after_project",
+      "query_raw_after_split",
+      "key_raw_after_cast",
+      "gate_after_split",
+      "query_after_prepare",
+      "key_after_prepare",
+      "attn_input_after_prepare",
+      "attn_input",
+      "gate",
+      "query",
+      "attn_context",
+      "gated_attn",
+      "o_proj",
+      "residual",
+      "mlp_input",
+      "output"
+    ],
+    "decode_full_attention_first_failure": {
+      "decode_step": 0,
+      "elements_over_atol": 55,
+      "generated_index": 1,
+      "layer_index": 7,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1538,
+      "max_abs_index": [
+        0,
+        1538
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "decode_full_attention_first_mismatch": {
+      "decode_step": 0,
+      "elements_over_atol": 55,
+      "generated_index": 1,
+      "layer_index": 7,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1538,
+      "max_abs_index": [
+        0,
+        1538
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "first_hidden_mismatch": {
+      "bit_mismatch": 1718,
+      "decode_step": 0,
+      "elements_over_atol": 17,
+      "generated_index": 1,
+      "hidden_atol": 0.001,
+      "last_layer_index": 39,
+      "last_layer_type": "full_attention",
+      "layer_limit": 40,
+      "max_abs": 0.00390625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "passed_under_atol": false,
+      "row": 0
+    },
+    "first_token_mismatch": null,
+    "hidden_passed": false,
+    "linear_state_first_mismatch": {
+      "decode_step": 0,
+      "elements_over_atol": 3618,
+      "generated_index": 1,
+      "layer_index": 4,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 13283,
+      "max_abs_index": [
+        3320,
+        3
+      ],
+      "row": 0,
+      "state": "conv"
+    },
+    "post_attention_path": "per_row_add_rmsnorm_fallback",
+    "status": "mismatch_found",
+    "tmp_artifact": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-postattn-perrow-step0-iter145.json",
+    "tmp_artifact_sha256": "2b5978bc4e1fd9879285df3a64c7f3799e2fefc18a50943802f5c86cf3d7b84e",
+    "tmp_artifact_size_bytes": 12385618,
+    "tmp_log": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-postattn-perrow-step0-iter145.log",
+    "tmp_log_sha256": "2b5978bc4e1fd9879285df3a64c7f3799e2fefc18a50943802f5c86cf3d7b84e",
+    "tmp_log_size_bytes": 12385618,
+    "token_passed": true
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 145,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "retained": {
+    "decode_paths": {
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_input_decode_path": "native_batch",
+      "full_attention_qkv_decode_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": false,
+      "post_attention_decode_path": "per_row_add_rmsnorm_fallback"
+    },
+    "decode_tok_s_aggregate": 135.1029534295033,
+    "first_mismatch_indices": [
+      45,
+      11,
+      null
+    ],
+    "generated_token_equality_passed": false,
+    "min_equal_prefix_tokens": 11,
+    "mismatch_summaries": [
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 45,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          }
+        ],
+        "batch_token_at_mismatch": 220,
+        "batch_window": [
+          471,
+          561,
+          1156,
+          682,
+          3766,
+          220,
+          16,
+          17,
+          18922,
+          318,
+          269
+        ],
+        "c1_token_at_mismatch": 264,
+        "c1_window": [
+          471,
+          561,
+          1156,
+          682,
+          3766,
+          264,
+          3878,
+          314,
+          18922,
+          2600,
+          76168
+        ],
+        "first_mismatch_index": 45,
+        "row": 0
+      },
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 11,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          }
+        ],
+        "batch_token_at_mismatch": 81726,
+        "batch_window": [
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          81726,
+          35464,
+          11,
+          321,
+          81347,
+          13
+        ],
+        "c1_token_at_mismatch": 61369,
+        "c1_window": [
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321
+        ],
+        "first_mismatch_index": 11,
+        "row": 1
+      }
+    ],
+    "prefixes": [
+      45,
+      11,
+      137
+    ],
+    "software_commit": "9406f3c8916fc4362e9973a61a3a5dc1b8b95b37",
+    "software_dirty": false,
+    "status": "rejected_correctness",
+    "tmp_artifact": "/tmp/hipengine-e2e-native-c3-rows456-postattn-perrow-iter145.json",
+    "tmp_artifact_sha256": "779dda4c80e638479c12cc6ab05ed8fb535a758498a309fdf0c12979388dff30",
+    "tmp_artifact_size_bytes": 190085,
+    "tmp_log": "/tmp/hipengine-e2e-native-c3-rows456-postattn-perrow-iter145.log",
+    "tmp_log_sha256": "779dda4c80e638479c12cc6ab05ed8fb535a758498a309fdf0c12979388dff30",
+    "tmp_log_size_bytes": 190085
+  },
+  "schema_version": 1,
+  "verdicts": {
+    "first_full_attention_failure_still_layer7_pre_qkv": true,
+    "postattn_boundary_eliminated_as_fix": true,
+    "postattn_retained_red_same_prefixes": true,
+    "postattn_trace_hidden_red": true,
+    "postattn_trace_token_green_step0": true
+  },
+  "workload": {
+    "batch_size": 3,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}
