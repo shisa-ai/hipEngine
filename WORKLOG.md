@@ -34280,3 +34280,58 @@ git diff --check
 ```
 
 Results: targeted final-blocker/handoff/KV-next-token tests passed (`13` tests); regenerated correctness-status, final-blocker, and handoff artifacts all verified as `"match"`; compact artifact-status and handoff missing-artifacts routes now report `kv_backed_next_token_artifact` with `validator_command_kind=kv_next_token_check_command`, command `python3 scripts/stepfun_kv_next_token_check.py --artifact <kv_backed_next_token_artifact.json> --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty`, `validator_command_sha256=15b5d32ade91933c5c5dbfbf2b475a68d2dd6fc3cc9ceecc2dfe70212ae2aa81`, and `validator_expected_evidence_checks_sha256=1f2adc6226a6db064b618e92969a5dc2bae1fcba95f2ab7c35d884c72beb36eb`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`285` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `handoff_report_sha256=d80df38823984be96013cf4d672067f828f60e28c112fa70d165731df767a591`, `summary_sha256=0b318e8c8a517bab2f538fb71fbeb8992342d01fba9e0bb6502926507d381935`, `missing_artifact_summary_sha256=ab1106e3af40f9d079c48e9472c0704d1594ad9d9aae77b541139a979f4826fb`, `action_summary_sha256=d1b5445c877fdd35755a927154bbc55331038c85f694383d9cc735b7284c8a4b`, `digest_summary_sha256=8d11169d7ad1ed51213c4c0eefaece1da2a7459ed66b671821dc77a15e35f3d4`, `blocker_status_sha256=b76c5d0de4dfdef80b72e5354fd1d17bee078d793df5899be58eea1c1f62e1b9`, `e2e_readiness_gate_summary_sha256=369ed07aff8a7f8464645a04452f083e7e565a6179ba707b662e4fcfe8cbabff`, `manifest_sha256=f106372d3ce8ea9248f0d5cd2485736edf6266ea50a0992cff8a5dfd1a92e357`, `artifact_status_handoff_sha256=e61c4919f8eb416da3051b0d42783dc7d7a3a19c9535fee8e516ec52b0004f6d`, `missing_artifacts_handoff_sha256=e61c4919f8eb416da3051b0d42783dc7d7a3a19c9535fee8e516ec52b0004f6d`, `artifacts_to_collect_sha256=6049503b39eca669e9e700d672b50cc701b2deab7845c520c5ba3998cad30636`, and `correctness_status_sha256=d95a3493cb383893c5f4fe4af76b5f409384b04f7f817d8ad91f940c4e24d387`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; backend/quant branch grep over the touched handoff/final-blocker/KV checker scripts returned no matches; the diff contains no unsupported StepFun performance or throughput claim; `git diff --check` passed.
+
+## 2026-06-03 — StepFun llama.cpp oracle artifact checker
+
+Added a mechanical checker for the remaining llama.cpp oracle-success artifact blocker. `scripts/stepfun_oracle_artifact_check.py` validates a retained JSON artifact from a future long-timeout llama.cpp one-token oracle run against the canonical StepFun deterministic prompt target. The checker requires successful status/return code, recorded llama.cpp binary/model metadata, no Step35 architecture rejection or timeout blocker, prompt-length / `n_predict=1` alignment, expected/top-token metadata and logit parity, non-empty generated text, and exact text-match booleans. Passing the checker can satisfy only the oracle side (`llama_cpp_oracle_success_artifact` / `oracle_parity`); it keeps KV-backed decode, e2e inference, and performance claims separate.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_oracle_artifact_check.py
+python3 - <<'PY'
+import json
+from pathlib import Path
+artifact = {
+    'status': 'executed',
+    'returncode': 0,
+    'llama_cli': '/tmp/llama-cli',
+    'llama_cpp_version': 'version: test (deadbeef)',
+    'model': '/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf',
+    'command_shell': '/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0',
+    'prompt_length': 23,
+    'n_predict': 1,
+    'expected_next_token_id': 369,
+    'expected_next_token_text': ' |',
+    'expected_next_token_logit': 19.158626556396484,
+    'expected_top_tokens': [
+        {'rank': 1, 'token_id': 369, 'token_text': ' |', 'logit': 19.158626556396484},
+        {'rank': 2, 'token_id': 5, 'token_text': '#', 'logit': 18.343582153320312},
+    ],
+    'stdout': ' |',
+    'stderr': '',
+    'generated_text': ' |',
+    'text_matches_expected_exact': True,
+    'text_matches_expected_stripped': True,
+    'oracle_blocker_kind': None,
+    'oracle_blocker_detail': None,
+    'step35_supported': True,
+    'timeout_termination': None,
+}
+Path('/tmp/stepfun-oracle-success.json').write_text(json.dumps(artifact, sort_keys=True))
+PY
+python3 scripts/stepfun_oracle_artifact_check.py --artifact /tmp/stepfun-oracle-success.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --pretty >/tmp/stepfun-oracle-check-summary.json
+python3 scripts/stepfun_oracle_artifact_check.py --artifact /tmp/stepfun-oracle-success.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --sha-only --pretty >/tmp/stepfun-oracle-check-summary-sha.json
+python3 scripts/stepfun_oracle_artifact_check.py --artifact /tmp/stepfun-oracle-success.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --status-only --fail-on-missing
+python3 scripts/stepfun_oracle_artifact_check.py --artifact /tmp/stepfun-oracle-success.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --sha-only --pretty
+python3 -m pytest -q tests/test_stepfun_oracle_artifact_check.py tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_drops_oracle_blocker_when_gap_report_is_ready tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_oracle_artifact_check.py scripts/stepfun_kv_next_token_check.py scripts/stepfun_kv_trace_check.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_handoff_check.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_oracle_artifact_check.py tests/test_stepfun_oracle_artifact_check.py | grep -nEi '^\+.*(tok/s|throughput|performance claim|performance claims|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|making token or performance claims\|without making.*performance claims\|keeping.*performance claims\|claims separate\|throughput/performance claim\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+git diff --check
+```
+
+Results: targeted oracle checker tests passed (`3` tests), and the broader targeted oracle/correctness set passed (`5` tests). The synthetic oracle-success artifact validated against the canonical all-layer prompt artifact with `status=passed`, `ready=true`, `oracle_status=executed`, `oracle_returncode=0`, `oracle_blocker_kind=null`, `step35_supported=true`, `generated_text=" |"`, `generated_text_len=2`, `text_matches_expected_exact=true`, `text_matches_expected_stripped=true`, `missing_evidence=[]`, `llama_cpp_oracle_success_artifact_claim_allowed=true`, `oracle_parity_claim_allowed=true`, `kv_backed_decode_claim_allowed=false`, `e2e_inference_claim_allowed=false`, and `performance_claim_allowed=false`. Canonical summary SHA was `74f545b902ee7b32a76f85b7dcaa25b3fa25863a3c23acc524e5feb37615e2c3`; canonical full-report SHA was `2ee1a1f14edbbc7573f1c786725ac5e9daca67e126a2b270c63d247992360f53`; evidence-checks SHA was `1863c1cd9d1d2902bba996d8c331c264a1cb11e7eda56a7a752c8657faf8f0e4`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`288` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; backend/quant branch grep over StepFun checker/handoff scripts returned no matches; the diff contains no unsupported StepFun performance or throughput claim after excluding explicit no-claim wording; `git diff --check` passed.

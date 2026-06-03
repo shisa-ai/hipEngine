@@ -736,7 +736,13 @@ reporting.
   that separates recorded deterministic-target prerequisites from missing run/match evidence
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
   text ` |`, top-5 expected tokens, timeout 60 s, elapsed 61.75 s, generated text
-  length 0, `timeout_termination` recorded, and the llama.cpp command shell). It carries explicit status,
+  length 0, `timeout_termination` recorded, and the llama.cpp command shell).
+  `scripts/stepfun_oracle_artifact_check.py` validates a future retained
+  llama.cpp oracle-success artifact against that target: it requires successful
+  status/return code, recorded llama.cpp binary/model metadata, no Step35
+  architecture rejection or timeout blocker, prompt-length / one-token run
+  alignment, token/logit metadata parity, non-empty generated text, and exact
+  text match, while keeping KV/e2e/performance claims separate. It carries explicit status,
   readiness-summary, and handoff-summary schema versions plus compact
   `schema_versions` / `schema_versions_sha256` handoff payloads, verifies those
   compact schema-version output-mode mappings in status integrity, records both blockers
