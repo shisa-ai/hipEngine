@@ -468,11 +468,13 @@ What is still not green:
   The current selected-c1 c2 path now has a captured `rocprofv3 --kernel-trace`
   artifact attached to a 512/128 retained-bench rerun: equality remains
   `[137,137]`, primitive correctness is loaded/passed, and profiler provenance /
-  kernel-duration blockers are absent. This is still not a throughput claim;
-  the artifact remains blocked by selected-c1 MoE retained metadata, row-GEMV
-  projection dispatch/no c-aware evidence, and scaling ratios that do not beat
-  the c1 / serial gates
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/summary.json`).
+  kernel-duration blockers are absent. A follow-up c2 rerun attaches the
+  combined c2/c4/c8 projection-dispatch catalog and now selects
+  `benchmark_accepted_caware_projection` with empty projection blockers while
+  preserving `[137,137]` equality, primitive correctness, and profiler evidence.
+  This is still not a throughput claim; the artifact remains blocked by
+  selected-c1 MoE retained metadata and aggregate-vs-c1 scaling
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-current-projection-dispatch/summary.json`).
   The current c4 correctness-first rowchunk2/selected-c1 path also has attached
   baseline references plus a captured `rocprofv3 --kernel-trace` retained-bench
   rerun: equality remains `[137,137,137,137]`, primitive correctness is
