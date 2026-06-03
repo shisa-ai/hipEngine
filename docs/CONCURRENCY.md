@@ -584,6 +584,14 @@ What is still not green:
   layer-limited trajectories while rowchunk2 remains the generated-token-green
   control
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-linear-bridge/summary.json`).
+  Forcing the same L4-L8 bridge through selected-c1 linear projections does not
+  change the rowchunk3 shape: rowchunk2 still has zero linear-projection drift
+  and no full-attention stage failures, while rowchunk3 still has layer4 QKV/Z
+  drift at L5, the same L6 truncated-token failure, and the same L8 layer7
+  `attn_input_pre_qkv` failure. This eliminates the native batched linear
+  projection kernel as the cause of that drift; the projection differences are
+  inherited from the grouped>=3 layer3 output/hidden trajectory
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-selected-projection-bridge/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
