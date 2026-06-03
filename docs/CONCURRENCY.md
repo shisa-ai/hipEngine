@@ -505,10 +505,18 @@ What is still not green:
   evidence with grouped-compact MoE, explicit batched LM-head sampler evidence,
   generated-token equality `[137,137]`, complete scaling refs, and synthesized
   profiler duration fields from a compact kernel trace. This removes the stale
-  profiler-not-captured, sampler-profiler-command, and selected-c1 MoE blockers;
-  the retained row is still blocked by projection dispatch (`row_gemv_until_caware_benchmark`)
-  and graph replay evidence (`replay_kernel_hits=0`)
+  profiler-not-captured, sampler-profiler-command, and selected-c1 MoE blockers
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-profiler-current/summary.json`).
+  A follow-up c2 projection-dispatch artifact measures native-batch projection
+  at `110.30` aggregate tok/s vs selected-c1/row-GEMV projection at `101.99`
+  aggregate tok/s (`1.0814x`) and validates a `gemv_awq_selected_dual_pack8_strided`
+  candidate with profiler evidence; `projection_dispatch.path` is now
+  `benchmark_accepted_caware_projection`, batch blockers are empty, and
+  generated-token equality remains `[137,137]`. The profiled retained row is
+  still blocked, with no performance claim, because aggregate native c2 remains
+  below the c1 baseline (`aggregate_vs_c1=0.8372`) and retained-bench promotion
+  now blocks before schema validation when aggregate scaling does not beat c1
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
@@ -516,7 +524,7 @@ What is still not green:
   the non-retained correctness fallback defaults.
 - Long-context c>N still uses a per-row split-K fallback label; no long-context
   native c>N claim is allowed until the split-K reducer is row-aware.
-- INT8 c>N parity, runtime projection dispatch evidence, graph replay buckets,
+- INT8 c>N parity, aggregate-vs-c1 scaling, graph replay buckets,
   residual-serial-loop removal, graph-replay profiler closure, and retained
   scoreboard promotion remain open performance/coverage work.
 
@@ -2049,9 +2057,10 @@ roll-up/status view.
       to name an evidence-backed non-row-GEMV c-aware path whose selected
       candidate is present in `projection_dispatch_candidates` and profiler
       expected/trace/duration kernel names; retained native batch metadata records a `projection_dispatch` row-GEMV fallback
-      with an explicit blocker when no c-aware projection candidate is available, can load optional `HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT` retained candidate metadata when available only if candidate evidence artifacts are loadable/accepted/self-describing and in-bounds, and retained-bench/c-sweep can pass that metadata with `--projection-dispatch-artifact` while fail-closing non-`benchmarks/results/`, symlinked/non-regular, invalid, or missing candidate artifacts plus missing/out-of-bounds candidate evidence artifacts before an expensive run, validating that c-sweep summaries keep the flag on c>N retained commands and off c=1 baselines, and copying schema-checked candidates into the artifact payload; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON carrying self-matching `artifact_path`/`source_artifact_path` plus matching >1 aggregate/per-request row-GEMV speedup ratios, evidence, and profiler expected/trace/duration kernel names. The
-      item remains open until retained benchmark artifacts provide the required
-      ratios and runtime kernels actually use the selected c-aware path.
+      with an explicit blocker when no c-aware projection candidate is available, can load optional `HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT` retained candidate metadata when available only if candidate evidence artifacts are loadable/accepted/self-describing and in-bounds, and retained-bench/c-sweep can pass that metadata with `--projection-dispatch-artifact` while fail-closing non-`benchmarks/results/`, symlinked/non-regular, invalid, or missing candidate artifacts plus missing/out-of-bounds candidate evidence artifacts before an expensive run, validating that c-sweep summaries keep the flag on c>N retained commands and off c=1 baselines, and copying schema-checked candidates into the artifact payload; retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON carrying self-matching `artifact_path`/`source_artifact_path` plus matching >1 aggregate/per-request row-GEMV speedup ratios, evidence, and profiler expected/trace/duration kernel names; and the 2026-06-03 c2 projection artifact validates the `gemv_awq_selected_dual_pack8_strided` candidate (`1.0814x` vs selected-c1/row-GEMV projection) with profiled runtime metadata selecting `benchmark_accepted_caware_projection`. The
+      item remains open for c=4/c=8 projection evidence and retained aggregate
+      scaling; c=2 runtime dispatch now uses the selected c-aware path but is
+      still not a retained throughput claim.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`

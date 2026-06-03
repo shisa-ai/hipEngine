@@ -16998,6 +16998,23 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
         "aggregate_vs_serial_bridge": 2.0,
         "per_request_vs_serial_bridge": 2.0,
     }
+    assert retained_bench._scaling_performance_blockers(scaling) == []
+
+
+def test_qwen35_retained_scaling_performance_blocks_non_winning_aggregate_ratios() -> None:
+    scaling = {
+        "complete": True,
+        "ratios": {
+            "aggregate_vs_c1": 0.93,
+            "per_request_vs_c1": 0.46,
+            "aggregate_vs_serial_bridge": 1.08,
+            "per_request_vs_serial_bridge": 1.08,
+        },
+    }
+
+    blockers = retained_bench._scaling_performance_blockers(scaling)
+
+    assert blockers == ["scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim"]
 
 
 def test_qwen35_retained_scaling_comparison_rejects_bad_native_rates(tmp_path: Path) -> None:

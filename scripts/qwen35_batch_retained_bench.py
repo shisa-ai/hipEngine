@@ -1590,6 +1590,22 @@ def _reference_with_retained_workload_shape(
     return result
 
 
+def _scaling_performance_blockers(scaling: Mapping[str, Any]) -> list[str]:
+    """Return blockers for retained throughput claims that do not beat baselines."""
+
+    ratios = scaling.get("ratios")
+    if not isinstance(ratios, Mapping):
+        return ["scaling.ratios must be present before a retained performance claim"]
+    blockers: list[str] = []
+    for field in ("aggregate_vs_c1", "aggregate_vs_serial_bridge"):
+        value = ratios.get(field)
+        if not _is_finite_positive_number(value):
+            blockers.append(f"scaling.ratios.{field} must be positive numeric for retained performance claim")
+        elif float(value) <= 1.0:
+            blockers.append(f"scaling.ratios.{field} must be > 1.0 for retained performance claim")
+    return blockers
+
+
 def _build_scaling_comparison(
     args: argparse.Namespace,
     *,
@@ -4528,6 +4544,7 @@ def _build_payload(
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])
+    scaling_performance_blockers = _scaling_performance_blockers(scaling) if scaling_complete else []
     primitive_passed = bool(primitive_correctness["passed"])
     int8_kv_primitive_passed = not int8_kv_primitive_blockers
     accepted = bool(
@@ -4544,6 +4561,7 @@ def _build_payload(
         and primitive_passed
         and protocol_shape
         and scaling_complete
+        and not scaling_performance_blockers
         and profiler_captured
         and not profiler_blockers
         and not batch_execution_blockers
@@ -4580,6 +4598,7 @@ def _build_payload(
         blocked_reasons.append("max_layers is not the full 40-layer Qwen3.5/PARO model")
     if not scaling_complete:
         blocked_reasons.append("scaling comparison vs c=1 and serial bridge baselines is incomplete")
+    blocked_reasons.extend(scaling_performance_blockers)
     if not profiler_captured:
         blocked_reasons.append("profiler trace was not captured with expected kernels present")
     blocked_reasons.extend(profiler_blockers)
