@@ -5,7 +5,7 @@ from pathlib import Path
 
 from scripts.stepfun_correctness_status import _stable_json_sha256, build_status
 from scripts.stepfun_final_blocker_manifest import build_final_blocker_manifest
-from scripts.stepfun_handoff_check import build_handoff_check, main
+from scripts.stepfun_handoff_check import build_handoff_check, main, verify_handoff_report
 from test_stepfun_correctness_status import (  # type: ignore[import-not-found]
     _write_docs,
     _write_oracle_artifact,
@@ -148,6 +148,9 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
         tmp_path
     )
     full_output = tmp_path / "handoff-check.json"
+    report_verification_output = tmp_path / "handoff-report-verification.json"
+    report_verification_status_output = tmp_path / "handoff-report-verification-status.json"
+    report_verification_failures_output = tmp_path / "handoff-report-verification-failures.json"
     summary_output = tmp_path / "handoff-summary.json"
     summary_sha_output = tmp_path / "handoff-summary-sha.json"
     artifact_verification_output = tmp_path / "handoff-artifact-verification.json"
@@ -193,6 +196,86 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert full_payload["status"] == "blocked_verified"
     assert full_payload["artifact_verification"]["status"] == "match"
     assert full_payload["verification_failures"] == []
+    report_verification = verify_handoff_report(full_output, current_report=expected)
+    assert report_verification["status"] == "match"
+    assert report_verification["all_match"] is True
+    assert report_verification["verification_failures"] == []
+    assert report_verification["persisted_status"] == "blocked_verified"
+    assert report_verification["current_status"] == "blocked_verified"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--verify-handoff-report",
+            str(full_output),
+            "--output",
+            str(report_verification_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(report_verification_output.read_text()) == report_verification
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--verify-handoff-report",
+            str(full_output),
+            "--report-verification-status-only",
+            "--output",
+            str(report_verification_status_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(report_verification_status_output.read_text()) == "match"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--verify-handoff-report",
+            str(full_output),
+            "--report-verification-failures-only",
+            "--output",
+            str(report_verification_failures_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(report_verification_failures_output.read_text()) == []
 
     rc = main(
         [
@@ -498,6 +581,68 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     )
     assert rc == 2
     assert json.loads(capsys.readouterr().out) == "blocked_verified"
+
+
+def test_stepfun_handoff_check_reports_handoff_report_mismatch(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt, oracle, docs, resource, status_artifact, manifest_artifact = _write_inputs(
+        tmp_path
+    )
+    full_output = tmp_path / "handoff-check.json"
+    failures_output = tmp_path / "handoff-report-failures.json"
+    current_report = build_handoff_check(
+        prompt_artifact=prompt,
+        oracle_artifact=oracle,
+        resource_artifact=resource,
+        docs=docs,
+        status_artifact=status_artifact,
+        manifest_artifact=manifest_artifact,
+    )
+    full_output.write_text(json.dumps(current_report, indent=2, sort_keys=True) + "\n")
+    persisted = json.loads(full_output.read_text())
+    persisted["status"] = "stale"
+    full_output.write_text(json.dumps(persisted, indent=2, sort_keys=True) + "\n")
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--verify-handoff-report",
+            str(full_output),
+            "--report-verification-failures-only",
+            "--output",
+            str(failures_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 1
+    assert json.loads(failures_output.read_text()) == [
+        {
+            "name": "handoff_report_drift",
+            "expected_sha256": _stable_json_sha256(current_report),
+            "actual_sha256": _stable_json_sha256(persisted),
+            "evidence": (
+                "Persisted handoff-check report differs from current "
+                "prompt/oracle/resource/docs/status/manifest inputs."
+            ),
+        }
+    ]
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_stepfun_handoff_check_reports_manifest_mismatch(

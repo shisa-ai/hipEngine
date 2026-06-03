@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -17,6 +18,9 @@ from scripts import stepfun_final_blocker_manifest as manifest_mod
 
 DEFAULT_MANIFEST_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json"
+)
+DEFAULT_HANDOFF_ARTIFACT = Path(
+    "benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json"
 )
 HANDOFF_CHECK_SCHEMA_VERSION = 1
 
@@ -64,6 +68,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help="Write JSON output to this path instead of stdout.",
+    )
+    parser.add_argument(
+        "--verify-handoff-report",
+        type=Path,
+        default=None,
+        help="Compare a persisted handoff-check report with current inputs.",
+    )
+    parser.add_argument(
+        "--report-verification-status-only",
+        action="store_true",
+        help="With --verify-handoff-report, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--report-verification-failures-only",
+        action="store_true",
+        help="With --verify-handoff-report, emit only report verification failures.",
     )
     parser.add_argument(
         "--summary-only",
@@ -267,6 +287,51 @@ def build_handoff_check(
     }
 
 
+def verify_handoff_report(
+    report_path: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted handoff-check report with the current report."""
+
+    persisted = json.loads(report_path.read_text())
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "handoff_report_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted handoff-check report differs from current "
+                    "prompt/oracle/resource/docs/status/manifest inputs."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "report_path": str(report_path),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_report_sha256": persisted_sha256,
+        "current_report_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status")
+        if isinstance(persisted, dict)
+        else None,
+        "current_status": current_report.get("status"),
+        "persisted_summary_sha256": persisted.get("summary_sha256")
+        if isinstance(persisted, dict)
+        else None,
+        "current_summary_sha256": current_report.get("summary_sha256"),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     report = build_handoff_check(
@@ -277,6 +342,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         status_artifact=args.status_artifact,
         manifest_artifact=args.manifest_artifact,
     )
+    if args.verify_handoff_report is not None:
+        verification = verify_handoff_report(
+            args.verify_handoff_report,
+            current_report=report,
+        )
+        if args.report_verification_status_only:
+            payload: object = verification["status"]
+        elif args.report_verification_failures_only:
+            payload = verification["verification_failures"]
+        else:
+            payload = verification
+        status_mod._emit_json(payload, pretty=args.pretty, output=args.output)
+        if verification["all_match"] is not True:
+            return status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        if args.fail_on_blocked and report["status"] == "blocked_verified":
+            return status_mod.BLOCKED_EXIT_CODE
+        return status_mod.READY_EXIT_CODE
     if args.status_only:
         payload: object = report["status"]
     elif args.artifact_verification_sha_only:
