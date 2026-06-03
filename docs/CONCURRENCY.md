@@ -535,6 +535,13 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/summary.json`).
+  A c4/c8 full-attention output-path contrast shows the row-aware `batch_gemv`
+  O-projection path is required for the green rowchunk2 grouped/projection path:
+  `batch_gemv` keeps c4/c8 equality green, while forcing the native `batch`
+  output path turns the same workload red (`c4=[137,137,137,118]`,
+  `c8=[137,137,137,118,45,137,68,137]`). Do not promote native batch O-output
+  for c4/c8 until that parity is repaired
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-fullattn-output-batch-control/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
