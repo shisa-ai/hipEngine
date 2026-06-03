@@ -518,12 +518,14 @@ What is still not green:
   c8 equality remains `[137,137,137,137,137,137,137,137]`, primitive correctness
   is loaded/passed, grouped MoE / projection / profiler blockers are absent, and
   the only batch blockers are rowchunked full-attention /
-  `native_caware_decode=false`. c8 repeatability remains open before any
-  promotion/performance claim, but the grouped profiler-evidence blocker itself
-  is now covered
+  `native_caware_decode=false`. A three-run c8 repeatability check then kept the
+  same rowchunk2 evidence path green (`[137]*8` on every run), so the c8
+  rowchunk2 repeatability caveat is closed for this path; full-native attention
+  remains the promotion/performance-claim blocker
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-grouped-projection-profile/summary.json`,
   `benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-grouped-projection-profile/summary.json`,
-  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-profile/summary.json`).
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-profile/summary.json`,
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-repeatability/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
