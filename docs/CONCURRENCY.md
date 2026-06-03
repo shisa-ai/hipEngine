@@ -322,6 +322,12 @@ What is still not green:
   QKV / context-gate / KV-append / output / post-attention / persistent-c1
   branch-isolation sweep did not repair it
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-full-attn-branch-isolation/summary.json`).
+  A native row-chunk diagnostic then showed that c=8 rows 0-3 are green while
+  rows 4-7 are red, and a derived c=4 fixture containing only original rows
+  4-7 reproduces the same native-full red prefixes while the per-row-full
+  control is green; the remaining blocker is therefore prompt/window-sensitive
+  native full-attention behavior, not only c=8 batch size or physical slot id
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-row-window-isolation/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
