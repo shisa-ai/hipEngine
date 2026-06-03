@@ -65334,3 +65334,9 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - This did not reproduce the iter128 intermittent flakes (rowchunk2 7/8 green, per-row-full 2/3 green), so retained claims remain blocked, but the flake is not a deterministic batched-vs-serial sampler mismatch.
 - Compact artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-sampler-repeat-matrix/summary.json` (`status=diagnostic_recorded`, `performance_claim=false`, `retained_ready=false`). Updated `docs/CONCURRENCY.md`.
 - Guard passed: `compileall`, targeted pytest bundle (411 tests), primitive c=2/c=8 GPU correctness.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter130 full-attn rowchunk size sweep
+- Focused row-chunk sweep for native full-attention on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX at commit `3dac014`: original c8 chunk1 and chunk2 were green `[137 x8]`, chunk3 failed `[137,137,137,137,11,60,137,137]`, chunk4 and full native failed `[137,137,137,137,11,60,117,137]`.
+- Derived rows4..7 c4: chunk1/chunk2 green `[137 x4]`; chunk3 and full native failed `[11,60,117,137]`. Derived rows4..6 c3: chunk1/chunk2 green `[137 x3]`; full native failed `[11,60,117]`.
+- Result: for the prompt/window-sensitive rows4..7 blocker, the largest generated-token-green native-context grouping currently observed is 2 rows. Chunking remains diagnostic (`native_caware_decode=false`), so full native c8/c4 rows4..7 is still blocked and no retained/perf claim is made.
+- Compact artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-rowchunk-size-sweep/summary.json` (`status=diagnostic_recorded`, `performance_claim=false`, `retained_ready=false`). Updated `docs/CONCURRENCY.md`.

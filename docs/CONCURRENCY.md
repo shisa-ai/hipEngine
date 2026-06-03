@@ -352,6 +352,12 @@ What is still not green:
   narrows the flake away from a deterministic sampler-mode mismatch, but the
   prior flakes and diagnostic fallback labels still block retained claims
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-sampler-repeat-matrix/summary.json`).
+  A row-chunk size sweep then showed the prompt/window-sensitive safe grouping:
+  chunk sizes 1 and 2 are green for original c8 plus derived rows4..7 c4 and
+  rows4..6 c3, while chunk size 3 or larger reproduces the native-full red
+  pattern. The current largest green native-context grouping for those prompts
+  is therefore 2 rows; full native c8/c4 rows4..7 remains blocked
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-rowchunk-size-sweep/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
