@@ -432,7 +432,11 @@ What is still not green:
   candidates. A current-commit c2 512/128 repeat capture after adding that
   diagnostic ran 16/16 green at `[137,137]` with empty `mismatch_summaries`; this
   restores current confidence but does not prove the intermittent flake is fixed
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-mismatch-summary-green16/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-mismatch-summary-green16/summary.json`). A later exact active-command
+  repeat after the c3..c8/c9 diagnostic work ran five consecutive repeats plus
+  the final active verify green at `[137,137]`, again increasing confidence
+  without converting it into a retained throughput claim
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-current217/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

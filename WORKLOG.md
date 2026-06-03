@@ -65776,3 +65776,7 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Ran a c9 frontier split on the derived 9-row fixture (`HIP_VISIBLE_DEVICES=1` / RX 7900 XTX). Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c9-selectedc1-moe-frontier/summary.json`.
 - Grouped-compact MoE stays red under rowchunk2 with auto selected-c1, native batch, batch-GEMV, and native-output linear projection controls, so the c9 failure is not a linear-projection artifact.
 - Switching MoE to `selected_c1` makes c9 rowchunk2 green (`[137]*9`) with both auto selected-c1 linear projections and native batch linear projections; per-row full attention plus selected-c1 MoE is also green. Full-native/no-rowchunk remains red even with selected-c1 MoE, and rowchunk1 selected-c1 MoE remains tail-red (`[137,137,137,137,137,137,137,137,103]`). No throughput claim; no default extension yet.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter217 c2 repeat stability
+- Ran the exact active c2 512/128 retained equality command five consecutive times on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX, then captured the final active verify result. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-current217/summary.json`.
+- All six runs are generated-token equality green at `[137,137]` with no mismatches. This increases confidence after earlier intermittent c2 flakes, but it is runtime-confidence evidence only and not a retained throughput claim.
