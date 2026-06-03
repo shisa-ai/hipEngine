@@ -548,6 +548,15 @@ What is still not green:
   next native attention target is the grouped pre-QKV/hidden interaction that
   appears when a full-attention group contains three or more rows
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-fullnative-projection-c4c8-audit/summary.json`).
+  A focused c4 hidden-bisect over the first rowchunk3 token-divergence window
+  keeps rowchunk2 hidden/token green vs the retained-compatible native-c1 oracle,
+  while rowchunk3 is hidden/token red: row0's first token mismatch is generated
+  sequence index 82, and the traced rowchunk3 full-attention failures are already
+  present at decode step 80 (`layer7 attn_input_pre_qkv`, then later layer15
+  input/output rows0..2). This pins the grouped>=3 issue to the full-attention
+  trajectory before the token flip, not to projection dispatch or late sampler
+  metadata
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-window/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
