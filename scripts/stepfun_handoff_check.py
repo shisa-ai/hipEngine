@@ -86,6 +86,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of artifact verification state.",
     )
     parser.add_argument(
+        "--readiness-summary-only",
+        action="store_true",
+        help="Emit only the compact readiness summary from the verified handoff.",
+    )
+    parser.add_argument(
+        "--readiness-summary-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the readiness summary.",
+    )
+    parser.add_argument(
         "--status-only",
         action="store_true",
         help="Emit only the handoff verification status string.",
@@ -226,6 +236,9 @@ def build_handoff_check(
         "artifact_verification_sha256": status_mod._stable_json_sha256(
             artifact_verification
         ),
+        "readiness_summary_sha256": status_mod._stable_json_sha256(
+            readiness_summary
+        ),
         "verification_failures": failures,
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
         "correctness_status_verification": status_verification,
@@ -256,6 +269,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["artifact_verification_sha256"]
     elif args.artifact_verification_only:
         payload = report["artifact_verification"]
+    elif args.readiness_summary_sha_only:
+        payload = report["readiness_summary_sha256"]
+    elif args.readiness_summary_only:
+        payload = report["readiness_summary"]
     elif args.failures_sha_only:
         payload = report["verification_failures_sha256"]
     elif args.failures_only:

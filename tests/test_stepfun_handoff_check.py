@@ -54,6 +54,13 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["artifact_verification_sha256"] == _stable_json_sha256(
         report["artifact_verification"]
     )
+    assert report["readiness_summary_sha256"] == _stable_json_sha256(
+        report["readiness_summary"]
+    )
+    assert report["readiness_summary"]["status"] == "blocked"
+    assert report["readiness_summary"]["oracle_parity"] is False
+    assert report["readiness_summary"]["kv_backed_decode_ready"] is False
+    assert report["readiness_summary"]["e2e_inference_ready"] is False
     assert report["artifact_verification"] == {
         "schema_version": 1,
         "status": "match",
@@ -126,6 +133,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     summary_sha_output = tmp_path / "handoff-summary-sha.json"
     artifact_verification_output = tmp_path / "handoff-artifact-verification.json"
     artifact_verification_sha_output = tmp_path / "handoff-artifact-verification-sha.json"
+    readiness_summary_output = tmp_path / "handoff-readiness-summary.json"
+    readiness_summary_sha_output = tmp_path / "handoff-readiness-summary-sha.json"
     status_output = tmp_path / "handoff-status.json"
     failures_output = tmp_path / "handoff-failures.json"
     failures_sha_output = tmp_path / "handoff-failures-sha.json"
@@ -236,6 +245,59 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert rc == 0
     assert json.loads(artifact_verification_sha_output.read_text()) == expected[
         "artifact_verification_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--readiness-summary-only",
+            "--output",
+            str(readiness_summary_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    readiness_summary_payload = json.loads(readiness_summary_output.read_text())
+    assert readiness_summary_payload == expected["readiness_summary"]
+    assert readiness_summary_payload["status"] == "blocked"
+    assert readiness_summary_payload["oracle_parity"] is False
+    assert readiness_summary_payload["kv_backed_decode_ready"] is False
+    assert readiness_summary_payload["e2e_inference_ready"] is False
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--readiness-summary-sha-only",
+            "--output",
+            str(readiness_summary_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(readiness_summary_sha_output.read_text()) == expected[
+        "readiness_summary_sha256"
     ]
 
     rc = main(

@@ -641,7 +641,8 @@ reporting.
   now combines correctness-status source verification with final-blocker manifest
   verification and reports `blocked_verified` for a trustworthy blocked handoff;
   compact `--summary-only` / `--summary-sha-only`, `--status-only`,
-  `--artifact-verification-only` / `--artifact-verification-sha-only`, and
+  `--artifact-verification-only` / `--artifact-verification-sha-only`,
+  `--readiness-summary-only` / `--readiness-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
   polling. `--fail-on-blocked` returns the documented blocked exit code when CI
   should fail until oracle/KV readiness is real.
