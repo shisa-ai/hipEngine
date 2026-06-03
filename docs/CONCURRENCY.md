@@ -562,7 +562,14 @@ What is still not green:
   `native_caware_decode=false`, and full-native no-chunk grouped>=3 attention is
   still the retained blocker
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-tail-gemv-output-fix/summary.json`,
-  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-default-output-batch/summary.json`).
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-default-output-batch/summary.json`). A full-native/no-chunk
+  c4 isolation matrix now makes the first single-stage native-context blocker
+  green: forcing full-attention context replay to per-row, either context+gate or
+  context-only, restores c4 equality (`[137]*4`), while O-output-only,
+  post-attention-only, gate-only, KV-append-only, and MoE-only variants stay red.
+  The same context replay does not fully fix c8 (`[137,137,137,137,45,11,83,137]`),
+  so c4 is isolated to native batched context and c8 has an additional row-count
+  interaction (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-fullnative-context-isolation/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
