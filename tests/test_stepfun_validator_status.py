@@ -185,9 +185,14 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_blocker_artifact_name"] is None
     assert summary["next_blocker_status"] is None
     assert summary["next_blocker_reason"] is None
+    assert summary["next_blocker_command"] is None
+    assert summary["next_blocker_command_sha256"] == report[
+        "next_blocker_command_sha256"
+    ]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
     assert report["next_blocker"] is None
+    assert report["next_blocker_command"] is None
     assert summary["no_claim_policy"]["validator_artifacts_passed"] is True
     assert summary["no_claim_policy"]["e2e_inference_claim_allowed"] is False
     assert [record["status"] for record in report["validator_results"]] == [
@@ -250,6 +255,15 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_blocker_artifact_name"] == "kv_kernel_trace_artifact"
     assert summary["next_blocker_status"] == "missing"
     assert summary["next_blocker_reason"] == "artifact_file_missing"
+    assert summary["next_blocker_command"] == expected_missing_trace[
+        "validator_command_concrete"
+    ]
+    assert summary["next_blocker_command_sha256"] == report[
+        "next_blocker_command_sha256"
+    ]
+    assert report["next_blocker_command"] == expected_missing_trace[
+        "validator_command_concrete"
+    ]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert summary["blocked_validator_results_sha256"] == report[
         "blocked_validator_results_sha256"
@@ -270,6 +284,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     blocked_sha_output = tmp_path / "blocked-sha.json"
     next_blocker_output = tmp_path / "next-blocker.json"
     next_blocker_sha_output = tmp_path / "next-blocker-sha.json"
+    next_command_output = tmp_path / "next-command.json"
+    next_command_sha_output = tmp_path / "next-command-sha.json"
     sha_output = tmp_path / "sha.json"
     status_output = tmp_path / "status.json"
     _write_prompt(prompt)
@@ -411,6 +427,41 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert next_blocker_payload["artifact_name"] == "kv_kernel_trace_artifact"
     assert next_blocker_payload["status"] == "missing"
     assert next_blocker_payload["reason"] == "artifact_file_missing"
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-command-only",
+            "--output",
+            str(next_command_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    next_command_payload = json.loads(next_command_output.read_text())
+    assert next_command_payload == f"python3 scripts/stepfun_kv_trace_check.py --trace {trace}"
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-command-sha-only",
+            "--output",
+            str(next_command_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(next_command_sha_output.read_text())) == 64
 
     rc = main(
         [

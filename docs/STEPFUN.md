@@ -655,9 +655,10 @@ reporting.
   expected artifact paths, and `scripts/stepfun_validator_status.py` imports the
   dedicated validators to report `passed` / `missing` / `failed` for those
   concrete artifact paths without shelling out (`--results-only` /
-  `--results-sha-only`, `--blocked-only` / `--blocked-sha-only`, and
-  `--next-blocker-only` / `--next-blocker-sha-only` expose compact pollable
-  validator records),
+  `--results-sha-only`, `--blocked-only` / `--blocked-sha-only`,
+  `--next-blocker-only` / `--next-blocker-sha-only`, and
+  `--next-command-only` / `--next-command-sha-only` expose compact pollable
+  validator records/commands),
   `--exit-code-policy-only` / `--exit-code-policy-sha-only`,
   `--digest-summary-only` / `--digest-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
