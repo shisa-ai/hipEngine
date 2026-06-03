@@ -34202,3 +34202,53 @@ git diff --check
 ```
 
 Results: targeted final-blocker/handoff/KV-trace tests passed (`13` tests); regenerated correctness-status, final-blocker, and handoff artifacts all verified as `"match"`; compact artifact-status and handoff missing-artifacts routes now report `kv_kernel_trace_artifact` with `validator_command_kind=kv_trace_check_command`, command `python3 scripts/stepfun_kv_trace_check.py --trace <kv_kernel_trace_artifact.csv-or-json> --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty`, `validator_command_sha256=f114adb04cc88f038bb9c1c7fa365d5602a8ab3f6f02bb92741b773ce70155e8`, and `validator_expected_kernel_families_sha256=286f3631b5016d24b4b396a103827911e021f3adb8b219bcfec07cff516d05c0`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`282` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `handoff_report_sha256=109e6ec88b141c52ab3f1ff4cb989d828b114d3ebb418599f126326b813e11e8`, `summary_sha256=be1b0fa0aaaa02bdaf669e5e27a44af75eeaa19138d66f54a182730264c57d17`, `missing_artifact_summary_sha256=9a210fa941c694efcee3fadb335b9e5ea91f3329a0652f0cf6c646637d61e2d9`, `action_summary_sha256=9bae2781c58c91dae5b625631b77d4edfc3198be40c7747420841835a4094ccf`, `digest_summary_sha256=685cc3fd4976e8e24047d103e18184b68c69fdf3a437ec6c9d8d6a0432bbe7a1`, `blocker_status_sha256=b76c5d0de4dfdef80b72e5354fd1d17bee078d793df5899be58eea1c1f62e1b9`, `e2e_readiness_gate_summary_sha256=8777034ab5b2650ca8598e9d838ef40052ef4d262604e5c8c13c1afcbb961673`, `manifest_sha256=7370acae07dfe290482a42e30d3739ea68f763de2307d867fdc1713f23d7ac79`, `artifact_status_handoff_sha256=83d1c4ef1e648694639f34344f687853216fd2747f45ef17eb0f28e8eb4a5410`, `missing_artifacts_handoff_sha256=83d1c4ef1e648694639f34344f687853216fd2747f45ef17eb0f28e8eb4a5410`, `artifacts_to_collect_sha256=03a6bef1a7738cffaf08388ef677eb8de49fb375e30a21d02d976cb925aff1bf`, and `correctness_status_sha256=97a4e1e2ab4a3f9f34b74ad59d3010f29244a2abb88d60ce0e7e30355f3ec955`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; backend/quant branch grep over the touched handoff/final-blocker/KV-trace scripts returned no matches; the diff contains no unsupported StepFun performance or throughput claim; `git diff --check` passed.
+
+## 2026-06-03 — StepFun KV-backed next-token artifact checker
+
+Added a mechanical checker for the missing StepFun KV-backed next-token artifact. `scripts/stepfun_kv_next_token_check.py` validates a retained JSON artifact from a future real KV-backed one-token decode run against the canonical deterministic prompt target. The checker requires success status, explicit KV-backed runtime provenance, ready streaming-runner evidence, non-host-composed provenance, prompt-length alignment, deterministic token/text match, and a finite next-token logit. Passing the checker can satisfy only `kv_backed_next_token_artifact`; it keeps `kv_backed_decode_claim_allowed=false`, `oracle_parity_claim_allowed=false`, and `performance_claim_allowed=false` because KV trace, oracle parity, and benchmark gates remain separate.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_kv_next_token_check.py
+python3 - <<'PY'
+import json
+from pathlib import Path
+prompt = {
+    'prompt_length': 23,
+    'next_token_id': 369,
+    'next_token_text': ' |',
+    'next_token_logit': 19.158626556396484,
+}
+artifact = {
+    'status': 'passed',
+    'execution_path': 'kv_backed_decode',
+    'kv_backed_decode': True,
+    'kv_cache_used': True,
+    'streaming_runner_ready': True,
+    'host_composed_layer_prefix': False,
+    'prompt_length': 23,
+    'next_token_id': 369,
+    'next_token_text': ' |',
+    'next_token_logit': 19.158626556396484,
+}
+Path('/tmp/stepfun-kv-next-token-prompt.json').write_text(json.dumps(prompt, sort_keys=True))
+Path('/tmp/stepfun-kv-next-token-pass.json').write_text(json.dumps(artifact, sort_keys=True))
+PY
+python3 scripts/stepfun_kv_next_token_check.py --artifact /tmp/stepfun-kv-next-token-pass.json --prompt-artifact /tmp/stepfun-kv-next-token-prompt.json --summary-only --pretty >/tmp/stepfun-kv-next-token-check-summary.json
+python3 scripts/stepfun_kv_next_token_check.py --artifact /tmp/stepfun-kv-next-token-pass.json --prompt-artifact /tmp/stepfun-kv-next-token-prompt.json --summary-only --sha-only --pretty >/tmp/stepfun-kv-next-token-check-summary-sha.json
+python3 scripts/stepfun_kv_next_token_check.py --artifact /tmp/stepfun-kv-next-token-pass.json --prompt-artifact /tmp/stepfun-kv-next-token-prompt.json --status-only --fail-on-missing
+python3 scripts/stepfun_kv_next_token_check.py --artifact /tmp/stepfun-kv-next-token-pass.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --pretty >/tmp/stepfun-kv-next-token-check-canonical-summary.json
+python3 scripts/stepfun_kv_next_token_check.py --artifact /tmp/stepfun-kv-next-token-pass.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --sha-only --pretty >/tmp/stepfun-kv-next-token-check-canonical-summary-sha.json
+python3 scripts/stepfun_kv_next_token_check.py --artifact /tmp/stepfun-kv-next-token-pass.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --status-only --fail-on-missing
+python3 -m pytest -q tests/test_stepfun_kv_next_token_check.py tests/test_stepfun_kv_trace_check.py tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_kv_next_token_check.py scripts/stepfun_kv_trace_check.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_handoff_check.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_kv_next_token_check.py tests/test_stepfun_kv_next_token_check.py | grep -nEi '^\+.*(tok/s|throughput|performance claim|performance claims|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|making token or performance claims\|without making.*performance claims\|keeping.*performance claims\|claims separate\|throughput/performance claim\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+git diff --check
+```
+
+Results: targeted next-token checker tests passed (`3` tests), the broader targeted StepFun checker set passed (`7` tests), and the synthetic passing artifact validated against both a minimal prompt target and the canonical all-layer prompt artifact. The canonical synthetic summary reported `status=passed`, `ready=true`, `missing_evidence=[]`, `expected_next_token_id=369`, `observed_next_token_id=369`, `expected_next_token_text=" |"`, `observed_next_token_text=" |"`, `streaming_runner_ready=true`, `kv_backed_decode=true`, `kv_cache_used=true`, `kv_backed_next_token_artifact_claim_allowed=true`, `kv_backed_decode_claim_allowed=false`, `oracle_parity_claim_allowed=false`, and `performance_claim_allowed=false`. Canonical summary SHA was `aa42c8c55518e63ea576d85be913a5eca7398bc4480b6b5dd9b1f48a6b6974d1`; canonical full-report SHA was `6c20ed12a44cfc9d85953b0709934b7f63989ed5a96dac16a095d2043d39a86a`; minimal-summary SHA was `1324b75c363ad7a633a438b05348c542f1eaa83ecae13e8a013aa9f5e7400450`; minimal full-report SHA was `67b1bf50118186bcb8255d51f79c1e6df71e017a2a7a29652d6bc5070e681b98`. The P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`285` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; backend/quant branch grep over StepFun handoff/final-blocker/KV checker scripts returned no matches; the diff contains no unsupported StepFun performance or throughput claim after excluding explicit no-claim wording; `git diff --check` passed.

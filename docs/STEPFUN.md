@@ -668,9 +668,15 @@ reporting.
   making token or performance claims; the final-blocker manifest and combined
   handoff report attach this command under the missing `kv_kernel_trace_artifact`
   as `validator_command_kind=kv_trace_check_command` with a stable command
-  digest and expected kernel-family digest. This checklist item is partial rather than
-  complete because the current runner is host-composed/chunked and does not yet
-  implement the final KV-backed one-token decode path.
+  digest and expected kernel-family digest. `scripts/stepfun_kv_next_token_check.py`
+  validates the missing KV-backed next-token artifact when a future real decode
+  run is retained: it requires explicit KV-backed runtime provenance, ready
+  streaming-runner evidence, non-host-composed provenance, prompt-length
+  alignment, deterministic token/text match against the canonical prompt target,
+  and a finite next-token logit, while keeping KV-decode/e2e/performance claims
+  separate. This checklist item is partial rather than complete because the
+  current runner is host-composed/chunked and does not yet implement the final
+  KV-backed one-token decode path.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
