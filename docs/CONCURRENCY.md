@@ -479,11 +479,14 @@ What is still not green:
   baseline references plus a captured `rocprofv3 --kernel-trace` retained-bench
   rerun: equality remains `[137,137,137,137]`, primitive correctness is
   loaded/passed, profiler provenance / kernel-duration blockers are absent, and
-  scaling references are complete. This is still not a throughput claim because
-  c4 remains blocked by rowchunked full attention (`native_caware_decode=false`),
-  selected-c1 MoE retained metadata, and row-GEMV projection dispatch/no current
-  accepted c-aware evidence
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-current-profile/summary.json`).
+  scaling references are complete. A follow-up c4 rerun now attaches the combined
+  c2/c4/c8 projection-dispatch catalog and selects
+  `benchmark_accepted_caware_projection` / `gemv_awq_selected_dual_pack8_strided_c4`
+  with empty projection blockers while preserving equality and profiler evidence.
+  This is still not a throughput claim because c4 remains blocked by rowchunked
+  full attention (`native_caware_decode=false`) and selected-c1 MoE retained
+  metadata
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-current-projection-dispatch/summary.json`).
   The same evidence is now attached for c8: the current rowchunk2/selected-c1
   512/128 retained-bench rerun keeps equality green at
   `[137,137,137,137,137,137,137,137]`, primitive correctness is loaded/passed,
