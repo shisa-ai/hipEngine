@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-c4-c8-auto-full-attn-fallback/summary.json",
+  "created_at": "2026-06-03T00:31:11.704765Z",
+  "status": "passed",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Correctness-first auto full-attention fallback extends the generated-token equality gate to c=2/c=4/c=8. c=2 keeps native batch full-attention; c=4/c=8 use the per-row full-attention fallback because native batch full-attention remains the next retained blocker. No c>N throughput/scaling claim is made.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "20d70000ebfc9cc5c128e3693f3094237800f1e7",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "batch_sizes": [
+      2,
+      4,
+      8
+    ],
+    "batch_decode_full_attention_path": "auto",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch"
+  },
+  "results": [
+    {
+      "batch_size": 2,
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-c4-c8-auto-fullattn-iter118-clean/native-equality-c2-p512-d128.json",
+      "tmp_artifact_sha256": "c7415e8b201ce854053137bcaf6b99ca81dde588d10c90f58d4c4a5ebedf7b02",
+      "tmp_artifact_size_bytes": 139433,
+      "software_commit": "20d70000ebfc9cc5c128e3693f3094237800f1e7",
+      "software_dirty": false,
+      "status": "blocked",
+      "performance_claim": false,
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 125.50882041448772,
+      "decode_tok_s_per_request": 62.75441020724386,
+      "workload_full_attention_path": "native_batch",
+      "workload_moe_path": "selected_c1",
+      "throughput_claim_eligible": false,
+      "native_caware_decode": true,
+      "batch_execution_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": true
+      }
+    },
+    {
+      "batch_size": 4,
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-c4-c8-auto-fullattn-iter118-clean/native-equality-c4-p512-d128.json",
+      "tmp_artifact_sha256": "4503f2c8998acf89a8f78d7d46c81d4dba28bc491895b089948b9fb8da0835d8",
+      "tmp_artifact_size_bytes": 205453,
+      "software_commit": "20d70000ebfc9cc5c128e3693f3094237800f1e7",
+      "software_dirty": false,
+      "status": "blocked",
+      "performance_claim": false,
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 155.02580148532135,
+      "decode_tok_s_per_request": 38.75645037133034,
+      "workload_full_attention_path": "per_row",
+      "workload_moe_path": "grouped_compact",
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "native_caware_decode": false
+      }
+    },
+    {
+      "batch_size": 8,
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-c4-c8-auto-fullattn-iter118-clean/native-equality-c8-p512-d128.json",
+      "tmp_artifact_sha256": "cc4ed336733d7417d4a67613add8369308ff379d7e3494f0a393d4636038e54f",
+      "tmp_artifact_size_bytes": 353042,
+      "software_commit": "20d70000ebfc9cc5c128e3693f3094237800f1e7",
+      "software_dirty": false,
+      "status": "blocked",
+      "performance_claim": false,
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 186.04075751255755,
+      "decode_tok_s_per_request": 23.255094689069693,
+      "workload_full_attention_path": "per_row",
+      "workload_moe_path": "grouped_compact",
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "native_caware_decode": false
+      }
+    }
+  ],
+  "measurements": {
+    "native_c2_512x128_min_equal_prefix_tokens": 137,
+    "c2_decode_tok_s_aggregate": 125.50882041448772,
+    "c4_min_equal_prefix_tokens": 137,
+    "c4_decode_tok_s_aggregate": 155.02580148532135,
+    "c8_min_equal_prefix_tokens": 137,
+    "c8_decode_tok_s_aggregate": 186.04075751255755
+  },
+  "verdicts": {
+    "c2_c4_c8_generated_equality_passed": true,
+    "c2_uses_native_batch_full_attention": true,
+    "c4_c8_use_per_row_full_attention_fallback": true,
+    "retained_ready": false
+  },
+  "retained_claim_blockers": [
+    "c=4/c=8 equality is green only because auto selects the per-row full-attention fallback",
+    "per-row full-attention fallback is explicitly not native c-aware decode",
+    "projection dispatch remains blocked for retained c>N rows; no throughput/scaling claim is made"
+  ],
+  "source_artifacts": {
+    "native_full_attention_blocker": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-c8-full-attn-parity-blocker/summary.json"
+  },
+  "commands": {
+    "clean_matrix": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size {2,4,8} --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-c4-c8-auto-fullattn-iter118-clean/native-equality-c{N}-p512-d128.json",
+    "active_verify": "active loop verify command at clean commit 20d70000 returned /tmp/hipengine-e2e-native-c2-512-128.json with metric 137",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json"
+  }
+}
