@@ -29,11 +29,21 @@
       "required_for": "kv_backed_next_token_artifact_missing"
     }
   ],
+  "artifacts_to_collect_sha256": "fc304dc6a3577dca8be8d2a99c5338b410f468f3aaa6e96723422294ef3f50d4",
   "blocked_gates": [
     "oracle_parity",
     "kv_backed_decode",
     "e2e_inference"
   ],
+  "compact_output_modes": {
+    "artifacts_only": "artifacts_to_collect",
+    "artifacts_sha_only": "artifacts_to_collect_sha256",
+    "entries_only": "entries",
+    "entries_sha_only": "entries_sha256",
+    "sha_only": "manifest_sha256",
+    "verification_failures_only": "verification.verification_failures",
+    "verification_status_only": "verification.status"
+  },
   "entries": [
     {
       "artifact_handoff": {
@@ -131,6 +141,7 @@
       ]
     }
   ],
+  "entries_sha256": "6718833f6f165accb6cb1e997dd1ae9b1c18a6c9e4ae5a9cbfb560fd26b1a9e6",
   "entry_count": 2,
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
@@ -150,13 +161,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "85a927662c433593e0c72bd4ef8a596c62f351b7afe5d3147a0195485de2885d",
+    "readiness_summary_sha256": "12bd8161997d567e1d7cecd72ccd315ee7b570035b82453bf30d3d1b9581ef1d",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "2d77db7999ddebdf89c6747f9c193b549fc7cd556933623a572e94b505193a3a",
-        "size_bytes": 69391
+        "sha256": "886436026330bff3aa6bd32dd99a8ce4ae4eea24486ca565c41d1003e5a18c13",
+        "size_bytes": 69578
       },
       "oracle": {
         "exists": true,
@@ -183,7 +194,7 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "a681d566970b7a63cf3da289a1919cfd646d41a45393a4735d5f67324cc41185",
+    "source_artifacts_sha256": "10dc68657fb5d836dedd1650d5caf44be15ec1df1313c43151785b0998c560b2",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
   }
 }

@@ -69,6 +69,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the manifest.",
     )
+    parser.add_argument(
+        "--entries-only",
+        action="store_true",
+        help="Emit only the manifest entries for compact blocker polling.",
+    )
+    parser.add_argument(
+        "--entries-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of manifest entries.",
+    )
+    parser.add_argument(
+        "--artifacts-only",
+        action="store_true",
+        help="Emit only artifacts_to_collect for compact evidence polling.",
+    )
+    parser.add_argument(
+        "--artifacts-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of artifacts_to_collect.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     return parser.parse_args(argv)
 
@@ -191,6 +211,18 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
             artifacts_to_collect.extend(kv_required_artifacts)
         entries.append(entry)
 
+    entries_sha256 = status_mod._stable_json_sha256(entries)
+    artifacts_to_collect_sha256 = status_mod._stable_json_sha256(artifacts_to_collect)
+    compact_output_modes = {
+        "sha_only": "manifest_sha256",
+        "entries_only": "entries",
+        "entries_sha_only": "entries_sha256",
+        "artifacts_only": "artifacts_to_collect",
+        "artifacts_sha_only": "artifacts_to_collect_sha256",
+        "verification_status_only": "verification.status",
+        "verification_failures_only": "verification.verification_failures",
+    }
+
     return {
         "schema_version": 1,
         "status": remaining.get("status", "blocked"),
@@ -202,7 +234,10 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "remaining_blocker_kinds": list(remaining.get("remaining_blocker_kinds", [])),
         "blocked_gates": list(remaining.get("blocked_gates", [])),
         "entries": entries,
+        "entries_sha256": entries_sha256,
         "artifacts_to_collect": artifacts_to_collect,
+        "artifacts_to_collect_sha256": artifacts_to_collect_sha256,
+        "compact_output_modes": compact_output_modes,
         "artifact_count": len(artifacts_to_collect),
         "entry_count": len(entries),
         "all_entries_have_success_criteria": all(
@@ -278,7 +313,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             if verification["all_match"] is True
             else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
         )
-    payload = status_mod._stable_json_sha256(manifest) if args.sha_only else manifest
+    if args.entries_sha_only:
+        payload = manifest["entries_sha256"]
+    elif args.entries_only:
+        payload = manifest["entries"]
+    elif args.artifacts_sha_only:
+        payload = manifest["artifacts_to_collect_sha256"]
+    elif args.artifacts_only:
+        payload = manifest["artifacts_to_collect"]
+    else:
+        payload = status_mod._stable_json_sha256(manifest) if args.sha_only else manifest
     status_mod._emit_json(payload, pretty=args.pretty, output=args.output)
     return 0
 

@@ -57,6 +57,19 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     ]
     assert manifest["entry_count"] == 2
     assert manifest["artifact_count"] == 3
+    assert manifest["entries_sha256"] == _stable_json_sha256(manifest["entries"])
+    assert manifest["artifacts_to_collect_sha256"] == _stable_json_sha256(
+        manifest["artifacts_to_collect"]
+    )
+    assert manifest["compact_output_modes"] == {
+        "sha_only": "manifest_sha256",
+        "entries_only": "entries",
+        "entries_sha_only": "entries_sha256",
+        "artifacts_only": "artifacts_to_collect",
+        "artifacts_sha_only": "artifacts_to_collect_sha256",
+        "verification_status_only": "verification.status",
+        "verification_failures_only": "verification.verification_failures",
+    }
     assert manifest["all_entries_have_success_criteria"] is True
     assert manifest["all_entries_have_recommended_commands"] is True
     assert manifest["no_claim_policy"] == status["remaining_blockers_report"][
@@ -149,6 +162,113 @@ def test_stepfun_final_blocker_manifest_cli_outputs_payload_and_sha(
     assert captured.out == ""
     assert captured.err == ""
     assert json.loads(sha_output.read_text()) == _stable_json_sha256(expected)
+
+
+def test_stepfun_final_blocker_manifest_cli_compact_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt, oracle, docs, resource = _write_inputs(tmp_path)
+    entries_output = tmp_path / "final-blocker-entries.json"
+    entries_sha_output = tmp_path / "final-blocker-entries-sha.json"
+    artifacts_output = tmp_path / "final-blocker-artifacts.json"
+    artifacts_sha_output = tmp_path / "final-blocker-artifacts-sha.json"
+    expected = build_final_blocker_manifest(
+        build_status(prompt, oracle, docs, resource_artifact=resource)
+    )
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--entries-only",
+            "--output",
+            str(entries_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    entries_payload = json.loads(entries_output.read_text())
+    assert entries_payload == expected["entries"]
+    assert [entry["blocker_kind"] for entry in entries_payload] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--entries-sha-only",
+            "--output",
+            str(entries_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(entries_sha_output.read_text()) == expected["entries_sha256"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--artifacts-only",
+            "--output",
+            str(artifacts_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    artifacts_payload = json.loads(artifacts_output.read_text())
+    assert artifacts_payload == expected["artifacts_to_collect"]
+    assert [artifact["name"] for artifact in artifacts_payload] == [
+        "llama_cpp_oracle_success_artifact",
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--artifacts-sha-only",
+            "--output",
+            str(artifacts_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(artifacts_sha_output.read_text()) == expected[
+        "artifacts_to_collect_sha256"
+    ]
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_stepfun_final_blocker_manifest_cli_verifies_persisted_manifest(
