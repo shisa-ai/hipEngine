@@ -628,6 +628,15 @@ What is still not green:
   remaining grouped>=3 target stays in upstream/coupled context/O behavior before
   or around gate rather than the gate multiply itself
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-gate/summary.json`).
+  Forcing context+gate and O together to per-row is also not a safe retained fix:
+  it removes the rowchunk3 L6 generated-token failure, but rowchunk3 remains
+  hidden/stage-red with L5 layer4 QKV/Z drift and L8 layer7
+  `attn_input_pre_qkv`/`attn_context` failures, while the rowchunk2 control
+  becomes token-red at L8 and gains QKV/Z drift under the O-bearing suffix. The
+  combined suffix is eliminated as a fix; the useful signal is that the
+  rowchunk3 token failure can be moved by the O-bearing suffix, but not without
+  poisoning rowchunk2 or fixing the inherited hidden trajectory
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-context-gate-o/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
