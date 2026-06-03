@@ -379,6 +379,15 @@ What is still not green:
   `attn_context`. The context drift there is therefore inherited, not proof that
   the context kernel is the first faulty stage
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-full-attn-context-trace-rowchunk/summary.json`).
+  A fresh current-commit L40 trace over decode steps 0..11 reproduces derived
+  rows4/5/6 c3 full-native generated-token red prefixes `[11,60,117]`, while
+  rowchunk2 remains green at `[137,137,137]`. The earliest full-attention stage
+  drift is already decode step 0 / layer 7 / `attn_input_pre_qkv` / row 0, before
+  context/output/O-projection; the earliest traced drift overall is a hidden-only
+  linear-attention `attn_input`/conv mismatch at decode step 0 / layer 4, so the
+  generated-token blocker stays pinned to prompt/window-sensitive full-attention
+  grouping >=3 rather than late output copy
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-full-attn-trace0-12/summary.json`).
   A clean post-commit c2/c4/c8 matrix under current auto defaults passed
   generated-token equality at equal-prefix 137 for every row: c2 remains full
   native, while c4/c8 use native rowchunk2. This confirms the covered c>1
