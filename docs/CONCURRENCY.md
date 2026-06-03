@@ -448,6 +448,13 @@ What is still not green:
   c4/c8 equality or retained-dispatch evidence rather than another c2 mismatch
   hunt
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-equality-green/summary.json`).
+  The follow-up current c=2/c=4/c=8 equality matrix is green for every row at
+  prefix 137 with empty mismatch summaries, satisfying the correctness-extension
+  milestone after c2. It remains correctness-only: c4/c8 use rowchunked native
+  full-attention diagnostics, current decode metadata uses `selected_c1_batch`
+  MoE, projection dispatch falls back to row-GEMV without accepted c-aware
+  evidence, and profiler/scaling/baseline artifacts are not attached
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-current-equality/summary.json`).
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7
