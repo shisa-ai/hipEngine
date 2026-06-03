@@ -2424,10 +2424,25 @@ def test_qwen35_resident_run_layers_batch_decode_reports_selected_c1_with_per_ro
     assert session.last_batch_decode_execution["blockers"] == ["full-attention decode used a per-row fallback"]
 
 
-def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("row_chunk_env", "expected_source", "expected_blocker"),
+    [
+        ("2", "env", "full-attention decode forced to native row-chunk diagnostic path"),
+        (None, "auto", "full-attention decode auto-selected native row-chunk diagnostic path"),
+    ],
+)
+def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
+    monkeypatch,
+    row_chunk_env: str | None,
+    expected_source: str,
+    expected_blocker: str,
+) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE", "2")
+    if row_chunk_env is None:
+        monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE", row_chunk_env)
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
@@ -2536,11 +2551,11 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(mo
     ]
     assert session.last_batch_decode_execution["full_attention_decode_path"] == "native_batch_row_chunks"
     assert session.last_batch_decode_execution["full_attention_row_chunk_size"] == 2
+    assert session.last_batch_decode_execution["full_attention_row_chunk_source"] == expected_source
     assert not session.last_batch_decode_execution["native_caware_decode"]
-    assert session.last_batch_decode_execution["blockers"] == [
-        "full-attention decode forced to native row-chunk diagnostic path"
-    ]
+    assert session.last_batch_decode_execution["blockers"] == [expected_blocker]
     assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_size"] == 2
+    assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_source"] == expected_source
 
 
 def test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallback(monkeypatch) -> None:

@@ -4106,13 +4106,23 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_moe = (not dense_mlp) and rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"
         )
+        full_attention_row_chunk_env = "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"
         full_attention_row_chunk_size = _env_int(
-            "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE",
+            full_attention_row_chunk_env,
             0,
         )
         if full_attention_row_chunk_size < 0:
             raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE must be non-negative")
+        full_attention_row_chunk_env_value = os.environ.get(full_attention_row_chunk_env)
+        auto_full_attention_row_chunks = (
+            rows in {3, 4, 8}
+            and full_attention_row_chunk_size == 0
+            and (full_attention_row_chunk_env_value is None or full_attention_row_chunk_env_value.strip() == "")
+        )
+        if auto_full_attention_row_chunks:
+            full_attention_row_chunk_size = 2
         force_full_attention_row_chunks = rows > 1 and 0 < full_attention_row_chunk_size < rows
+        full_attention_row_chunk_source = "auto" if auto_full_attention_row_chunks else "env"
         full_attention_input_decode_path = (
             "per_row_rmsnorm_fallback" if force_per_row_full_attention_input else "native_batch"
         )
@@ -4760,6 +4770,7 @@ class Qwen35ParoResidentSession:
                             layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
                         if force_full_attention_row_chunks:
                             layer_execution["full_attention_row_chunk_size"] = int(full_attention_row_chunk_size)
+                            layer_execution["full_attention_row_chunk_source"] = full_attention_row_chunk_source
                         if force_per_row_full_attention_input:
                             layer_execution["full_attention_input_decode_path"] = full_attention_input_decode_path
                         if force_per_row_full_attention_qkv:
@@ -4912,7 +4923,10 @@ class Qwen35ParoResidentSession:
             if force_per_row_full_attention_moe:
                 decode_blockers.append("full-attention MoE forced to per-row selected-c1 diagnostic path")
             if force_full_attention_row_chunks:
-                decode_blockers.append("full-attention decode forced to native row-chunk diagnostic path")
+                if auto_full_attention_row_chunks:
+                    decode_blockers.append("full-attention decode auto-selected native row-chunk diagnostic path")
+                else:
+                    decode_blockers.append("full-attention decode forced to native row-chunk diagnostic path")
             if force_per_row_full_attention_qkv:
                 decode_blockers.append("full-attention QKV prep forced to per-row scratch diagnostic path")
             if force_per_row_full_attention_scratch:
@@ -5007,6 +5021,7 @@ class Qwen35ParoResidentSession:
             }
             if force_full_attention_row_chunks:
                 self.last_batch_decode_execution["full_attention_row_chunk_size"] = int(full_attention_row_chunk_size)
+                self.last_batch_decode_execution["full_attention_row_chunk_source"] = full_attention_row_chunk_source
             if force_per_row_full_attention_gate:
                 self.last_batch_decode_execution["full_attention_gate_decode_path"] = full_attention_gate_decode_path
             return hidden
