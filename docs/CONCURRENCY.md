@@ -386,6 +386,12 @@ What is still not green:
   rowchunk2 reports `native_caware_decode=false` and projection evidence is
   still missing
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-clean-c2-c4-c8-auto-matrix/summary.json`).
+  A fresh post-change c8 profiler smoke confirms the current auto rowchunk2 path
+  still launches native batch full-attention context kernels (16,320 calls,
+  1.865 s aggregate) and zero per-row full-attention context kernels; batched
+  sampler argmax kernels are present and generated-token equality remains green.
+  This is runtime evidence only, not a retained throughput claim
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-auto-rowchunk2-final-profiler/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
