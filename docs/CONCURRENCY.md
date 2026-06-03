@@ -601,6 +601,17 @@ What is still not green:
   bad trajectory is already in the layer3 full-attention output values that feed
   the next linear layer
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-handoff/summary.json`).
+  A producer split then tested whether the layer3 producer can be repaired by a
+  single per-row subpath. Per-row context-only replay is not the rowchunk3 fix:
+  rowchunk2 stays generated-token green with no full-attention stage failures,
+  but rowchunk3 keeps the L5 layer4 QKV/Z drift, L6 truncated-token failure, and
+  L8 layer7 `attn_input_pre_qkv`/`attn_context` failures. Forcing only the
+  full-attention O projection to per-row is also not a safe fix: rowchunk3 loses
+  the L6 token failure but remains hidden/stage-red, and the rowchunk2 control
+  becomes token-red at L8. The remaining target is the coupled context/gate/O/MoE
+  layer3 producer path rather than batch-GEMV O alone or native batch context
+  arithmetic alone
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-producer-split/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
