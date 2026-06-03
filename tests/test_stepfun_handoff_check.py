@@ -60,6 +60,9 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["e2e_readiness_gate_summary_sha256"] == _stable_json_sha256(
         report["e2e_readiness_gate_summary"]
     )
+    assert report["blocker_status_sha256"] == _stable_json_sha256(
+        report["blocker_status"]
+    )
     assert report["readiness_summary"]["status"] == "blocked"
     assert report["readiness_summary"]["oracle_parity"] is False
     assert report["readiness_summary"]["kv_backed_decode_ready"] is False
@@ -112,6 +115,7 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "e2e_readiness_gate_summary_sha256": report[
             "e2e_readiness_gate_summary_sha256"
         ],
+        "blocker_status_sha256": report["blocker_status_sha256"],
         "action_summary_sha256": report["action_summary_sha256"],
         "exit_code_policy_sha256": report["exit_code_policy_sha256"],
         "verification_failures_sha256": report["verification_failures_sha256"],
@@ -184,6 +188,42 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "kv_backed_decode"
     )
     assert e2e_gate_summary["no_claim_policy"]["performance_claim_allowed"] is False
+    assert report["blocker_status"] == {
+        "schema_version": 1,
+        "status": "blocked_verified",
+        "verified": True,
+        "ready": False,
+        "blocked_verified": True,
+        "expected_blocked_state": True,
+        "mismatch": False,
+        "remaining_blocker_count": 2,
+        "remaining_blocker_kinds": [
+            "oracle_parity_blocked",
+            "kv_backed_decode_not_wired",
+        ],
+        "blocked_gates": [
+            "oracle_parity",
+            "kv_backed_decode",
+            "e2e_inference",
+        ],
+        "open_or_partial_items_p0_p12": 2,
+        "e2e_inference_ready": False,
+        "e2e_inference_claim_allowed": False,
+        "first_missing_evidence_by_gate": [
+            {
+                "readiness_gate": "oracle_parity",
+                "first_missing_evidence": "oracle_completed_successfully",
+            },
+            {
+                "readiness_gate": "kv_backed_decode",
+                "first_missing_evidence": "streaming_runner_ready_flags",
+            },
+        ],
+        "verification_failure_count": 0,
+        "exit_code_without_fail_on_blocked": 0,
+        "exit_code_with_fail_on_blocked": 2,
+        "fail_on_blocked_option": "--fail-on-blocked",
+    }
     assert report["action_summary"]["recommended_commands"][0][
         "recommended_command_kind"
     ] == "oracle_helper_long_timeout_command"
@@ -273,6 +313,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     readiness_summary_sha_output = tmp_path / "handoff-readiness-summary-sha.json"
     e2e_gate_summary_output = tmp_path / "handoff-e2e-readiness-gate-summary.json"
     e2e_gate_summary_sha_output = tmp_path / "handoff-e2e-readiness-gate-summary-sha.json"
+    blocker_status_output = tmp_path / "handoff-blocker-status.json"
+    blocker_status_sha_output = tmp_path / "handoff-blocker-status-sha.json"
     final_blocker_summary_output = tmp_path / "handoff-final-blocker-summary.json"
     final_blocker_summary_sha_output = tmp_path / "handoff-final-blocker-summary-sha.json"
     action_summary_output = tmp_path / "handoff-action-summary.json"
@@ -606,6 +648,59 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert rc == 0
     assert json.loads(e2e_gate_summary_sha_output.read_text()) == expected[
         "e2e_readiness_gate_summary_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--blocker-status-only",
+            "--output",
+            str(blocker_status_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    blocker_status_payload = json.loads(blocker_status_output.read_text())
+    assert blocker_status_payload == expected["blocker_status"]
+    assert blocker_status_payload["expected_blocked_state"] is True
+    assert blocker_status_payload["mismatch"] is False
+    assert blocker_status_payload["exit_code_without_fail_on_blocked"] == 0
+    assert blocker_status_payload["exit_code_with_fail_on_blocked"] == 2
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--blocker-status-sha-only",
+            "--output",
+            str(blocker_status_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(blocker_status_sha_output.read_text()) == expected[
+        "blocker_status_sha256"
     ]
 
     rc = main(

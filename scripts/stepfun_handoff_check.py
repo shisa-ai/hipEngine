@@ -173,6 +173,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of e2e readiness-gate state.",
     )
     parser.add_argument(
+        "--blocker-status-only",
+        action="store_true",
+        help="Emit only blocked-vs-mismatch status for e2e handoff routing.",
+    )
+    parser.add_argument(
+        "--blocker-status-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of blocker status.",
+    )
+    parser.add_argument(
         "--final-blocker-summary-only",
         action="store_true",
         help="Emit only remaining blocker kinds/gates/no-claim policy summary.",
@@ -360,6 +370,36 @@ def build_handoff_check(
         "no_claim_policy": no_claim_policy,
         "no_claim_policy_sha256": current_manifest.get("no_claim_policy_sha256"),
     }
+    blocker_status = {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "status": status,
+        "verified": verified,
+        "ready": ready,
+        "blocked_verified": blocked_verified,
+        "expected_blocked_state": blocked_verified,
+        "mismatch": not verified,
+        "remaining_blocker_count": remaining_blocker_count,
+        "remaining_blocker_kinds": remaining_blocker_kinds,
+        "blocked_gates": blocked_gates,
+        "open_or_partial_items_p0_p12": current_manifest.get(
+            "open_or_partial_items_p0_p12"
+        ),
+        "e2e_inference_ready": e2e_readiness_gate_summary[
+            "e2e_inference_ready"
+        ],
+        "e2e_inference_claim_allowed": e2e_readiness_gate_summary[
+            "e2e_inference_claim_allowed"
+        ],
+        "first_missing_evidence_by_gate": [
+            {
+                "readiness_gate": gate["readiness_gate"],
+                "first_missing_evidence": gate["first_missing_evidence"],
+            }
+            for gate in e2e_readiness_gate_summary["gate_status"]
+            if gate["first_missing_evidence"] is not None
+        ],
+        "verification_failure_count": len(failures),
+    }
     action_summary = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "status": status,
@@ -398,6 +438,15 @@ def build_handoff_check(
         "ready_status": ready,
         "fail_on_blocked_option": "--fail-on-blocked",
     }
+    blocker_status["exit_code_without_fail_on_blocked"] = exit_code_policy[
+        "current_without_fail_on_blocked"
+    ]
+    blocker_status["exit_code_with_fail_on_blocked"] = exit_code_policy[
+        "current_with_fail_on_blocked"
+    ]
+    blocker_status["fail_on_blocked_option"] = exit_code_policy[
+        "fail_on_blocked_option"
+    ]
     summary = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "status": status,
@@ -432,6 +481,7 @@ def build_handoff_check(
         "e2e_readiness_gate_summary_sha256": status_mod._stable_json_sha256(
             e2e_readiness_gate_summary
         ),
+        "blocker_status_sha256": status_mod._stable_json_sha256(blocker_status),
         "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
         "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
@@ -458,6 +508,8 @@ def build_handoff_check(
         "e2e_readiness_gate_summary_sha256": status_mod._stable_json_sha256(
             e2e_readiness_gate_summary
         ),
+        "blocker_status": blocker_status,
+        "blocker_status_sha256": status_mod._stable_json_sha256(blocker_status),
         "action_summary": action_summary,
         "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
         "exit_code_policy": exit_code_policy,
@@ -558,6 +610,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["e2e_readiness_gate_summary_sha256"]
     elif args.e2e_readiness_gate_summary_only:
         payload = report["e2e_readiness_gate_summary"]
+    elif args.blocker_status_sha_only:
+        payload = report["blocker_status_sha256"]
+    elif args.blocker_status_only:
+        payload = report["blocker_status"]
     elif args.final_blocker_summary_sha_only:
         payload = report["final_blocker_manifest_summary_sha256"]
     elif args.final_blocker_summary_only:
