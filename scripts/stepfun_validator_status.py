@@ -93,6 +93,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of failed/missing validator records.",
     )
     parser.add_argument(
+        "--next-blocker-only",
+        action="store_true",
+        help="Emit only the first failed or missing validator record, or null.",
+    )
+    parser.add_argument(
+        "--next-blocker-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the first failed/missing validator record.",
+    )
+    parser.add_argument(
         "--sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the full report or compact summary.",
@@ -243,6 +253,7 @@ def build_validator_status_report(
     blocked_results = [
         record for record in results if record.get("status") in {"missing", "failed"}
     ]
+    next_blocker = blocked_results[0] if blocked_results else None
     passed = sum(1 for record in results if record.get("status") == "passed")
     missing = sum(1 for record in results if record.get("status") == "missing")
     failed = sum(1 for record in results if record.get("status") == "failed")
@@ -265,6 +276,16 @@ def build_validator_status_report(
         "blocked_validator_results_sha256": status_mod._stable_json_sha256(
             blocked_results
         ),
+        "next_blocker_artifact_name": next_blocker.get("artifact_name")
+        if isinstance(next_blocker, dict)
+        else None,
+        "next_blocker_status": next_blocker.get("status")
+        if isinstance(next_blocker, dict)
+        else None,
+        "next_blocker_reason": next_blocker.get("reason")
+        if isinstance(next_blocker, dict)
+        else None,
+        "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
         "manifest_sha256": status_mod._stable_json_sha256(manifest),
         "no_claim_policy": {
             "validator_artifacts_passed": ready,
@@ -289,6 +310,8 @@ def build_validator_status_report(
         "blocked_validator_results_sha256": status_mod._stable_json_sha256(
             blocked_results
         ),
+        "next_blocker": next_blocker,
+        "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
         "readiness_impact": {
             "validator_artifacts_passed": ready,
             "oracle_parity": False,
@@ -320,6 +343,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.status_only:
         payload: object = report["status"]
+    elif args.next_blocker_sha_only:
+        payload = report["next_blocker_sha256"]
+    elif args.next_blocker_only:
+        payload = report["next_blocker"]
     elif args.blocked_sha_only:
         payload = report["blocked_validator_results_sha256"]
     elif args.blocked_only:

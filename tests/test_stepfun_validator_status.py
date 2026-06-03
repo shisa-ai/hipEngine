@@ -182,7 +182,12 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["blocked_validator_results_sha256"] == report[
         "blocked_validator_results_sha256"
     ]
+    assert summary["next_blocker_artifact_name"] is None
+    assert summary["next_blocker_status"] is None
+    assert summary["next_blocker_reason"] is None
+    assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
+    assert report["next_blocker"] is None
     assert summary["no_claim_policy"]["validator_artifacts_passed"] is True
     assert summary["no_claim_policy"]["e2e_inference_claim_allowed"] is False
     assert [record["status"] for record in report["validator_results"]] == [
@@ -241,6 +246,11 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     }
     assert results["kv_kernel_trace_artifact"] == expected_missing_trace
     assert report["blocked_validator_results"] == [expected_missing_trace]
+    assert report["next_blocker"] == expected_missing_trace
+    assert summary["next_blocker_artifact_name"] == "kv_kernel_trace_artifact"
+    assert summary["next_blocker_status"] == "missing"
+    assert summary["next_blocker_reason"] == "artifact_file_missing"
+    assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert summary["blocked_validator_results_sha256"] == report[
         "blocked_validator_results_sha256"
     ]
@@ -258,6 +268,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     results_sha_output = tmp_path / "results-sha.json"
     blocked_output = tmp_path / "blocked.json"
     blocked_sha_output = tmp_path / "blocked-sha.json"
+    next_blocker_output = tmp_path / "next-blocker.json"
+    next_blocker_sha_output = tmp_path / "next-blocker-sha.json"
     sha_output = tmp_path / "sha.json"
     status_output = tmp_path / "status.json"
     _write_prompt(prompt)
@@ -379,6 +391,43 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert len(json.loads(blocked_sha_output.read_text())) == 64
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-blocker-only",
+            "--output",
+            str(next_blocker_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    next_blocker_payload = json.loads(next_blocker_output.read_text())
+    assert next_blocker_payload["artifact_name"] == "kv_kernel_trace_artifact"
+    assert next_blocker_payload["status"] == "missing"
+    assert next_blocker_payload["reason"] == "artifact_file_missing"
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-blocker-sha-only",
+            "--output",
+            str(next_blocker_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(next_blocker_sha_output.read_text())) == 64
 
     rc = main(
         [
