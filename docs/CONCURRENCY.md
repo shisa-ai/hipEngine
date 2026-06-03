@@ -436,7 +436,10 @@ What is still not green:
   repeat after the c3..c8/c9 diagnostic work ran five consecutive repeats plus
   the final active verify green at `[137,137]`, again increasing confidence
   without converting it into a retained throughput claim
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-current217/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-current217/summary.json`). A later active verify during the rowchunk2 MoE-boundary sweep
+  flaked red again at `[103,137]` before the immediate final verify returned
+  `[137,137]`, so the intermittent c2 flake risk remains open
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
@@ -609,7 +612,11 @@ What is still not green:
   MoE + rowchunk2 diagnostic also leaves the required c4/c8 gates green
   (`[137]*4`, `[137]*8`) while active c2 remains `[137,137]`, making it a
   correctness-only cross-row-count control rather than a retained/default
-  promotion (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-selectedc1-moe-rowchunk2-control/summary.json`).
+  promotion (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-selectedc1-moe-rowchunk2-control/summary.json`). A rowchunk2 MoE boundary sweep confirms
+  grouped-compact MoE is green for c5/c6/c7/c8 and first fails at the derived c9
+  row count; selected-c1 MoE restores c9 equality, so the post-c8 boundary is a
+  grouped-compact MoE row-count issue layered on top of the rowchunk2 diagnostic
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output

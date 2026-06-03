@@ -1,0 +1,27 @@
+{
+  "batch_blockers": [
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch",
+  "generated_token_equality_passed": true,
+  "log_path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_summaries": [],
+  "moe_decode_path": "selected_c1_batch",
+  "name": "active-final-green",
+  "native_caware_decode": true,
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "e3fb4c7b008f6dd452b0b224535455bce9cd8c1db31b24c468df80a0154e26ce",
+  "raw_size_bytes": 138684,
+  "raw_source_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+  "status": "blocked"
+}

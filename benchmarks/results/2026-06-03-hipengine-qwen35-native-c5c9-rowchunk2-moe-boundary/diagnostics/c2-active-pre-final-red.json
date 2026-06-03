@@ -1,0 +1,74 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "native c>N decode is experimental and blocked until generated-token equality passes",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    103,
+    null
+  ],
+  "full_attention_decode_path": "native_batch",
+  "generated_token_equality_passed": false,
+  "log_path": "/tmp/hipengine-iter219-c2-active-pre-final-red.log",
+  "min_equal_prefix_tokens": 103,
+  "mismatch_summaries": [
+    {
+      "batch_matches_c1_rows": [],
+      "batch_matches_other_batch_rows": [],
+      "batch_prefixes_by_c1_row": [
+        {
+          "equal_prefix_tokens": 103,
+          "row": 0
+        },
+        {
+          "equal_prefix_tokens": 23,
+          "row": 1
+        }
+      ],
+      "batch_token_at_mismatch": 6007,
+      "batch_window": [
+        1149,
+        198,
+        256,
+        471,
+        561,
+        6007,
+        1622,
+        369,
+        310,
+        6707,
+        328
+      ],
+      "c1_token_at_mismatch": 1483,
+      "c1_window": [
+        1149,
+        198,
+        256,
+        471,
+        561,
+        1483,
+        2713,
+        74988,
+        15,
+        25,
+        16
+      ],
+      "first_mismatch_index": 103,
+      "row": 0
+    }
+  ],
+  "moe_decode_path": "selected_c1_batch",
+  "name": "active-pre-final-red",
+  "native_caware_decode": true,
+  "prefix_lengths": [
+    103,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "8a8171305df5a98357ab32dfaec1f7d1b260e8d21f7ccd19019d9618c25522db",
+  "raw_size_bytes": 145025,
+  "raw_source_path": "/tmp/hipengine-iter219-c2-active-pre-final-red.json",
+  "status": "rejected_correctness"
+}

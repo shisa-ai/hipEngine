@@ -65785,3 +65785,9 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Ran selected-c1 MoE + rowchunk2 controls for c4/c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX and captured the active c2 verify. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-selectedc1-moe-rowchunk2-control/summary.json`.
 - Results: active c2 `[137,137]`, c4 selected-c1 MoE rowchunk2 `[137,137,137,137]`, and c8 selected-c1 MoE rowchunk2 `[137,137,137,137,137,137,137,137]`, all with expected rowchunk tail-GEMV metadata for c4/c8.
 - Combined with the prior c9 frontier, selected-c1 MoE + rowchunk2 is a green cross-row-count diagnostic control for c4/c8/c9. No retained/default promotion: grouped-compact MoE and full-native/no-rowchunk remain the retained targets.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter219 rowchunk2 MoE boundary
+- Swept c5..c9 with explicit full-attention rowchunk2 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX to isolate the grouped-compact MoE boundary. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`.
+- Grouped-compact MoE + rowchunk2 is green for c5 `[137]*5`, c6 `[137]*6`, c7 `[137]*7`, and c8 `[137]*8`, but red at the derived c9 fixture (`[137,137,137,118,137,31,81,137,137]`).
+- Replacing only MoE with `selected_c1` restores c9 rowchunk2 equality (`[137]*9`). No default extension or throughput claim: the post-c8 boundary is grouped-compact MoE row-count behavior layered on the rowchunk2 full-attention diagnostic.
+- During final verification, one active c2 verify flaked red at `[103,137]` on row0 before the immediate final active verify returned `[137,137]`; recorded in the same artifact so the intermittent c2 flake risk remains open despite the final metric being green.
