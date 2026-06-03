@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-mismatch-summary-matrix/summary.json",
+  "created_at": "2026-06-03T07:11:31.640475Z",
+  "status": "c2_c4_c8_generated_equality_green_current_schema",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Current diagnostic-schema generated-token equality matrix for native Qwen/PARO c=2/c=4/c=8 512/128 on HIP_VISIBLE_DEVICES=1. All three rows passed equality vs independent c=1 with prefix 137 for every row and empty mismatch_summaries. c2 uses native_batch/full native c-aware decode; c4 and c8 use native row-chunked full attention with row_chunk=2, so this is correctness evidence only and remains non-retained/non-scaling.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "5a954906a815f238cd5b2e551c66481b49b72217",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "concurrency": [
+      2,
+      4,
+      8
+    ],
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "kv_storage_dtype": "bf16",
+    "path_mode": "current defaults / c2 native full, c4-c8 rowchunk2 full attention"
+  },
+  "rows": [
+    {
+      "concurrency": 2,
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-512-128-schema-matrix-iter141.json",
+      "tmp_artifact_sha256": "649cab976db896b3a1ec222098b1c4508e251bd64f168a5af2fc92c826c84703",
+      "tmp_artifact_size_bytes": 139393,
+      "tmp_log": "/tmp/hipengine-e2e-native-c2-512-128-schema-matrix-iter141.log",
+      "tmp_log_sha256": "649cab976db896b3a1ec222098b1c4508e251bd64f168a5af2fc92c826c84703",
+      "tmp_log_size_bytes": 139393,
+      "software_commit": "5a954906a815f238cd5b2e551c66481b49b72217",
+      "software_dirty": false,
+      "status": "blocked",
+      "generated_token_equality_passed": true,
+      "prefixes": [
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "mismatch_summaries": [],
+      "decode_tok_s_aggregate": 126.19876173050652,
+      "decode_paths": {
+        "native_caware_decode": true,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch"
+      },
+      "native_full_attention_layers": 10,
+      "moe_grouped_compact_layers": 0,
+      "blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "retained_claim_blockers": null
+    },
+    {
+      "concurrency": 4,
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c4-512-128-schema-matrix-iter141.json",
+      "tmp_artifact_sha256": "2c41c216ce8f9308676325885293f72a6d184512d309502c34d40c70cf8ee249",
+      "tmp_artifact_size_bytes": 237137,
+      "tmp_log": "/tmp/hipengine-e2e-native-c4-512-128-schema-matrix-iter141.log",
+      "tmp_log_sha256": "2c41c216ce8f9308676325885293f72a6d184512d309502c34d40c70cf8ee249",
+      "tmp_log_size_bytes": 237137,
+      "software_commit": "5a954906a815f238cd5b2e551c66481b49b72217",
+      "software_dirty": false,
+      "status": "blocked",
+      "generated_token_equality_passed": true,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch_summaries": [],
+      "decode_tok_s_aggregate": 158.4067187382658,
+      "decode_paths": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch"
+      },
+      "native_full_attention_layers": 10,
+      "moe_grouped_compact_layers": 0,
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "retained_claim_blockers": null
+    },
+    {
+      "concurrency": 8,
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c8-512-128-schema-matrix-iter141.json",
+      "tmp_artifact_sha256": "c1dfdf41c3170334b9ffe1b420f2c72e8018d47ebe52bfe453a8899bacebb964",
+      "tmp_artifact_size_bytes": 413444,
+      "tmp_log": "/tmp/hipengine-e2e-native-c8-512-128-schema-matrix-iter141.log",
+      "tmp_log_sha256": "c1dfdf41c3170334b9ffe1b420f2c72e8018d47ebe52bfe453a8899bacebb964",
+      "tmp_log_size_bytes": 413444,
+      "software_commit": "5a954906a815f238cd5b2e551c66481b49b72217",
+      "software_dirty": false,
+      "status": "blocked",
+      "generated_token_equality_passed": true,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch_summaries": [],
+      "decode_tok_s_aggregate": 183.2515371762839,
+      "decode_paths": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch"
+      },
+      "native_full_attention_layers": 10,
+      "moe_grouped_compact_layers": 0,
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "retained_claim_blockers": null
+    }
+  ],
+  "measurements": {
+    "native_c2_512x128_min_equal_prefix_tokens": [
+      137
+    ],
+    "native_c4_512x128_min_equal_prefix_tokens": [
+      137
+    ],
+    "native_c8_512x128_min_equal_prefix_tokens": [
+      137
+    ],
+    "all_min_equal_prefix_tokens": [
+      137,
+      137,
+      137
+    ],
+    "decode_tok_s_aggregate": {
+      "2": 126.19876173050652,
+      "4": 158.4067187382658,
+      "8": 183.2515371762839
+    }
+  },
+  "verdicts": {
+    "c2_generated_token_equality_green": true,
+    "c4_generated_token_equality_green": true,
+    "c8_generated_token_equality_green": true,
+    "mismatch_summaries_present": true,
+    "mismatch_summaries_empty": true,
+    "c2_full_native_caware": true,
+    "c4_c8_rowchunk2_correctness_only": true,
+    "retained_ready": false
+  },
+  "commands": {
+    "matrix": "for c in 2 4 8: HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size $c --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c${c}-512-128-schema-matrix-iter141.json"
+  },
+  "prior_related_artifacts": [
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-mismatch-summary-green16/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-flake/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-profiler/summary.json"
+  ],
+  "retained_claim_blockers": [
+    "c2 had prior intermittent generated-token flakes despite the current c2/c4/c8 matrix being green",
+    "c4 and c8 use full-attention row chunks (native_batch_row_chunks row_chunk=2) and record native_caware_decode=false, so they are correctness evidence only",
+    "no c>N retained throughput/scaling claim is made until stable c2/c4/c8 equality, primitive GPU correctness, profiler evidence, c1/serial baselines, and docs/BENCHMARK.md gates all pass"
+  ]
+}
