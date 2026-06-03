@@ -506,10 +506,16 @@ What is still not green:
   `[137,137,137,137,137,137,137,137]`), reports
   `moe_decode_path=grouped_compact`, `moe_grouped_compact_layers=40`,
   `moe_selected_c1_fallback_layers=0`, and keeps projection blockers empty. This
-  removes the selected-c1 MoE metadata blocker for correctness evidence, but is
-  still not a throughput claim because profiler evidence is not captured for the
-  grouped path, c4/c8 stay rowchunked, and c8 repeatability remains open
+  removes the selected-c1 MoE metadata blocker for correctness evidence
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/summary.json`).
+  The fully native-caware c2 grouped/projection path now also has a captured
+  `rocprofv3 --kernel-trace` retained-bench rerun: equality remains `[137,137]`,
+  primitive correctness is loaded/passed, grouped MoE and projection blockers are
+  absent, and profiler provenance / kernel-duration blockers are absent. This is
+  still not a throughput claim because aggregate-vs-c1 scaling is below the
+  retained threshold; c4/c8 grouped profiler evidence is still absent, c4/c8 stay
+  rowchunked, and c8 repeatability remains open
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-grouped-projection-profile/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
