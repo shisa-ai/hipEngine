@@ -573,6 +573,17 @@ What is still not green:
   `attn_input_pre_qkv` for rows0..2. Rowchunk2 has no corresponding stage
   failures
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-layer-transition/summary.json`).
+  Adding the intermediate layer limits changes the c4 diagnosis again: rowchunk2
+  remains generated-token green and has no full-attention stage failures through
+  L4-L8, but its final hidden oracle is over tolerance at L5/L7 and recovers at
+  L6/L8. Rowchunk3 inherits the L5 hidden drift, becomes token-red under the
+  layer-limit-6 truncated oracle (row1 first mismatch at generated index 4), has
+  rowchunk3-specific layer4 QKV/Z linear projection drift for rows0..2, and still
+  first fails the L8 full-attention trace at layer7 `attn_input_pre_qkv`. This
+  makes the grouped>=3 issue observable before the second full-attention layer in
+  layer-limited trajectories while rowchunk2 remains the generated-token-green
+  control
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-linear-bridge/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
