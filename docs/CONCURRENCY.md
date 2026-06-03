@@ -372,6 +372,13 @@ What is still not green:
   default only: rowchunk2 still marks `native_caware_decode=false`, and full
   native grouping >=3 remains the retained blocker
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-auto-rowchunk2-c3-c4/summary.json`).
+  Hidden-bisect now supports rowchunk trace diagnostics. For derived rows4..6
+  c3, L4 raw `attn_context` parity is green for full native, rowchunk2, and
+  per-row controls; in the L40 trace window around generated index 11, the first
+  native full-attention failure is already `attn_input_pre_qkv` before
+  `attn_context`. The context drift there is therefore inherited, not proof that
+  the context kernel is the first faulty stage
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-full-attn-context-trace-rowchunk/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

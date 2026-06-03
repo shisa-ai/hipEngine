@@ -5730,6 +5730,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Full-attention decode path for c>N batch decode; native_batch is the correctness-first default when paired with per-row output/MoE/post-attention diagnostics, while per_row remains the broad full-attention fallback.",
     )
     parser.add_argument(
+        "--batch-decode-full-attn-row-chunk-size",
+        type=int,
+        default=0,
+        help="Diagnostic native full-attention row chunk size for hidden-bisect probes; positive values below batch size keep native kernels but split grouped full-attention rows and block native-caware claims.",
+    )
+    parser.add_argument(
         "--batch-decode-attn-input-path",
         choices=("batch", "per_row"),
         default="batch",
@@ -5843,6 +5849,14 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         if args.max_sequence_length < max(prompt_lengths) + total_decode_tokens + 1:
             raise ValueError("max_sequence_length must cover prompt_length + warmup_decode_tokens + decode_tokens + 1")
     resolved_linear_projection_path = _resolved_batch_decode_linear_projection_path(args)
+    full_attention_row_chunk_size = int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0)
+    if full_attention_row_chunk_size < 0:
+        raise ValueError("batch-decode-full-attn-row-chunk-size must be non-negative")
+    force_full_attention_row_chunks = (
+        args.batch_decode_full_attn_path == "native_batch"
+        and args.batch_size > 1
+        and 0 < full_attention_row_chunk_size < args.batch_size
+    )
     payload: dict[str, Any] = {
         "schema": 1,
         "status": "planned" if args.dry_run else "running",
@@ -5881,6 +5895,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_linear_moe_path": str(args.batch_decode_linear_moe_path),
             "batch_decode_linear_output_path": str(args.batch_decode_linear_output_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
+            "batch_decode_full_attention_row_chunk_size": full_attention_row_chunk_size,
             "batch_decode_attention_input_path": str(args.batch_decode_attn_input_path),
             "batch_decode_attention_qkv_path": str(args.batch_decode_attn_qkv_path),
             "batch_decode_attention_scratch_path": str(args.batch_decode_attn_scratch_path),
@@ -5902,6 +5917,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_linear_moe_path == "grouped_compact"
                 and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
                 and args.batch_decode_full_attn_path == "native_batch"
+                and not force_full_attention_row_chunks
                 and args.batch_decode_attn_input_path == "batch"
                 and args.batch_decode_attn_qkv_path == "batch"
                 and args.batch_decode_attn_scratch_path == "batch"
@@ -5918,7 +5934,11 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "full_attention_decode_path": (
                 "per_row_context_fallback"
                 if args.batch_decode_full_attn_path == "per_row" and args.prompt_length + args.decode_tokens < 1024
-                else "batch_context" if args.prompt_length + args.decode_tokens < 1024 else "per_row_splitk_fallback"
+                else "native_batch_row_chunks"
+                if force_full_attention_row_chunks and args.prompt_length + args.decode_tokens < 1024
+                else "batch_context"
+                if args.prompt_length + args.decode_tokens < 1024
+                else "per_row_splitk_fallback"
             ),
         },
         "correctness": {
@@ -5997,6 +6017,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
         "0" if args.batch_decode_full_attn_path == "per_row" else "1"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(full_attention_row_chunk_size)
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if args.batch_decode_attn_input_path == "per_row" else "0"
     )

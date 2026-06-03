@@ -4505,6 +4505,19 @@ class Qwen35ParoResidentSession:
                                     library=self.libraries,
                                     stream=stream,
                                 )
+                                self._trace_decode_full_attention_scratch(
+                                    layer_id=layer_id,
+                                    attention_scratch=chunk_attention_scratch,
+                                    rows=chunk_rows,
+                                    context=getattr(chunk_attention_scratch, "query_raw", None),
+                                    stream=stream,
+                                )
+                                self._trace_decode_full_attention_moe_scratch(
+                                    layer_id=layer_id,
+                                    moe_scratch=chunk_moe_scratch,
+                                    rows=chunk_rows,
+                                    stream=stream,
+                                )
                                 self.runtime.memcpy_async(
                                     next_hidden.ptr + chunk_start * self.hidden_nbytes,
                                     chunk_out.ptr,
@@ -4630,19 +4643,20 @@ class Qwen35ParoResidentSession:
                             if force_per_row_full_attention_persistent_scratch
                             else min(int(full_attention_row_chunk_size), rows) if force_full_attention_row_chunks else rows
                         )
-                        self._trace_decode_full_attention_scratch(
-                            layer_id=layer_id,
-                            attention_scratch=attention_scratch,
-                            rows=trace_rows,
-                            context=getattr(attention_scratch, "query_raw", None),
-                            stream=stream,
-                        )
-                        self._trace_decode_full_attention_moe_scratch(
-                            layer_id=layer_id,
-                            moe_scratch=moe_scratch,
-                            rows=trace_rows,
-                            stream=stream,
-                        )
+                        if not force_full_attention_row_chunks:
+                            self._trace_decode_full_attention_scratch(
+                                layer_id=layer_id,
+                                attention_scratch=attention_scratch,
+                                rows=trace_rows,
+                                context=getattr(attention_scratch, "query_raw", None),
+                                stream=stream,
+                            )
+                            self._trace_decode_full_attention_moe_scratch(
+                                layer_id=layer_id,
+                                moe_scratch=moe_scratch,
+                                rows=trace_rows,
+                                stream=stream,
+                            )
                         self._trace_decode_full_attention(
                             layer_id=layer_id,
                             stage="output",

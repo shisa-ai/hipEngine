@@ -12501,6 +12501,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_linear_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_output_path"] == "batch_gemv"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
+    assert payload["workload"]["batch_decode_full_attention_row_chunk_size"] == 0
     assert payload["workload"]["batch_decode_attention_input_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_qkv_path"] == "batch"
     assert payload["workload"]["batch_decode_attention_scratch_path"] == "batch"
@@ -12536,6 +12537,31 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     )
     c8_auto_projection_payload = run_hidden_bisect(c8_auto_projection, ["--dry-run", "--batch-size", "8"])
     assert c8_auto_projection_payload["workload"]["batch_decode_linear_projection_path"] == "batch"
+
+    c3_rowchunk_probe = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "3",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+            "--batch-decode-full-attn-row-chunk-size",
+            "2",
+        ]
+    )
+    c3_rowchunk_payload = run_hidden_bisect(
+        c3_rowchunk_probe,
+        ["--dry-run", "--batch-decode-full-attn-row-chunk-size", "2"],
+    )
+    assert c3_rowchunk_payload["workload"]["batch_decode_full_attention_row_chunk_size"] == 2
+    assert c3_rowchunk_payload["workload"]["full_attention_decode_path"] == "native_batch_row_chunks"
+    assert c3_rowchunk_payload["workload"]["native_caware_decode"] is False
 
     focused_trace = build_hidden_bisect_parser().parse_args(
         [
