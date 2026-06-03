@@ -565,6 +565,14 @@ What is still not green:
   The later row0 token flip is downstream of this early grouped>=3 hidden
   trajectory divergence
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-early/summary.json`).
+  A c4 layer-limit transition probe adds that the grouped>=3 issue is visible
+  before it escapes the layer-8 final hidden tolerance: rowchunk3 remains
+  hidden/token green at layer limits 4 and 8, but it already has strict bit drift
+  by layer limit 4 and over-tolerance full-attention trace failures at layer
+  limit 8, starting at decode step 0 / generated index 1 / layer7
+  `attn_input_pre_qkv` for rows0..2. Rowchunk2 has no corresponding stage
+  failures
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-layer-transition/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
