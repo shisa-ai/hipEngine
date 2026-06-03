@@ -3923,6 +3923,23 @@ def _generated_sequences_from_bench(bench: dict[str, Any], request_ids: Sequence
     return rows
 
 
+def _equal_prefix_length(left: Sequence[int], right: Sequence[int]) -> int:
+    prefix = 0
+    for left_token, right_token in zip(left, right, strict=False):
+        if int(left_token) != int(right_token):
+            break
+        prefix += 1
+    return prefix
+
+
+def _token_window(sequence: Sequence[int], center: int, *, radius: int = 5) -> list[int]:
+    if center < 0:
+        center = 0
+    start = max(0, int(center) - int(radius))
+    end = min(len(sequence), int(center) + int(radius) + 1)
+    return [int(token) for token in sequence[start:end]]
+
+
 def _generated_token_equality_prefix_summary(
     batch_sequences: Sequence[Sequence[int]],
     c1_sequences: Sequence[Sequence[int]],
@@ -3930,11 +3947,7 @@ def _generated_token_equality_prefix_summary(
     prefixes: list[int] = []
     first_mismatch_indices: list[int | None] = []
     for batch, c1 in zip(batch_sequences, c1_sequences, strict=False):
-        prefix = 0
-        for batch_token, c1_token in zip(batch, c1, strict=False):
-            if int(batch_token) != int(c1_token):
-                break
-            prefix += 1
+        prefix = _equal_prefix_length(batch, c1)
         prefixes.append(prefix)
         first_mismatch_indices.append(None if prefix == min(len(batch), len(c1)) and len(batch) == len(c1) else prefix)
     return {
@@ -3942,6 +3955,40 @@ def _generated_token_equality_prefix_summary(
         "min_equal_prefix_tokens": min(prefixes) if prefixes else 0,
         "first_mismatch_indices": first_mismatch_indices,
     }
+
+
+def _generated_token_equality_mismatch_summaries(
+    batch_sequences: Sequence[Sequence[int]],
+    c1_sequences: Sequence[Sequence[int]],
+) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    c1_rows = [[int(token) for token in row] for row in c1_sequences]
+    batch_rows = [[int(token) for token in row] for row in batch_sequences]
+    for row, (batch, c1) in enumerate(zip(batch_rows, c1_rows, strict=False)):
+        if batch == c1:
+            continue
+        first = _equal_prefix_length(batch, c1)
+        batch_prefixes_by_c1_row = [
+            {"row": c1_row, "equal_prefix_tokens": _equal_prefix_length(batch, other_c1)}
+            for c1_row, other_c1 in enumerate(c1_rows)
+        ]
+        batch_prefixes_by_c1_row.sort(key=lambda item: (-int(item["equal_prefix_tokens"]), int(item["row"])))
+        summaries.append(
+            {
+                "row": row,
+                "first_mismatch_index": first,
+                "batch_token_at_mismatch": int(batch[first]) if first < len(batch) else None,
+                "c1_token_at_mismatch": int(c1[first]) if first < len(c1) else None,
+                "batch_window": _token_window(batch, first),
+                "c1_window": _token_window(c1, first),
+                "batch_matches_c1_rows": [c1_row for c1_row, other_c1 in enumerate(c1_rows) if batch == other_c1],
+                "batch_matches_other_batch_rows": [
+                    batch_row for batch_row, other_batch in enumerate(batch_rows) if batch_row != row and batch == other_batch
+                ],
+                "batch_prefixes_by_c1_row": batch_prefixes_by_c1_row,
+            }
+        )
+    return summaries
 
 
 def _projection_dispatch_artifact_arg(args: argparse.Namespace) -> str | None:
@@ -4954,6 +5001,7 @@ def main(argv: list[str] | None = None) -> int:
             **equality_prefix_summary,
             "batch_sequences": batch_sequences,
             "c1_sequences": c1_sequences,
+            "mismatch_summaries": _generated_token_equality_mismatch_summaries(batch_sequences, c1_sequences),
             "mismatches": [
                 {"row": row, "batch": batch_sequences[row], "c1": c1_sequences[row]}
                 for row in range(args.batch_size)

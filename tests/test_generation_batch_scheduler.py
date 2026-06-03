@@ -18973,6 +18973,30 @@ def test_qwen35_retained_generated_token_equality_prefix_summary() -> None:
     }
 
 
+def test_qwen35_retained_generated_token_equality_mismatch_summaries_capture_row_alias() -> None:
+    summaries = retained_bench._generated_token_equality_mismatch_summaries(
+        [[1, 2, 10, 11, 12], [1, 2, 10, 11, 12]],
+        [[1, 2, 3, 4, 5], [1, 2, 10, 11, 12]],
+    )
+
+    assert summaries == [
+        {
+            "row": 0,
+            "first_mismatch_index": 2,
+            "batch_token_at_mismatch": 10,
+            "c1_token_at_mismatch": 3,
+            "batch_window": [1, 2, 10, 11, 12],
+            "c1_window": [1, 2, 3, 4, 5],
+            "batch_matches_c1_rows": [1],
+            "batch_matches_other_batch_rows": [1],
+            "batch_prefixes_by_c1_row": [
+                {"row": 1, "equal_prefix_tokens": 5},
+                {"row": 0, "equal_prefix_tokens": 2},
+            ],
+        }
+    ]
+
+
 def test_qwen35_retained_completed_execution_blockers_cover_row_evidence() -> None:
     completed = [
         {
