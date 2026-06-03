@@ -652,7 +652,9 @@ reporting.
   `--missing-artifacts-only` / `--missing-artifacts-sha-only`,
   `--validator-commands-only` / `--validator-commands-sha-only` list both
   placeholder validator templates and concrete commands against the current
-  expected artifact paths,
+  expected artifact paths, and `scripts/stepfun_validator_status.py` imports the
+  dedicated validators to report `passed` / `missing` / `failed` for those
+  concrete artifact paths without shelling out,
   `--exit-code-policy-only` / `--exit-code-policy-sha-only`,
   `--digest-summary-only` / `--digest-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
