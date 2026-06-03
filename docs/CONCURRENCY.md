@@ -388,6 +388,15 @@ What is still not green:
   generated-token blocker stays pinned to prompt/window-sensitive full-attention
   grouping >=3 rather than late output copy
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-full-attn-trace0-12/summary.json`).
+  Forcing the full-attention input RMSNorm/pre-QKV setup to the per-row
+  diagnostic path does not move those c3 prefixes (`[11,60,117]` unchanged),
+  and a short L40 trace keeps the same first full-attention mismatch at decode
+  step 0 / layer 7 / `attn_input_pre_qkv` / row 0. The rowchunk2 control stays
+  generated-token green and clears the post-RMSNorm/QKV-prep stages in the same
+  short trace, so input RMSNorm alone is eliminated as the grouping>=3 fix; the
+  next target remains the upstream hidden/row-group interaction before or at the
+  full-attention pre-QKV boundary
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-perrow-input-red/summary.json`).
   A clean post-commit c2/c4/c8 matrix under current auto defaults passed
   generated-token equality at equal-prefix 137 for every row: c2 remains full
   native, while c4/c8 use native rowchunk2. This confirms the covered c>1
