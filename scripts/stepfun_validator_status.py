@@ -113,6 +113,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the next concrete validator command.",
     )
     parser.add_argument(
+        "--next-producer-command-only",
+        action="store_true",
+        help="Emit only the recommended producer/rerun command for the first failed/missing record, or null.",
+    )
+    parser.add_argument(
+        "--next-producer-command-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the next producer/rerun command.",
+    )
+    parser.add_argument(
         "--sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the full report or compact summary.",
@@ -241,6 +251,47 @@ def _run_validator(
     }
 
 
+def _recommended_commands_by_gate(manifest: dict[str, object]) -> dict[str, dict[str, object]]:
+    """Return recommended producer/rerun commands keyed by readiness gate."""
+
+    commands = manifest.get("recommended_commands_handoff", [])
+    if not isinstance(commands, list):
+        return {}
+    by_gate: dict[str, dict[str, object]] = {}
+    for item in commands:
+        if not isinstance(item, dict):
+            continue
+        gate = item.get("readiness_gate")
+        if gate not in (None, ""):
+            by_gate[str(gate)] = item
+    return by_gate
+
+
+def _attach_producer_command(
+    result: dict[str, object],
+    recommended_by_gate: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    """Attach the producer/rerun command associated with a validator result."""
+
+    gate = result.get("readiness_gate")
+    command_record = recommended_by_gate.get(str(gate)) if gate not in (None, "") else None
+    return {
+        **result,
+        "producer_command_kind": command_record.get("recommended_command_kind")
+        if command_record
+        else None,
+        "producer_command": command_record.get("recommended_command")
+        if command_record
+        else None,
+        "producer_command_sha256": command_record.get("recommended_command_sha256")
+        if command_record
+        else None,
+        "producer_command_reason": command_record.get("recommended_command_reason")
+        if command_record
+        else None,
+    }
+
+
 def build_validator_status_report(
     manifest: dict[str, object],
     *,
@@ -252,11 +303,15 @@ def build_validator_status_report(
     validator_commands = manifest.get("validator_commands_handoff", [])
     if not isinstance(validator_commands, list):
         validator_commands = []
+    recommended_by_gate = _recommended_commands_by_gate(manifest)
     results = [
-        _run_validator(
-            dict(record) if isinstance(record, dict) else {},
-            prompt_artifact=prompt_artifact,
-            resource_artifact=resource_artifact,
+        _attach_producer_command(
+            _run_validator(
+                dict(record) if isinstance(record, dict) else {},
+                prompt_artifact=prompt_artifact,
+                resource_artifact=resource_artifact,
+            ),
+            recommended_by_gate,
         )
         for record in validator_commands
     ]
@@ -266,6 +321,11 @@ def build_validator_status_report(
     next_blocker = blocked_results[0] if blocked_results else None
     next_blocker_command = (
         next_blocker.get("validator_command_concrete")
+        if isinstance(next_blocker, dict)
+        else None
+    )
+    next_producer_command = (
+        next_blocker.get("producer_command")
         if isinstance(next_blocker, dict)
         else None
     )
@@ -304,6 +364,13 @@ def build_validator_status_report(
         "next_blocker_command_sha256": status_mod._stable_json_sha256(
             next_blocker_command
         ),
+        "next_producer_command_kind": next_blocker.get("producer_command_kind")
+        if isinstance(next_blocker, dict)
+        else None,
+        "next_producer_command": next_producer_command,
+        "next_producer_command_sha256": status_mod._stable_json_sha256(
+            next_producer_command
+        ),
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
         "manifest_sha256": status_mod._stable_json_sha256(manifest),
         "no_claim_policy": {
@@ -334,6 +401,10 @@ def build_validator_status_report(
         "next_blocker_command": next_blocker_command,
         "next_blocker_command_sha256": status_mod._stable_json_sha256(
             next_blocker_command
+        ),
+        "next_producer_command": next_producer_command,
+        "next_producer_command_sha256": status_mod._stable_json_sha256(
+            next_producer_command
         ),
         "readiness_impact": {
             "validator_artifacts_passed": ready,
@@ -366,6 +437,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.status_only:
         payload: object = report["status"]
+    elif args.next_producer_command_sha_only:
+        payload = report["next_producer_command_sha256"]
+    elif args.next_producer_command_only:
+        payload = report["next_producer_command"]
     elif args.next_command_sha_only:
         payload = report["next_blocker_command_sha256"]
     elif args.next_command_only:
