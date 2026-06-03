@@ -40,6 +40,8 @@
     "artifacts_sha_only": "artifacts_to_collect_sha256",
     "entries_only": "entries",
     "entries_sha_only": "entries_sha256",
+    "gate_status_only": "gate_status_handoff",
+    "gate_status_sha_only": "gate_status_handoff_sha256",
     "no_claim_policy_only": "no_claim_policy",
     "no_claim_policy_sha_only": "no_claim_policy_sha256",
     "sha_only": "manifest_sha256",
@@ -147,6 +149,51 @@
   ],
   "entries_sha256": "6718833f6f165accb6cb1e997dd1ae9b1c18a6c9e4ae5a9cbfb560fd26b1a9e6",
   "entry_count": 2,
+  "gate_status_handoff": [
+    {
+      "blocked_by": "llama_cpp_oracle_timeout",
+      "blocker_kind": "oracle_parity_blocked",
+      "first_missing_evidence": "oracle_completed_successfully",
+      "readiness_gate": "oracle_parity",
+      "ready": false,
+      "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress.",
+      "success_criteria": [
+        "oracle_gap_report.status is ready",
+        "oracle_gap_report.missing_preconditions is empty",
+        "oracle_gap_report.missing_evidence is empty",
+        "oracle_parity is true",
+        "readiness_gates.oracle_parity.ready is true"
+      ]
+    },
+    {
+      "blocked_by": "kv_backed_decode_not_wired",
+      "blocker_kind": "kv_backed_decode_not_wired",
+      "first_missing_evidence": "streaming_runner_ready_flags",
+      "readiness_gate": "kv_backed_decode",
+      "ready": false,
+      "required_evidence": "A streaming runner must materialize prompt KV rows, launch one-token decode KV write and gated paged attention from the resident cache, then feed final logits without host-composed layer outputs.",
+      "success_criteria": [
+        "kv_backed_decode_gap_report.status is ready",
+        "kv_backed_decode_gap_report.missing_evidence is empty",
+        "kv_backed_decode_ready is true",
+        "readiness_gates.kv_backed_decode.ready is true",
+        "e2e_inference_ready is true only after oracle_parity is also true"
+      ]
+    },
+    {
+      "blocked_by": [
+        "oracle_parity",
+        "kv_backed_decode"
+      ],
+      "blocker_kind": null,
+      "first_missing_evidence": null,
+      "readiness_gate": "e2e_inference",
+      "ready": false,
+      "required_evidence": "Both oracle parity and KV-backed decode readiness must be true before StepFun text-only GGUF inference is marked ready.",
+      "success_criteria": []
+    }
+  ],
+  "gate_status_handoff_sha256": "e4fc3075353f0d721a4a1da19163aaafd96de9f2409a6e035addb40359b3e7b3",
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
     "performance_claim_allowed": false,
@@ -166,13 +213,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "10ed6cb18ad4ab5a21f43c320aa4cd528c167f55bcadee1091ee415161191604",
+    "readiness_summary_sha256": "8bbb10cca31056c7f551970ce28e7d0d86b47a9d44fdfd4f87ef501981297324",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "653b21e1c69c654489b66994a871e01b6e53cb2fdd98b856d073fb5cb2559c00",
-        "size_bytes": 69747
+        "sha256": "5b98b3d215779ee2ede7c9cc3bd65299cf64291d0ff1b7953a009ecbb0a6626f",
+        "size_bytes": 69828
       },
       "oracle": {
         "exists": true,
@@ -199,7 +246,7 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "d80a5ed7234430bfc6bdf2da003406fa5393f8fedb0065e2d8c5b2a39507162b",
+    "source_artifacts_sha256": "15fcdd9a30492ab4c88aed8dbd0a7107f8fcc314d7b3ca853a960e1b57dcfbe3",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
   },
   "success_criteria_handoff": [

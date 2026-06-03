@@ -627,11 +627,12 @@ reporting.
   launch-trace digests, status/source provenance, and the no-claim policy without
   parsing the full status artifact. Compact `--entries-only` /
   `--entries-sha-only`, `--artifacts-only` / `--artifacts-sha-only`,
-  `--success-criteria-only` / `--success-criteria-sha-only`, and
-  `--no-claim-policy-only` / `--no-claim-policy-sha-only` outputs expose the two
-  blocker records, three required evidence artifacts, per-blocker completion
-  criteria, and claim gate directly. Its `--verify-manifest` mode compares a
-  persisted manifest with the current
+  `--success-criteria-only` / `--success-criteria-sha-only`,
+  `--no-claim-policy-only` / `--no-claim-policy-sha-only`, and
+  `--gate-status-only` / `--gate-status-sha-only` outputs expose the two blocker
+  records, three required evidence artifacts, per-blocker completion criteria,
+  claim gate, and blocked readiness-gate chain directly. Its `--verify-manifest`
+  mode compares a persisted manifest with the current
   prompt/oracle/resource/docs inputs, while `--verification-status-only` and
   `--verification-failures-only` provide compact drift routing.
   This checklist item is partial rather than complete because the current runner

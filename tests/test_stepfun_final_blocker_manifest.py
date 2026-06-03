@@ -67,6 +67,31 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["no_claim_policy_sha256"] == _stable_json_sha256(
         manifest["no_claim_policy"]
     )
+    assert manifest["gate_status_handoff_sha256"] == _stable_json_sha256(
+        manifest["gate_status_handoff"]
+    )
+    assert [gate["readiness_gate"] for gate in manifest["gate_status_handoff"]] == [
+        "oracle_parity",
+        "kv_backed_decode",
+        "e2e_inference",
+    ]
+    assert manifest["gate_status_handoff"][0]["blocker_kind"] == (
+        "oracle_parity_blocked"
+    )
+    assert manifest["gate_status_handoff"][1]["blocker_kind"] == (
+        "kv_backed_decode_not_wired"
+    )
+    assert manifest["gate_status_handoff"][2] == {
+        "readiness_gate": "e2e_inference",
+        "ready": False,
+        "blocked_by": ["oracle_parity", "kv_backed_decode"],
+        "required_evidence": status["readiness_gates"]["e2e_inference"][
+            "required_evidence"
+        ],
+        "blocker_kind": None,
+        "first_missing_evidence": None,
+        "success_criteria": [],
+    }
     assert manifest["no_claim_policy"]["performance_claim_allowed"] is False
     assert manifest["no_claim_policy"]["e2e_inference_claim_allowed"] is False
     entries = {entry["blocker_kind"]: entry for entry in manifest["entries"]}
@@ -112,6 +137,8 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "success_criteria_sha_only": "success_criteria_handoff_sha256",
         "no_claim_policy_only": "no_claim_policy",
         "no_claim_policy_sha_only": "no_claim_policy_sha256",
+        "gate_status_only": "gate_status_handoff",
+        "gate_status_sha_only": "gate_status_handoff_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -221,6 +248,8 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     success_criteria_sha_output = tmp_path / "final-blocker-success-criteria-sha.json"
     no_claim_output = tmp_path / "final-blocker-no-claim-policy.json"
     no_claim_sha_output = tmp_path / "final-blocker-no-claim-policy-sha.json"
+    gate_status_output = tmp_path / "final-blocker-gate-status.json"
+    gate_status_sha_output = tmp_path / "final-blocker-gate-status-sha.json"
     expected = build_final_blocker_manifest(
         build_status(prompt, oracle, docs, resource_artifact=resource)
     )
@@ -404,6 +433,56 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert rc == 0
     assert json.loads(no_claim_sha_output.read_text()) == expected[
         "no_claim_policy_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--gate-status-only",
+            "--output",
+            str(gate_status_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    gate_status_payload = json.loads(gate_status_output.read_text())
+    assert gate_status_payload == expected["gate_status_handoff"]
+    assert [gate["readiness_gate"] for gate in gate_status_payload] == [
+        "oracle_parity",
+        "kv_backed_decode",
+        "e2e_inference",
+    ]
+    assert gate_status_payload[2]["blocked_by"] == [
+        "oracle_parity",
+        "kv_backed_decode",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--gate-status-sha-only",
+            "--output",
+            str(gate_status_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(gate_status_sha_output.read_text()) == expected[
+        "gate_status_handoff_sha256"
     ]
 
     captured = capsys.readouterr()
