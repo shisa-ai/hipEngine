@@ -65771,3 +65771,8 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Revalidated the current default c2/c4/c8 generated-token equality gate on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX after the c3..c8 rowchunk2 promotion. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-default-c9-cap/summary.json`.
 - Current defaults remain green: c2 `[137,137]`, c4 `[137,137,137,137]`, c8 `[137,137,137,137,137,137,137,137]`.
 - Built a derived c9 fixture by appending a duplicate of row0 from the 8-row fixture. c9 remains red for default/no-rowchunk (`[137,137,137,118,137,58,40,137,137]`) and explicit rowchunk2/rowchunk1 controls (`[137,137,137,118,137,31,81,137,137]`), so the auto rowchunk cap should stay at c8 until a separate c9 row-count investigation lands. No throughput claim.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter216 c9 selected-c1 MoE frontier
+- Ran a c9 frontier split on the derived 9-row fixture (`HIP_VISIBLE_DEVICES=1` / RX 7900 XTX). Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c9-selectedc1-moe-frontier/summary.json`.
+- Grouped-compact MoE stays red under rowchunk2 with auto selected-c1, native batch, batch-GEMV, and native-output linear projection controls, so the c9 failure is not a linear-projection artifact.
+- Switching MoE to `selected_c1` makes c9 rowchunk2 green (`[137]*9`) with both auto selected-c1 linear projections and native batch linear projections; per-row full attention plus selected-c1 MoE is also green. Full-native/no-rowchunk remains red even with selected-c1 MoE, and rowchunk1 selected-c1 MoE remains tail-red (`[137,137,137,137,137,137,137,137,103]`). No throughput claim; no default extension yet.

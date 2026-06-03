@@ -596,7 +596,12 @@ What is still not green:
   gate keeps c2/c4/c8 green, but a derived c9 fixture is red for default/no-rowchunk
   and explicit rowchunk2/rowchunk1 controls, so c9 stays outside the auto cap
   until it gets a separate row-count fix
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-default-c9-cap/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-default-c9-cap/summary.json`). A c9 frontier split then shows the extra blocker is MoE rather
+  than linear projection: grouped-compact MoE stays red under rowchunk2 with
+  auto/native/batch-GEMV linear controls, while `selected_c1` MoE plus rowchunk2
+  turns c9 green (`[137]*9`); full-native/no-rowchunk remains red even with
+  `selected_c1` MoE, and rowchunk1 is still tail-red
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c9-selectedc1-moe-frontier/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
