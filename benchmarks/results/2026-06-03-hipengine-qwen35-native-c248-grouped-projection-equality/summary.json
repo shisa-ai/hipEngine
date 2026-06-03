@@ -1,0 +1,382 @@
+{
+  "artifacts": {
+    "c2_diagnostic": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/diagnostics/c2-grouped-projection.json",
+      "sha256": "14cd78444d57e5976da2b2a4034ba037625a192d12a9e434d62cab1dfd543ab1",
+      "size_bytes": 4118
+    },
+    "c4_diagnostic": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/diagnostics/c4-grouped-projection.json",
+      "sha256": "957c909a144e9803440cb420dc4b36655b5ecf93a4b0acd163ce206bfdd87fc3",
+      "size_bytes": 4554
+    },
+    "c8_diagnostic": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/diagnostics/c8-grouped-projection.json",
+      "sha256": "399efc41cdb3a9a8364645de5451364a0c081b3ab5bf0c6c2ed83a29609da52b",
+      "size_bytes": 4633
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "prior_grouped_moe_equality": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-auto-grouped-moe/summary.json",
+      "sha256": "0044fae34d20882f37830a1382294824497be86b18b4bf643f483f61a13dd78c",
+      "size_bytes": 12234
+    },
+    "projection_catalog": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+      "sha256": "200910a2677b789dea9fecd87bea9a8450cee149839b5080a4aee65d70335e84",
+      "size_bytes": 12142
+    }
+  },
+  "conclusion": "Grouped_compact MoE plus the accepted c2/c4/c8 projection-dispatch catalog preserves generated-token equality for c2/c4/c8 512/128 vs independent c1. Each row count reports moe_decode_path=grouped_compact, moe_grouped_compact_layers=40, moe_selected_c1_fallback_layers=0, and a c-aware projection candidate with empty projection blockers. No throughput claim is made: profiler evidence for this grouped path is not captured here, c4/c8 still use rowchunked full attention/native_caware_decode=false, and c8 repeatability remains an open blocker.",
+  "created_at": "2026-06-03T18:27:29Z",
+  "git_commit": "644128a1eff9ce273e49d64ce6d27c872ee4c7a4",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 197,
+  "kind": "native_c248_grouped_moe_projection_dispatch_equality",
+  "performance_claim": false,
+  "raw_artifacts_removed_after_compaction": {
+    "c2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/native-c2-grouped-projection.json",
+      "sha256": "cc3263dfa9cc6f1ef6d44bb9a20ae2fd5b8ee979bdae133892809840adbc162b",
+      "size_bytes": 138534
+    },
+    "c4": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/native-c4-grouped-projection.json",
+      "sha256": "a9fb9a69fe554f2c2f11837d4c5bec39401b24d892df17cb204341516f85ce87",
+      "size_bytes": 237072
+    },
+    "c8": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/native-c8-grouped-projection.json",
+      "sha256": "47dde550d42983f38c03c0db4b8181f55ddd963d6be0dc0904a2101d70c380fe",
+      "size_bytes": 412918
+    }
+  },
+  "remaining_blockers": [
+    "profiler evidence is not captured for the grouped_compact+projection-dispatch path",
+    "c4/c8 full attention still uses native_batch_row_chunks and native_caware_decode=false",
+    "c8 grouped_compact+projection-dispatch equality was unstable before the final green rerun",
+    "retained performance claims still require docs/BENCHMARK.md gates and profiler/scaling acceptance"
+  ],
+  "repeatability_note": "The c8 grouped_compact+projection-dispatch command was red on the first retained run in this iteration and green on the immediate rerun that is retained here; this matches prior c8 projection-dispatch instability. Treat c8 repeatability as an open blocker before any promotion/performance claim.",
+  "result": {
+    "all_generated_token_equality_passed": true,
+    "moe_metadata_blocker_removed": true,
+    "native_caware_by_rows": {
+      "2": true,
+      "4": false,
+      "8": false
+    },
+    "prefix_lengths_by_rows": {
+      "2": [
+        137,
+        137
+      ],
+      "4": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "projection_candidates_by_rows": {
+      "2": "gemv_awq_selected_dual_pack8_strided_c2",
+      "4": "gemv_awq_selected_dual_pack8_strided_c4",
+      "8": "gemv_awq_selected_dual_pack8_strided_c8"
+    },
+    "projection_dispatch_blockers_absent": true,
+    "remaining_batch_blockers_by_rows": {
+      "2": [],
+      "4": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "8": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ]
+    }
+  },
+  "retained_ready": false,
+  "rows": [
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/diagnostics/c2-grouped-projection.json",
+      "batch_blockers": [],
+      "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/native-c2-grouped-projection.json",
+      "correctness_passed": true,
+      "decision_accepted": false,
+      "decision_reason_summary": [
+        "profiler_json must be provided under benchmarks/results",
+        "scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim",
+        "profiler trace was not captured with expected kernels present",
+        "profiler.artifact_path must be under benchmarks/results",
+        "profiler.source_artifact_path must be a non-empty string",
+        "profiler.output_format must be csv",
+        "profiler.trace_dir must be a non-empty string",
+        "profiler.trace_files must be a non-empty string list",
+        "profiler.synthesized_fields must be a string list",
+        "profiler.status must be captured",
+        "profiler.expected_kernels_present must be true",
+        "profiler.trace_kernel_names must be a non-empty string list",
+        "profiler.expected_kernel_names must be a non-empty string list",
+        "profiler.kernel_durations_ns must be a non-empty object"
+      ],
+      "decode_blockers": [],
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "moe_decode_rows": 2,
+        "moe_grouped_compact_layers": 40,
+        "moe_selected_c1_fallback_layers": 0,
+        "native_caware_decode": true,
+        "native_full_attention_layers": 10,
+        "post_attention_decode_path": "native_batch",
+        "rows": 2
+      },
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "name": "c2-grouped-projection",
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "primitive_batch_correctness_passed": true,
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.081395195821912,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+          "per_request_vs_row_gemv": 1.081395195821912
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "throughput_claim_eligible": true
+      },
+      "raw_removed_after_compaction": true,
+      "raw_sha256": "cc3263dfa9cc6f1ef6d44bb9a20ae2fd5b8ee979bdae133892809840adbc162b",
+      "raw_size_bytes": 138534,
+      "rows": 2,
+      "scaling_ratios": {
+        "aggregate_vs_c1": 0.8329825173327758,
+        "aggregate_vs_serial_bridge": 1.0741409658838408,
+        "per_request_vs_c1": 0.4164912586663879,
+        "per_request_vs_serial_bridge": 1.0741409658838408
+      },
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/diagnostics/c4-grouped-projection.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/serial-bridge-c4.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c4.json --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/native-c4-grouped-projection.json",
+      "correctness_passed": true,
+      "decision_accepted": false,
+      "decision_reason_summary": [
+        "batch_execution.throughput_claim_eligible=false",
+        "profiler_json must be provided under benchmarks/results",
+        "profiler trace was not captured with expected kernels present",
+        "profiler.artifact_path must be under benchmarks/results",
+        "profiler.source_artifact_path must be a non-empty string",
+        "profiler.output_format must be csv",
+        "profiler.trace_dir must be a non-empty string",
+        "profiler.trace_files must be a non-empty string list",
+        "profiler.synthesized_fields must be a string list",
+        "profiler.status must be captured",
+        "profiler.expected_kernels_present must be true",
+        "profiler.trace_kernel_names must be a non-empty string list",
+        "profiler.expected_kernel_names must be a non-empty string list",
+        "profiler.kernel_durations_ns must be a non-empty object"
+      ],
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_source": "env",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "moe_decode_rows": 4,
+        "moe_grouped_compact_layers": 40,
+        "moe_selected_c1_fallback_layers": 0,
+        "native_caware_decode": false,
+        "native_full_attention_layers": 10,
+        "post_attention_decode_path": "native_batch",
+        "rows": 4
+      },
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "name": "c4-grouped-projection",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "primitive_batch_correctness_passed": true,
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.214849947729695,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+          "per_request_vs_row_gemv": 1.214849947729695
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "throughput_claim_eligible": true
+      },
+      "raw_removed_after_compaction": true,
+      "raw_sha256": "a9fb9a69fe554f2c2f11837d4c5bec39401b24d892df17cb204341516f85ce87",
+      "raw_size_bytes": 237072,
+      "rows": 4,
+      "scaling_ratios": {
+        "aggregate_vs_c1": 1.0694219711424104,
+        "aggregate_vs_serial_bridge": 1.2903710655055887,
+        "per_request_vs_c1": 0.2673554927856026,
+        "per_request_vs_serial_bridge": 1.2903710655055887
+      },
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/diagnostics/c8-grouped-projection.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/serial-bridge-c8.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c8.json --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/native-c8-grouped-projection.json",
+      "correctness_passed": true,
+      "decision_accepted": false,
+      "decision_reason_summary": [
+        "batch_execution.throughput_claim_eligible=false",
+        "profiler_json must be provided under benchmarks/results",
+        "profiler trace was not captured with expected kernels present",
+        "profiler.artifact_path must be under benchmarks/results",
+        "profiler.source_artifact_path must be a non-empty string",
+        "profiler.output_format must be csv",
+        "profiler.trace_dir must be a non-empty string",
+        "profiler.trace_files must be a non-empty string list",
+        "profiler.synthesized_fields must be a string list",
+        "profiler.status must be captured",
+        "profiler.expected_kernels_present must be true",
+        "profiler.trace_kernel_names must be a non-empty string list",
+        "profiler.expected_kernel_names must be a non-empty string list",
+        "profiler.kernel_durations_ns must be a non-empty object"
+      ],
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_source": "env",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "moe_decode_rows": 8,
+        "moe_grouped_compact_layers": 40,
+        "moe_selected_c1_fallback_layers": 0,
+        "native_caware_decode": false,
+        "native_full_attention_layers": 10,
+        "post_attention_decode_path": "native_batch",
+        "rows": 8
+      },
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "name": "c8-grouped-projection",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "primitive_batch_correctness_passed": true,
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.2927399483678248,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+          "per_request_vs_row_gemv": 1.2927399483678248
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "throughput_claim_eligible": true
+      },
+      "raw_removed_after_compaction": true,
+      "raw_sha256": "47dde550d42983f38c03c0db4b8181f55ddd963d6be0dc0904a2101d70c380fe",
+      "raw_size_bytes": 412918,
+      "rows": 8,
+      "scaling_ratios": {
+        "aggregate_vs_c1": 1.2876811044829028,
+        "aggregate_vs_serial_bridge": 1.6586290184862347,
+        "per_request_vs_c1": 0.16096013806036286,
+        "per_request_vs_serial_bridge": 1.6586290184862347
+      },
+      "status": "blocked"
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_sample_mode": "batched_lm_head",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "prompt_length": 512,
+    "rows": [
+      2,
+      4,
+      8
+    ],
+    "warmup_decode_tokens": 8
+  }
+}

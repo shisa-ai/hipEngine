@@ -500,6 +500,16 @@ What is still not green:
   projection-dispatch reruns showed pre-final equality instability, so keep
   repeatability under observation before any promotion
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-current-projection-dispatch/summary.json`).
+  A grouped-compact MoE rerun with the same combined projection-dispatch catalog
+  keeps c2/c4/c8 generated-token equality green
+  (`[137,137]`, `[137,137,137,137]`, and
+  `[137,137,137,137,137,137,137,137]`), reports
+  `moe_decode_path=grouped_compact`, `moe_grouped_compact_layers=40`,
+  `moe_selected_c1_fallback_layers=0`, and keeps projection blockers empty. This
+  removes the selected-c1 MoE metadata blocker for correctness evidence, but is
+  still not a throughput claim because profiler evidence is not captured for the
+  grouped path, c4/c8 stay rowchunked, and c8 repeatability remains open
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
