@@ -4018,15 +4018,26 @@ def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_full_attn_path", "native_batch"))
     if path != "auto":
         return path
+    # Native batch full-attention is generated-token green for c=2/c=4 as one
+    # batch. c=8 is green through the native row-chunk diagnostic below rather
+    # than the older per-row full-attention fallback.
+    return "native_batch"
+
+
+def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) -> int:
+    explicit = int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0)
+    if explicit != 0:
+        return explicit
+    if str(getattr(args, "batch_decode_full_attn_path", "native_batch")) != "auto":
+        return 0
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Native batch full-attention is generated-token green for c=2 and c=4
-    # once auto MoE selects the selected-c1 batch path. c=8 still requires the
-    # per-row full-attention fallback for correctness; keep larger unproven row
-    # counts on native_batch so they still fail loudly until covered by equality
-    # artifacts.
-    return "per_row" if int(batch_size) == 8 else "native_batch"
+    # c=8 native full-attention is generated-token green when split into c=2
+    # native row chunks, while full c=8/c=4 rows4..7 remain blocked. Larger
+    # unproven row counts stay on the explicit native path and fail loudly until
+    # covered by equality artifacts.
+    return 2 if int(batch_size) == 8 else 0
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
@@ -4075,7 +4086,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     batch_decode_full_attn_path = _resolved_batch_decode_full_attn_path(args)
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = "0" if batch_decode_full_attn_path == "per_row" else "1"
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(
-        int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0)
+        _resolved_batch_decode_full_attn_row_chunk_size(args)
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
@@ -4598,7 +4609,7 @@ def _build_payload(
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
             "batch_decode_full_attention_path": _resolved_batch_decode_full_attn_path(args),
-            "batch_decode_full_attention_row_chunk_size": int(getattr(args, "batch_decode_full_attn_row_chunk_size", 0) or 0),
+            "batch_decode_full_attention_row_chunk_size": _resolved_batch_decode_full_attn_row_chunk_size(args),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -4748,7 +4759,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-full-attn-path",
         choices=("auto", "native_batch", "per_row"),
         default="auto",
-        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2/c=4, uses per_row for c=8 correctness while native batch full-attention remains blocked there, and leaves larger unproven row counts on native_batch.",
+        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2/c=4 and uses the native row-chunk diagnostic for c=8 correctness while full native c=8 remains blocked there.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-row-chunk-size",
