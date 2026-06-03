@@ -640,7 +640,8 @@ reporting.
   `--verification-failures-only` provide compact drift routing. `scripts/stepfun_handoff_check.py`
   now combines correctness-status source verification with final-blocker manifest
   verification and reports `blocked_verified` for a trustworthy blocked handoff;
-  compact `--summary-only` / `--summary-sha-only`, `--status-only`, and
+  compact `--summary-only` / `--summary-sha-only`, `--status-only`,
+  `--artifact-verification-only` / `--artifact-verification-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
   polling. `--fail-on-blocked` returns the documented blocked exit code when CI
   should fail until oracle/KV readiness is real.

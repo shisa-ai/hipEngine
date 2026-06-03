@@ -51,6 +51,38 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["verification_failures"] == []
     assert report["verification_failures_sha256"] == _stable_json_sha256([])
     assert report["summary_sha256"] == _stable_json_sha256(report["summary"])
+    assert report["artifact_verification_sha256"] == _stable_json_sha256(
+        report["artifact_verification"]
+    )
+    assert report["artifact_verification"] == {
+        "schema_version": 1,
+        "status": "match",
+        "all_match": True,
+        "correctness_status": {
+            "artifact": str(status_artifact),
+            "status": "match",
+            "all_match": True,
+            "source_artifacts_all_match": True,
+            "checked_count": report["correctness_status_verification"][
+                "checked_count"
+            ],
+            "verification_failures_sha256": report[
+                "correctness_status_verification"
+            ]["verification_failures_sha256"],
+        },
+        "final_blocker_manifest": {
+            "artifact": str(manifest_artifact),
+            "status": "match",
+            "all_match": True,
+            "persisted_manifest_sha256": report[
+                "final_blocker_manifest_verification"
+            ]["persisted_manifest_sha256"],
+            "current_manifest_sha256": report[
+                "final_blocker_manifest_verification"
+            ]["current_manifest_sha256"],
+            "verification_failure_count": 0,
+        },
+    }
     assert report["correctness_status_verification"]["status"] == "match"
     assert report["final_blocker_manifest_verification"]["status"] == "match"
     summary = report["summary"]
@@ -92,6 +124,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     )
     summary_output = tmp_path / "handoff-summary.json"
     summary_sha_output = tmp_path / "handoff-summary-sha.json"
+    artifact_verification_output = tmp_path / "handoff-artifact-verification.json"
+    artifact_verification_sha_output = tmp_path / "handoff-artifact-verification-sha.json"
     status_output = tmp_path / "handoff-status.json"
     failures_output = tmp_path / "handoff-failures.json"
     failures_sha_output = tmp_path / "handoff-failures-sha.json"
@@ -149,6 +183,60 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     )
     assert rc == 0
     assert json.loads(summary_sha_output.read_text()) == expected["summary_sha256"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--artifact-verification-only",
+            "--output",
+            str(artifact_verification_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    artifact_verification_payload = json.loads(
+        artifact_verification_output.read_text()
+    )
+    assert artifact_verification_payload == expected["artifact_verification"]
+    assert artifact_verification_payload["status"] == "match"
+    assert artifact_verification_payload["correctness_status"]["status"] == "match"
+    assert artifact_verification_payload["final_blocker_manifest"]["status"] == "match"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--artifact-verification-sha-only",
+            "--output",
+            str(artifact_verification_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(artifact_verification_sha_output.read_text()) == expected[
+        "artifact_verification_sha256"
+    ]
 
     rc = main(
         [

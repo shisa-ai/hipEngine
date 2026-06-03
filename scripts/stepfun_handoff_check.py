@@ -76,6 +76,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the compact handoff summary.",
     )
     parser.add_argument(
+        "--artifact-verification-only",
+        action="store_true",
+        help="Emit only compact status/manifest artifact verification state.",
+    )
+    parser.add_argument(
+        "--artifact-verification-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of artifact verification state.",
+    )
+    parser.add_argument(
         "--status-only",
         action="store_true",
         help="Emit only the handoff verification status string.",
@@ -158,6 +168,37 @@ def build_handoff_check(
         if blocked_verified
         else "mismatch"
     )
+    artifact_verification = {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "status": "match" if verified else "mismatch",
+        "all_match": verified,
+        "correctness_status": {
+            "artifact": str(status_artifact),
+            "status": status_verification.get("status"),
+            "all_match": status_verification.get("all_match"),
+            "source_artifacts_all_match": status_verification.get(
+                "source_artifacts_all_match"
+            ),
+            "checked_count": status_verification.get("checked_count"),
+            "verification_failures_sha256": status_verification.get(
+                "verification_failures_sha256"
+            ),
+        },
+        "final_blocker_manifest": {
+            "artifact": str(manifest_artifact),
+            "status": manifest_verification.get("status"),
+            "all_match": manifest_verification.get("all_match"),
+            "persisted_manifest_sha256": manifest_verification.get(
+                "persisted_manifest_sha256"
+            ),
+            "current_manifest_sha256": manifest_verification.get(
+                "current_manifest_sha256"
+            ),
+            "verification_failure_count": manifest_verification.get(
+                "verification_failure_count"
+            ),
+        },
+    }
     summary = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "status": status,
@@ -181,6 +222,10 @@ def build_handoff_check(
         "status": status,
         "summary": summary,
         "summary_sha256": status_mod._stable_json_sha256(summary),
+        "artifact_verification": artifact_verification,
+        "artifact_verification_sha256": status_mod._stable_json_sha256(
+            artifact_verification
+        ),
         "verification_failures": failures,
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
         "correctness_status_verification": status_verification,
@@ -207,6 +252,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.status_only:
         payload: object = report["status"]
+    elif args.artifact_verification_sha_only:
+        payload = report["artifact_verification_sha256"]
+    elif args.artifact_verification_only:
+        payload = report["artifact_verification"]
     elif args.failures_sha_only:
         payload = report["verification_failures_sha256"]
     elif args.failures_only:
