@@ -495,6 +495,12 @@ What is still not green:
   the rowchunk2 path (`[137...]` in each case), but the path still records
   `native_caware_decode=false` and retained/performance blockers
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk2-auto-c3c4c8/summary.json`).
+  c2 scaling-baseline references are now present: c1 native and c2 serial-bridge
+  artifacts load into the c2 retained bench, `scaling.complete=true`, and ratios
+  are populated (`aggregate_vs_c1=0.9298`, `aggregate_vs_serial_bridge=1.1990`),
+  but the row remains blocked on throughput-claim/profiler/rollup gates and makes
+  no retained performance claim
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
