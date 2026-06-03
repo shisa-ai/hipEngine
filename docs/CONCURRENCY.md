@@ -500,6 +500,13 @@ What is still not green:
   projection-dispatch reruns showed pre-final equality instability, so keep
   repeatability under observation before any promotion
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-current-projection-dispatch/summary.json`).
+  A focused c8 rowchunk4 full-attention audit keeps the accepted projection
+  metadata but raises the native chunk size from 2 to 4; it is correctness-red
+  (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
+  plus compact-cache/temp-output/scratch diagnostics do not restore full equality.
+  This keeps the correctness cap at rowchunk2 and leaves native grouped
+  full-attention for row groups of four as the active blocker
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk4-projection-audit/summary.json`).
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7
