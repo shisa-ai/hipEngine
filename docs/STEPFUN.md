@@ -643,7 +643,8 @@ reporting.
   compact `--summary-only` / `--summary-sha-only`, `--status-only`,
   `--artifact-verification-only` / `--artifact-verification-sha-only`,
   `--readiness-summary-only` / `--readiness-summary-sha-only`,
-  `--final-blocker-summary-only` / `--final-blocker-summary-sha-only`, and
+  `--final-blocker-summary-only` / `--final-blocker-summary-sha-only`,
+  `--exit-code-policy-only` / `--exit-code-policy-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
   polling, and `--verify-handoff-report` (defaulting to the persisted handoff
   artifact when no path is supplied) with `--report-verification-status-only` /

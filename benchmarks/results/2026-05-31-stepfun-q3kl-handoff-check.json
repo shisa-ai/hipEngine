@@ -219,6 +219,19 @@
     },
     "verification_failures_sha256": "7cfb3c2fa9bc85020fd8c8b7ce754f02a91428927683db62d584331fc89926da"
   },
+  "exit_code_policy": {
+    "blocked_verified_with_fail_on_blocked": 2,
+    "current_with_fail_on_blocked": 2,
+    "current_without_fail_on_blocked": 0,
+    "fail_on_blocked_option": "--fail-on-blocked",
+    "mismatch": 1,
+    "ready": 0,
+    "ready_status": false,
+    "schema_version": 1,
+    "status": "blocked_verified",
+    "verified": true
+  },
+  "exit_code_policy_sha256": "7ce7950143a5e4d2eb0767f511bbb915c71cf923953987d739ffcb687d7d0450",
   "final_blocker_manifest_summary": {
     "blocked_gates": [
       "oracle_parity",

@@ -64,6 +64,21 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["final_blocker_manifest_summary_sha256"] == _stable_json_sha256(
         report["final_blocker_manifest_summary"]
     )
+    assert report["exit_code_policy_sha256"] == _stable_json_sha256(
+        report["exit_code_policy"]
+    )
+    assert report["exit_code_policy"] == {
+        "schema_version": 1,
+        "ready": 0,
+        "mismatch": 1,
+        "blocked_verified_with_fail_on_blocked": 2,
+        "current_without_fail_on_blocked": 0,
+        "current_with_fail_on_blocked": 2,
+        "status": "blocked_verified",
+        "verified": True,
+        "ready_status": False,
+        "fail_on_blocked_option": "--fail-on-blocked",
+    }
     assert report["final_blocker_manifest_summary"] == {
         "remaining_blocker_count": 2,
         "remaining_blocker_kinds": [
@@ -159,6 +174,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     readiness_summary_sha_output = tmp_path / "handoff-readiness-summary-sha.json"
     final_blocker_summary_output = tmp_path / "handoff-final-blocker-summary.json"
     final_blocker_summary_sha_output = tmp_path / "handoff-final-blocker-summary-sha.json"
+    exit_code_policy_output = tmp_path / "handoff-exit-code-policy.json"
+    exit_code_policy_sha_output = tmp_path / "handoff-exit-code-policy-sha.json"
     status_output = tmp_path / "handoff-status.json"
     failures_output = tmp_path / "handoff-failures.json"
     failures_sha_output = tmp_path / "handoff-failures-sha.json"
@@ -428,6 +445,57 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert rc == 0
     assert json.loads(readiness_summary_sha_output.read_text()) == expected[
         "readiness_summary_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--exit-code-policy-only",
+            "--output",
+            str(exit_code_policy_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    exit_code_policy_payload = json.loads(exit_code_policy_output.read_text())
+    assert exit_code_policy_payload == expected["exit_code_policy"]
+    assert exit_code_policy_payload["current_without_fail_on_blocked"] == 0
+    assert exit_code_policy_payload["current_with_fail_on_blocked"] == 2
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--exit-code-policy-sha-only",
+            "--output",
+            str(exit_code_policy_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(exit_code_policy_sha_output.read_text()) == expected[
+        "exit_code_policy_sha256"
     ]
 
     rc = main(

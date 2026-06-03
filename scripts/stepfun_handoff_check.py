@@ -131,6 +131,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of final blocker summary.",
     )
     parser.add_argument(
+        "--exit-code-policy-only",
+        action="store_true",
+        help="Emit only handoff verifier exit-code policy for CI routing.",
+    )
+    parser.add_argument(
+        "--exit-code-policy-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of exit-code policy.",
+    )
+    parser.add_argument(
         "--status-only",
         action="store_true",
         help="Emit only the handoff verification status string.",
@@ -250,6 +260,24 @@ def build_handoff_check(
         "blocked_gates": blocked_gates,
         "no_claim_policy": current_manifest.get("no_claim_policy"),
     }
+    exit_code_policy = {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "ready": status_mod.READY_EXIT_CODE,
+        "mismatch": status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+        "blocked_verified_with_fail_on_blocked": status_mod.BLOCKED_EXIT_CODE,
+        "current_without_fail_on_blocked": status_mod.READY_EXIT_CODE
+        if status != "mismatch"
+        else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+        "current_with_fail_on_blocked": status_mod.BLOCKED_EXIT_CODE
+        if status == "blocked_verified"
+        else status_mod.READY_EXIT_CODE
+        if status == "ready"
+        else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+        "status": status,
+        "verified": verified,
+        "ready_status": ready,
+        "fail_on_blocked_option": "--fail-on-blocked",
+    }
     summary = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "status": status,
@@ -284,6 +312,8 @@ def build_handoff_check(
         "final_blocker_manifest_summary_sha256": status_mod._stable_json_sha256(
             final_blocker_manifest_summary
         ),
+        "exit_code_policy": exit_code_policy,
+        "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
         "verification_failures": failures,
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
         "correctness_status_verification": status_verification,
@@ -378,6 +408,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["final_blocker_manifest_summary_sha256"]
     elif args.final_blocker_summary_only:
         payload = report["final_blocker_manifest_summary"]
+    elif args.exit_code_policy_sha_only:
+        payload = report["exit_code_policy_sha256"]
+    elif args.exit_code_policy_only:
+        payload = report["exit_code_policy"]
     elif args.failures_sha_only:
         payload = report["verification_failures_sha256"]
     elif args.failures_only:
