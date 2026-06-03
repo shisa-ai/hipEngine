@@ -1,0 +1,37 @@
+{
+  "batch_blockers": [
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch",
+  "generated_token_equality_passed": true,
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "log_path": "/tmp/hipengine-iter221-c2-serial-1.log",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "mode": "serial",
+  "moe_decode_path": "selected_c1_batch",
+  "native_caware_decode": true,
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "761824a655db63728fc3a2a36d0d2104feb4cd180a612ce564e14054e4aead91",
+  "raw_size_bytes": 139135,
+  "raw_source_path": "/tmp/hipengine-iter221-c2-serial-1.json",
+  "repeat": 1,
+  "status": "blocked",
+  "workload_batch_decode_full_attention_path": "native_batch",
+  "workload_batch_decode_full_attention_row_chunk_size": 0,
+  "workload_batch_decode_moe_path": "selected_c1",
+  "workload_batch_sample_eq_artifact": "",
+  "workload_batch_sample_eq_ok": false,
+  "workload_batch_sample_mode": "serial_lm_head"
+}

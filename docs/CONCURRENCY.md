@@ -443,7 +443,10 @@ What is still not green:
   repeats and five explicit grouped-compact-MoE repeats; all ten were green at
   `[137,137]`, so the flake is not trivially reproduced by toggling c2 MoE mode
   in isolated repeat runs
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/summary.json`). A sampler split likewise ran five default batched-LM-head
+  sampler repeats and five explicit serial-LM-head repeats, all green at
+  `[137,137]`; sampler mode alone is not an immediate trigger
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

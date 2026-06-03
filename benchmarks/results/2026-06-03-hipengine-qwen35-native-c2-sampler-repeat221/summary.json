@@ -1,0 +1,418 @@
+{
+  "artifacts": {
+    "c2-default-sampler-repeat1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat1.json",
+      "sha256": "5e5435622233b9590bb34fe105a92b800d13fab5e80eaa3278c22b8b438f48c9",
+      "size_bytes": 1314
+    },
+    "c2-default-sampler-repeat2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat2.json",
+      "sha256": "c56bd7365f63160f838745c2ba192f8608b31cf78f92517fb0784dfef1a20801",
+      "size_bytes": 1314
+    },
+    "c2-default-sampler-repeat3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat3.json",
+      "sha256": "4646c50901b2866338106e0b1a3124b404a47e7058470353b0f4bf6399605887",
+      "size_bytes": 1314
+    },
+    "c2-default-sampler-repeat4": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat4.json",
+      "sha256": "7f493a617948c53e0173a92ae639f78122042cdcf3c9ab798081c803ed3ccaa2",
+      "size_bytes": 1314
+    },
+    "c2-default-sampler-repeat5": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat5.json",
+      "sha256": "e7c930d79fe15d72eac6938aa9f3d61396753390995c0bbf32c1c1c19057c5e8",
+      "size_bytes": 1314
+    },
+    "c2-serial-sampler-repeat1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat1.json",
+      "sha256": "1cb4baecb7238edf949924ee9869566af922963c42784028fa13b7a4df97b953",
+      "size_bytes": 1227
+    },
+    "c2-serial-sampler-repeat2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat2.json",
+      "sha256": "673aadc31079bbfe57da2b33ce17be5e5d4ff9e58b2a743c90443fa037b7aa4f",
+      "size_bytes": 1227
+    },
+    "c2-serial-sampler-repeat3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat3.json",
+      "sha256": "1e8a6b5b7cbc24287e11b1599d5df7de8ef38e6eb436d87efa350dc29112667b",
+      "size_bytes": 1227
+    },
+    "c2-serial-sampler-repeat4": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat4.json",
+      "sha256": "d9668138c41fb9f67e14eba1ff99ccb21504c508e16935dee170205092d11d67",
+      "size_bytes": 1227
+    },
+    "c2-serial-sampler-repeat5": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat5.json",
+      "sha256": "920866f1cbc31a9d912f9e79e3c8edf352ef88eb53295fe03f74205a762c30f4",
+      "size_bytes": 1227
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_c2_moe_repeat_stress": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/summary.json",
+      "sha256": "01ce7d0fd53e4eabd65712f02b02588812604201e2e8474f75a017b0990a9794",
+      "size_bytes": 15948
+    }
+  },
+  "conclusion": "The c2 intermittent flake is not trivially reproduced by sampler mode. Five default runs using the retained batched_lm_head sampler artifact and five explicit serial_lm_head runs were all generated-token-equality green at [137,137] with empty mismatch summaries. This does not prove the flake fixed because iter219 captured [103,137], but it makes sampler mode alone an unlikely immediate trigger. No throughput claim is made.",
+  "created_at": "2026-06-03T23:49:53Z",
+  "git_commit_before_result_commit": "ae345467349dbe621c97b281ef071377310f9b4e",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 221,
+  "kind": "native_c2_default_batched_vs_serial_sampler_repeat_stress",
+  "observations": {
+    "all_ten_runs_green": true,
+    "default_batched_sampler_repeats_all_green": true,
+    "default_sample_modes": [
+      "batched_lm_head"
+    ],
+    "green_count": 10,
+    "run_count": 10,
+    "serial_sample_modes": [
+      "serial_lm_head"
+    ],
+    "serial_sampler_repeats_all_green": true
+  },
+  "performance_claim": false,
+  "remaining_blockers": [
+    "intermittent c2 equality flake risk remains open because iter219 captured [103,137] before an immediate green final verify",
+    "default c2 artifact still lacks attached projection-dispatch/profiler/scaling evidence for retained promotion",
+    "full-native/no-rowchunk grouped full-attention remains the retained c4/c8 blocker"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat1.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 1,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat2.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 2,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat3.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 3,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat4.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 4,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-default-sampler-repeat5.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "default",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 5,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat1.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "serial",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 1,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat2.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "serial",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 2,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat3.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "serial",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 3,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat4.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "serial",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 4,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/diagnostics/c2-serial-sampler-repeat5.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "mode": "serial",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "repeat": 5,
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head"
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "batch_size": 2,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "modes": {
+      "default": "default auto batched_lm_head via retained sampler equality artifact",
+      "serial": "explicit --batch-sample-mode serial_lm_head"
+    },
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}
