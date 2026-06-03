@@ -669,6 +669,14 @@ What is still not green:
   not caused by in-place/native batch context writes into the standard
   `query_raw` buffer
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-batch-temp-context/summary.json`).
+  Forcing native batch context through compact copied per-row KV caches/block
+  tables also does not change rowchunk3: rowchunk2 remains generated-token green
+  with no projection drift or full-attention stage failures, while rowchunk3 keeps
+  L5 layer4 QKV/Z drift, the L6 truncated-token failure, and L8 layer7
+  `attn_input_pre_qkv`/`attn_context` failures. Rowchunk cache/block-table layout
+  is eliminated; the issue is not caused by the original rowchunk cache/table
+  layout seen by the batch context kernel
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-batch-compact-cache/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
