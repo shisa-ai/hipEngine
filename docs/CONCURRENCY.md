@@ -346,6 +346,12 @@ What is still not green:
   only under the broad per-row-full branch; c8 remains correctness-only and not
   retained-ready
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-stage-c8-confidence/summary.json`).
+  A fresh sampler repeat matrix did not reproduce the flake: explicit c8
+  rowchunk2+batched-LM-head, rowchunk2+serial-LM-head, and
+  per-row-full+serial-LM-head each passed 3/3 repeats at `[137 x8]`. This
+  narrows the flake away from a deterministic sampler-mode mismatch, but the
+  prior flakes and diagnostic fallback labels still block retained claims
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-sampler-repeat-matrix/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
