@@ -336,6 +336,10 @@ What is still not green:
   green. This is still non-retained because row chunking is a diagnostic
   fallback (`native_caware_decode=false`)
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-auto-pair-sweep/summary.json`).
+  The current c=8 auto profiler now confirms that rowchunk2 launches native
+  batch full-attention context kernels and zero per-row full-attention context
+  kernels, with generated-token equality still green
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-profiler/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
