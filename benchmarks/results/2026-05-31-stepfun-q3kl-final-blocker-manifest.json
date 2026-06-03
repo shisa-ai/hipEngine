@@ -44,6 +44,8 @@
     "gate_status_sha_only": "gate_status_handoff_sha256",
     "no_claim_policy_only": "no_claim_policy",
     "no_claim_policy_sha_only": "no_claim_policy_sha256",
+    "recommended_commands_only": "recommended_commands_handoff",
+    "recommended_commands_sha_only": "recommended_commands_handoff_sha256",
     "sha_only": "manifest_sha256",
     "status_provenance_only": "status_provenance",
     "status_provenance_sha_only": "status_provenance_sha256",
@@ -203,6 +205,51 @@
   },
   "no_claim_policy_sha256": "97439473a5f890aeb33b3b9eaf000a42171776b20a723d02b861a961be4db8bb",
   "open_or_partial_items_p0_p12": 2,
+  "recommended_commands_handoff": [
+    {
+      "blocker_kind": "oracle_parity_blocked",
+      "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+      "partial_output_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "partial_output_status": "running",
+      "queue_index": 0,
+      "readiness_gate": "oracle_parity",
+      "recommended_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 900.0 --diagnostic-logs --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "recommended_command_kind": "oracle_helper_long_timeout_command",
+      "recommended_command_reason": "oracle_timeout_retry_with_longer_timeout",
+      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "resource_artifact": null,
+      "success_criteria": [
+        "oracle_gap_report.status is ready",
+        "oracle_gap_report.missing_preconditions is empty",
+        "oracle_gap_report.missing_evidence is empty",
+        "oracle_parity is true",
+        "readiness_gates.oracle_parity.ready is true"
+      ],
+      "writes_partial_output_before_launch": true
+    },
+    {
+      "blocker_kind": "kv_backed_decode_not_wired",
+      "partial_output_overwrite_policy": null,
+      "partial_output_path": null,
+      "partial_output_status": null,
+      "queue_index": 1,
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_reason": "refresh_kv_resource_and_run_plan_artifact",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "success_criteria": [
+        "kv_backed_decode_gap_report.status is ready",
+        "kv_backed_decode_gap_report.missing_evidence is empty",
+        "kv_backed_decode_ready is true",
+        "readiness_gates.kv_backed_decode.ready is true",
+        "e2e_inference_ready is true only after oracle_parity is also true"
+      ],
+      "writes_partial_output_before_launch": null
+    }
+  ],
+  "recommended_commands_handoff_sha256": "51b03404a5d8f72ebe1220c888eefd1a070ee8c711b223b10dac29cf6e8a2933",
   "remaining_blocker_count": 2,
   "remaining_blocker_kinds": [
     "oracle_parity_blocked",
@@ -215,13 +262,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "7cc1bd38d99fd49d095ea56c90fe8608525567abfafdd2e19797ace696b1387c",
+    "readiness_summary_sha256": "7c02dabeae5af2600f79fa20cd606daefda46362e4124204fca546f0bdfe88bc",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "84cf74fd9621c9d996479a91822b93b7a552293a75d9dfa96fe8e988c1893b75",
-        "size_bytes": 69920
+        "sha256": "c12334105ac9797ca9450a867c52025bf90748df007777ef4c4949b384083730",
+        "size_bytes": 70017
       },
       "oracle": {
         "exists": true,
@@ -248,10 +295,10 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "ef1f1d83095a5a5897c6fc6f33729a0018cd68e00cba12896c71058e5ddf9bda",
+    "source_artifacts_sha256": "b53c6ec6ccc38157cc49a2e28379f1ae5339174feb8089ce5eed5273aeea0f65",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
   },
-  "status_provenance_sha256": "cb2d53b361a0685b2ebe8af01d620aead4e7f5dc0caef7de364755378998c8c9",
+  "status_provenance_sha256": "bb026feb5ee09c578c6c484581593a069b368362582ffb924765f8aad4c43533",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",

@@ -129,6 +129,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of status/source provenance.",
     )
+    parser.add_argument(
+        "--recommended-commands-only",
+        action="store_true",
+        help="Emit only exact recommended commands for the remaining blockers.",
+    )
+    parser.add_argument(
+        "--recommended-commands-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of recommended commands.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     return parser.parse_args(argv)
 
@@ -251,6 +261,28 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
             artifacts_to_collect.extend(kv_required_artifacts)
         entries.append(entry)
 
+    recommended_commands_handoff = [
+        {
+            "blocker_kind": str(item.get("blocker_kind")),
+            "readiness_gate": item.get("readiness_gate"),
+            "queue_index": item.get("queue_index"),
+            "recommended_command_kind": item.get("recommended_command_kind"),
+            "recommended_command_reason": item.get("recommended_command_reason"),
+            "recommended_command": item.get("recommended_command"),
+            "recommended_command_sha256": item.get("recommended_command_sha256"),
+            "writes_partial_output_before_launch": item.get(
+                "recommended_command_writes_partial_output_before_launch"
+            ),
+            "partial_output_path": item.get("partial_output_path"),
+            "partial_output_status": item.get("partial_output_status"),
+            "partial_output_overwrite_policy": item.get(
+                "partial_output_overwrite_policy"
+            ),
+            "resource_artifact": item.get("resource_artifact"),
+            "success_criteria": list(item.get("success_criteria", [])),
+        }
+        for item in remaining_items
+    ]
     success_criteria_handoff = [
         {
             "blocker_kind": entry.get("blocker_kind"),
@@ -293,6 +325,9 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     no_claim_policy_sha256 = status_mod._stable_json_sha256(no_claim_policy)
     gate_status_handoff_sha256 = status_mod._stable_json_sha256(gate_status_handoff)
     status_provenance_sha256 = status_mod._stable_json_sha256(status_provenance)
+    recommended_commands_handoff_sha256 = status_mod._stable_json_sha256(
+        recommended_commands_handoff
+    )
     compact_output_modes = {
         "sha_only": "manifest_sha256",
         "entries_only": "entries",
@@ -307,6 +342,8 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "gate_status_sha_only": "gate_status_handoff_sha256",
         "status_provenance_only": "status_provenance",
         "status_provenance_sha_only": "status_provenance_sha256",
+        "recommended_commands_only": "recommended_commands_handoff",
+        "recommended_commands_sha_only": "recommended_commands_handoff_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -326,6 +363,8 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "entries_sha256": entries_sha256,
         "artifacts_to_collect": artifacts_to_collect,
         "artifacts_to_collect_sha256": artifacts_to_collect_sha256,
+        "recommended_commands_handoff": recommended_commands_handoff,
+        "recommended_commands_handoff_sha256": recommended_commands_handoff_sha256,
         "success_criteria_handoff": success_criteria_handoff,
         "success_criteria_handoff_sha256": success_criteria_handoff_sha256,
         "gate_status_handoff": gate_status_handoff,
@@ -431,6 +470,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = manifest["status_provenance_sha256"]
     elif args.status_provenance_only:
         payload = manifest["status_provenance"]
+    elif args.recommended_commands_sha_only:
+        payload = manifest["recommended_commands_handoff_sha256"]
+    elif args.recommended_commands_only:
+        payload = manifest["recommended_commands_handoff"]
     else:
         payload = status_mod._stable_json_sha256(manifest) if args.sha_only else manifest
     status_mod._emit_json(payload, pretty=args.pretty, output=args.output)

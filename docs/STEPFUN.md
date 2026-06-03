@@ -629,11 +629,12 @@ reporting.
   `--entries-sha-only`, `--artifacts-only` / `--artifacts-sha-only`,
   `--success-criteria-only` / `--success-criteria-sha-only`,
   `--no-claim-policy-only` / `--no-claim-policy-sha-only`,
-  `--gate-status-only` / `--gate-status-sha-only`, and
-  `--status-provenance-only` / `--status-provenance-sha-only` outputs expose the
-  two blocker records, three required evidence artifacts, per-blocker completion
-  criteria, claim gate, blocked readiness-gate chain, and source/status hash
-  bundle directly. Its `--verify-manifest`
+  `--gate-status-only` / `--gate-status-sha-only`,
+  `--status-provenance-only` / `--status-provenance-sha-only`, and
+  `--recommended-commands-only` / `--recommended-commands-sha-only` outputs expose
+  the two blocker records, three required evidence artifacts, per-blocker
+  completion criteria, claim gate, blocked readiness-gate chain, source/status
+  hash bundle, and exact recommended commands directly. Its `--verify-manifest`
   mode compares a persisted manifest with the current
   prompt/oracle/resource/docs inputs, while `--verification-status-only` and
   `--verification-failures-only` provide compact drift routing.

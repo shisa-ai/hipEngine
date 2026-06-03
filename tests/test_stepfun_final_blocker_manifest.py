@@ -45,6 +45,22 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     ]
     assert provenance["source_artifacts"]["oracle"]["path"] == str(oracle)
     assert manifest["status_provenance_sha256"] == _stable_json_sha256(provenance)
+    assert manifest["recommended_commands_handoff_sha256"] == _stable_json_sha256(
+        manifest["recommended_commands_handoff"]
+    )
+    assert [
+        record["recommended_command_kind"]
+        for record in manifest["recommended_commands_handoff"]
+    ] == ["oracle_helper_long_timeout_command", "resource_plan_refresh_command"]
+    assert manifest["recommended_commands_handoff"][0][
+        "writes_partial_output_before_launch"
+    ] is True
+    assert manifest["recommended_commands_handoff"][0]["partial_output_status"] == (
+        "running"
+    )
+    assert manifest["recommended_commands_handoff"][1]["resource_artifact"] == str(
+        resource
+    )
     assert manifest["open_or_partial_items_p0_p12"] == 2
     assert manifest["remaining_blocker_count"] == 2
     assert manifest["remaining_blocker_kinds"] == [
@@ -142,6 +158,8 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "gate_status_sha_only": "gate_status_handoff_sha256",
         "status_provenance_only": "status_provenance",
         "status_provenance_sha_only": "status_provenance_sha256",
+        "recommended_commands_only": "recommended_commands_handoff",
+        "recommended_commands_sha_only": "recommended_commands_handoff_sha256",
         "verification_status_only": "verification.status",
         "verification_failures_only": "verification.verification_failures",
     }
@@ -255,6 +273,8 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     gate_status_sha_output = tmp_path / "final-blocker-gate-status-sha.json"
     provenance_output = tmp_path / "final-blocker-status-provenance.json"
     provenance_sha_output = tmp_path / "final-blocker-status-provenance-sha.json"
+    commands_output = tmp_path / "final-blocker-recommended-commands.json"
+    commands_sha_output = tmp_path / "final-blocker-recommended-commands-sha.json"
     expected = build_final_blocker_manifest(
         build_status(prompt, oracle, docs, resource_artifact=resource)
     )
@@ -534,6 +554,64 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert rc == 0
     assert json.loads(provenance_sha_output.read_text()) == expected[
         "status_provenance_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--recommended-commands-only",
+            "--output",
+            str(commands_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    commands_payload = json.loads(commands_output.read_text())
+    assert commands_payload == expected["recommended_commands_handoff"]
+    assert [record["blocker_kind"] for record in commands_payload] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert commands_payload[0]["recommended_command_kind"] == (
+        "oracle_helper_long_timeout_command"
+    )
+    assert "stepfun_llamacpp_oracle.py" in commands_payload[0][
+        "recommended_command"
+    ]
+    assert commands_payload[0]["writes_partial_output_before_launch"] is True
+    assert commands_payload[1]["recommended_command_kind"] == (
+        "resource_plan_refresh_command"
+    )
+    assert "stepfun_gguf_load_smoke.py" in commands_payload[1][
+        "recommended_command"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--recommended-commands-sha-only",
+            "--output",
+            str(commands_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(commands_sha_output.read_text()) == expected[
+        "recommended_commands_handoff_sha256"
     ]
 
     captured = capsys.readouterr()
