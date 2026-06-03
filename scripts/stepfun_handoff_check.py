@@ -23,6 +23,48 @@ DEFAULT_HANDOFF_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json"
 )
 HANDOFF_CHECK_SCHEMA_VERSION = 1
+READINESS_GATE_ORDER = ("oracle_parity", "kv_backed_decode", "e2e_inference")
+
+
+def _listify(value: object) -> list[object]:
+    """Return value as a JSON-friendly list without splitting strings."""
+
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return list(value)
+    return [value]
+
+
+def _compact_readiness_gate_status(
+    readiness_gates: dict[str, object],
+) -> list[dict[str, object]]:
+    """Return compact readiness-gate records for e2e handoff polling."""
+
+    gate_records: list[dict[str, object]] = []
+    for gate_name in READINESS_GATE_ORDER:
+        gate = readiness_gates.get(gate_name, {})
+        gate_record = gate if isinstance(gate, dict) else {}
+        gap = gate_record.get("gap_report", {})
+        gap_record = gap if isinstance(gap, dict) else {}
+        gate_records.append(
+            {
+                "readiness_gate": gate_name,
+                "ready": gate_record.get("ready") is True,
+                "blocked_by": _listify(gate_record.get("blocked_by")),
+                "required_evidence": gate_record.get("required_evidence"),
+                "gap_status": gap_record.get("status"),
+                "first_missing_precondition": gap_record.get(
+                    "first_missing_precondition"
+                ),
+                "missing_preconditions": _listify(
+                    gap_record.get("missing_preconditions")
+                ),
+                "first_missing_evidence": gap_record.get("first_missing_evidence"),
+                "missing_evidence": _listify(gap_record.get("missing_evidence")),
+            }
+        )
+    return gate_records
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -119,6 +161,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--readiness-summary-sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the readiness summary.",
+    )
+    parser.add_argument(
+        "--e2e-readiness-gate-summary-only",
+        action="store_true",
+        help="Emit only compact oracle/KV/e2e readiness-gate handoff state.",
+    )
+    parser.add_argument(
+        "--e2e-readiness-gate-summary-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of e2e readiness-gate state.",
     )
     parser.add_argument(
         "--final-blocker-summary-only",
@@ -233,6 +285,7 @@ def build_handoff_check(
     remaining_blocker_kinds = list(current_manifest.get("remaining_blocker_kinds", []))
     blocked_gates = list(current_manifest.get("blocked_gates", []))
     readiness_summary = dict(current_status.get("readiness_summary", {}))
+    readiness_gates = dict(current_status.get("readiness_gates", {}))
     ready = bool(readiness_summary.get("ready"))
     verified = not failures
     blocked_verified = verified and not ready
@@ -274,11 +327,38 @@ def build_handoff_check(
             ),
         },
     }
+    no_claim_policy = current_manifest.get("no_claim_policy")
+    artifacts_to_collect = current_manifest.get("artifacts_to_collect")
+    success_criteria_handoff = current_manifest.get("success_criteria_handoff")
     final_blocker_manifest_summary = {
         "remaining_blocker_count": remaining_blocker_count,
         "remaining_blocker_kinds": remaining_blocker_kinds,
         "blocked_gates": blocked_gates,
-        "no_claim_policy": current_manifest.get("no_claim_policy"),
+        "no_claim_policy": no_claim_policy,
+    }
+    e2e_readiness_gate_summary = {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "status": status,
+        "ready": ready,
+        "e2e_inference_ready": bool(readiness_summary.get("e2e_inference_ready")),
+        "e2e_inference_claim_allowed": no_claim_policy.get(
+            "e2e_inference_claim_allowed"
+        )
+        if isinstance(no_claim_policy, dict)
+        else None,
+        "gate_order": list(READINESS_GATE_ORDER),
+        "blocked_gates": blocked_gates,
+        "gate_status": _compact_readiness_gate_status(readiness_gates),
+        "required_artifacts": artifacts_to_collect,
+        "required_artifacts_sha256": current_manifest.get(
+            "artifacts_to_collect_sha256"
+        ),
+        "success_criteria": success_criteria_handoff,
+        "success_criteria_sha256": current_manifest.get(
+            "success_criteria_handoff_sha256"
+        ),
+        "no_claim_policy": no_claim_policy,
+        "no_claim_policy_sha256": current_manifest.get("no_claim_policy_sha256"),
     }
     action_summary = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
@@ -289,15 +369,15 @@ def build_handoff_check(
         "recommended_commands_sha256": current_manifest.get(
             "recommended_commands_handoff_sha256"
         ),
-        "required_artifacts": current_manifest.get("artifacts_to_collect"),
+        "required_artifacts": artifacts_to_collect,
         "required_artifacts_sha256": current_manifest.get(
             "artifacts_to_collect_sha256"
         ),
-        "success_criteria": current_manifest.get("success_criteria_handoff"),
+        "success_criteria": success_criteria_handoff,
         "success_criteria_sha256": current_manifest.get(
             "success_criteria_handoff_sha256"
         ),
-        "no_claim_policy": current_manifest.get("no_claim_policy"),
+        "no_claim_policy": no_claim_policy,
         "no_claim_policy_sha256": current_manifest.get("no_claim_policy_sha256"),
     }
     exit_code_policy = {
@@ -349,6 +429,9 @@ def build_handoff_check(
         "final_blocker_manifest_summary_sha256": status_mod._stable_json_sha256(
             final_blocker_manifest_summary
         ),
+        "e2e_readiness_gate_summary_sha256": status_mod._stable_json_sha256(
+            e2e_readiness_gate_summary
+        ),
         "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
         "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
@@ -370,6 +453,10 @@ def build_handoff_check(
         "final_blocker_manifest_summary": final_blocker_manifest_summary,
         "final_blocker_manifest_summary_sha256": status_mod._stable_json_sha256(
             final_blocker_manifest_summary
+        ),
+        "e2e_readiness_gate_summary": e2e_readiness_gate_summary,
+        "e2e_readiness_gate_summary_sha256": status_mod._stable_json_sha256(
+            e2e_readiness_gate_summary
         ),
         "action_summary": action_summary,
         "action_summary_sha256": status_mod._stable_json_sha256(action_summary),
@@ -467,6 +554,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["readiness_summary_sha256"]
     elif args.readiness_summary_only:
         payload = report["readiness_summary"]
+    elif args.e2e_readiness_gate_summary_sha_only:
+        payload = report["e2e_readiness_gate_summary_sha256"]
+    elif args.e2e_readiness_gate_summary_only:
+        payload = report["e2e_readiness_gate_summary"]
     elif args.final_blocker_summary_sha_only:
         payload = report["final_blocker_manifest_summary_sha256"]
     elif args.final_blocker_summary_only:

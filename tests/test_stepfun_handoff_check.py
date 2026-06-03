@@ -57,6 +57,9 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["readiness_summary_sha256"] == _stable_json_sha256(
         report["readiness_summary"]
     )
+    assert report["e2e_readiness_gate_summary_sha256"] == _stable_json_sha256(
+        report["e2e_readiness_gate_summary"]
+    )
     assert report["readiness_summary"]["status"] == "blocked"
     assert report["readiness_summary"]["oracle_parity"] is False
     assert report["readiness_summary"]["kv_backed_decode_ready"] is False
@@ -106,6 +109,9 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "final_blocker_manifest_summary_sha256": report[
             "final_blocker_manifest_summary_sha256"
         ],
+        "e2e_readiness_gate_summary_sha256": report[
+            "e2e_readiness_gate_summary_sha256"
+        ],
         "action_summary_sha256": report["action_summary_sha256"],
         "exit_code_policy_sha256": report["exit_code_policy_sha256"],
         "verification_failures_sha256": report["verification_failures_sha256"],
@@ -141,6 +147,43 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "no_claim_policy": current_manifest["no_claim_policy"],
         "no_claim_policy_sha256": current_manifest["no_claim_policy_sha256"],
     }
+    e2e_gate_summary = report["e2e_readiness_gate_summary"]
+    assert e2e_gate_summary["status"] == "blocked_verified"
+    assert e2e_gate_summary["ready"] is False
+    assert e2e_gate_summary["e2e_inference_ready"] is False
+    assert e2e_gate_summary["e2e_inference_claim_allowed"] is False
+    assert e2e_gate_summary["gate_order"] == [
+        "oracle_parity",
+        "kv_backed_decode",
+        "e2e_inference",
+    ]
+    assert e2e_gate_summary["blocked_gates"] == [
+        "oracle_parity",
+        "kv_backed_decode",
+        "e2e_inference",
+    ]
+    assert [gate["readiness_gate"] for gate in e2e_gate_summary["gate_status"]] == [
+        "oracle_parity",
+        "kv_backed_decode",
+        "e2e_inference",
+    ]
+    assert e2e_gate_summary["gate_status"][0]["first_missing_evidence"] == (
+        "oracle_completed_successfully"
+    )
+    assert e2e_gate_summary["gate_status"][1]["first_missing_evidence"] == (
+        "streaming_runner_ready_flags"
+    )
+    assert e2e_gate_summary["gate_status"][2]["blocked_by"] == [
+        "oracle_parity",
+        "kv_backed_decode",
+    ]
+    assert e2e_gate_summary["required_artifacts"][0]["name"] == (
+        "llama_cpp_oracle_success_artifact"
+    )
+    assert e2e_gate_summary["success_criteria"][1]["readiness_gate"] == (
+        "kv_backed_decode"
+    )
+    assert e2e_gate_summary["no_claim_policy"]["performance_claim_allowed"] is False
     assert report["action_summary"]["recommended_commands"][0][
         "recommended_command_kind"
     ] == "oracle_helper_long_timeout_command"
@@ -228,6 +271,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     artifact_verification_sha_output = tmp_path / "handoff-artifact-verification-sha.json"
     readiness_summary_output = tmp_path / "handoff-readiness-summary.json"
     readiness_summary_sha_output = tmp_path / "handoff-readiness-summary-sha.json"
+    e2e_gate_summary_output = tmp_path / "handoff-e2e-readiness-gate-summary.json"
+    e2e_gate_summary_sha_output = tmp_path / "handoff-e2e-readiness-gate-summary-sha.json"
     final_blocker_summary_output = tmp_path / "handoff-final-blocker-summary.json"
     final_blocker_summary_sha_output = tmp_path / "handoff-final-blocker-summary-sha.json"
     action_summary_output = tmp_path / "handoff-action-summary.json"
@@ -505,6 +550,62 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert rc == 0
     assert json.loads(readiness_summary_sha_output.read_text()) == expected[
         "readiness_summary_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--e2e-readiness-gate-summary-only",
+            "--output",
+            str(e2e_gate_summary_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    e2e_gate_summary_payload = json.loads(e2e_gate_summary_output.read_text())
+    assert e2e_gate_summary_payload == expected["e2e_readiness_gate_summary"]
+    assert e2e_gate_summary_payload["e2e_inference_ready"] is False
+    assert e2e_gate_summary_payload["gate_status"][0]["readiness_gate"] == (
+        "oracle_parity"
+    )
+    assert e2e_gate_summary_payload["gate_status"][1]["first_missing_evidence"] == (
+        "streaming_runner_ready_flags"
+    )
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--e2e-readiness-gate-summary-sha-only",
+            "--output",
+            str(e2e_gate_summary_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(e2e_gate_summary_sha_output.read_text()) == expected[
+        "e2e_readiness_gate_summary_sha256"
     ]
 
     rc = main(
