@@ -517,6 +517,13 @@ What is still not green:
   below the c1 baseline (`aggregate_vs_c1=0.8372`) and retained-bench promotion
   now blocks before schema validation when aggregate scaling does not beat c1
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json`).
+  A c2 output-path audit then checked native output promotion under the same
+  projection-dispatch evidence: default batch-GEMV outputs remain fastest and
+  green (`112.45` tok/s, `[137,137]`), native full-attention O alone is green but
+  slower (`109.27` tok/s), native linear output alone is correctness-red
+  (`[82,137]`), and all-native linear/full output is green but slower than the
+  serial bridge (`99.91` tok/s). No output default is promoted
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-output-path-audit/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
@@ -526,7 +533,8 @@ What is still not green:
   native c>N claim is allowed until the split-K reducer is row-aware.
 - INT8 c>N parity, aggregate-vs-c1 scaling, graph replay buckets,
   residual-serial-loop removal, graph-replay profiler closure, and retained
-  scoreboard promotion remain open performance/coverage work.
+  scoreboard promotion remain open performance/coverage work; native output
+  promotion is not the current c2 scaling fix.
 
 ## Readiness matrix
 
