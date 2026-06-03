@@ -4067,12 +4067,11 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c=2/c=4 profiling shows native selected-c1 batch MoE is
-    # generated-token green and materially faster than grouped-compact. c=8
-    # still cannot pair selected-c1 MoE with native full-attention, but auto
-    # full-attention uses the green per-row fallback there, where selected-c1
-    # MoE remains generated-token green and faster than grouped-compact.
-    return "selected_c1" if int(batch_size) in {2, 4, 8} else "grouped_compact"
+    # c<=8 generated-token equality is now green with grouped-compact MoE.
+    # Keep auto on the retained-compatible grouped path; selected_c1 remains an
+    # explicit diagnostic/profiling escape hatch because it blocks retained MoE
+    # dispatch validation.
+    return "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4791,7 +4790,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-moe-path",
         choices=("auto", "grouped_compact", "selected_c1"),
         default="auto",
-        help="Global MoE path for c>N batch decode; auto selects selected_c1 for c=2 and grouped_compact otherwise, while explicit values force a diagnostic path.",
+        help="Global MoE path for c>N batch decode; auto selects retained-compatible grouped_compact; explicit selected_c1 forces the selected-c1 diagnostic/profiling path.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",

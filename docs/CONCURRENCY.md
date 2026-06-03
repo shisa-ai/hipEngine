@@ -455,6 +455,15 @@ What is still not green:
   MoE, projection dispatch falls back to row-GEMV without accepted c-aware
   evidence, and profiler/scaling/baseline artifacts are not attached
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-current-equality/summary.json`).
+  The retained-bench auto MoE default now resolves to `grouped_compact` instead
+  of `selected_c1` for c<=8. A fresh c=2/c=4/c=8 512/128 matrix remains green
+  for every row at prefix 137 with empty mismatch summaries, and all three rows
+  report `moe_decode_path=grouped_compact`, `moe_grouped_compact_layers=40`, and
+  `moe_selected_c1_fallback_layers=0`. This clears the selected-c1 batch MoE
+  metadata blocker; remaining blockers are c4/c8 rowchunked full attention,
+  row-GEMV projection dispatch without accepted c-aware evidence, and missing
+  profiler/scaling/baseline artifacts
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-auto-grouped-moe/summary.json`).
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7
