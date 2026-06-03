@@ -473,6 +473,15 @@ What is still not green:
   projection dispatch/no c-aware evidence, and scaling ratios that do not beat
   the c1 / serial gates
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/summary.json`).
+  The current c4 correctness-first rowchunk2/selected-c1 path also has attached
+  baseline references plus a captured `rocprofv3 --kernel-trace` retained-bench
+  rerun: equality remains `[137,137,137,137]`, primitive correctness is
+  loaded/passed, profiler provenance / kernel-duration blockers are absent, and
+  scaling references are complete. This is still not a throughput claim because
+  c4 remains blocked by rowchunked full attention (`native_caware_decode=false`),
+  selected-c1 MoE retained metadata, and row-GEMV projection dispatch/no current
+  accepted c-aware evidence
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-current-profile/summary.json`).
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7
