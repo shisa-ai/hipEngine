@@ -294,6 +294,18 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "kv_trace_check_command",
         "kv_next_token_check_command",
     ]
+    assert [
+        record["validator_artifact_path"]
+        for record in report["validator_command_summary"]["validator_commands"]
+    ] == [
+        str(oracle),
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+    ]
+    assert all(
+        "<" not in record["validator_command_concrete"]
+        for record in report["validator_command_summary"]["validator_commands"]
+    )
     assert report["missing_artifact_summary"]["missing_artifacts"][0][
         "missing_reason"
     ] == "oracle_completed_successfully"
@@ -1200,6 +1212,22 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert "scripts/stepfun_oracle_artifact_check.py" in validator_commands_payload[
         0
     ]["validator_command"]
+    assert validator_commands_payload[0]["validator_artifact_path"] == str(oracle)
+    assert "<" not in validator_commands_payload[0]["validator_command_concrete"]
+    assert str(oracle) in validator_commands_payload[0]["validator_command_concrete"]
+    assert validator_commands_payload[0][
+        "validator_command_concrete_sha256"
+    ] == _stable_json_sha256(
+        validator_commands_payload[0]["validator_command_concrete"]
+    )
+    assert validator_commands_payload[1]["validator_artifact_path"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json"
+    )
+    assert "<" not in validator_commands_payload[1]["validator_command_concrete"]
+    assert validator_commands_payload[2]["validator_artifact_path"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    )
+    assert "<" not in validator_commands_payload[2]["validator_command_concrete"]
 
     rc = main(
         [

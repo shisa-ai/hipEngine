@@ -18,6 +18,36 @@ from scripts import stepfun_kv_next_token_check as kv_next_token_check_mod
 from scripts import stepfun_kv_trace_check as kv_trace_check_mod
 from scripts import stepfun_oracle_artifact_check as oracle_check_mod
 
+DEFAULT_KV_TRACE_ARTIFACT = Path(
+    "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json"
+)
+DEFAULT_KV_NEXT_TOKEN_ARTIFACT = Path(
+    "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+)
+
+
+def _string_path(path_value: object) -> str | None:
+    """Return a path-like value as a string, preserving None for absent paths."""
+
+    if path_value in (None, ""):
+        return None
+    return str(path_value)
+
+
+def _concrete_validator_command(
+    command_template: str,
+    *,
+    placeholder: str,
+    artifact_path: object,
+) -> tuple[str | None, str | None]:
+    """Return a runnable validator command and digest for a concrete artifact path."""
+
+    path = _string_path(artifact_path)
+    if path is None:
+        return None, None
+    command = command_template.replace(placeholder, path)
+    return command, status_mod._stable_json_sha256(command)
+
 
 def _artifact_file_present(path_value: object) -> bool:
     """Return whether an artifact path is provided and currently exists."""
@@ -84,8 +114,13 @@ def _summarize_required_artifact(artifact: dict[str, object]) -> dict[str, objec
         "recommended_command_kind": artifact.get("recommended_command_kind"),
         "recommended_command_sha256": artifact.get("recommended_command_sha256"),
         "validator_command_kind": artifact.get("validator_command_kind"),
+        "validator_artifact_path": artifact.get("validator_artifact_path"),
         "validator_command": artifact.get("validator_command"),
         "validator_command_sha256": artifact.get("validator_command_sha256"),
+        "validator_command_concrete": artifact.get("validator_command_concrete"),
+        "validator_command_concrete_sha256": artifact.get(
+            "validator_command_concrete_sha256"
+        ),
         "validator_expected_kernel_families": artifact.get(
             "validator_expected_kernel_families"
         ),
@@ -125,8 +160,13 @@ def _summarize_validator_commands(
             "missing_reason": record.get("missing_reason"),
             "evidence_satisfied": record.get("evidence_satisfied"),
             "validator_command_kind": record.get("validator_command_kind"),
+            "validator_artifact_path": record.get("validator_artifact_path"),
             "validator_command": record.get("validator_command"),
             "validator_command_sha256": record.get("validator_command_sha256"),
+            "validator_command_concrete": record.get("validator_command_concrete"),
+            "validator_command_concrete_sha256": record.get(
+                "validator_command_concrete_sha256"
+            ),
             "validator_expected_kernel_families_sha256": record.get(
                 "validator_expected_kernel_families_sha256"
             ),
@@ -141,7 +181,10 @@ def _summarize_validator_commands(
     ]
 
 
-def _oracle_validator_handoff(prompt_artifact: object) -> dict[str, object]:
+def _oracle_validator_handoff(
+    prompt_artifact: object,
+    oracle_artifact: object,
+) -> dict[str, object]:
     """Return the validation command for a retained llama.cpp oracle artifact."""
 
     artifact_placeholder = "<llama_cpp_oracle_success_artifact.json>"
@@ -153,6 +196,11 @@ def _oracle_validator_handoff(prompt_artifact: object) -> dict[str, object]:
         f"--artifact {artifact_placeholder} "
         f"--prompt-artifact {prompt_arg} "
         "--summary-only --fail-on-missing --pretty"
+    )
+    concrete_command, concrete_sha256 = _concrete_validator_command(
+        command,
+        placeholder=artifact_placeholder,
+        artifact_path=oracle_artifact,
     )
     expected_checks = [
         "oracle_success_status",
@@ -170,8 +218,11 @@ def _oracle_validator_handoff(prompt_artifact: object) -> dict[str, object]:
     ]
     return {
         "validator_command_kind": "oracle_artifact_check_command",
+        "validator_artifact_path": _string_path(oracle_artifact),
         "validator_command": command,
         "validator_command_sha256": status_mod._stable_json_sha256(command),
+        "validator_command_concrete": concrete_command,
+        "validator_command_concrete_sha256": concrete_sha256,
         "validator_expected_evidence_checks": expected_checks,
         "validator_expected_evidence_checks_sha256": status_mod._stable_json_sha256(
             expected_checks
@@ -181,7 +232,10 @@ def _oracle_validator_handoff(prompt_artifact: object) -> dict[str, object]:
     }
 
 
-def _kv_trace_validator_handoff(resource_artifact: object) -> dict[str, object]:
+def _kv_trace_validator_handoff(
+    resource_artifact: object,
+    trace_artifact: object,
+) -> dict[str, object]:
     """Return the validation command for a retained StepFun KV trace artifact."""
 
     trace_placeholder = "<kv_kernel_trace_artifact.csv-or-json>"
@@ -194,6 +248,11 @@ def _kv_trace_validator_handoff(resource_artifact: object) -> dict[str, object]:
         f"--resource-artifact {resource_arg} "
         "--summary-only --fail-on-missing --pretty"
     )
+    concrete_command, concrete_sha256 = _concrete_validator_command(
+        command,
+        placeholder=trace_placeholder,
+        artifact_path=trace_artifact,
+    )
     expected_families = [
         {
             "name": family.get("name"),
@@ -204,8 +263,11 @@ def _kv_trace_validator_handoff(resource_artifact: object) -> dict[str, object]:
     ]
     return {
         "validator_command_kind": "kv_trace_check_command",
+        "validator_artifact_path": _string_path(trace_artifact),
         "validator_command": command,
         "validator_command_sha256": status_mod._stable_json_sha256(command),
+        "validator_command_concrete": concrete_command,
+        "validator_command_concrete_sha256": concrete_sha256,
         "validator_expected_kernel_families": expected_families,
         "validator_expected_kernel_families_sha256": status_mod._stable_json_sha256(
             expected_families
@@ -215,7 +277,10 @@ def _kv_trace_validator_handoff(resource_artifact: object) -> dict[str, object]:
     }
 
 
-def _kv_next_token_validator_handoff(prompt_artifact: object) -> dict[str, object]:
+def _kv_next_token_validator_handoff(
+    prompt_artifact: object,
+    token_artifact: object,
+) -> dict[str, object]:
     """Return the validation command for a retained StepFun KV next-token artifact."""
 
     artifact_placeholder = "<kv_backed_next_token_artifact.json>"
@@ -227,6 +292,11 @@ def _kv_next_token_validator_handoff(prompt_artifact: object) -> dict[str, objec
         f"--artifact {artifact_placeholder} "
         f"--prompt-artifact {prompt_arg} "
         "--summary-only --fail-on-missing --pretty"
+    )
+    concrete_command, concrete_sha256 = _concrete_validator_command(
+        command,
+        placeholder=artifact_placeholder,
+        artifact_path=token_artifact,
     )
     expected_checks = [
         "artifact_success_status",
@@ -241,8 +311,11 @@ def _kv_next_token_validator_handoff(prompt_artifact: object) -> dict[str, objec
     ]
     return {
         "validator_command_kind": "kv_next_token_check_command",
+        "validator_artifact_path": _string_path(token_artifact),
         "validator_command": command,
         "validator_command_sha256": status_mod._stable_json_sha256(command),
+        "validator_command_concrete": concrete_command,
+        "validator_command_concrete_sha256": concrete_sha256,
         "validator_expected_evidence_checks": expected_checks,
         "validator_expected_evidence_checks_sha256": status_mod._stable_json_sha256(
             expected_checks
@@ -487,7 +560,12 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                 )
                 is True,
             }
-            artifact.update(_oracle_validator_handoff(prompt_source.get("path")))
+            artifact.update(
+                _oracle_validator_handoff(
+                    prompt_source.get("path"),
+                    oracle_source.get("path"),
+                )
+            )
             entry["artifact_handoff"] = artifact
             artifacts_to_collect.append(artifact)
         elif blocker_kind == "kv_backed_decode_not_wired":
@@ -504,12 +582,22 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                     "recommended_command_sha256", item.get("recommended_command_sha256")
                 )
                 if enriched_record.get("name") == "kv_kernel_trace_artifact":
+                    enriched_record.setdefault("path", str(DEFAULT_KV_TRACE_ARTIFACT))
                     enriched_record.update(
-                        _kv_trace_validator_handoff(text_resource_source.get("path"))
+                        _kv_trace_validator_handoff(
+                            text_resource_source.get("path"),
+                            enriched_record.get("path"),
+                        )
                     )
                 elif enriched_record.get("name") == "kv_backed_next_token_artifact":
+                    enriched_record.setdefault(
+                        "path", str(DEFAULT_KV_NEXT_TOKEN_ARTIFACT)
+                    )
                     enriched_record.update(
-                        _kv_next_token_validator_handoff(prompt_source.get("path"))
+                        _kv_next_token_validator_handoff(
+                            prompt_source.get("path"),
+                            enriched_record.get("path"),
+                        )
                     )
                 kv_required_artifacts.append(enriched_record)
             artifact = {

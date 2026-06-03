@@ -125,6 +125,20 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     ] == _stable_json_sha256(
         manifest["artifact_status_handoff"][0]["validator_command"]
     )
+    assert manifest["artifact_status_handoff"][0]["validator_artifact_path"] == str(
+        oracle
+    )
+    assert "<llama_cpp_oracle_success_artifact.json>" not in manifest[
+        "artifact_status_handoff"
+    ][0]["validator_command_concrete"]
+    assert str(oracle) in manifest["artifact_status_handoff"][0][
+        "validator_command_concrete"
+    ]
+    assert manifest["artifact_status_handoff"][0][
+        "validator_command_concrete_sha256"
+    ] == _stable_json_sha256(
+        manifest["artifact_status_handoff"][0]["validator_command_concrete"]
+    )
     assert manifest["artifact_status_handoff"][0][
         "validator_expected_evidence_checks"
     ] == [
@@ -162,6 +176,17 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     ] == _stable_json_sha256(
         manifest["artifact_status_handoff"][1]["validator_command"]
     )
+    assert manifest["artifact_status_handoff"][1]["validator_artifact_path"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json"
+    )
+    assert "<kv_kernel_trace_artifact.csv-or-json>" not in manifest[
+        "artifact_status_handoff"
+    ][1]["validator_command_concrete"]
+    assert manifest["artifact_status_handoff"][1][
+        "validator_command_concrete_sha256"
+    ] == _stable_json_sha256(
+        manifest["artifact_status_handoff"][1]["validator_command_concrete"]
+    )
     assert [
         family["name"]
         for family in manifest["artifact_status_handoff"][1][
@@ -190,6 +215,17 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "validator_command_sha256"
     ] == _stable_json_sha256(
         manifest["artifact_status_handoff"][2]["validator_command"]
+    )
+    assert manifest["artifact_status_handoff"][2]["validator_artifact_path"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    )
+    assert "<kv_backed_next_token_artifact.json>" not in manifest[
+        "artifact_status_handoff"
+    ][2]["validator_command_concrete"]
+    assert manifest["artifact_status_handoff"][2][
+        "validator_command_concrete_sha256"
+    ] == _stable_json_sha256(
+        manifest["artifact_status_handoff"][2]["validator_command_concrete"]
     )
     assert manifest["artifact_status_handoff"][2][
         "validator_expected_evidence_checks"
@@ -671,6 +707,22 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert "scripts/stepfun_oracle_artifact_check.py" in validator_commands_payload[0][
         "validator_command"
     ]
+    assert validator_commands_payload[0]["validator_artifact_path"] == str(oracle)
+    assert "<" not in validator_commands_payload[0]["validator_command_concrete"]
+    assert str(oracle) in validator_commands_payload[0]["validator_command_concrete"]
+    assert validator_commands_payload[0][
+        "validator_command_concrete_sha256"
+    ] == _stable_json_sha256(
+        validator_commands_payload[0]["validator_command_concrete"]
+    )
+    assert validator_commands_payload[1]["validator_artifact_path"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json"
+    )
+    assert "<" not in validator_commands_payload[1]["validator_command_concrete"]
+    assert validator_commands_payload[2]["validator_artifact_path"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    )
+    assert "<" not in validator_commands_payload[2]["validator_command_concrete"]
 
     rc = main(
         [

@@ -219,13 +219,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 689,
+        "line": 691,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ]
   },
-  "docs_checklist_sha256": "a06f4440bf1a0a8e970da366fca82d6d618505f2037de8b0e8b046781a544466",
+  "docs_checklist_sha256": "64cc037b6f46d15ad473d8730b69a3dc7be7ff9688893e18660922ca9949b0cc",
   "e2e_inference_ready": false,
   "first_remaining_blocker_report": {
     "blocked_gates": [
@@ -17333,10 +17333,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "e84e76b7c61dfc26649e42396820b6099b77f16ba20c3f3d80894c3d67f4c0fb",
     "schema_version": 1,
-    "source_artifacts_sha256": "1bfd6b1e682532e5d6585a0751a0f860a03a9e79675afc71ea43ee0db465b4ba",
+    "source_artifacts_sha256": "d8acdd10a0eba95685da6e2a4ac05b6fb915804e74a5a459eef9a1b0869b20bd",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "3bf22f77af43fb5f28177e1c15c9f78bf6f2dae9bae2ce23ae53fb25037fb65c",
+  "readiness_summary_sha256": "56cd90a8261b8599269f9aee82c0eacdc24931a1a0b14f145488593c8eec193d",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -17455,8 +17455,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "fee70e6bb8a26e7cea055a9307ae14ddb987e99ee9501609d74dea7a2306a212",
-      "size_bytes": 73652
+      "sha256": "9ceda6016ef9f9df767476df40fabbf7c7d73ecc51dfd20a7c389e31c30e284e",
+      "size_bytes": 73764
     },
     "oracle": {
       "exists": true,
@@ -17483,7 +17483,7 @@
       "size_bytes": 176642
     }
   },
-  "source_artifacts_sha256": "1bfd6b1e682532e5d6585a0751a0f860a03a9e79675afc71ea43ee0db465b4ba",
+  "source_artifacts_sha256": "d8acdd10a0eba95685da6e2a4ac05b6fb915804e74a5a459eef9a1b0869b20bd",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
