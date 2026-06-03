@@ -513,14 +513,17 @@ What is still not green:
   primitive correctness is loaded/passed, grouped MoE and projection blockers are
   absent, and profiler provenance / kernel-duration blockers are absent. This is
   still not a throughput claim because aggregate-vs-c1 scaling is below the
-  retained threshold. The c4 grouped/projection rowchunk2 path now has the same
-  profiler-backed evidence: equality remains `[137,137,137,137]`, primitive
-  correctness is loaded/passed, grouped MoE / projection / profiler blockers are
-  absent, and the only batch blockers are rowchunked full-attention /
-  `native_caware_decode=false`. c8 grouped profiler evidence is still absent and
-  c8 repeatability remains open
+  retained threshold. The c4 and c8 grouped/projection rowchunk2 paths now have
+  the same profiler-backed evidence: c4 equality remains `[137,137,137,137]`,
+  c8 equality remains `[137,137,137,137,137,137,137,137]`, primitive correctness
+  is loaded/passed, grouped MoE / projection / profiler blockers are absent, and
+  the only batch blockers are rowchunked full-attention /
+  `native_caware_decode=false`. c8 repeatability remains open before any
+  promotion/performance claim, but the grouped profiler-evidence blocker itself
+  is now covered
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-grouped-projection-profile/summary.json`,
-  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-grouped-projection-profile/summary.json`).
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-grouped-projection-profile/summary.json`,
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-profile/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
