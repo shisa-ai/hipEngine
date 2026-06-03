@@ -465,6 +465,14 @@ What is still not green:
   selected-c1 batch MoE metadata, row-GEMV projection dispatch without accepted
   c-aware evidence, and missing profiler/scaling/baseline artifacts
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/summary.json`).
+  The current selected-c1 c2 path now has a captured `rocprofv3 --kernel-trace`
+  artifact attached to a 512/128 retained-bench rerun: equality remains
+  `[137,137]`, primitive correctness is loaded/passed, and profiler provenance /
+  kernel-duration blockers are absent. This is still not a throughput claim;
+  the artifact remains blocked by selected-c1 MoE retained metadata, row-GEMV
+  projection dispatch/no c-aware evidence, and scaling ratios that do not beat
+  the c1 / serial gates
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/summary.json`).
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7

@@ -1,0 +1,5877 @@
+{
+  "schema": 3,
+  "mode": "qwen35_paro_native_retained_bench",
+  "status": "blocked",
+  "rows": 2,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/native-profiled-c2-selected-c1.json",
+  "timestamp": "2026-06-03T17:09:12.555367+00:00",
+  "run_tag": "qwen35-paro-c2-native-retained",
+  "summary": "Qwen3.5/PARO scheduler compact native c>N benchmark",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "default_hardware": false,
+    "visible_device": {
+      "env": {
+        "HIP_VISIBLE_DEVICES": "1"
+      },
+      "hipGetDeviceCount_error": 0,
+      "visible_device_count": 1,
+      "hipGetDevice_error": 0,
+      "current_device": 0,
+      "hipDeviceGetName_error": 0,
+      "device_name": "AMD Radeon RX 7900 XTX"
+    },
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|gfx'\"'\"' | head -4'",
+      "returncode": 0,
+      "output": "Name:                    AMD Ryzen 9 5950X 16-Core Processor\n  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor\n  Vendor Name:             CPU                                \n  Name:                    gfx1100"
+    },
+    "rocm_smi": {
+      "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "returncode": 0,
+      "output": "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status\n\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 36.0\nGPU[0]\t\t: Temperature (Sensor junction) (C): 44.0\nGPU[0]\t\t: Temperature (Sensor memory) (C): 48.0\nGPU[1]\t\t: Temperature (Sensor edge) (C): 46.0\nGPU[1]\t\t: Temperature (Sensor junction) (C): 57.0\nGPU[1]\t\t: Temperature (Sensor memory) (C): 66.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 1\nGPU[1]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 48301604864\nGPU[0]\t\t: VRAM Total Used Memory (B): 28061696\nGPU[1]\t\t: VRAM Total Memory (B): 25753026560\nGPU[1]\t\t: VRAM Total Used Memory (B): 410079232\n==========================================================================================\n================================== End of ROCm SMI Log ==================================="
+    }
+  },
+  "software": {
+    "python": "3.12.9",
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "94b944d0039109429e4d74eca76a9d5400fd81b1",
+    "hipengine_dirty": false,
+    "torch_rocm": {
+      "command": "python3 -c 'import torch; print(torch.__version__, torch.version.hip)'",
+      "returncode": 0,
+      "output": "2.11.0+rocm7.13.0a20260423 7.13.26162"
+    }
+  },
+  "workload": {
+    "shape": "c=2 prompt=512 decode=128",
+    "model": "Qwen3.5/3.6-35B-A3B-PARO",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "quant": "w4_paro",
+    "prompt_tokens_per_request": 512,
+    "prompt_tokens_aggregate": 1024,
+    "gen_tokens_per_request": 128,
+    "gen_tokens_aggregate": 256,
+    "warmup_decode_tokens": 8,
+    "concurrency": 2,
+    "prompt_lengths": [
+      512,
+      512
+    ],
+    "max_layers": 40,
+    "kv_policy": {
+      "policy_class": "FixedPagedKVPolicy",
+      "spans_mode": "uniform",
+      "block_size": 256,
+      "requested_storage": "auto",
+      "resolved_storage_dtype": "bf16",
+      "storage_dtype": "bf16",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "scale_metadata_format": {
+        "present": false,
+        "scale_dtype": null,
+        "granularity": null,
+        "k_scale": null,
+        "v_scale": null
+      },
+      "int8_explicit": false,
+      "int8_admission_gated": false,
+      "selection_reason": "default_bf16"
+    },
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "native_compact_prefill": true,
+    "native_caware_decode": true,
+    "batch_prefill_linear_path": "packed_segments",
+    "batch_decode_moe_path": "selected_c1",
+    "batch_decode_linear_path": "batch_segments",
+    "batch_decode_linear_projection_path": "batch",
+    "batch_decode_linear_state_path": "batch_segments",
+    "batch_decode_linear_moe_path": "grouped_compact",
+    "batch_decode_linear_output_path": "batch_gemv",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_size": 0,
+    "batch_decode_attention_input_path": "batch",
+    "batch_decode_attention_qkv_path": "batch",
+    "batch_decode_attention_scratch_path": "batch",
+    "batch_decode_attention_context_path": "batch",
+    "batch_decode_attention_gate_path": "batch",
+    "batch_decode_full_attention_kv_append_path": "batch",
+    "batch_decode_attention_append_context_order": "phased",
+    "batch_decode_attention_suffix_order": "phased",
+    "batch_decode_full_attention_output_path": "batch_gemv",
+    "batch_decode_full_attention_layer_copy": "batch",
+    "batch_decode_full_attention_moe_path": "grouped_compact",
+    "batch_decode_post_attention_path": "batch",
+    "batch_sample_mode": "batched_lm_head",
+    "batch_sample_eq_ok": true,
+    "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+    "batch_sample_eq_rows": 2
+  },
+  "benchmark_rollup": {
+    "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/native-profiled-c2-selected-c1.json",
+    "source_artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/native-profiled-c2-selected-c1.json",
+    "readme_path": "benchmarks/README.md",
+    "changelog_path": "benchmarks/CHANGELOG.md"
+  },
+  "commands": {
+    "environment": [
+      "rocminfo | grep -E 'Name:|gfx' | head -4",
+      "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "hipcc --version",
+      "git rev-parse HEAD",
+      "git diff --quiet"
+    ],
+    "correctness_reference": "inline generated-token equality vs independent c=1 plus env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --seed 1234 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json",
+    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/hipcc-version.txt --require-cached-build --batch-decode-moe-path selected_c1 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json --profiler-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profiler-c2-selected-c1.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/native-profiled-c2-selected-c1.json",
+    "profiler": "rocprofv3 --kernel-trace --output-format csv -d benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profile-c2-selected-c1 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/hipcc-version.txt --require-cached-build --batch-decode-moe-path selected_c1 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json --profiler-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profiler-c2-selected-c1.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/native-profiled-c2-selected-c1.json"
+  },
+  "correctness": {
+    "passed": true,
+    "oracle": "generated-token ids equal independent c=1 resident runs through the same native packed prefill/decode path plus scripts/qwen35_batch_correctness.py primitive GPU correctness for the same c>N row count",
+    "finite_logits": true,
+    "generated_token_equality": {
+      "passed": true,
+      "skipped": false,
+      "comparison": "native_batch_vs_independent_c1",
+      "rows": 2,
+      "warmup_decode_tokens": 8,
+      "gen_tokens_per_request": 128,
+      "tokens_per_sequence": 137,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "batch_sequences": [
+        [
+          271,
+          248068,
+          198,
+          8160,
+          579,
+          264,
+          7047,
+          1817,
+          25,
+          271,
+          16,
+          13,
+          220,
+          2972,
+          2014,
+          53983,
+          2570,
+          5396,
+          64700,
+          198,
+          256,
+          471,
+          561,
+          1879,
+          16661,
+          314,
+          220,
+          16,
+          18,
+          18922,
+          318,
+          269,
+          6791,
+          18922,
+          8,
+          9640,
+          6761,
+          28853,
+          74988,
+          15,
+          25,
+          16,
+          60,
+          63,
+          310,
+          74988,
+          15,
+          25,
+          16,
+          18,
+          60,
+          27653,
+          198,
+          256,
+          471,
+          8618,
+          2713,
+          2640,
+          25,
+          328,
+          76660,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          1149,
+          198,
+          256,
+          471,
+          561,
+          1483,
+          2713,
+          74988,
+          15,
+          25,
+          16,
+          18,
+          60,
+          63,
+          369,
+          3799,
+          974,
+          4937,
+          1284,
+          17834,
+          25,
+          37431,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369
+        ],
+        [
+          271,
+          248068,
+          198,
+          8160,
+          579,
+          264,
+          7047,
+          1817,
+          25,
+          271,
+          16,
+          13,
+          220,
+          2972,
+          2014,
+          53983,
+          2570,
+          5396,
+          64700,
+          198,
+          256,
+          471,
+          561,
+          1156,
+          682,
+          3162,
+          290,
+          264,
+          7309,
+          56127,
+          9640,
+          25,
+          10232,
+          16,
+          25,
+          16,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          17,
+          60,
+          2423,
+          498,
+          16,
+          25,
+          16,
+          17,
+          60,
+          75530,
+          198,
+          256,
+          471,
+          561,
+          6007,
+          1622,
+          369,
+          25,
+          328,
+          5328,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          1149,
+          198,
+          256,
+          471,
+          9321,
+          25,
+          25914,
+          328,
+          2082,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          3158,
+          1061,
+          12846,
+          264,
+          5077
+        ]
+      ],
+      "c1_sequences": [
+        [
+          271,
+          248068,
+          198,
+          8160,
+          579,
+          264,
+          7047,
+          1817,
+          25,
+          271,
+          16,
+          13,
+          220,
+          2972,
+          2014,
+          53983,
+          2570,
+          5396,
+          64700,
+          198,
+          256,
+          471,
+          561,
+          1879,
+          16661,
+          314,
+          220,
+          16,
+          18,
+          18922,
+          318,
+          269,
+          6791,
+          18922,
+          8,
+          9640,
+          6761,
+          28853,
+          74988,
+          15,
+          25,
+          16,
+          60,
+          63,
+          310,
+          74988,
+          15,
+          25,
+          16,
+          18,
+          60,
+          27653,
+          198,
+          256,
+          471,
+          8618,
+          2713,
+          2640,
+          25,
+          328,
+          76660,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          1149,
+          198,
+          256,
+          471,
+          561,
+          1483,
+          2713,
+          74988,
+          15,
+          25,
+          16,
+          18,
+          60,
+          63,
+          369,
+          3799,
+          974,
+          4937,
+          1284,
+          17834,
+          25,
+          37431,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369
+        ],
+        [
+          271,
+          248068,
+          198,
+          8160,
+          579,
+          264,
+          7047,
+          1817,
+          25,
+          271,
+          16,
+          13,
+          220,
+          2972,
+          2014,
+          53983,
+          2570,
+          5396,
+          64700,
+          198,
+          256,
+          471,
+          561,
+          1156,
+          682,
+          3162,
+          290,
+          264,
+          7309,
+          56127,
+          9640,
+          25,
+          10232,
+          16,
+          25,
+          16,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          17,
+          60,
+          2423,
+          498,
+          16,
+          25,
+          16,
+          17,
+          60,
+          75530,
+          198,
+          256,
+          471,
+          561,
+          6007,
+          1622,
+          369,
+          25,
+          328,
+          5328,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          1149,
+          198,
+          256,
+          471,
+          9321,
+          25,
+          25914,
+          328,
+          2082,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          3158,
+          1061,
+          12846,
+          264,
+          5077
+        ]
+      ],
+      "mismatch_summaries": [],
+      "mismatches": []
+    },
+    "primitive_batch_correctness": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json",
+      "source_artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json",
+      "status": "loaded",
+      "schema": 1,
+      "rows": 2,
+      "seed": 1234,
+      "block_size": 256,
+      "max_context_len": 4,
+      "num_q_heads": 4,
+      "num_kv_heads": 1,
+      "head_dim": 8,
+      "context_lens": [
+        1,
+        2
+      ],
+      "passed": true,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+      "attn_batch_aa_max_abs": 0.0,
+      "aa_passed": true,
+      "device": {
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon RX 7900 XTX"
+      },
+      "reason": null
+    },
+    "kl_mean": null,
+    "top1_agreement": null
+  },
+  "execution": {
+    "batch_execution": {
+      "path": "scheduler_native_compact_batch",
+      "scheduler_owned": true,
+      "row_execution": "native_compact_caware_layers",
+      "native_prefill_plan": {
+        "path": "single_request_native_full",
+        "layer_limit": 40,
+        "linear_prefix_layers": 3,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "native_compact_prefill": true,
+      "native_caware_decode": true,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "rows": 2,
+        "slots": [
+          0,
+          1
+        ],
+        "max_full_attention_context": 648,
+        "native_full_attention_layers": 10,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "post_attention_decode_path": "native_batch",
+        "native_caware_decode": true,
+        "linear_attention_segment_metadata": {
+          "cu_seqlens": [
+            0,
+            1,
+            2
+          ],
+          "state_indices": [
+            0,
+            1
+          ]
+        },
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "moe_decode_rows": 2,
+        "moe_grouped_compact_layers": 0,
+        "moe_selected_c1_fallback_layers": 0,
+        "layer_executions": [
+          {
+            "layer_index": 0,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 1,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 2,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 3,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 3,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 4,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 5,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 6,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 7,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 7,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 8,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 9,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 10,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 11,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 11,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 12,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 13,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 14,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 15,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 15,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 16,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 17,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 18,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 19,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 19,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 20,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 21,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 22,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 23,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 23,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 24,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 25,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 26,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 27,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 27,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 28,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 29,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 30,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 31,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 31,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 32,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 33,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 34,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 35,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 35,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          },
+          {
+            "layer_index": 36,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 37,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 38,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "linear_attention_decode_path": "native_batch_segments",
+            "linear_attention_segment_metadata": {
+              "cu_seqlens": [
+                0,
+                1,
+                2
+              ],
+              "state_indices": [
+                0,
+                1
+              ]
+            },
+            "linear_attention_row_state_map": [
+              {
+                "row": 0,
+                "slot": 0,
+                "state_index": 0
+              },
+              {
+                "row": 1,
+                "slot": 1,
+                "state_index": 1
+              }
+            ],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": true,
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "batch_gemv",
+            "moe_decode_path": "selected_c1_batch"
+          },
+          {
+            "layer_index": 39,
+            "layer_type": "full_attention",
+            "rows": 2,
+            "slots": [
+              0,
+              1
+            ],
+            "max_context": 648,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "moe_decode_path": "selected_c1_batch",
+            "full_attention_output_decode_path": "batch_gemv",
+            "full_attention_segment_metadata": {
+              "layer_index": 39,
+              "rows": 2,
+              "slots": [
+                0,
+                1
+              ],
+              "positions": [
+                647,
+                647
+              ],
+              "append_live_counts": [
+                647,
+                647
+              ],
+              "decode_live_counts": [
+                648,
+                648
+              ],
+              "append_max_live_count": 647,
+              "decode_max_live_count": 648,
+              "block_size": 256,
+              "block_table_len_per_row": 3,
+              "block_table_rows": [
+                [
+                  0,
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  1,
+                  2
+                ]
+              ],
+              "storage_dtype": "bf16"
+            }
+          }
+        ],
+        "blockers": [],
+        "sampler_execution": {
+          "rows": 2,
+          "requested_mode": "batched_lm_head",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "c2_equality_green": true,
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "blockers": []
+        }
+      },
+      "projection_dispatch": {
+        "rows": 2,
+        "selected_candidate": "row_gemv",
+        "path": "row_gemv_until_caware_benchmark",
+        "selection": {
+          "layer": "linear",
+          "quant": "w4_paro",
+          "variant": "row_gemv"
+        },
+        "throughput_claim_eligible": false,
+        "blockers": [
+          "no c-aware projection candidate applies to this row count"
+        ],
+        "evidence": null
+      }
+    },
+    "scheduler_metadata": {
+      "request_ids": [
+        0,
+        1
+      ],
+      "admitted": [
+        0,
+        1
+      ],
+      "slot_to_request_after_admit": [
+        0,
+        1
+      ],
+      "active_count_after_admit": 2,
+      "prefill_slabs": [
+        {
+          "request_ids": [
+            0,
+            1
+          ],
+          "slot_ids": [
+            0,
+            1
+          ],
+          "rows": 1024,
+          "request_count": 2,
+          "block_count": 2
+        }
+      ],
+      "decode_native_steps": 136,
+      "decode_shape_key": {
+        "mode": "decode",
+        "active_c": 2,
+        "context_bucket": 512,
+        "active_mask": [
+          true,
+          true
+        ],
+        "kv_storage_dtype": "bf16",
+        "layer_plan": "max_layers=40",
+        "top_k": 0,
+        "experts_per_token": 0,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      },
+      "graph_bucket_stats": {
+        "entries": 1,
+        "hits": 1,
+        "misses": 1,
+        "replay_kernel_hits": 0,
+        "replay_hit_rate": 0.5,
+        "miss_reasons": {
+          "cache_absent": 1
+        },
+        "kernel_time_histogram_ns": {
+          "le_10us": 0,
+          "le_100us": 4,
+          "le_1ms": 6,
+          "le_10ms": 14,
+          "gt_10ms": 37
+        }
+      },
+      "decode_shape_keys_observed": [
+        {
+          "mode": "decode",
+          "active_c": 2,
+          "context_bucket": 512,
+          "active_mask": [
+            true,
+            true
+          ],
+          "kv_storage_dtype": "bf16",
+          "layer_plan": "max_layers=40",
+          "top_k": 0,
+          "experts_per_token": 0,
+          "replay_steps": 1,
+          "draft_depth": 0,
+          "tree_shape": []
+        },
+        {
+          "mode": "decode",
+          "active_c": 2,
+          "context_bucket": 768,
+          "active_mask": [
+            true,
+            true
+          ],
+          "kv_storage_dtype": "bf16",
+          "layer_plan": "max_layers=40",
+          "top_k": 0,
+          "experts_per_token": 0,
+          "replay_steps": 1,
+          "draft_depth": 0,
+          "tree_shape": []
+        }
+      ],
+      "active_count_after_completion": 0,
+      "slot_to_request_after_completion": [
+        null,
+        null
+      ]
+    },
+    "completed": [
+      {
+        "request_id": 0,
+        "prompt_tokens": [
+          58,
+          15,
+          25,
+          16,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          17,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          18,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          19,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          20,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          21,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          22,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          23,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          24,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          16,
+          15,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          16,
+          16,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          15,
+          25,
+          16,
+          17,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892
+        ],
+        "generated_tokens": [
+          248068,
+          198,
+          8160,
+          579,
+          264,
+          7047,
+          1817,
+          25,
+          271,
+          16,
+          13,
+          220,
+          2972,
+          2014,
+          53983,
+          2570,
+          5396,
+          64700,
+          198,
+          256,
+          471,
+          561,
+          1879,
+          16661,
+          314,
+          220,
+          16,
+          18,
+          18922,
+          318,
+          269,
+          6791,
+          18922,
+          8,
+          9640,
+          6761,
+          28853,
+          74988,
+          15,
+          25,
+          16,
+          60,
+          63,
+          310,
+          74988,
+          15,
+          25,
+          16,
+          18,
+          60,
+          27653,
+          198,
+          256,
+          471,
+          8618,
+          2713,
+          2640,
+          25,
+          328,
+          76660,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          1149,
+          198,
+          256,
+          471,
+          561,
+          1483,
+          2713,
+          74988,
+          15,
+          25,
+          16,
+          18,
+          60,
+          63,
+          369,
+          3799,
+          974,
+          4937,
+          1284,
+          17834,
+          25,
+          37431,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369
+        ],
+        "finished": true,
+        "finish_reason": "length",
+        "observability": {
+          "queue_seconds": 8.292100392282009e-05,
+          "prefill_seconds": 0.0,
+          "decode_seconds": 0.0,
+          "kv_pages_owned": 3,
+          "kv_pages_peak": 3,
+          "bucket_key": "decode:c=2:ctx=768:mask=11:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
+          "admission_blocked_reason": null,
+          "finish_reason": "length",
+          "submitted_timestamp": 814231.304098177,
+          "admitted_timestamp": 814231.304181098,
+          "completion_timestamp": 814257.031041757
+        }
+      },
+      {
+        "request_id": 1,
+        "prompt_tokens": [
+          58,
+          16,
+          25,
+          16,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          17,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          18,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          19,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          20,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          21,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          22,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          23,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          24,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          16,
+          15,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          16,
+          16,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          16,
+          17,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892
+        ],
+        "generated_tokens": [
+          248068,
+          198,
+          8160,
+          579,
+          264,
+          7047,
+          1817,
+          25,
+          271,
+          16,
+          13,
+          220,
+          2972,
+          2014,
+          53983,
+          2570,
+          5396,
+          64700,
+          198,
+          256,
+          471,
+          561,
+          1156,
+          682,
+          3162,
+          290,
+          264,
+          7309,
+          56127,
+          9640,
+          25,
+          10232,
+          16,
+          25,
+          16,
+          60,
+          48306,
+          32907,
+          27502,
+          9640,
+          2713,
+          220,
+          16,
+          13,
+          1165,
+          513,
+          7262,
+          17603,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          13,
+          5044,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          13,
+          498,
+          16,
+          25,
+          17,
+          60,
+          2423,
+          498,
+          16,
+          25,
+          16,
+          17,
+          60,
+          75530,
+          198,
+          256,
+          471,
+          561,
+          6007,
+          1622,
+          369,
+          25,
+          328,
+          5328,
+          2962,
+          440,
+          61446,
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321,
+          81347,
+          1149,
+          198,
+          256,
+          471,
+          9321,
+          25,
+          25914,
+          328,
+          2082,
+          4422,
+          27867,
+          321,
+          81726,
+          35464,
+          7465,
+          440,
+          69892,
+          1414,
+          3158,
+          1061,
+          12846,
+          264,
+          5077
+        ],
+        "finished": true,
+        "finish_reason": "length",
+        "observability": {
+          "queue_seconds": 1.8891063518822193e-05,
+          "prefill_seconds": 0.0,
+          "decode_seconds": 0.0,
+          "kv_pages_owned": 3,
+          "kv_pages_peak": 3,
+          "bucket_key": "decode:c=2:ctx=768:mask=11:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
+          "admission_blocked_reason": null,
+          "finish_reason": "length",
+          "submitted_timestamp": 814231.304168858,
+          "admitted_timestamp": 814231.304187749,
+          "completion_timestamp": 814257.031120308
+        }
+      }
+    ],
+    "seed_tokens": {
+      "0": {
+        "token_id": 271,
+        "token_text": "\n\n",
+        "logit": 19.034334182739258
+      },
+      "1": {
+        "token_id": 271,
+        "token_text": "\n\n",
+        "logit": 19.54136848449707
+      }
+    },
+    "generated_tokens": {
+      "0": [
+        {
+          "token_id": 271,
+          "token_text": "\n\n",
+          "logit": 23.46209716796875
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 27.199726104736328
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 27.682199478149414
+        },
+        {
+          "token_id": 220,
+          "token_text": " ",
+          "logit": 24.13102912902832
+        },
+        {
+          "token_id": 2972,
+          "token_text": " **",
+          "logit": 26.141050338745117
+        },
+        {
+          "token_id": 2014,
+          "token_text": "An",
+          "logit": 32.62556457519531
+        },
+        {
+          "token_id": 53983,
+          "token_text": "alyze",
+          "logit": 33.99421691894531
+        },
+        {
+          "token_id": 2570,
+          "token_text": " User",
+          "logit": 29.44268798828125
+        },
+        {
+          "token_id": 5396,
+          "token_text": " Input",
+          "logit": 33.133941650390625
+        },
+        {
+          "token_id": 64700,
+          "token_text": ":**",
+          "logit": 27.942901611328125
+        },
+        {
+          "token_id": 198,
+          "token_text": "\n",
+          "logit": 27.337879180908203
+        },
+        {
+          "token_id": 256,
+          "token_text": "  ",
+          "logit": 25.678327560424805
+        },
+        {
+          "token_id": 471,
+          "token_text": " -",
+          "logit": 32.773170471191406
+        },
+        {
+          "token_id": 561,
+          "token_text": " The",
+          "logit": 30.243831634521484
+        },
+        {
+          "token_id": 1879,
+          "token_text": " input",
+          "logit": 32.749996185302734
+        },
+        {
+          "token_id": 16661,
+          "token_text": " consists",
+          "logit": 29.933231353759766
+        },
+        {
+          "token_id": 314,
+          "token_text": " of",
+          "logit": 33.11494827270508
+        },
+        {
+          "token_id": 220,
+          "token_text": " ",
+          "logit": 27.133146286010742
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 28.06155776977539
+        },
+        {
+          "token_id": 18,
+          "token_text": "3",
+          "logit": 25.52863883972168
+        },
+        {
+          "token_id": 18922,
+          "token_text": " identical",
+          "logit": 25.826019287109375
+        },
+        {
+          "token_id": 318,
+          "token_text": " (",
+          "logit": 21.575042724609375
+        },
+        {
+          "token_id": 269,
+          "token_text": "or",
+          "logit": 27.56575584411621
+        },
+        {
+          "token_id": 6791,
+          "token_text": " nearly",
+          "logit": 29.90630340576172
+        },
+        {
+          "token_id": 18922,
+          "token_text": " identical",
+          "logit": 31.862110137939453
+        },
+        {
+          "token_id": 8,
+          "token_text": ")",
+          "logit": 26.788785934448242
+        },
+        {
+          "token_id": 9640,
+          "token_text": " prompt",
+          "logit": 23.38701629638672
+        },
+        {
+          "token_id": 6761,
+          "token_text": " rows",
+          "logit": 26.56290054321289
+        },
+        {
+          "token_id": 28853,
+          "token_text": " labeled",
+          "logit": 25.35563087463379
+        },
+        {
+          "token_id": 74988,
+          "token_text": " `[",
+          "logit": 28.016395568847656
+        },
+        {
+          "token_id": 15,
+          "token_text": "0",
+          "logit": 28.950454711914062
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 28.038206100463867
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 25.44563865661621
+        },
+        {
+          "token_id": 60,
+          "token_text": "]",
+          "logit": 28.920875549316406
+        },
+        {
+          "token_id": 63,
+          "token_text": "`",
+          "logit": 30.677703857421875
+        },
+        {
+          "token_id": 310,
+          "token_text": " to",
+          "logit": 32.5942268371582
+        },
+        {
+          "token_id": 74988,
+          "token_text": " `[",
+          "logit": 30.46310043334961
+        },
+        {
+          "token_id": 15,
+          "token_text": "0",
+          "logit": 29.7652645111084
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 29.169763565063477
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 27.18393898010254
+        },
+        {
+          "token_id": 18,
+          "token_text": "3",
+          "logit": 24.046770095825195
+        },
+        {
+          "token_id": 60,
+          "token_text": "]",
+          "logit": 24.650630950927734
+        },
+        {
+          "token_id": 27653,
+          "token_text": "`.",
+          "logit": 24.684988021850586
+        },
+        {
+          "token_id": 198,
+          "token_text": "\n",
+          "logit": 26.19487190246582
+        },
+        {
+          "token_id": 256,
+          "token_text": "  ",
+          "logit": 30.298614501953125
+        },
+        {
+          "token_id": 471,
+          "token_text": " -",
+          "logit": 33.42841720581055
+        },
+        {
+          "token_id": 8618,
+          "token_text": " Each",
+          "logit": 29.65781593322754
+        },
+        {
+          "token_id": 2713,
+          "token_text": " row",
+          "logit": 28.835039138793945
+        },
+        {
+          "token_id": 2640,
+          "token_text": " says",
+          "logit": 26.805490493774414
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 34.54032516479492
+        },
+        {
+          "token_id": 328,
+          "token_text": " \"",
+          "logit": 31.65010643005371
+        },
+        {
+          "token_id": 76660,
+          "token_text": "Diagnostic",
+          "logit": 28.23451042175293
+        },
+        {
+          "token_id": 32907,
+          "token_text": " concurrent",
+          "logit": 30.66841697692871
+        },
+        {
+          "token_id": 27502,
+          "token_text": " benchmark",
+          "logit": 31.7299861907959
+        },
+        {
+          "token_id": 9640,
+          "token_text": " prompt",
+          "logit": 27.046478271484375
+        },
+        {
+          "token_id": 2713,
+          "token_text": " row",
+          "logit": 32.36040115356445
+        },
+        {
+          "token_id": 220,
+          "token_text": " ",
+          "logit": 26.377614974975586
+        },
+        {
+          "token_id": 15,
+          "token_text": "0",
+          "logit": 29.331239700317383
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 29.344579696655273
+        },
+        {
+          "token_id": 1165,
+          "token_text": " We",
+          "logit": 30.513120651245117
+        },
+        {
+          "token_id": 513,
+          "token_text": " are",
+          "logit": 34.45431900024414
+        },
+        {
+          "token_id": 7262,
+          "token_text": " testing",
+          "logit": 34.11762619018555
+        },
+        {
+          "token_id": 17603,
+          "token_text": " hip",
+          "logit": 29.194265365600586
+        },
+        {
+          "token_id": 4422,
+          "token_text": "Engine",
+          "logit": 29.242595672607422
+        },
+        {
+          "token_id": 27867,
+          "token_text": " scheduler",
+          "logit": 31.25701141357422
+        },
+        {
+          "token_id": 321,
+          "token_text": " and",
+          "logit": 34.82394027709961
+        },
+        {
+          "token_id": 81726,
+          "token_text": " KV",
+          "logit": 33.47494125366211
+        },
+        {
+          "token_id": 35464,
+          "token_text": "-cache",
+          "logit": 36.77959060668945
+        },
+        {
+          "token_id": 7465,
+          "token_text": " behavior",
+          "logit": 33.869754791259766
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 35.31710433959961
+        },
+        {
+          "token_id": 69892,
+          "token_text": " deterministic",
+          "logit": 32.6016731262207
+        },
+        {
+          "token_id": 1414,
+          "token_text": " text",
+          "logit": 32.30911636352539
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 33.6804084777832
+        },
+        {
+          "token_id": 5044,
+          "token_text": " Please",
+          "logit": 32.20576858520508
+        },
+        {
+          "token_id": 2962,
+          "token_text": " continue",
+          "logit": 31.32280921936035
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 32.321067810058594
+        },
+        {
+          "token_id": 61446,
+          "token_text": " concise",
+          "logit": 33.042510986328125
+        },
+        {
+          "token_id": 10597,
+          "token_text": " technical",
+          "logit": 34.83636474609375
+        },
+        {
+          "token_id": 58655,
+          "token_text": " prose",
+          "logit": 34.51862716674805
+        },
+        {
+          "token_id": 883,
+          "token_text": " about",
+          "logit": 32.475521087646484
+        },
+        {
+          "token_id": 68022,
+          "token_text": " GPUs",
+          "logit": 34.487056732177734
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 34.43878173828125
+        },
+        {
+          "token_id": 61369,
+          "token_text": " kernels",
+          "logit": 31.92806053161621
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 33.756534576416016
+        },
+        {
+          "token_id": 4779,
+          "token_text": " memory",
+          "logit": 33.562808990478516
+        },
+        {
+          "token_id": 32288,
+          "token_text": " bandwidth",
+          "logit": 32.2044563293457
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 32.80876159667969
+        },
+        {
+          "token_id": 321,
+          "token_text": " and",
+          "logit": 32.2111701965332
+        },
+        {
+          "token_id": 81347,
+          "token_text": " batching",
+          "logit": 30.865856170654297
+        },
+        {
+          "token_id": 1149,
+          "token_text": ".\"",
+          "logit": 31.31444549560547
+        },
+        {
+          "token_id": 198,
+          "token_text": "\n",
+          "logit": 26.724138259887695
+        },
+        {
+          "token_id": 256,
+          "token_text": "  ",
+          "logit": 27.034912109375
+        },
+        {
+          "token_id": 471,
+          "token_text": " -",
+          "logit": 28.472091674804688
+        },
+        {
+          "token_id": 561,
+          "token_text": " The",
+          "logit": 25.803037643432617
+        },
+        {
+          "token_id": 1483,
+          "token_text": " last",
+          "logit": 24.035072326660156
+        },
+        {
+          "token_id": 2713,
+          "token_text": " row",
+          "logit": 28.456541061401367
+        },
+        {
+          "token_id": 74988,
+          "token_text": " `[",
+          "logit": 25.896438598632812
+        },
+        {
+          "token_id": 15,
+          "token_text": "0",
+          "logit": 30.529905319213867
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 28.76472282409668
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 28.127870559692383
+        },
+        {
+          "token_id": 18,
+          "token_text": "3",
+          "logit": 27.003131866455078
+        },
+        {
+          "token_id": 60,
+          "token_text": "]",
+          "logit": 29.1920108795166
+        },
+        {
+          "token_id": 63,
+          "token_text": "`",
+          "logit": 28.74108123779297
+        },
+        {
+          "token_id": 369,
+          "token_text": " is",
+          "logit": 29.83028221130371
+        },
+        {
+          "token_id": 3799,
+          "token_text": " cut",
+          "logit": 29.5303897857666
+        },
+        {
+          "token_id": 974,
+          "token_text": " off",
+          "logit": 34.026893615722656
+        },
+        {
+          "token_id": 4937,
+          "token_text": " mid",
+          "logit": 24.311983108520508
+        },
+        {
+          "token_id": 1284,
+          "token_text": "-s",
+          "logit": 30.692699432373047
+        },
+        {
+          "token_id": 17834,
+          "token_text": "entence",
+          "logit": 31.557920455932617
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 25.923755645751953
+        },
+        {
+          "token_id": 37431,
+          "token_text": " \"...",
+          "logit": 26.02184295654297
+        },
+        {
+          "token_id": 81726,
+          "token_text": " KV",
+          "logit": 15.998396873474121
+        },
+        {
+          "token_id": 35464,
+          "token_text": "-cache",
+          "logit": 25.045969009399414
+        },
+        {
+          "token_id": 7465,
+          "token_text": " behavior",
+          "logit": 23.69963836669922
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 24.581594467163086
+        },
+        {
+          "token_id": 69892,
+          "token_text": " deterministic",
+          "logit": 24.170639038085938
+        },
+        {
+          "token_id": 1414,
+          "token_text": " text",
+          "logit": 20.762922286987305
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 22.21147918701172
+        },
+        {
+          "token_id": 5044,
+          "token_text": " Please",
+          "logit": 22.088716506958008
+        },
+        {
+          "token_id": 2962,
+          "token_text": " continue",
+          "logit": 24.535661697387695
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 26.196041107177734
+        },
+        {
+          "token_id": 61446,
+          "token_text": " concise",
+          "logit": 23.680355072021484
+        },
+        {
+          "token_id": 10597,
+          "token_text": " technical",
+          "logit": 23.26548957824707
+        },
+        {
+          "token_id": 58655,
+          "token_text": " prose",
+          "logit": 23.498435974121094
+        },
+        {
+          "token_id": 883,
+          "token_text": " about",
+          "logit": 25.59673309326172
+        },
+        {
+          "token_id": 68022,
+          "token_text": " GPUs",
+          "logit": 25.750097274780273
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 27.927719116210938
+        },
+        {
+          "token_id": 61369,
+          "token_text": " kernels",
+          "logit": 29.519027709960938
+        }
+      ],
+      "1": [
+        {
+          "token_id": 271,
+          "token_text": "\n\n",
+          "logit": 23.330991744995117
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 27.006235122680664
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 27.741193771362305
+        },
+        {
+          "token_id": 220,
+          "token_text": " ",
+          "logit": 24.914323806762695
+        },
+        {
+          "token_id": 2972,
+          "token_text": " **",
+          "logit": 26.62664794921875
+        },
+        {
+          "token_id": 2014,
+          "token_text": "An",
+          "logit": 31.488622665405273
+        },
+        {
+          "token_id": 53983,
+          "token_text": "alyze",
+          "logit": 34.079872131347656
+        },
+        {
+          "token_id": 2570,
+          "token_text": " User",
+          "logit": 29.709728240966797
+        },
+        {
+          "token_id": 5396,
+          "token_text": " Input",
+          "logit": 33.92121887207031
+        },
+        {
+          "token_id": 64700,
+          "token_text": ":**",
+          "logit": 28.0406494140625
+        },
+        {
+          "token_id": 198,
+          "token_text": "\n",
+          "logit": 27.61745834350586
+        },
+        {
+          "token_id": 256,
+          "token_text": "  ",
+          "logit": 25.9771785736084
+        },
+        {
+          "token_id": 471,
+          "token_text": " -",
+          "logit": 32.41815948486328
+        },
+        {
+          "token_id": 561,
+          "token_text": " The",
+          "logit": 30.40384292602539
+        },
+        {
+          "token_id": 1156,
+          "token_text": " user",
+          "logit": 32.996612548828125
+        },
+        {
+          "token_id": 682,
+          "token_text": " has",
+          "logit": 26.4500675201416
+        },
+        {
+          "token_id": 3162,
+          "token_text": " past",
+          "logit": 26.951541900634766
+        },
+        {
+          "token_id": 290,
+          "token_text": "ed",
+          "logit": 33.6440544128418
+        },
+        {
+          "token_id": 264,
+          "token_text": " a",
+          "logit": 27.77352523803711
+        },
+        {
+          "token_id": 7309,
+          "token_text": " highly",
+          "logit": 23.615619659423828
+        },
+        {
+          "token_id": 56127,
+          "token_text": " repetitive",
+          "logit": 30.664432525634766
+        },
+        {
+          "token_id": 9640,
+          "token_text": " prompt",
+          "logit": 24.948280334472656
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 20.834157943725586
+        },
+        {
+          "token_id": 10232,
+          "token_text": " \"[",
+          "logit": 23.770709991455078
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 27.98811149597168
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 27.31743621826172
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 26.76798439025879
+        },
+        {
+          "token_id": 60,
+          "token_text": "]",
+          "logit": 27.569229125976562
+        },
+        {
+          "token_id": 48306,
+          "token_text": " Diagnostic",
+          "logit": 25.674724578857422
+        },
+        {
+          "token_id": 32907,
+          "token_text": " concurrent",
+          "logit": 31.355998992919922
+        },
+        {
+          "token_id": 27502,
+          "token_text": " benchmark",
+          "logit": 31.77730941772461
+        },
+        {
+          "token_id": 9640,
+          "token_text": " prompt",
+          "logit": 29.437236785888672
+        },
+        {
+          "token_id": 2713,
+          "token_text": " row",
+          "logit": 32.864200592041016
+        },
+        {
+          "token_id": 220,
+          "token_text": " ",
+          "logit": 30.521196365356445
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 32.14516067504883
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 28.979211807250977
+        },
+        {
+          "token_id": 1165,
+          "token_text": " We",
+          "logit": 27.961830139160156
+        },
+        {
+          "token_id": 513,
+          "token_text": " are",
+          "logit": 34.34071731567383
+        },
+        {
+          "token_id": 7262,
+          "token_text": " testing",
+          "logit": 33.528995513916016
+        },
+        {
+          "token_id": 17603,
+          "token_text": " hip",
+          "logit": 29.318252563476562
+        },
+        {
+          "token_id": 4422,
+          "token_text": "Engine",
+          "logit": 29.415868759155273
+        },
+        {
+          "token_id": 27867,
+          "token_text": " scheduler",
+          "logit": 31.258602142333984
+        },
+        {
+          "token_id": 321,
+          "token_text": " and",
+          "logit": 34.90325927734375
+        },
+        {
+          "token_id": 81726,
+          "token_text": " KV",
+          "logit": 32.90713119506836
+        },
+        {
+          "token_id": 35464,
+          "token_text": "-cache",
+          "logit": 36.191226959228516
+        },
+        {
+          "token_id": 7465,
+          "token_text": " behavior",
+          "logit": 33.693878173828125
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 34.813453674316406
+        },
+        {
+          "token_id": 69892,
+          "token_text": " deterministic",
+          "logit": 33.27330017089844
+        },
+        {
+          "token_id": 1414,
+          "token_text": " text",
+          "logit": 32.25102233886719
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 32.938690185546875
+        },
+        {
+          "token_id": 5044,
+          "token_text": " Please",
+          "logit": 33.202491760253906
+        },
+        {
+          "token_id": 2962,
+          "token_text": " continue",
+          "logit": 30.17438316345215
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 33.154300689697266
+        },
+        {
+          "token_id": 61446,
+          "token_text": " concise",
+          "logit": 33.11220169067383
+        },
+        {
+          "token_id": 10597,
+          "token_text": " technical",
+          "logit": 34.6209831237793
+        },
+        {
+          "token_id": 58655,
+          "token_text": " prose",
+          "logit": 33.89943313598633
+        },
+        {
+          "token_id": 883,
+          "token_text": " about",
+          "logit": 32.21283721923828
+        },
+        {
+          "token_id": 68022,
+          "token_text": " GPUs",
+          "logit": 33.74531173706055
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 33.36282730102539
+        },
+        {
+          "token_id": 61369,
+          "token_text": " kernels",
+          "logit": 31.348613739013672
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 33.147178649902344
+        },
+        {
+          "token_id": 4779,
+          "token_text": " memory",
+          "logit": 32.36653518676758
+        },
+        {
+          "token_id": 32288,
+          "token_text": " bandwidth",
+          "logit": 31.85497283935547
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 33.061309814453125
+        },
+        {
+          "token_id": 321,
+          "token_text": " and",
+          "logit": 32.17366409301758
+        },
+        {
+          "token_id": 81347,
+          "token_text": " batching",
+          "logit": 30.98014259338379
+        },
+        {
+          "token_id": 13,
+          "token_text": ".",
+          "logit": 29.709739685058594
+        },
+        {
+          "token_id": 498,
+          "token_text": " [",
+          "logit": 26.720319747924805
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 27.61537742614746
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 27.415796279907227
+        },
+        {
+          "token_id": 17,
+          "token_text": "2",
+          "logit": 27.21042251586914
+        },
+        {
+          "token_id": 60,
+          "token_text": "]",
+          "logit": 28.21372413635254
+        },
+        {
+          "token_id": 2423,
+          "token_text": " ...",
+          "logit": 24.815107345581055
+        },
+        {
+          "token_id": 498,
+          "token_text": " [",
+          "logit": 24.10916519165039
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 26.43402862548828
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 25.95330047607422
+        },
+        {
+          "token_id": 16,
+          "token_text": "1",
+          "logit": 23.671995162963867
+        },
+        {
+          "token_id": 17,
+          "token_text": "2",
+          "logit": 26.09162139892578
+        },
+        {
+          "token_id": 60,
+          "token_text": "]",
+          "logit": 24.861703872680664
+        },
+        {
+          "token_id": 75530,
+          "token_text": " ...\"",
+          "logit": 24.35174560546875
+        },
+        {
+          "token_id": 198,
+          "token_text": "\n",
+          "logit": 26.0676326751709
+        },
+        {
+          "token_id": 256,
+          "token_text": "  ",
+          "logit": 28.635759353637695
+        },
+        {
+          "token_id": 471,
+          "token_text": " -",
+          "logit": 32.359130859375
+        },
+        {
+          "token_id": 561,
+          "token_text": " The",
+          "logit": 25.98340606689453
+        },
+        {
+          "token_id": 6007,
+          "token_text": " core",
+          "logit": 28.43712043762207
+        },
+        {
+          "token_id": 1622,
+          "token_text": " request",
+          "logit": 32.175960540771484
+        },
+        {
+          "token_id": 369,
+          "token_text": " is",
+          "logit": 28.273508071899414
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 23.12191390991211
+        },
+        {
+          "token_id": 328,
+          "token_text": " \"",
+          "logit": 28.281965255737305
+        },
+        {
+          "token_id": 5328,
+          "token_text": "Please",
+          "logit": 26.91425895690918
+        },
+        {
+          "token_id": 2962,
+          "token_text": " continue",
+          "logit": 32.42489242553711
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 34.65565490722656
+        },
+        {
+          "token_id": 61446,
+          "token_text": " concise",
+          "logit": 32.99812316894531
+        },
+        {
+          "token_id": 10597,
+          "token_text": " technical",
+          "logit": 35.482322692871094
+        },
+        {
+          "token_id": 58655,
+          "token_text": " prose",
+          "logit": 34.89484786987305
+        },
+        {
+          "token_id": 883,
+          "token_text": " about",
+          "logit": 35.15696334838867
+        },
+        {
+          "token_id": 68022,
+          "token_text": " GPUs",
+          "logit": 35.06196212768555
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 34.760406494140625
+        },
+        {
+          "token_id": 61369,
+          "token_text": " kernels",
+          "logit": 32.162662506103516
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 32.80224609375
+        },
+        {
+          "token_id": 4779,
+          "token_text": " memory",
+          "logit": 31.319459915161133
+        },
+        {
+          "token_id": 32288,
+          "token_text": " bandwidth",
+          "logit": 32.63706588745117
+        },
+        {
+          "token_id": 11,
+          "token_text": ",",
+          "logit": 31.056753158569336
+        },
+        {
+          "token_id": 321,
+          "token_text": " and",
+          "logit": 30.15841293334961
+        },
+        {
+          "token_id": 81347,
+          "token_text": " batching",
+          "logit": 29.338375091552734
+        },
+        {
+          "token_id": 1149,
+          "token_text": ".\"",
+          "logit": 29.646203994750977
+        },
+        {
+          "token_id": 198,
+          "token_text": "\n",
+          "logit": 25.45186996459961
+        },
+        {
+          "token_id": 256,
+          "token_text": "  ",
+          "logit": 30.738773345947266
+        },
+        {
+          "token_id": 471,
+          "token_text": " -",
+          "logit": 34.367462158203125
+        },
+        {
+          "token_id": 9321,
+          "token_text": " Context",
+          "logit": 29.353572845458984
+        },
+        {
+          "token_id": 25,
+          "token_text": ":",
+          "logit": 24.871034622192383
+        },
+        {
+          "token_id": 25914,
+          "token_text": " Testing",
+          "logit": 23.729394912719727
+        },
+        {
+          "token_id": 328,
+          "token_text": " \"",
+          "logit": 23.83584213256836
+        },
+        {
+          "token_id": 2082,
+          "token_text": "hip",
+          "logit": 33.43756866455078
+        },
+        {
+          "token_id": 4422,
+          "token_text": "Engine",
+          "logit": 30.07367706298828
+        },
+        {
+          "token_id": 27867,
+          "token_text": " scheduler",
+          "logit": 28.155786514282227
+        },
+        {
+          "token_id": 321,
+          "token_text": " and",
+          "logit": 30.914405822753906
+        },
+        {
+          "token_id": 81726,
+          "token_text": " KV",
+          "logit": 35.43402862548828
+        },
+        {
+          "token_id": 35464,
+          "token_text": "-cache",
+          "logit": 38.43019104003906
+        },
+        {
+          "token_id": 7465,
+          "token_text": " behavior",
+          "logit": 35.57478332519531
+        },
+        {
+          "token_id": 440,
+          "token_text": " with",
+          "logit": 29.513023376464844
+        },
+        {
+          "token_id": 69892,
+          "token_text": " deterministic",
+          "logit": 33.753055572509766
+        },
+        {
+          "token_id": 1414,
+          "token_text": " text",
+          "logit": 31.51464080810547
+        },
+        {
+          "token_id": 3158,
+          "token_text": "\".",
+          "logit": 26.41779899597168
+        },
+        {
+          "token_id": 1061,
+          "token_text": " This",
+          "logit": 21.13068962097168
+        },
+        {
+          "token_id": 12846,
+          "token_text": " suggests",
+          "logit": 27.089557647705078
+        },
+        {
+          "token_id": 264,
+          "token_text": " a",
+          "logit": 22.762012481689453
+        },
+        {
+          "token_id": 5077,
+          "token_text": " focus",
+          "logit": 22.574077606201172
+        }
+      ]
+    }
+  },
+  "observability": {
+    "admission_timestamps": {
+      "0": 814231.304181098,
+      "1": 814231.304187749
+    },
+    "completion_timestamps": {
+      "0": 814257.031041757,
+      "1": 814257.031120308
+    },
+    "request_latency_seconds": {
+      "p50": 25.726896608946845,
+      "p95": 25.726932558929548,
+      "samples": [
+        25.726860658964142,
+        25.726932558929548
+      ]
+    },
+    "per_request": {
+      "0": {
+        "queue_seconds": 8.292100392282009e-05,
+        "prefill_seconds": 0.0,
+        "decode_seconds": 0.0,
+        "kv_pages_owned": 3,
+        "kv_pages_peak": 3,
+        "bucket_key": "decode:c=2:ctx=768:mask=11:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
+        "admission_blocked_reason": null,
+        "finish_reason": "length",
+        "submitted_timestamp": 814231.304098177,
+        "admitted_timestamp": 814231.304181098,
+        "completion_timestamp": 814257.031041757
+      },
+      "1": {
+        "queue_seconds": 1.8891063518822193e-05,
+        "prefill_seconds": 0.0,
+        "decode_seconds": 0.0,
+        "kv_pages_owned": 3,
+        "kv_pages_peak": 3,
+        "bucket_key": "decode:c=2:ctx=768:mask=11:kv=bf16:layers=max_layers=40:top_k=0:experts=0:replay=1:draft=0",
+        "admission_blocked_reason": null,
+        "finish_reason": "length",
+        "submitted_timestamp": 814231.304168858,
+        "admitted_timestamp": 814231.304187749,
+        "completion_timestamp": 814257.031120308
+      }
+    }
+  },
+  "measurements": {
+    "load_seconds": 23.101762759964913,
+    "prefill_seconds": 0.437701094080694,
+    "warmup_decode_seconds": 0.15234106092248112,
+    "decode_seconds": 2.035066523007117,
+    "prefill_tok_s": 2339.4960941340864,
+    "decode_tok_s_aggregate": 125.79441364979138,
+    "decode_tok_s_per_request": 62.89720682489569,
+    "decode_step_seconds": {
+      "samples": [
+        0.01549016498029232,
+        0.015441894065588713,
+        0.015445934957824647,
+        0.01651045901235193,
+        0.015610796981491148,
+        0.015454403939656913,
+        0.015391623950563371,
+        0.015398533083498478,
+        0.015502415015362203,
+        0.015399893978610635,
+        0.01564838702324778,
+        0.015419324045069516,
+        0.015417404007166624,
+        0.015425513964146376,
+        0.015429383958689868,
+        0.015470213955268264,
+        0.015487984986975789,
+        0.015475945081561804,
+        0.015553775941953063,
+        0.015577096026390791,
+        0.015565666020847857,
+        0.015512454905547202,
+        0.015693497960455716,
+        0.015593435964547098,
+        0.015636436990462244,
+        0.015576705918647349,
+        0.01555212598759681,
+        0.01558739598840475,
+        0.015591557021252811,
+        0.01561566605232656,
+        0.015628626919351518,
+        0.015640127006918192,
+        0.015622076927684247,
+        0.015613167081028223,
+        0.015600985963828862,
+        0.01563420705497265,
+        0.016638981993310153,
+        0.015686186961829662,
+        0.015665118000470102,
+        0.015594726079143584,
+        0.015597976977005601,
+        0.015605706023052335,
+        0.015630166977643967,
+        0.0156695069745183,
+        0.015662207966670394,
+        0.01564863696694374,
+        0.01568940794095397,
+        0.015659447060897946,
+        0.01566404791083187,
+        0.015610505943186581,
+        0.015623966930434108,
+        0.015593016985803843,
+        0.01563069596886635,
+        0.015616097021847963,
+        0.01563465700019151,
+        0.015652536996640265,
+        0.015608827001415193,
+        0.015611145994625986,
+        0.015639327932149172,
+        0.015655367053113878,
+        0.015595496050082147,
+        0.015597827034071088,
+        0.015615705982781947,
+        0.015626627020537853,
+        0.015653836890123785,
+        0.015630956972017884,
+        0.015647508087567985,
+        0.017007375950925052,
+        0.01606944401282817,
+        0.01611159392632544,
+        0.016202364931814373,
+        0.015618495992384851,
+        0.016503719962202013,
+        0.018155994010157883,
+        0.017740236944518983,
+        0.01783212902955711,
+        0.015715237939730287,
+        0.015751548926346004,
+        0.0157721689902246,
+        0.01574117795098573,
+        0.015767398988828063,
+        0.015831499942578375,
+        0.015728948055766523,
+        0.01584106998052448,
+        0.01572815899271518,
+        0.015680986922234297,
+        0.01595576188992709,
+        0.015956501942127943,
+        0.016036111977882683,
+        0.0159829220501706,
+        0.016025763005018234,
+        0.015998321934603155,
+        0.01604599307756871,
+        0.016002383083105087,
+        0.016027792007662356,
+        0.016002913005650043,
+        0.016014732071198523,
+        0.016028073034249246,
+        0.01600147201679647,
+        0.0160155730554834,
+        0.01787114900071174,
+        0.018066952005028725,
+        0.01794642093591392,
+        0.017249109921976924,
+        0.015973152010701597,
+        0.01575130899436772,
+        0.016013682004995644,
+        0.01578458899166435,
+        0.01576554891653359,
+        0.015716008027084172,
+        0.01582315005362034,
+        0.01581949007231742,
+        0.015811949037015438,
+        0.01570208801422268,
+        0.01572701905388385,
+        0.015800509019754827,
+        0.01569694804493338,
+        0.015749447979032993,
+        0.01611925393808633,
+        0.016103713074699044,
+        0.017689706990495324,
+        0.018248665030114353,
+        0.016792003996670246,
+        0.01584440004080534,
+        0.015814658952876925,
+        0.015800730092450976,
+        0.015760598005726933,
+        0.015828529954887927
+      ],
+      "median": 0.01568358694203198,
+      "p95": 0.017740236944518983,
+      "min": 0.015391623950563371,
+      "max": 0.018248665030114353,
+      "stdev": 0.0006080844516667686
+    },
+    "warmup_step_seconds": {
+      "samples": [
+        0.043478781008161604,
+        0.01584848004858941,
+        0.015724477940239012,
+        0.01544623402878642,
+        0.015459874994121492,
+        0.015495134983211756,
+        0.015466873999685049,
+        0.01541748398449272
+      ],
+      "median": 0.015481004491448402,
+      "p95": 0.043478781008161604,
+      "min": 0.01541748398449272,
+      "max": 0.043478781008161604,
+      "stdev": 0.009875082887917707
+    }
+  },
+  "scaling": {
+    "complete": true,
+    "native": {
+      "decode_tok_s_aggregate": 125.79441364979138,
+      "decode_tok_s_per_request": 62.89720682489569
+    },
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json",
+      "status": "loaded",
+      "run_tag": null,
+      "workload_concurrency": 1,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 133.82028989043224,
+      "decode_tok_s_per_request": 133.82028989043224,
+      "reason": null
+    },
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json",
+      "status": "blocked",
+      "run_tag": "qwen35-paro-c2-scheduler-serial-bridge",
+      "workload_concurrency": 2,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 103.77591534404674,
+      "decode_tok_s_per_request": 51.88795767202337,
+      "reason": null
+    },
+    "ratios": {
+      "aggregate_vs_c1": 0.940024967460374,
+      "per_request_vs_c1": 0.470012483730187,
+      "aggregate_vs_serial_bridge": 1.2121734916309534,
+      "per_request_vs_serial_bridge": 1.2121734916309534
+    }
+  },
+  "memory": {
+    "max_batch_size": 2,
+    "max_sequence_length": 649,
+    "kv_policy": {
+      "policy_class": "FixedPagedKVPolicy",
+      "spans_mode": "uniform",
+      "block_size": 256,
+      "requested_storage": "auto",
+      "resolved_storage_dtype": "bf16",
+      "storage_dtype": "bf16",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "scale_metadata_format": {
+        "present": false,
+        "scale_dtype": null,
+        "granularity": null,
+        "k_scale": null,
+        "v_scale": null
+      },
+      "int8_explicit": false,
+      "int8_admission_gated": false,
+      "selection_reason": "default_bf16"
+    },
+    "kv_storage_dtype": "bf16",
+    "allocator_reserved_peak_bytes": 19827630222,
+    "dynamic_pool": {
+      "enabled": false,
+      "evidence": "resident retained bench still uses fixed session allocation; C4 pool counters are unavailable here",
+      "grow_events": 0,
+      "shrink_events": 0,
+      "pool_counters": {
+        "current_bytes": 0,
+        "high_water_observed_bytes": 0,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "free_pages": 0,
+        "refcounted_pages": 0
+      }
+    },
+    "stable_block_id": {
+      "passed": true,
+      "audit": "fixed-session stable block identity verified: request_ids=[0, 1], slot_map={0: 0, 1: 1}, decode_slots=[0, 1], prefill_slabs=1"
+    },
+    "prefix_sharing": {
+      "enabled": false,
+      "savings_bytes": 0
+    },
+    "allocator_memory_stats": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 19827630222,
+      "total_allocated_bytes": 19848436142,
+      "total_freed_bytes": 19848436142,
+      "active_allocations": 0,
+      "peak_allocations": 4333
+    }
+  },
+  "profiler": {
+    "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profiler-c2-selected-c1.json",
+    "command": "rocprofv3 --kernel-trace --output-format csv -d benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profile-c2-selected-c1 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/hipcc-version.txt --require-cached-build --batch-decode-moe-path selected_c1 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json --profiler-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profiler-c2-selected-c1.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/native-profiled-c2-selected-c1.json",
+    "expected_kernel_names": [
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+      "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+      "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+      "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+      "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+      "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+      "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+      "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+      "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+      "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+      "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)",
+      "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)",
+      "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+      "__amd_rocclr_copyBuffer",
+      "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)",
+      "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)",
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)",
+      "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+      "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)",
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",
+      "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)",
+      "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+      "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)",
+      "(anonymous namespace)::qwen35_split_qgate_fp16_kernel(_Float16 const*, float*, _Float16*, long, long, long)",
+      "(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)",
+      "(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)",
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long, long)",
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)",
+      "attn_fwd",
+      "(anonymous namespace)::qwen35_full_attn_gate_mul_fp16_kernel(float const*, _Float16 const*, _Float16*, long)",
+      "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+      "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)",
+      "void (anonymous namespace)::weighted_lanes_sum_out_kernel<_Float16>(_Float16 const*, float const*, long const*, _Float16*, long, long, long)",
+      "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)",
+      "__amd_rocclr_fillBufferAligned",
+      "(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, unsigned short*, float*, float, long, long, long, long, long, long)",
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)",
+      "(anonymous namespace)::set_i64_vector_kernel(long*, long const*, long)",
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)",
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+      "(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)",
+      "(anonymous namespace)::set_decode_positions_i64_kernel(long*, long*, long const*, unsigned char const*, long)",
+      "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)",
+      "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
+      "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",
+      "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)",
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+      "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)",
+      "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+      "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+    ],
+    "expected_kernels_present": true,
+    "kernel_duration_categories_ns": {
+      "attention": 590265330.0,
+      "graph_replay": 0.0,
+      "moe": 224811717.0,
+      "other": 1574449560.0,
+      "projection": 2154780277.0,
+      "sampling": 3359384.0
+    },
+    "kernel_duration_category_shares": {
+      "attention": 0.12979521697830973,
+      "graph_replay": 0.0,
+      "moe": 0.04943452394075281,
+      "other": 0.3462104444819828,
+      "projection": 0.47382110955728557,
+      "sampling": 0.0007387050416690779
+    },
+    "kernel_duration_shares": {
+      "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 4.06362272667982e-06,
+      "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 2.7090818177865464e-06,
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)": 0.0004727202642654428,
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 0.0002592120728591687,
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)": 1.4830024022334437e-05,
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)": 0.0003744463422881936,
+      "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)": 2.1593493060603805e-05,
+      "(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)": 0.004513247188876614,
+      "(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)": 0.00024696007442382535,
+      "(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)": 0.0051207233837414915,
+      "(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 0.0004214687021972123,
+      "(anonymous namespace)::qwen35_full_attn_gate_mul_fp16_kernel(float const*, _Float16 const*, _Float16*, long)": 0.0017127668436904746,
+      "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": 0.038334572003822336,
+      "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)": 0.001244455873955085,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)": 0.007114408158677136,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, unsigned short*, float*, float, long, long, long, long, long, long)": 0.000380929887531492,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)": 0.006800401387765159,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)": 0.002927935388243841,
+      "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": 5.443759181319063e-05,
+      "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)": 8.490596654310166e-05,
+      "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": 0.0009934702182943914,
+      "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)": 9.756212832106615e-05,
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)": 0.10304361058712587,
+      "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": 0.024412756226464594,
+      "(anonymous namespace)::qwen35_split_qgate_fp16_kernel(_Float16 const*, float*, _Float16*, long, long, long)": 0.005171457537569685,
+      "(anonymous namespace)::set_decode_positions_i64_kernel(long*, long*, long const*, unsigned char const*, long)": 0.00015381141859990152,
+      "(anonymous namespace)::set_i64_vector_kernel(long*, long const*, long)": 0.0003591675166432859,
+      "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)": 0.06705051207156874,
+      "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 5.838665028442672e-05,
+      "__amd_rocclr_copyBuffer": 0.015067807521886521,
+      "__amd_rocclr_fillBufferAligned": 0.00043605178637527936,
+      "attn_fwd": 0.0027374759418032123,
+      "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)": 0.016925210748556185,
+      "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)": 0.007846968950009152,
+      "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)": 0.0059711670557440295,
+      "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)": 0.006763133921330218,
+      "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 0.028110216200235915,
+      "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 0.015362478001431042,
+      "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)": 0.09288767866991597,
+      "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)": 0.0762121419152475,
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 0.07027710921728525,
+      "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 0.06395991940893232,
+      "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)": 0.04722675309559457,
+      "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)": 0.014568605982852215,
+      "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)": 0.01190037390844002,
+      "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 0.04380388780982554,
+      "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 0.03383033581038493,
+      "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 0.0077484977840066955,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)": 0.022790661603579218,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)": 0.052066277524830895,
+      "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)": 0.00714862153116993,
+      "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)": 0.0016127709395934943,
+      "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)": 0.017025707788810858,
+      "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)": 0.006765684020505614,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 0.0037712969662443137,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 4.033739267342385e-05,
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)": 0.0003129365516581482,
+      "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)": 0.04242143434259587,
+      "void (anonymous namespace)::weighted_lanes_sum_out_kernel<_Float16>(_Float16 const*, float const*, long const*, _Float16*, long, long, long)": 0.0010097139344438808,
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long, long)": 0.0037742650820216258,
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)": 0.008176956884823018
+    },
+    "kernel_durations_ns": {
+      "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 18480.0,
+      "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 12320.0,
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)": 2149774.0,
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 1178810.0,
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)": 67442.0,
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)": 1702857.0,
+      "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)": 98200.0,
+      "(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)": 20524742.0,
+      "(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)": 1123092.0,
+      "(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)": 23287341.0,
+      "(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 1916699.0,
+      "(anonymous namespace)::qwen35_full_attn_gate_mul_fp16_kernel(float const*, _Float16 const*, _Float16*, long)": 7789092.0,
+      "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": 174332840.0,
+      "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)": 5659370.0,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)": 32353954.0,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, unsigned short*, float*, float, long, long, long, long, long, long)": 1732342.0,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)": 30925956.0,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)": 13315273.0,
+      "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": 247564.0,
+      "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)": 386124.0,
+      "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": 4517971.0,
+      "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)": 443680.0,
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)": 468607952.0,
+      "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": 111021068.0,
+      "(anonymous namespace)::qwen35_split_qgate_fp16_kernel(_Float16 const*, float*, _Float16*, long, long, long)": 23518063.0,
+      "(anonymous namespace)::set_decode_positions_i64_kernel(long*, long*, long const*, unsigned char const*, long)": 699483.0,
+      "(anonymous namespace)::set_i64_vector_kernel(long*, long const*, long)": 1633374.0,
+      "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)": 304923352.0,
+      "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 265523.0,
+      "__amd_rocclr_copyBuffer": 68523360.0,
+      "__amd_rocclr_fillBufferAligned": 1983018.0,
+      "attn_fwd": 12449127.0,
+      "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)": 76970210.0,
+      "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)": 35685396.0,
+      "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)": 27154875.0,
+      "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)": 30756476.0,
+      "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 127835882.0,
+      "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 69863423.0,
+      "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)": 422422163.0,
+      "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)": 346587387.0,
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 319596839.0,
+      "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 290868368.0,
+      "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)": 214771512.0,
+      "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)": 66253158.0,
+      "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)": 54118929.0,
+      "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 199205463.0,
+      "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 153849077.0,
+      "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 35237582.0,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)": 103644323.0,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)": 236780054.0,
+      "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)": 32509545.0,
+      "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)": 7334344.0,
+      "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)": 77427237.0,
+      "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)": 30768073.0,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 17150600.0,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 183441.0,
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)": 1423131.0,
+      "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)": 192918526.0,
+      "void (anonymous namespace)::weighted_lanes_sum_out_kernel<_Float16>(_Float16 const*, float const*, long const*, _Float16*, long, long, long)": 4591842.0,
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long, long)": 17164098.0,
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)": 37186071.0
+    },
+    "output_format": "csv",
+    "rows": 2,
+    "status": "captured",
+    "synthesized_fields": [],
+    "total_kernel_duration_ns": 4547666268.0,
+    "trace_dir": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profile-c2-selected-c1",
+    "trace_files": [
+      "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profile-c2-selected-c1/hipengine_kernel_trace.csv"
+    ],
+    "trace_kernel_names": [
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+      "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+      "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+      "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+      "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+      "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+      "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+      "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+      "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+      "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+      "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)",
+      "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)",
+      "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+      "__amd_rocclr_copyBuffer",
+      "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)",
+      "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)",
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)",
+      "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+      "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)",
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",
+      "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)",
+      "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+      "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)",
+      "(anonymous namespace)::qwen35_split_qgate_fp16_kernel(_Float16 const*, float*, _Float16*, long, long, long)",
+      "(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)",
+      "(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)",
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long, long)",
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)",
+      "attn_fwd",
+      "(anonymous namespace)::qwen35_full_attn_gate_mul_fp16_kernel(float const*, _Float16 const*, _Float16*, long)",
+      "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+      "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)",
+      "void (anonymous namespace)::weighted_lanes_sum_out_kernel<_Float16>(_Float16 const*, float const*, long const*, _Float16*, long, long, long)",
+      "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)",
+      "__amd_rocclr_fillBufferAligned",
+      "(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, unsigned short*, float*, float, long, long, long, long, long, long)",
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)",
+      "(anonymous namespace)::set_i64_vector_kernel(long*, long const*, long)",
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)",
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+      "(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)",
+      "(anonymous namespace)::set_decode_positions_i64_kernel(long*, long*, long const*, unsigned char const*, long)",
+      "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)",
+      "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
+      "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",
+      "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)",
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+      "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)",
+      "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+      "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+    ],
+    "source_artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-selected-c1-profile/profiler-c2-selected-c1.json",
+    "cpu_side_bottlenecks_seconds": {
+      "load": 23.101762759964913,
+      "prefill": 0.437701094080694,
+      "warmup_decode": 0.15234106092248112,
+      "decode": 2.035066523007117,
+      "validation": 0.0,
+      "other": 0.0
+    },
+    "cpu_side_total_seconds": 25.726871437975205,
+    "cpu_side_bottleneck_shares": {
+      "load": 0.8979623820821294,
+      "prefill": 0.01701338210267601,
+      "warmup_decode": 0.0059214763555591856,
+      "decode": 0.07910275945963541,
+      "validation": 0.0,
+      "other": 0.0
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "batch_execution.throughput_claim_eligible=false; scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim; execution.batch_execution.blockers must be empty; execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int; execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode; execution.batch_execution.decode_execution.layer_executions[0].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[1].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[2].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[3].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[4].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[5].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[6].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[7].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[8].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[9].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[10].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[11].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[12].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[13].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[14].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[15].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[16].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[17].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[18].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[19].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[20].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[21].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[22].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[23].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[24].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[25].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[26].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[27].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[28].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[29].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[30].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[31].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[32].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[33].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[34].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[35].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[36].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[37].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[38].moe_decode_path must be grouped_compact; execution.batch_execution.decode_execution.layer_executions[39].moe_decode_path must be grouped_compact; execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection; execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv; execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true; execution.batch_execution.projection_dispatch.blockers must be empty; execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv; execution.batch_execution.projection_dispatch.evidence is missing; projection_dispatch_candidates must include selected projection candidate"
+  },
+  "notes": [
+    "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
+    "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024."
+  ]
+}
