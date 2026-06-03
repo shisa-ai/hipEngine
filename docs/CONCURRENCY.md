@@ -686,6 +686,15 @@ What is still not green:
   context/gate at layer3 `gated_attn`/O/residual/MLP/output under tolerance, then
   is amplified by the later layer7 input/pre-QKV path
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-preqkv/summary.json`).
+  Forcing the whole post-context full-attention suffix to per-row interleaved
+  order (KV append, context+gate, O, post-attention add/RMSNorm, and MoE) is also
+  not a safe fix. It removes the rowchunk3 L6 generated-token failure, but
+  rowchunk3 remains hidden/projection/stage-red with L5 layer4 QKV/Z drift and L8
+  layer7 `attn_input_pre_qkv`/`attn_context` failures; the rowchunk2 control
+  becomes token-red at L8 and gains QKV/Z drift under the same suffix. Suffix
+  phasing/post-attention/MoE interleaving is eliminated; the O-bearing suffix can
+  move tokens but does not repair the inherited hidden trajectory
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
