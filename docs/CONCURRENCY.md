@@ -358,6 +358,13 @@ What is still not green:
   pattern. The current largest green native-context grouping for those prompts
   is therefore 2 rows; full native c8/c4 rows4..7 remains blocked
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-rowchunk-size-sweep/summary.json`).
+  A rows4/5/6 permutation sweep showed the native c3 failure prefixes follow
+  logical prompt identity rather than row position (`row4=11`, `row5=60`,
+  `row6=117` under all tested orderings), while rowchunk2 controls stay green
+  for every ordering. This makes a simple output-row-position alias unlikely
+  and keeps the target on prompt/window-sensitive native full-attention behavior
+  when three or more logical rows share one full-attention group
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-row-permutation/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

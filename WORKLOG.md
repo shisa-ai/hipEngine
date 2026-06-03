@@ -65340,3 +65340,8 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Derived rows4..7 c4: chunk1/chunk2 green `[137 x4]`; chunk3 and full native failed `[11,60,117,137]`. Derived rows4..6 c3: chunk1/chunk2 green `[137 x3]`; full native failed `[11,60,117]`.
 - Result: for the prompt/window-sensitive rows4..7 blocker, the largest generated-token-green native-context grouping currently observed is 2 rows. Chunking remains diagnostic (`native_caware_decode=false`), so full native c8/c4 rows4..7 is still blocked and no retained/perf claim is made.
 - Compact artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-rowchunk-size-sweep/summary.json` (`status=diagnostic_recorded`, `performance_claim=false`, `retained_ready=false`). Updated `docs/CONCURRENCY.md`.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter131 full-attn row permutation
+- Ran rows4/5/6 permutation diagnostics for native c3 full-attention at commit `a621506` on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Native full grouping failed in every ordering, but prefixes followed logical prompt identity instead of row position: 456 -> `[11,60,117]`, 654 -> `[117,60,11]`, 546 -> `[60,11,117]`, 465 -> `[11,117,60]`.
+- Chunk2 controls were green for every ordering (`[137,137,137]`). This makes a simple output-row-position alias unlikely; the full-attention blocker remains prompt/window-sensitive behavior when three or more logical rows are grouped in one native full-attention group.
+- Compact artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-row-permutation/summary.json` (`status=diagnostic_recorded`, `performance_claim=false`, `retained_ready=false`). Updated `docs/CONCURRENCY.md`.
