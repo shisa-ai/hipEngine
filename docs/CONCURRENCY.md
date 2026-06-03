@@ -690,6 +690,14 @@ What is still not green:
   the grouped>=3 issue is downstream/inherited from the layer3 trajectory rather
   than unforwarded diagnostic metadata
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-preqkv/summary.json`).
+  The forwarded context+gate rerun is also red: forcing only the full-attention
+  context+gate branch to per-row poisons the rowchunk2 control at L6, leaves
+  rowchunk3 token-red at L6, and gives both paths L5 layer4 QKV/Z drift. Unlike
+  the whole-suffix rerun, context+gate alone does not create the huge layer3
+  context mismatch; full-attention stage failures remain delayed until L8.
+  Context+gate alone is eliminated as a retained-compatible hidden/token repair,
+  and pre-forwarding context/gate evidence is superseded
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-context-gate/summary.json`).
   The forwarded whole-suffix rerun is decisively red: forcing per-row KV append,
   context+gate, O, post-attention add/RMSNorm, MoE, and suffix interleaving makes
   rowchunk2 token-red at L6, leaves rowchunk3 token-red at L6, gives both paths L5
