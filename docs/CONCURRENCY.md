@@ -715,6 +715,13 @@ What is still not green:
   tiny under-tolerance bit drift. KV append/live-span mutation alone is
   eliminated as the grouped>=3 cause
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-kv-append/summary.json`).
+  The forwarded post-attention-only rerun also keeps rowchunk2 token-green with
+  no projection drift or full-attention stage failures, while rowchunk3 still has
+  L5 layer4 QKV/Z drift, the L6 token failure, and L8 layer7
+  `attn_input_pre_qkv`/query/`attn_context`/`mlp_input` failures. Post-attention
+  add/RMSNorm alone is eliminated as the grouped>=3 cause and as a standalone
+  residual/RMSNorm handoff bug
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-post-attn/summary.json`).
   The forwarded whole-suffix rerun is decisively red: forcing per-row KV append,
   context+gate, O, post-attention add/RMSNorm, MoE, and suffix interleaving makes
   rowchunk2 token-red at L6, leaves rowchunk3 token-red at L6, gives both paths L5
