@@ -569,7 +569,13 @@ What is still not green:
   post-attention-only, gate-only, KV-append-only, and MoE-only variants stay red.
   The same context replay does not fully fix c8 (`[137,137,137,137,45,11,83,137]`),
   so c4 is isolated to native batched context and c8 has an additional row-count
-  interaction (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-fullnative-context-isolation/summary.json`).
+  interaction (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-fullnative-context-isolation/summary.json`). A
+  c4→c8 threshold sweep with the same full-native/no-chunk context-only replay
+  shows the break starts exactly at the fifth active row: c4 is green, c5 is
+  already `[137,137,137,137,45]`, then c6/c7/c8 extend the same tail pattern.
+  Rows 0..3 remain stable after the c4 context blocker is bypassed; rows>=5 need
+  a separate full-native row-count fix
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c45678-context-threshold/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
