@@ -1,0 +1,67 @@
+{
+  "created_utc": "2026-06-03T10:22:08Z",
+  "evidence": {
+    "accepted": true,
+    "aggregate_vs_row_gemv": 1.2927399483678248,
+    "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+    "per_request_vs_row_gemv": 1.2927399483678248,
+    "source_artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json"
+  },
+  "git_commit": "15a37edb74f66711b23ea2814c33667185364127",
+  "hardware": {
+    "device": "GPU1",
+    "gpu": "RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "kind": "projection_dispatch_evidence",
+  "measurements": {
+    "native_batch_projection": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-native.json",
+      "decode_tok_s_aggregate": 171.51524477166737,
+      "decode_tok_s_per_request": 21.43940559645842,
+      "generated_token_equality": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "row_gemv_selected_c1_projection": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-selected.json",
+      "decode_tok_s_aggregate": 132.67575198570867,
+      "decode_tok_s_per_request": 16.584468998213584,
+      "generated_token_equality": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    }
+  },
+  "notes": "Projection-dispatch evidence only; rowchunk2 full-attention keeps native_caware_decode=false, so no retained c>N throughput claim.",
+  "performance_claim": false,
+  "retained_ready": false,
+  "rows": 8,
+  "schema_version": 1,
+  "status": "accepted",
+  "workload": {
+    "batch_decode_moe_path": "grouped_compact",
+    "concurrency": 8,
+    "decode_tokens": 128,
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_row_chunk_size": 2,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}
