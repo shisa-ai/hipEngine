@@ -338,8 +338,14 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-auto-pair-sweep/summary.json`).
   The current c=8 auto profiler now confirms that rowchunk2 launches native
   batch full-attention context kernels and zero per-row full-attention context
-  kernels, with generated-token equality still green
+  kernels, with generated-token equality green in that profiled run
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-profiler/summary.json`).
+  A follow-up confidence/stage sweep found intermittent c=8 equality flakes in
+  both the rowchunk2 auto path and explicit per-row-full fallback, while c3
+  rows4/5/6 stayed red under every partial native-branch diagnostic and green
+  only under the broad per-row-full branch; c8 remains correctness-only and not
+  retained-ready
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-stage-c8-confidence/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
