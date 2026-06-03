@@ -420,6 +420,12 @@ What is still not green:
   sampler argmax kernels are present and generated-token equality remains green.
   This is runtime evidence only, not a retained throughput claim
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-auto-rowchunk2-final-profiler/summary.json`).
+  A focused c2 repeat sweep after a red verify flake found five green repeats
+  and one red repeat at `[23,137]`; the red row0 first diverges at generated
+  index 23 with batch token `1156` where independent c1 expected `1879`. This
+  makes c2 full-native equality intermittently flaky at the current commit and
+  blocks retained readiness despite frequent immediate green repeats
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-flake/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
