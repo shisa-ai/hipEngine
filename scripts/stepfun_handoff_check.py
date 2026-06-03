@@ -96,6 +96,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the readiness summary.",
     )
     parser.add_argument(
+        "--final-blocker-summary-only",
+        action="store_true",
+        help="Emit only remaining blocker kinds/gates/no-claim policy summary.",
+    )
+    parser.add_argument(
+        "--final-blocker-summary-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of final blocker summary.",
+    )
+    parser.add_argument(
         "--status-only",
         action="store_true",
         help="Emit only the handoff verification status string.",
@@ -209,6 +219,12 @@ def build_handoff_check(
             ),
         },
     }
+    final_blocker_manifest_summary = {
+        "remaining_blocker_count": remaining_blocker_count,
+        "remaining_blocker_kinds": remaining_blocker_kinds,
+        "blocked_gates": blocked_gates,
+        "no_claim_policy": current_manifest.get("no_claim_policy"),
+    }
     summary = {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "status": status,
@@ -239,17 +255,15 @@ def build_handoff_check(
         "readiness_summary_sha256": status_mod._stable_json_sha256(
             readiness_summary
         ),
+        "final_blocker_manifest_summary": final_blocker_manifest_summary,
+        "final_blocker_manifest_summary_sha256": status_mod._stable_json_sha256(
+            final_blocker_manifest_summary
+        ),
         "verification_failures": failures,
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
         "correctness_status_verification": status_verification,
         "final_blocker_manifest_verification": manifest_verification,
         "readiness_summary": readiness_summary,
-        "final_blocker_manifest_summary": {
-            "remaining_blocker_count": remaining_blocker_count,
-            "remaining_blocker_kinds": remaining_blocker_kinds,
-            "blocked_gates": blocked_gates,
-            "no_claim_policy": current_manifest.get("no_claim_policy"),
-        },
     }
 
 
@@ -273,6 +287,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["readiness_summary_sha256"]
     elif args.readiness_summary_only:
         payload = report["readiness_summary"]
+    elif args.final_blocker_summary_sha_only:
+        payload = report["final_blocker_manifest_summary_sha256"]
+    elif args.final_blocker_summary_only:
+        payload = report["final_blocker_manifest_summary"]
     elif args.failures_sha_only:
         payload = report["verification_failures_sha256"]
     elif args.failures_only:
