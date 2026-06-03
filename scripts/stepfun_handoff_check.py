@@ -141,6 +141,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of exit-code policy.",
     )
     parser.add_argument(
+        "--digest-summary-only",
+        action="store_true",
+        help="Emit only the compact digest summary for verified handoff drift polling.",
+    )
+    parser.add_argument(
+        "--digest-summary-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the compact digest summary.",
+    )
+    parser.add_argument(
         "--status-only",
         action="store_true",
         help="Emit only the handoff verification status string.",
@@ -296,6 +306,24 @@ def build_handoff_check(
         "manifest_sha256": status_mod._stable_json_sha256(current_manifest),
         "verification_failure_count": len(failures),
     }
+    digest_summary = {
+        "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
+        "status": status,
+        "summary_sha256": status_mod._stable_json_sha256(summary),
+        "artifact_verification_sha256": status_mod._stable_json_sha256(
+            artifact_verification
+        ),
+        "readiness_summary_sha256": status_mod._stable_json_sha256(
+            readiness_summary
+        ),
+        "final_blocker_manifest_summary_sha256": status_mod._stable_json_sha256(
+            final_blocker_manifest_summary
+        ),
+        "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "source_artifacts_sha256": current_status.get("source_artifacts_sha256"),
+        "manifest_sha256": status_mod._stable_json_sha256(current_manifest),
+    }
     return {
         "schema_version": HANDOFF_CHECK_SCHEMA_VERSION,
         "status": status,
@@ -314,6 +342,8 @@ def build_handoff_check(
         ),
         "exit_code_policy": exit_code_policy,
         "exit_code_policy_sha256": status_mod._stable_json_sha256(exit_code_policy),
+        "digest_summary": digest_summary,
+        "digest_summary_sha256": status_mod._stable_json_sha256(digest_summary),
         "verification_failures": failures,
         "verification_failures_sha256": status_mod._stable_json_sha256(failures),
         "correctness_status_verification": status_verification,
@@ -412,6 +442,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["exit_code_policy_sha256"]
     elif args.exit_code_policy_only:
         payload = report["exit_code_policy"]
+    elif args.digest_summary_sha_only:
+        payload = report["digest_summary_sha256"]
+    elif args.digest_summary_only:
+        payload = report["digest_summary"]
     elif args.failures_sha_only:
         payload = report["verification_failures_sha256"]
     elif args.failures_only:

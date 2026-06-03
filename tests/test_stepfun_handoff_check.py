@@ -94,6 +94,23 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
             build_status(prompt, oracle, docs, resource_artifact=resource)
         )["no_claim_policy"],
     }
+    assert report["digest_summary_sha256"] == _stable_json_sha256(
+        report["digest_summary"]
+    )
+    assert report["digest_summary"] == {
+        "schema_version": 1,
+        "status": "blocked_verified",
+        "summary_sha256": report["summary_sha256"],
+        "artifact_verification_sha256": report["artifact_verification_sha256"],
+        "readiness_summary_sha256": report["readiness_summary_sha256"],
+        "final_blocker_manifest_summary_sha256": report[
+            "final_blocker_manifest_summary_sha256"
+        ],
+        "exit_code_policy_sha256": report["exit_code_policy_sha256"],
+        "verification_failures_sha256": report["verification_failures_sha256"],
+        "source_artifacts_sha256": report["summary"]["source_artifacts_sha256"],
+        "manifest_sha256": report["summary"]["manifest_sha256"],
+    }
     assert report["artifact_verification"] == {
         "schema_version": 1,
         "status": "match",
@@ -176,6 +193,8 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     final_blocker_summary_sha_output = tmp_path / "handoff-final-blocker-summary-sha.json"
     exit_code_policy_output = tmp_path / "handoff-exit-code-policy.json"
     exit_code_policy_sha_output = tmp_path / "handoff-exit-code-policy-sha.json"
+    digest_summary_output = tmp_path / "handoff-digest-summary.json"
+    digest_summary_sha_output = tmp_path / "handoff-digest-summary-sha.json"
     status_output = tmp_path / "handoff-status.json"
     failures_output = tmp_path / "handoff-failures.json"
     failures_sha_output = tmp_path / "handoff-failures-sha.json"
@@ -556,6 +575,59 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert rc == 0
     assert json.loads(final_blocker_summary_sha_output.read_text()) == expected[
         "final_blocker_manifest_summary_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--digest-summary-only",
+            "--output",
+            str(digest_summary_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    digest_summary_payload = json.loads(digest_summary_output.read_text())
+    assert digest_summary_payload == expected["digest_summary"]
+    assert digest_summary_payload["status"] == "blocked_verified"
+    assert digest_summary_payload["manifest_sha256"] == expected["summary"][
+        "manifest_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--digest-summary-sha-only",
+            "--output",
+            str(digest_summary_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(digest_summary_sha_output.read_text()) == expected[
+        "digest_summary_sha256"
     ]
 
     rc = main(
