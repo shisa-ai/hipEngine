@@ -720,6 +720,13 @@ What is still not green:
   cause; the remaining failure is inherited from the rowchunk3 layer3 trajectory
   into the next linear layer rather than a standalone O mismatch
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-o-proj/summary.json`).
+  The forwarded layer-copy-only rerun also keeps rowchunk2 token-green with no
+  projection drift or full-attention stage failures, while rowchunk3 still has L5
+  layer4 QKV/Z drift, the L6 token failure, and L8 layer7
+  `attn_input_pre_qkv`/query/`attn_context`/`mlp_input` failures. The output-to-
+  next-layer copy/handoff is eliminated as the grouped>=3 cause and as a
+  copy/aliasing bug
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-layer-copy/summary.json`).
   The forwarded KV-append-only rerun has the same retained-compatible shape:
   rowchunk2 stays token-green with no projection drift or full-attention stage
   failures, while rowchunk3 still has L5 layer4 QKV/Z drift, the L6 token
