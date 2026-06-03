@@ -441,11 +441,12 @@ What is still not green:
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7
-  `attn_input_pre_qkv`, but rowchunk2 clears the full pre-QKV/QKV/prepare suite
-  and first fails later at `attn_input` while tokens stay green. This keeps the
-  grouping>=3 fix target on upstream hidden row-group interaction / native
-  grouped pre-QKV setup rather than sampler or late output
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-boundary-contrast/summary.json`).
+  `attn_input_pre_qkv`; a later trace-coverage fix showed rowchunk2 had not
+  originally captured the pre-QKV/QKV callback stages there, so do not treat the
+  older rowchunk2 pre-QKV-green reading as valid. The generated-token contrast
+  still keeps the grouping>=3 fix target on upstream hidden row-group interaction
+  / native grouped pre-QKV setup rather than sampler or late output
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-boundary-contrast/summary.json`, corrected by `benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-tracefix/summary.json`).
   The apparent duplicate `block_table_rows` in native c3 full-attention metadata
   are not the bug: `_batch_full_spans` encodes row-relative physical-slot offsets
   because kernels add the compact active-row base internally. Active c2 is green
@@ -471,12 +472,12 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-postattn-red/summary.json`).
   A layer-limit transition probe over L4-L8 localizes the first over-tolerance
   hidden transition for both native and rowchunk2 to layer limit 8 (the second
-  full-attention layer, index 7); L4-L7 stay hidden/token green. Native full
-  first fails `attn_input_pre_qkv`, while rowchunk2 clears the pre-QKV/QKV/prepare
-  suite and first fails later at `attn_input`/context/output, so rowchunk2 removes
-  the native pre-QKV over-tolerance path but remains a hidden-red/token-green
-  diagnostic fallback rather than retained closure
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-layer7-transition/summary.json`).
+  full-attention layer, index 7); L4-L7 stay hidden/token green. After rowchunk
+  trace coverage was fixed to capture post-input-RMSNorm and QKV callback stages,
+  both native full and rowchunk2 first fail at `attn_input_pre_qkv`. Rowchunk2
+  therefore keeps 512/128 generated-token equality green by changing later
+  trajectory, not by making the L8 pre-QKV hidden trace parity-green
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-layer7-transition/summary.json`, corrected by `benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-tracefix/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
