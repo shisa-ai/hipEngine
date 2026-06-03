@@ -133,6 +133,37 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["artifact_status_handoff"][1]["missing_reason"] == (
         "kv_kernel_trace_artifact_missing"
     )
+    assert manifest["artifact_status_handoff"][2]["artifact_file_present"] is False
+    assert manifest["artifact_status_handoff"][2]["readiness_gate"] == (
+        "kv_backed_decode"
+    )
+    assert manifest["artifact_status_handoff"][2]["validator_command_kind"] == (
+        "kv_next_token_check_command"
+    )
+    assert "scripts/stepfun_kv_next_token_check.py" in manifest[
+        "artifact_status_handoff"
+    ][2]["validator_command"]
+    assert manifest["artifact_status_handoff"][2][
+        "validator_command_sha256"
+    ] == _stable_json_sha256(
+        manifest["artifact_status_handoff"][2]["validator_command"]
+    )
+    assert manifest["artifact_status_handoff"][2][
+        "validator_expected_evidence_checks"
+    ] == [
+        "artifact_success_status",
+        "kv_backed_runtime_path",
+        "streaming_runner_ready",
+        "not_host_composed_layer_prefix",
+        "prompt_length_matches_target",
+        "next_token_id_matches_target",
+        "next_token_text_matches_target",
+        "next_token_logit_recorded_finite",
+        "next_token_logit_within_tolerance",
+    ]
+    assert manifest["artifact_status_handoff"][2]["missing_reason"] == (
+        "kv_backed_next_token_artifact_missing"
+    )
     assert manifest["success_criteria_handoff_sha256"] == _stable_json_sha256(
         manifest["success_criteria_handoff"]
     )
@@ -265,6 +296,13 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "passed"
     )
     assert kv_artifact["required_artifacts"][0]["validator_failure_exit_code"] == 2
+    assert kv_artifact["required_artifacts"][1]["validator_command_kind"] == (
+        "kv_next_token_check_command"
+    )
+    assert kv_artifact["required_artifacts"][1]["validator_success_status"] == (
+        "passed"
+    )
+    assert kv_artifact["required_artifacts"][1]["validator_failure_exit_code"] == 2
     assert manifest["artifacts_to_collect"][1:] == kv_artifact["required_artifacts"]
 
 
@@ -468,6 +506,12 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
         "kv_trace_check_command"
     )
     assert "<kv_kernel_trace_artifact.csv-or-json>" in artifact_status_payload[1][
+        "validator_command"
+    ]
+    assert artifact_status_payload[2]["validator_command_kind"] == (
+        "kv_next_token_check_command"
+    )
+    assert "<kv_backed_next_token_artifact.json>" in artifact_status_payload[2][
         "validator_command"
     ]
 

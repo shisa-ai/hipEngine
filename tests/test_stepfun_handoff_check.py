@@ -286,6 +286,32 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "decode_attention_context",
         "decode_attention_gate_reduce",
     ]
+    assert report["missing_artifact_summary"]["missing_artifacts"][2][
+        "missing_reason"
+    ] == "kv_backed_next_token_artifact_missing"
+    assert report["missing_artifact_summary"]["missing_artifacts"][2][
+        "validator_command_kind"
+    ] == "kv_next_token_check_command"
+    assert report["missing_artifact_summary"]["missing_artifacts"][2][
+        "validator_command_sha256"
+    ] == _stable_json_sha256(
+        report["missing_artifact_summary"]["missing_artifacts"][2][
+            "validator_command"
+        ]
+    )
+    assert report["missing_artifact_summary"]["missing_artifacts"][2][
+        "validator_expected_evidence_checks"
+    ] == [
+        "artifact_success_status",
+        "kv_backed_runtime_path",
+        "streaming_runner_ready",
+        "not_host_composed_layer_prefix",
+        "prompt_length_matches_target",
+        "next_token_id_matches_target",
+        "next_token_text_matches_target",
+        "next_token_logit_recorded_finite",
+        "next_token_logit_within_tolerance",
+    ]
     assert report["action_summary"]["recommended_commands"][0][
         "recommended_command_kind"
     ] == "oracle_helper_long_timeout_command"
@@ -918,6 +944,12 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert "scripts/stepfun_kv_trace_check.py" in action_summary_payload[
         "required_artifacts"
     ][1]["validator_command"]
+    assert action_summary_payload["required_artifacts"][2][
+        "validator_command_kind"
+    ] == "kv_next_token_check_command"
+    assert "scripts/stepfun_kv_next_token_check.py" in action_summary_payload[
+        "required_artifacts"
+    ][2]["validator_command"]
 
     rc = main(
         [
@@ -973,6 +1005,9 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert artifact_status_payload[0]["evidence_satisfied"] is False
     assert artifact_status_payload[1]["validator_command_kind"] == (
         "kv_trace_check_command"
+    )
+    assert artifact_status_payload[2]["validator_command_kind"] == (
+        "kv_next_token_check_command"
     )
 
     rc = main(

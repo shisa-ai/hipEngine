@@ -674,7 +674,11 @@ reporting.
   streaming-runner evidence, non-host-composed provenance, prompt-length
   alignment, deterministic token/text match against the canonical prompt target,
   and a finite next-token logit, while keeping KV-decode/e2e/performance claims
-  separate. This checklist item is partial rather than complete because the
+  separate; the final-blocker manifest and combined handoff report attach this
+  command under the missing `kv_backed_next_token_artifact` as
+  `validator_command_kind=kv_next_token_check_command` with a stable command
+  digest and expected evidence-check digest. This checklist item is partial rather
+  than complete because the
   current runner is host-composed/chunked and does not yet implement the final
   KV-backed one-token decode path.
 - [x] Use short contexts first (for example <= 512) before exercising long

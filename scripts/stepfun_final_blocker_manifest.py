@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import stepfun_correctness_status as status_mod
+from scripts import stepfun_kv_next_token_check as kv_next_token_check_mod
 from scripts import stepfun_kv_trace_check as kv_trace_check_mod
 
 
@@ -90,6 +91,14 @@ def _summarize_required_artifact(artifact: dict[str, object]) -> dict[str, objec
         "validator_expected_kernel_families_sha256": artifact.get(
             "validator_expected_kernel_families_sha256"
         ),
+        "validator_expected_evidence_checks": artifact.get(
+            "validator_expected_evidence_checks"
+        ),
+        "validator_expected_evidence_checks_sha256": artifact.get(
+            "validator_expected_evidence_checks_sha256"
+        ),
+        "validator_success_status": artifact.get("validator_success_status"),
+        "validator_failure_exit_code": artifact.get("validator_failure_exit_code"),
     }
 
 
@@ -132,6 +141,43 @@ def _kv_trace_validator_handoff(resource_artifact: object) -> dict[str, object]:
         ),
         "validator_success_status": "passed",
         "validator_failure_exit_code": kv_trace_check_mod.FAILED_EXIT_CODE,
+    }
+
+
+def _kv_next_token_validator_handoff(prompt_artifact: object) -> dict[str, object]:
+    """Return the validation command for a retained StepFun KV next-token artifact."""
+
+    artifact_placeholder = "<kv_backed_next_token_artifact.json>"
+    prompt_arg = str(prompt_artifact) if prompt_artifact else str(
+        status_mod.DEFAULT_PROMPT_ARTIFACT
+    )
+    command = (
+        "python3 scripts/stepfun_kv_next_token_check.py "
+        f"--artifact {artifact_placeholder} "
+        f"--prompt-artifact {prompt_arg} "
+        "--summary-only --fail-on-missing --pretty"
+    )
+    expected_checks = [
+        "artifact_success_status",
+        "kv_backed_runtime_path",
+        "streaming_runner_ready",
+        "not_host_composed_layer_prefix",
+        "prompt_length_matches_target",
+        "next_token_id_matches_target",
+        "next_token_text_matches_target",
+        "next_token_logit_recorded_finite",
+        "next_token_logit_within_tolerance",
+    ]
+    return {
+        "validator_command_kind": "kv_next_token_check_command",
+        "validator_command": command,
+        "validator_command_sha256": status_mod._stable_json_sha256(command),
+        "validator_expected_evidence_checks": expected_checks,
+        "validator_expected_evidence_checks_sha256": status_mod._stable_json_sha256(
+            expected_checks
+        ),
+        "validator_success_status": "passed",
+        "validator_failure_exit_code": kv_next_token_check_mod.FAILED_EXIT_CODE,
     }
 
 
@@ -292,6 +338,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     readiness_gates = dict(status.get("readiness_gates", {}))
     source_artifacts = dict(status.get("source_artifacts", {}))
     oracle_source = dict(source_artifacts.get("oracle", {}))
+    prompt_source = dict(source_artifacts.get("prompt", {}))
     text_resource_source = dict(source_artifacts.get("text_resource", {}))
     oracle_progress = dict(status.get("oracle_progress", {}))
     oracle_gap_report = dict(status.get("oracle_gap_report", {}))
@@ -377,6 +424,10 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                 if enriched_record.get("name") == "kv_kernel_trace_artifact":
                     enriched_record.update(
                         _kv_trace_validator_handoff(text_resource_source.get("path"))
+                    )
+                elif enriched_record.get("name") == "kv_backed_next_token_artifact":
+                    enriched_record.update(
+                        _kv_next_token_validator_handoff(prompt_source.get("path"))
                     )
                 kv_required_artifacts.append(enriched_record)
             artifact = {
