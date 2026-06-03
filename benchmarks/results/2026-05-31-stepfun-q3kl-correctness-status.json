@@ -539,6 +539,8 @@
       "oracle_helper_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256",
       "oracle_helper_long_timeout_command_only": "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command",
       "oracle_helper_long_timeout_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command_sha256",
+      "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
+      "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
       "oracle_progress_only": "oracle_progress",
       "oracle_progress_sha_only": "oracle_progress_sha256",
       "oracle_timeout_termination_only": "oracle_gap_report.timeout_termination",
@@ -771,7 +773,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "d0b9735699c1ebb8d09baaaf1a13ccec01f3f3be8dbef5550b4785300b688c32",
+  "handoff_summary_sha256": "2bed041408ba180d49a4c5856cf14f1fd8cc19a7fff1ad849d4e8ae666dcc59d",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -2250,6 +2252,69 @@
   },
   "oracle_llama_cpp_version": "version: 9197 (fcae601e4)\nbuilt with GNU 15.2.1 for Linux x86_64",
   "oracle_parity": false,
+  "oracle_partial_output_handoff": {
+    "all_mirror_records_safe": true,
+    "all_partial_output_contracts_safe": true,
+    "command_record": {
+      "command_has_execute": true,
+      "command_has_output_path": true,
+      "command_kind": "oracle_helper_long_timeout_command",
+      "command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "partial_output_blocker_kind": "llama_cpp_oracle_in_progress",
+      "partial_output_matches_oracle_source_path": true,
+      "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+      "partial_output_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "partial_output_status": "running",
+      "source": "next_action_commands.oracle_parity_blocked",
+      "writes_partial_output_before_launch": true
+    },
+    "command_record_safe": true,
+    "integrity_checks": [
+      "oracle_partial_output_command_metadata",
+      "oracle_partial_output_handoff_mirrors"
+    ],
+    "mirror_records": [
+      {
+        "blocker_kind": "oracle_parity_blocked",
+        "partial_output_blocker_kind": "llama_cpp_oracle_in_progress",
+        "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+        "partial_output_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "partial_output_status": "running",
+        "queue_index": 0,
+        "recommended_command_kind": "oracle_helper_long_timeout_command",
+        "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+        "source": "handoff_summary.blocker_work_queue.oracle_parity_blocked",
+        "writes_partial_output_before_launch": true
+      },
+      {
+        "blocker_kind": "oracle_parity_blocked",
+        "partial_output_blocker_kind": "llama_cpp_oracle_in_progress",
+        "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+        "partial_output_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "partial_output_status": "running",
+        "queue_index": 0,
+        "recommended_command_kind": "oracle_helper_long_timeout_command",
+        "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+        "source": "remaining_blockers_report.items.oracle_parity_blocked",
+        "writes_partial_output_before_launch": true
+      },
+      {
+        "blocker_kind": "oracle_parity_blocked",
+        "partial_output_blocker_kind": "llama_cpp_oracle_in_progress",
+        "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+        "partial_output_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "partial_output_status": "running",
+        "queue_index": 0,
+        "recommended_command_kind": "oracle_helper_long_timeout_command",
+        "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+        "source": "first_remaining_blocker_report",
+        "writes_partial_output_before_launch": true
+      }
+    ],
+    "schema_version": 1,
+    "status": "safe"
+  },
+  "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
   "oracle_progress": {
     "command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
     "comparison_policy": {
@@ -2732,7 +2797,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
-    "handoff_summary_sha256": "d0b9735699c1ebb8d09baaaf1a13ccec01f3f3be8dbef5550b4785300b688c32",
+    "handoff_summary_sha256": "2bed041408ba180d49a4c5856cf14f1fd8cc19a7fff1ad849d4e8ae666dcc59d",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
@@ -2742,10 +2807,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "b749cebebd0586e44528d623f48bbaf1bb04f511dc820e2d488cac7d5d6316f5",
     "schema_version": 1,
-    "source_artifacts_sha256": "dbcf56d983f498485c0d34251143b1ed6ad48ceb4ed7a64f08019b048a924987",
+    "source_artifacts_sha256": "8a353d2495c4526dea024364e311184fff3bacb758343512a9bdf84b2b27aae4",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "eaa4f3409e69e478c04e22755d1289b59ea68064331dcfb35bffec839a59cad1",
+  "readiness_summary_sha256": "c20d26cb3ed7962c8001867bddfb375261fc89051044ea09e7ef7723df3f751a",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2864,8 +2929,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "ffad8950d75c3ea5131b5e2b3527ddebc95fb5b8a378483eea70f1a1a0b1de75",
-      "size_bytes": 67948
+      "sha256": "1809aff8914c570995043ab628ef6fe9835e4e66e5997ef36145dc45a656f7d2",
+      "size_bytes": 68278
     },
     "oracle": {
       "exists": true,
@@ -2892,7 +2957,7 @@
       "size_bytes": 52393
     }
   },
-  "source_artifacts_sha256": "dbcf56d983f498485c0d34251143b1ed6ad48ceb4ed7a64f08019b048a924987",
+  "source_artifacts_sha256": "8a353d2495c4526dea024364e311184fff3bacb758343512a9bdf84b2b27aae4",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
@@ -2941,6 +3006,8 @@
       "oracle_compact_output_modes": true,
       "oracle_partial_output_command_metadata": true,
       "oracle_partial_output_handoff_mirrors": true,
+      "oracle_partial_output_handoff_safe": true,
+      "oracle_partial_output_handoff_sha256": true,
       "oracle_progress_sha256": true,
       "readiness_compact_output_modes": true,
       "readiness_gates_sha256": true,
@@ -2960,7 +3027,7 @@
     },
     "failed_checks": []
   },
-  "status_integrity_sha256": "f7f67d31d4e911b8289a0fc73b48a8478aa52a133da39a6a115436065bb26bbe",
+  "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 }

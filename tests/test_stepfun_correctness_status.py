@@ -1457,6 +1457,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "atomic_output_handoff_only": "atomic_output_handoff",
         "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
+        "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
+        "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
@@ -3789,6 +3791,8 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "handoff_integrity_command_metadata": True,
             "handoff_integrity_compact_output_modes": True,
             "oracle_progress_sha256": True,
+            "oracle_partial_output_handoff_sha256": True,
+            "oracle_partial_output_handoff_safe": True,
             "oracle_compact_output_modes": True,
             "blocker_kinds_sha256": True,
             "blocker_kinds_mirror_handoff": True,
@@ -4363,6 +4367,99 @@ def test_stepfun_correctness_status_atomic_output_handoff_outputs(
     assert captured.err == ""
 
 
+def test_stepfun_correctness_status_oracle_partial_output_handoff_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "oracle-partial-output-handoff.json"
+    sha_output = tmp_path / "oracle-partial-output-handoff-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--oracle-partial-output-handoff-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(output.read_text())
+    assert payload == status["oracle_partial_output_handoff"]
+    assert payload["schema_version"] == 1
+    assert payload["status"] == "safe"
+    assert payload["all_partial_output_contracts_safe"] is True
+    command_record = payload["command_record"]
+    assert command_record["command_kind"] == "oracle_helper_long_timeout_command"
+    assert command_record["writes_partial_output_before_launch"] is True
+    assert command_record["partial_output_status"] == "running"
+    assert command_record["partial_output_path"] == str(oracle)
+    assert command_record["partial_output_overwrite_policy"] == (
+        "overwrite_on_execute_or_timeout"
+    )
+    assert command_record["partial_output_blocker_kind"] == (
+        "llama_cpp_oracle_in_progress"
+    )
+    assert command_record["partial_output_matches_oracle_source_path"] is True
+    assert command_record["command_has_execute"] is True
+    assert command_record["command_has_output_path"] is True
+    assert len(payload["mirror_records"]) == 3
+    assert payload["all_mirror_records_safe"] is True
+    assert {record["source"] for record in payload["mirror_records"]} == {
+        "handoff_summary.blocker_work_queue.oracle_parity_blocked",
+        "remaining_blockers_report.items.oracle_parity_blocked",
+        "first_remaining_blocker_report",
+    }
+    assert payload["integrity_checks"] == [
+        "oracle_partial_output_command_metadata",
+        "oracle_partial_output_handoff_mirrors",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(sha_output),
+            "--summary-only",
+            "--oracle-partial-output-handoff-only",
+            "--oracle-partial-output-handoff-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    sha_payload = json.loads(sha_output.read_text())
+    assert sha_payload == status["oracle_partial_output_handoff_sha256"]
+    assert sha_payload == _stable_json_sha256(status["oracle_partial_output_handoff"])
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
 def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -4538,6 +4635,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "atomic_output_handoff_only": "atomic_output_handoff",
         "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
+        "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
+        "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
@@ -6259,6 +6358,8 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "handoff_integrity_command_metadata": True,
             "handoff_integrity_compact_output_modes": True,
             "oracle_progress_sha256": True,
+            "oracle_partial_output_handoff_sha256": True,
+            "oracle_partial_output_handoff_safe": True,
             "oracle_compact_output_modes": True,
             "blocker_kinds_sha256": True,
             "blocker_kinds_mirror_handoff": True,
@@ -8358,6 +8459,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "handoff_integrity_command_metadata": True,
         "handoff_integrity_compact_output_modes": True,
         "oracle_progress_sha256": True,
+        "oracle_partial_output_handoff_sha256": True,
+        "oracle_partial_output_handoff_safe": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -8481,6 +8584,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "handoff_integrity_command_metadata": True,
         "handoff_integrity_compact_output_modes": True,
         "oracle_progress_sha256": True,
+        "oracle_partial_output_handoff_sha256": True,
+        "oracle_partial_output_handoff_safe": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -8736,6 +8841,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "handoff_integrity_command_metadata": True,
         "handoff_integrity_compact_output_modes": True,
         "oracle_progress_sha256": True,
+        "oracle_partial_output_handoff_sha256": True,
+        "oracle_partial_output_handoff_safe": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9298,6 +9405,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "handoff_integrity_command_metadata": True,
         "handoff_integrity_compact_output_modes": True,
         "oracle_progress_sha256": True,
+        "oracle_partial_output_handoff_sha256": True,
+        "oracle_partial_output_handoff_safe": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9420,6 +9529,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "handoff_integrity_command_metadata": True,
         "handoff_integrity_compact_output_modes": True,
         "oracle_progress_sha256": True,
+        "oracle_partial_output_handoff_sha256": True,
+        "oracle_partial_output_handoff_safe": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9543,6 +9654,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "handoff_integrity_command_metadata": True,
         "handoff_integrity_compact_output_modes": True,
         "oracle_progress_sha256": True,
+        "oracle_partial_output_handoff_sha256": True,
+        "oracle_partial_output_handoff_safe": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,
@@ -9665,6 +9778,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "handoff_integrity_command_metadata": True,
         "handoff_integrity_compact_output_modes": True,
         "oracle_progress_sha256": True,
+        "oracle_partial_output_handoff_sha256": True,
+        "oracle_partial_output_handoff_safe": True,
         "oracle_compact_output_modes": True,
         "blocker_kinds_sha256": True,
         "blocker_kinds_mirror_handoff": True,

@@ -790,8 +790,13 @@ reporting.
   in `next_action_commands.oracle_parity_blocked`, the blocker work queue,
   `remaining_blockers_report`, and `first_remaining_blocker_report` via
   `recommended_command_writes_partial_output_before_launch=true` plus the
-  expected `status=running` path/overwrite metadata; status integrity verifies
-  the command-level partial-output guarantee and that the queue/compact blocker
+  expected `status=running` path/overwrite metadata. Compact
+  `--oracle-partial-output-handoff-only` /
+  `--oracle-partial-output-handoff-sha-only` outputs expose the supervised oracle
+  rerun partial-output contract (command record, queue/report mirrors, source-path
+  match, and safe/drift status) without requiring the full status artifact. Status
+  integrity verifies the command-level partial-output guarantee, the compact handoff digest/status,
+  and that the queue/compact blocker
   reports mirror the same path/status/overwrite fields; oracle-helper tests now
   cover both successful overwrite and timeout overwrite of the pre-launch
   `status=running` artifact; timeout payloads now include `timeout_termination`

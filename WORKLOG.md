@@ -33476,3 +33476,40 @@ git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_correctness_status.py
 ```
 
 Results: targeted oracle progress/status tests passed; the full correctness-status test file passed; source artifact verification returned `"match"`; compact `--oracle-progress-only` / `--oracle-progress-sha-only` outputs matched the recorded timeout blocker and `oracle_progress_sha256=554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`268` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=dbcf56d983f498485c0d34251143b1ed6ad48ceb4ed7a64f08019b048a924987`, `handoff_summary_sha256=d0b9735699c1ebb8d09baaaf1a13ccec01f3f3be8dbef5550b4785300b688c32`, `readiness_summary_sha256=eaa4f3409e69e478c04e22755d1289b59ea68064331dcfb35bffec839a59cad1`, `next_action_commands_sha256=37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346`, and `status_integrity_sha256=f7f67d31d4e911b8289a0fc73b48a8478aa52a133da39a6a115436065bb26bbe`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; no backend/quant branch special-casing was added; the diff contains no unsupported StepFun performance or throughput claim.
+
+## 2026-06-03 — StepFun oracle partial-output compact handoff
+
+Added a compact supervised-oracle partial-output handoff for the remaining oracle-parity blocker. `scripts/stepfun_correctness_status.py` now builds top-level `oracle_partial_output_handoff` / `oracle_partial_output_handoff_sha256`, exposes `--oracle-partial-output-handoff-only` / `--oracle-partial-output-handoff-sha-only`, and verifies both the digest and safe/drift status in status integrity. The handoff records the long-timeout oracle helper command metadata, confirms the helper writes a pre-launch `status=running` artifact to the canonical oracle JSON path with `overwrite_on_execute_or_timeout`, checks that the command includes `--execute` and the expected `--output` path, and mirrors the same partial-output fields through the blocker work queue and remaining-blocker reports. This is oracle-rerun handoff evidence only; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`) and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_oracle_partial_output_handoff_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_atomic_output_handoff_outputs
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --oracle-partial-output-handoff-only --pretty >/tmp/stepfun-oracle-partial-output-handoff.json
+python3 scripts/stepfun_correctness_status.py --oracle-partial-output-handoff-sha-only >/tmp/stepfun-oracle-partial-output-handoff-sha.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+h=json.loads(Path('/tmp/stepfun-oracle-partial-output-handoff.json').read_text())
+sha=json.loads(Path('/tmp/stepfun-oracle-partial-output-handoff-sha.json').read_text())
+assert h['status']=='safe'
+assert h['command_record']['partial_output_status']=='running'
+assert h['command_record']['partial_output_blocker_kind']=='llama_cpp_oracle_in_progress'
+assert h['command_record']['partial_output_matches_oracle_source_path'] is True
+assert h['command_record']['command_has_execute'] is True
+assert h['command_record']['command_has_output_path'] is True
+assert sha == 'c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769'
+print('oracle partial compact ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_correctness_status.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_correctness_status.py tests/test_stepfun_correctness_status.py benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+```
+
+Results: targeted oracle partial-output/status tests passed (`4` tests); the full correctness-status test file passed (`154` tests); source artifact verification returned `"match"`; compact `--oracle-partial-output-handoff-only` / `--oracle-partial-output-handoff-sha-only` outputs recorded `status=safe`, `partial_output_status=running`, source-path match, execute/output-path command checks, and `oracle_partial_output_handoff_sha256=c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`269` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=8a353d2495c4526dea024364e311184fff3bacb758343512a9bdf84b2b27aae4`, `handoff_summary_sha256=2bed041408ba180d49a4c5856cf14f1fd8cc19a7fff1ad849d4e8ae666dcc59d`, `readiness_summary_sha256=c20d26cb3ed7962c8001867bddfb375261fc89051044ea09e7ef7723df3f751a`, `next_action_commands_sha256=37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346`, `oracle_progress_sha256=554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea`, and `status_integrity_sha256=335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; no backend/quant branch special-casing was added; the diff contains no unsupported StepFun performance or throughput claim.

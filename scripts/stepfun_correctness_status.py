@@ -678,6 +678,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-handoff-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_partial_output_handoff for compact supervised oracle-rerun "
+            "partial-output polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-handoff-sha-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_partial_output_handoff_sha256 for supervised oracle-rerun "
+            "partial-output contract drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-helper-long-timeout-command-only",
         action="store_true",
         help=(
@@ -826,6 +842,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     )
     readiness_gates = status.get("readiness_gates", {})
     oracle_progress = status.get("oracle_progress", {})
+    oracle_partial_output_handoff = status.get("oracle_partial_output_handoff", {})
     next_action_commands = status.get("next_action_commands", {})
     handoff_integrity_commands = (
         next_action_commands.get("handoff_integrity", {})
@@ -1636,6 +1653,17 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(oracle_progress, dict)
             and status.get("oracle_progress_sha256") == _stable_json_sha256(oracle_progress)
         ),
+        "oracle_partial_output_handoff_sha256": (
+            isinstance(oracle_partial_output_handoff, dict)
+            and status.get("oracle_partial_output_handoff_sha256")
+            == _stable_json_sha256(oracle_partial_output_handoff)
+        ),
+        "oracle_partial_output_handoff_safe": (
+            isinstance(oracle_partial_output_handoff, dict)
+            and oracle_partial_output_handoff.get("status") == "safe"
+            and oracle_partial_output_handoff.get("all_partial_output_contracts_safe")
+            is True
+        ),
         "handoff_integrity_compact_output_modes": (
             isinstance(compact_output_modes, dict)
             and compact_output_modes.get("source_verify_command_only")
@@ -1667,6 +1695,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256"
             and compact_output_modes.get("oracle_progress_only") == "oracle_progress"
             and compact_output_modes.get("oracle_progress_sha_only") == "oracle_progress_sha256"
+            and compact_output_modes.get("oracle_partial_output_handoff_only")
+            == "oracle_partial_output_handoff"
+            and compact_output_modes.get("oracle_partial_output_handoff_sha_only")
+            == "oracle_partial_output_handoff_sha256"
             and compact_output_modes.get("oracle_helper_long_timeout_command_only")
             == "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
             and compact_output_modes.get("oracle_helper_long_timeout_command_sha_only")
@@ -3057,6 +3089,164 @@ def _first_remaining_blocker_report(
     }
 
 
+def _oracle_partial_output_handoff(
+    *,
+    next_action_commands: dict[str, object],
+    handoff_summary: dict[str, object],
+    remaining_blockers_report: dict[str, object],
+    first_remaining_blocker_report: dict[str, object],
+    source_artifacts: dict[str, object],
+) -> dict[str, object]:
+    """Return compact supervised-oracle partial-output handoff metadata."""
+
+    oracle_action = dict(next_action_commands.get("oracle_parity_blocked", {}))
+    oracle_source = dict(source_artifacts.get("oracle", {}))
+    work_queue = [
+        item
+        for item in handoff_summary.get("blocker_work_queue", [])
+        if isinstance(item, dict)
+    ]
+    work_item_by_kind = {str(item.get("blocker_kind")): item for item in work_queue}
+    oracle_item = dict(work_item_by_kind.get("oracle_parity_blocked", {}))
+    remaining_items = [
+        item
+        for item in remaining_blockers_report.get("items", [])
+        if isinstance(item, dict)
+    ]
+    remaining_item_by_kind = {
+        str(item.get("blocker_kind")): item for item in remaining_items
+    }
+    remaining_oracle_item = dict(remaining_item_by_kind.get("oracle_parity_blocked", {}))
+    first_report = dict(first_remaining_blocker_report)
+    partial_output_path = oracle_action.get("oracle_helper_partial_output_path")
+    long_timeout_command = oracle_action.get("oracle_helper_long_timeout_command")
+    command_text = long_timeout_command if isinstance(long_timeout_command, str) else ""
+    command_record = {
+        "source": "next_action_commands.oracle_parity_blocked",
+        "command_kind": "oracle_helper_long_timeout_command",
+        "command_sha256": oracle_action.get(
+            "oracle_helper_long_timeout_command_sha256"
+        ),
+        "writes_partial_output_before_launch": oracle_action.get(
+            "oracle_helper_writes_partial_output_before_launch"
+        ),
+        "partial_output_status": oracle_action.get(
+            "oracle_helper_partial_output_status"
+        ),
+        "partial_output_path": partial_output_path,
+        "partial_output_overwrite_policy": oracle_action.get(
+            "oracle_helper_partial_output_overwrite_policy"
+        ),
+        "partial_output_blocker_kind": oracle_action.get(
+            "oracle_helper_partial_output_blocker_kind"
+        ),
+        "partial_output_matches_oracle_source_path": (
+            partial_output_path == oracle_source.get("path")
+        ),
+        "command_has_execute": "--execute" in command_text,
+        "command_has_output_path": (
+            isinstance(partial_output_path, str)
+            and f"--output {partial_output_path}" in command_text
+        ),
+    }
+    mirror_records = [
+        {
+            "source": "handoff_summary.blocker_work_queue.oracle_parity_blocked",
+            "blocker_kind": oracle_item.get("blocker_kind"),
+            "queue_index": oracle_item.get("queue_index"),
+            "recommended_command_kind": oracle_item.get("recommended_command_kind"),
+            "recommended_command_sha256": oracle_item.get("recommended_command_sha256"),
+            "writes_partial_output_before_launch": oracle_item.get(
+                "recommended_command_writes_partial_output_before_launch"
+            ),
+            "partial_output_status": oracle_item.get("partial_output_status"),
+            "partial_output_path": oracle_item.get("partial_output_path"),
+            "partial_output_overwrite_policy": oracle_item.get(
+                "partial_output_overwrite_policy"
+            ),
+            "partial_output_blocker_kind": oracle_item.get(
+                "partial_output_blocker_kind"
+            ),
+        },
+        {
+            "source": "remaining_blockers_report.items.oracle_parity_blocked",
+            "blocker_kind": remaining_oracle_item.get("blocker_kind"),
+            "queue_index": remaining_oracle_item.get("queue_index"),
+            "recommended_command_kind": remaining_oracle_item.get(
+                "recommended_command_kind"
+            ),
+            "recommended_command_sha256": remaining_oracle_item.get(
+                "recommended_command_sha256"
+            ),
+            "writes_partial_output_before_launch": remaining_oracle_item.get(
+                "recommended_command_writes_partial_output_before_launch"
+            ),
+            "partial_output_status": remaining_oracle_item.get("partial_output_status"),
+            "partial_output_path": remaining_oracle_item.get("partial_output_path"),
+            "partial_output_overwrite_policy": remaining_oracle_item.get(
+                "partial_output_overwrite_policy"
+            ),
+            "partial_output_blocker_kind": remaining_oracle_item.get(
+                "partial_output_blocker_kind"
+            ),
+        },
+        {
+            "source": "first_remaining_blocker_report",
+            "blocker_kind": first_report.get("blocker_kind"),
+            "queue_index": first_report.get("queue_index"),
+            "recommended_command_kind": first_report.get("recommended_command_kind"),
+            "recommended_command_sha256": first_report.get(
+                "recommended_command_sha256"
+            ),
+            "writes_partial_output_before_launch": first_report.get(
+                "recommended_command_writes_partial_output_before_launch"
+            ),
+            "partial_output_status": first_report.get("partial_output_status"),
+            "partial_output_path": first_report.get("partial_output_path"),
+            "partial_output_overwrite_policy": first_report.get(
+                "partial_output_overwrite_policy"
+            ),
+            "partial_output_blocker_kind": first_report.get(
+                "partial_output_blocker_kind"
+            ),
+        },
+    ]
+
+    def _record_is_safe(record: dict[str, object]) -> bool:
+        return (
+            record.get("writes_partial_output_before_launch") is True
+            and record.get("partial_output_status") == "running"
+            and record.get("partial_output_overwrite_policy")
+            == "overwrite_on_execute_or_timeout"
+            and record.get("partial_output_blocker_kind")
+            == "llama_cpp_oracle_in_progress"
+            and bool(record.get("partial_output_path"))
+        )
+
+    command_record_safe = (
+        _record_is_safe(command_record)
+        and command_record.get("partial_output_matches_oracle_source_path") is True
+        and command_record.get("command_has_execute") is True
+        and command_record.get("command_has_output_path") is True
+    )
+    mirror_records_safe = all(_record_is_safe(record) for record in mirror_records)
+    return {
+        "schema_version": 1,
+        "status": "safe" if command_record_safe and mirror_records_safe else "drift",
+        "command_record": command_record,
+        "mirror_records": mirror_records,
+        "command_record_safe": command_record_safe,
+        "all_mirror_records_safe": mirror_records_safe,
+        "all_partial_output_contracts_safe": (
+            command_record_safe and mirror_records_safe
+        ),
+        "integrity_checks": [
+            "oracle_partial_output_command_metadata",
+            "oracle_partial_output_handoff_mirrors",
+        ],
+    }
+
+
 def _atomic_output_handoff(
     *,
     next_action_commands: dict[str, object],
@@ -3747,6 +3937,8 @@ def _handoff_summary(
             "next_action_commands_sha_only": "next_action_commands_sha256",
             "atomic_output_handoff_only": "atomic_output_handoff",
             "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
+            "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
+            "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
             "blocker_kinds_only": "blocker_kinds",
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
@@ -4169,6 +4361,16 @@ def build_status(
         docs_path=docs_path,
     )
     source_artifacts_sha256 = _stable_json_sha256(source_artifacts)
+    oracle_partial_output_handoff = _oracle_partial_output_handoff(
+        next_action_commands=next_action_commands,
+        handoff_summary=handoff_summary,
+        remaining_blockers_report=remaining_blockers_report,
+        first_remaining_blocker_report=first_remaining_blocker_report,
+        source_artifacts=source_artifacts,
+    )
+    oracle_partial_output_handoff_sha256 = _stable_json_sha256(
+        oracle_partial_output_handoff
+    )
     schema_versions = {
         "status": STATUS_SCHEMA_VERSION,
         "readiness_summary": READINESS_SUMMARY_SCHEMA_VERSION,
@@ -4256,6 +4458,8 @@ def build_status(
         "first_remaining_blocker_report_sha256": first_remaining_blocker_report_sha256,
         "atomic_output_handoff": atomic_output_handoff,
         "atomic_output_handoff_sha256": atomic_output_handoff_sha256,
+        "oracle_partial_output_handoff": oracle_partial_output_handoff,
+        "oracle_partial_output_handoff_sha256": oracle_partial_output_handoff_sha256,
         "blocker_kinds": blocker_kinds,
         "blocker_kinds_sha256": blocker_kinds_sha256,
         "blocked_gates": blocked_gates,
@@ -4389,6 +4593,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["oracle_progress_sha256"]
     elif args.oracle_progress_only:
         result = status["oracle_progress"]
+    elif args.oracle_partial_output_handoff_sha_only:
+        result = status["oracle_partial_output_handoff_sha256"]
+    elif args.oracle_partial_output_handoff_only:
+        result = status["oracle_partial_output_handoff"]
     elif args.oracle_helper_long_timeout_command_sha_only:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_long_timeout_command_sha256"
