@@ -426,6 +426,12 @@ What is still not green:
   makes c2 full-native equality intermittently flaky at the current commit and
   blocks retained readiness despite frequent immediate green repeats
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-repeat-flake/summary.json`).
+  Retained-bench generated-token equality artifacts now include compact
+  `mismatch_summaries` fields with first mismatch token/windows and row-alias
+  candidates. A current-commit c2 512/128 repeat capture after adding that
+  diagnostic ran 16/16 green at `[137,137]` with empty `mismatch_summaries`; this
+  restores current confidence but does not prove the intermittent flake is fixed
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-mismatch-summary-green16/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
