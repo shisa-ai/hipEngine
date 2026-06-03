@@ -438,6 +438,14 @@ What is still not green:
   rowchunk2 full attention and remain correctness-only, not retained/scaling
   rows
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-mismatch-summary-matrix/summary.json`).
+  A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
+  (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
+  decode-step-0 trace shows native full attention first fails at layer 7
+  `attn_input_pre_qkv`, but rowchunk2 clears the full pre-QKV/QKV/prepare suite
+  and first fails later at `attn_input` while tokens stay green. This keeps the
+  grouping>=3 fix target on upstream hidden row-group interaction / native
+  grouped pre-QKV setup rather than sampler or late output
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-boundary-contrast/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
