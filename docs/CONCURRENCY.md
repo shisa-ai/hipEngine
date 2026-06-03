@@ -397,6 +397,16 @@ What is still not green:
   next target remains the upstream hidden/row-group interaction before or at the
   full-attention pre-QKV boundary
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-perrow-input-red/summary.json`).
+  Forcing full-attention QKV prep to per-row scratch also does not move the c3
+  prefixes (`[11,60,117]` unchanged) and keeps the same first L40 short-trace
+  mismatch at decode step 0 / layer 7 / `attn_input_pre_qkv` / row 0. Forcing
+  independent per-row full-attention layer scratch is not a fix either: prefixes
+  worsen to `[11,11,40]`, and the hidden trace produces non-finite values before
+  JSON serialization. QKV/scratch replay alone is therefore eliminated; the next
+  concrete diagnostic should compare native-full vs rowchunk2 inputs at the
+  layer-7 pre-QKV boundary or inspect the upstream hidden/row-group interaction
+  that rowchunk2 changes
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-qkv-scratch-red/summary.json`).
   A clean post-commit c2/c4/c8 matrix under current auto defaults passed
   generated-token equality at equal-prefix 137 for every row: c2 remains full
   native, while c4/c8 use native rowchunk2. This confirms the covered c>1
