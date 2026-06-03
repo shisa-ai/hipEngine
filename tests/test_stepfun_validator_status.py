@@ -210,11 +210,14 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_producer_command_sha256"] == report[
         "next_producer_command_sha256"
     ]
+    assert summary["next_action_artifact_name"] is None
+    assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
     assert report["next_blocker"] is None
     assert report["next_blocker_command"] is None
     assert report["next_producer_command"] is None
+    assert report["next_action"] is None
     assert summary["no_claim_policy"]["validator_artifacts_passed"] is True
     assert summary["no_claim_policy"]["e2e_inference_claim_allowed"] is False
     assert [record["status"] for record in report["validator_results"]] == [
@@ -300,6 +303,24 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert report["next_producer_command"] == (
         "python3 scripts/refresh_stepfun_kv_artifacts.py"
     )
+    expected_next_action = {
+        "artifact_name": "kv_kernel_trace_artifact",
+        "readiness_gate": "kv_backed_decode",
+        "status": "missing",
+        "reason": "artifact_file_missing",
+        "validator_command_kind": "kv_trace_check_command",
+        "validator_command": expected_missing_trace["validator_command_concrete"],
+        "validator_command_sha256": report["next_blocker_command_sha256"],
+        "producer_command_kind": "resource_plan_refresh_command",
+        "producer_command": "python3 scripts/refresh_stepfun_kv_artifacts.py",
+        "producer_command_sha256": report["next_producer_command_sha256"],
+        "validator_artifact_path": str(trace),
+        "validator_missing_evidence": None,
+        "validator_missing_evidence_count": None,
+    }
+    assert report["next_action"] == expected_next_action
+    assert summary["next_action_artifact_name"] == "kv_kernel_trace_artifact"
+    assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert summary["blocked_validator_results_sha256"] == report[
         "blocked_validator_results_sha256"
@@ -324,6 +345,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     next_command_sha_output = tmp_path / "next-command-sha.json"
     next_producer_command_output = tmp_path / "next-producer-command.json"
     next_producer_command_sha_output = tmp_path / "next-producer-command-sha.json"
+    next_action_output = tmp_path / "next-action.json"
+    next_action_sha_output = tmp_path / "next-action-sha.json"
     sha_output = tmp_path / "sha.json"
     status_output = tmp_path / "status.json"
     _write_prompt(prompt)
@@ -536,6 +559,45 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert len(json.loads(next_producer_command_sha_output.read_text())) == 64
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-action-only",
+            "--output",
+            str(next_action_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    next_action_payload = json.loads(next_action_output.read_text())
+    assert next_action_payload["artifact_name"] == "kv_kernel_trace_artifact"
+    assert next_action_payload["validator_command"] == next_command_payload
+    assert next_action_payload["producer_command"] == (
+        "python3 scripts/refresh_stepfun_kv_artifacts.py"
+    )
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-action-sha-only",
+            "--output",
+            str(next_action_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(next_action_sha_output.read_text())) == 64
 
     rc = main(
         [

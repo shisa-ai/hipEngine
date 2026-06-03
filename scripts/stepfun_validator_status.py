@@ -123,6 +123,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the next producer/rerun command.",
     )
     parser.add_argument(
+        "--next-action-only",
+        action="store_true",
+        help="Emit a compact action bundle for the first failed/missing record, or null.",
+    )
+    parser.add_argument(
+        "--next-action-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the next action bundle.",
+    )
+    parser.add_argument(
         "--sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the full report or compact summary.",
@@ -329,6 +339,31 @@ def build_validator_status_report(
         if isinstance(next_blocker, dict)
         else None
     )
+    next_action = None
+    if isinstance(next_blocker, dict):
+        next_action = {
+            "artifact_name": next_blocker.get("artifact_name"),
+            "readiness_gate": next_blocker.get("readiness_gate"),
+            "status": next_blocker.get("status"),
+            "reason": next_blocker.get("reason"),
+            "validator_command_kind": next_blocker.get("validator_command_kind"),
+            "validator_command": next_blocker_command,
+            "validator_command_sha256": status_mod._stable_json_sha256(
+                next_blocker_command
+            ),
+            "producer_command_kind": next_blocker.get("producer_command_kind"),
+            "producer_command": next_producer_command,
+            "producer_command_sha256": status_mod._stable_json_sha256(
+                next_producer_command
+            ),
+            "validator_artifact_path": next_blocker.get("validator_artifact_path"),
+            "validator_missing_evidence": next_blocker.get(
+                "validator_missing_evidence"
+            ),
+            "validator_missing_evidence_count": next_blocker.get(
+                "validator_missing_evidence_count"
+            ),
+        }
     passed = sum(1 for record in results if record.get("status") == "passed")
     missing = sum(1 for record in results if record.get("status") == "missing")
     failed = sum(1 for record in results if record.get("status") == "failed")
@@ -371,6 +406,10 @@ def build_validator_status_report(
         "next_producer_command_sha256": status_mod._stable_json_sha256(
             next_producer_command
         ),
+        "next_action_artifact_name": next_action.get("artifact_name")
+        if isinstance(next_action, dict)
+        else None,
+        "next_action_sha256": status_mod._stable_json_sha256(next_action),
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
         "manifest_sha256": status_mod._stable_json_sha256(manifest),
         "no_claim_policy": {
@@ -406,6 +445,8 @@ def build_validator_status_report(
         "next_producer_command_sha256": status_mod._stable_json_sha256(
             next_producer_command
         ),
+        "next_action": next_action,
+        "next_action_sha256": status_mod._stable_json_sha256(next_action),
         "readiness_impact": {
             "validator_artifacts_passed": ready,
             "oracle_parity": False,
@@ -437,6 +478,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.status_only:
         payload: object = report["status"]
+    elif args.next_action_sha_only:
+        payload = report["next_action_sha256"]
+    elif args.next_action_only:
+        payload = report["next_action"]
     elif args.next_producer_command_sha_only:
         payload = report["next_producer_command_sha256"]
     elif args.next_producer_command_only:

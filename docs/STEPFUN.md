@@ -657,9 +657,10 @@ reporting.
   concrete artifact paths without shelling out (`--results-only` /
   `--results-sha-only`, `--blocked-only` / `--blocked-sha-only`,
   `--next-blocker-only` / `--next-blocker-sha-only`,
-  `--next-command-only` / `--next-command-sha-only`, and
-  `--next-producer-command-only` / `--next-producer-command-sha-only` expose
-  compact pollable validator records/commands),
+  `--next-command-only` / `--next-command-sha-only`,
+  `--next-producer-command-only` / `--next-producer-command-sha-only`, and
+  `--next-action-only` / `--next-action-sha-only` expose compact pollable
+  validator records/commands),
   `--exit-code-policy-only` / `--exit-code-policy-sha-only`,
   `--digest-summary-only` / `--digest-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift
