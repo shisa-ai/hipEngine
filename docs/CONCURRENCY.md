@@ -557,6 +557,14 @@ What is still not green:
   trajectory before the token flip, not to projection dispatch or late sampler
   metadata
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-window/summary.json`).
+  The earlier decode-step trace confirms the same rowchunk3 run is hidden-red
+  before any token mismatch: rowchunk2 is hidden/token green for decode steps
+  0..3, while rowchunk3 remains token-green but has first final-hidden mismatch
+  at decode step 2 / generated index 3 / row0, with full-attention trace failures
+  already starting at decode step 0 / layer7 `attn_input_pre_qkv` for rows0..2.
+  The later row0 token flip is downstream of this early grouped>=3 hidden
+  trajectory divergence
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-early/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
