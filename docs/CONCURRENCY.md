@@ -592,7 +592,11 @@ What is still not green:
   at rowchunk2 (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk-boundary-c4c8/summary.json`). Runtime/retained-bench auto now promotes rowchunk2 to the
   contiguous c3..c8 range; with no explicit rowchunk flag, c5 and c7 are green
   and c6 is green across three repeats (`[137]*rows`) with tail-GEMV metadata
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c567-auto-rowchunk2/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c567-auto-rowchunk2/summary.json`). A follow-up current-default
+  gate keeps c2/c4/c8 green, but a derived c9 fixture is red for default/no-rowchunk
+  and explicit rowchunk2/rowchunk1 controls, so c9 stays outside the auto cap
+  until it gets a separate row-count fix
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-default-c9-cap/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
