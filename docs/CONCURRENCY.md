@@ -637,6 +637,14 @@ What is still not green:
   rowchunk3 token failure can be moved by the O-bearing suffix, but not without
   poisoning rowchunk2 or fixing the inherited hidden trajectory
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-context-gate-o/summary.json`).
+  Forcing only the full-attention KV append to per-row likewise does not change
+  rowchunk3: rowchunk2 remains generated-token green with no projection drift or
+  full-attention stage failures, while rowchunk3 keeps L5 layer4 QKV/Z drift,
+  the L6 truncated-token failure, and L8 layer7 `attn_input_pre_qkv`/
+  `attn_context` failures. KV append alone is eliminated; the grouped>=3 target
+  stays after append in the context/output interaction or in the upstream
+  hidden/grouping trajectory
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-kv-append/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
