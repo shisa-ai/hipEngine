@@ -665,7 +665,10 @@ reporting.
   it checks the expected StepFun prompt-KV write, decode-KV write,
   split-K attention context, and gated attention reduce kernel families against
   the planned layer count and emits compact summary/status/SHA outputs without
-  making token or performance claims. This checklist item is partial rather than
+  making token or performance claims; the final-blocker manifest and combined
+  handoff report attach this command under the missing `kv_kernel_trace_artifact`
+  as `validator_command_kind=kv_trace_check_command` with a stable command
+  digest and expected kernel-family digest. This checklist item is partial rather than
   complete because the current runner is host-composed/chunked and does not yet
   implement the final KV-backed one-token decode path.
 - [x] Use short contexts first (for example <= 512) before exercising long

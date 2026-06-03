@@ -265,6 +265,27 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["missing_artifact_summary"]["missing_artifacts"][1][
         "missing_reason"
     ] == "kv_kernel_trace_artifact_missing"
+    assert report["missing_artifact_summary"]["missing_artifacts"][1][
+        "validator_command_kind"
+    ] == "kv_trace_check_command"
+    assert report["missing_artifact_summary"]["missing_artifacts"][1][
+        "validator_command_sha256"
+    ] == _stable_json_sha256(
+        report["missing_artifact_summary"]["missing_artifacts"][1][
+            "validator_command"
+        ]
+    )
+    assert [
+        family["name"]
+        for family in report["missing_artifact_summary"]["missing_artifacts"][1][
+            "validator_expected_kernel_families"
+        ]
+    ] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention_context",
+        "decode_attention_gate_reduce",
+    ]
     assert report["action_summary"]["recommended_commands"][0][
         "recommended_command_kind"
     ] == "oracle_helper_long_timeout_command"
@@ -891,6 +912,12 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
         "kv_kernel_trace_artifact",
         "kv_backed_next_token_artifact",
     ]
+    assert action_summary_payload["required_artifacts"][1][
+        "validator_command_kind"
+    ] == "kv_trace_check_command"
+    assert "scripts/stepfun_kv_trace_check.py" in action_summary_payload[
+        "required_artifacts"
+    ][1]["validator_command"]
 
     rc = main(
         [
@@ -944,6 +971,9 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     ]
     assert artifact_status_payload[0]["artifact_file_present"] is True
     assert artifact_status_payload[0]["evidence_satisfied"] is False
+    assert artifact_status_payload[1]["validator_command_kind"] == (
+        "kv_trace_check_command"
+    )
 
     rc = main(
         [

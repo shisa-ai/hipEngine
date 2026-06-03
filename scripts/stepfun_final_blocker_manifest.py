@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import stepfun_correctness_status as status_mod
+from scripts import stepfun_kv_trace_check as kv_trace_check_mod
 
 
 def _artifact_file_present(path_value: object) -> bool:
@@ -80,6 +81,15 @@ def _summarize_required_artifact(artifact: dict[str, object]) -> dict[str, objec
         "first_missing_evidence": artifact.get("first_missing_evidence"),
         "recommended_command_kind": artifact.get("recommended_command_kind"),
         "recommended_command_sha256": artifact.get("recommended_command_sha256"),
+        "validator_command_kind": artifact.get("validator_command_kind"),
+        "validator_command": artifact.get("validator_command"),
+        "validator_command_sha256": artifact.get("validator_command_sha256"),
+        "validator_expected_kernel_families": artifact.get(
+            "validator_expected_kernel_families"
+        ),
+        "validator_expected_kernel_families_sha256": artifact.get(
+            "validator_expected_kernel_families_sha256"
+        ),
     }
 
 
@@ -89,6 +99,40 @@ def _summarize_required_artifacts(
     """Return compact satisfaction records for required blocker artifacts."""
 
     return [_summarize_required_artifact(artifact) for artifact in artifacts]
+
+
+def _kv_trace_validator_handoff(resource_artifact: object) -> dict[str, object]:
+    """Return the validation command for a retained StepFun KV trace artifact."""
+
+    trace_placeholder = "<kv_kernel_trace_artifact.csv-or-json>"
+    resource_arg = str(resource_artifact) if resource_artifact else str(
+        status_mod.DEFAULT_RESOURCE_ARTIFACT
+    )
+    command = (
+        "python3 scripts/stepfun_kv_trace_check.py "
+        f"--trace {trace_placeholder} "
+        f"--resource-artifact {resource_arg} "
+        "--summary-only --fail-on-missing --pretty"
+    )
+    expected_families = [
+        {
+            "name": family.get("name"),
+            "operation": family.get("operation"),
+            "symbols": list(family.get("symbols", ())),
+        }
+        for family in kv_trace_check_mod.REQUIRED_KERNEL_FAMILIES
+    ]
+    return {
+        "validator_command_kind": "kv_trace_check_command",
+        "validator_command": command,
+        "validator_command_sha256": status_mod._stable_json_sha256(command),
+        "validator_expected_kernel_families": expected_families,
+        "validator_expected_kernel_families_sha256": status_mod._stable_json_sha256(
+            expected_families
+        ),
+        "validator_success_status": "passed",
+        "validator_failure_exit_code": kv_trace_check_mod.FAILED_EXIT_CODE,
+    }
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -248,6 +292,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     readiness_gates = dict(status.get("readiness_gates", {}))
     source_artifacts = dict(status.get("source_artifacts", {}))
     oracle_source = dict(source_artifacts.get("oracle", {}))
+    text_resource_source = dict(source_artifacts.get("text_resource", {}))
     oracle_progress = dict(status.get("oracle_progress", {}))
     oracle_gap_report = dict(status.get("oracle_gap_report", {}))
     oracle_partial_handoff = dict(status.get("oracle_partial_output_handoff", {}))
@@ -329,6 +374,10 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                 enriched_record.setdefault(
                     "recommended_command_sha256", item.get("recommended_command_sha256")
                 )
+                if enriched_record.get("name") == "kv_kernel_trace_artifact":
+                    enriched_record.update(
+                        _kv_trace_validator_handoff(text_resource_source.get("path"))
+                    )
                 kv_required_artifacts.append(enriched_record)
             artifact = {
                 "name": "kv_backed_decode_runtime_artifacts",

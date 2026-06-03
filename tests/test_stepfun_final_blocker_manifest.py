@@ -108,6 +108,28 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["artifact_status_handoff"][1]["recommended_command_kind"] == (
         "resource_plan_refresh_command"
     )
+    assert manifest["artifact_status_handoff"][1]["validator_command_kind"] == (
+        "kv_trace_check_command"
+    )
+    assert "scripts/stepfun_kv_trace_check.py" in manifest[
+        "artifact_status_handoff"
+    ][1]["validator_command"]
+    assert manifest["artifact_status_handoff"][1][
+        "validator_command_sha256"
+    ] == _stable_json_sha256(
+        manifest["artifact_status_handoff"][1]["validator_command"]
+    )
+    assert [
+        family["name"]
+        for family in manifest["artifact_status_handoff"][1][
+            "validator_expected_kernel_families"
+        ]
+    ] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention_context",
+        "decode_attention_gate_reduce",
+    ]
     assert manifest["artifact_status_handoff"][1]["missing_reason"] == (
         "kv_kernel_trace_artifact_missing"
     )
@@ -236,6 +258,13 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "kv_kernel_trace_artifact",
         "kv_backed_next_token_artifact",
     ]
+    assert kv_artifact["required_artifacts"][0]["validator_command_kind"] == (
+        "kv_trace_check_command"
+    )
+    assert kv_artifact["required_artifacts"][0]["validator_success_status"] == (
+        "passed"
+    )
+    assert kv_artifact["required_artifacts"][0]["validator_failure_exit_code"] == 2
     assert manifest["artifacts_to_collect"][1:] == kv_artifact["required_artifacts"]
 
 
@@ -435,6 +464,12 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert artifact_status_payload[1]["missing_reason"] == (
         "kv_kernel_trace_artifact_missing"
     )
+    assert artifact_status_payload[1]["validator_command_kind"] == (
+        "kv_trace_check_command"
+    )
+    assert "<kv_kernel_trace_artifact.csv-or-json>" in artifact_status_payload[1][
+        "validator_command"
+    ]
 
     rc = main(
         [

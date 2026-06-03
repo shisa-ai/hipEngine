@@ -18,7 +18,12 @@
       "readiness_gate": "oracle_parity",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
       "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
-      "required_for": "oracle_parity_blocked"
+      "required_for": "oracle_parity_blocked",
+      "validator_command": null,
+      "validator_command_kind": null,
+      "validator_command_sha256": null,
+      "validator_expected_kernel_families": null,
+      "validator_expected_kernel_families_sha256": null
     },
     {
       "artifact_file_present": false,
@@ -34,7 +39,41 @@
       "readiness_gate": "kv_backed_decode",
       "recommended_command_kind": "resource_plan_refresh_command",
       "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
-      "required_for": "kv_kernel_trace_artifact_missing"
+      "required_for": "kv_kernel_trace_artifact_missing",
+      "validator_command": "python3 scripts/stepfun_kv_trace_check.py --trace <kv_kernel_trace_artifact.csv-or-json> --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+      "validator_command_kind": "kv_trace_check_command",
+      "validator_command_sha256": "f114adb04cc88f038bb9c1c7fa365d5602a8ab3f6f02bb92741b773ce70155e8",
+      "validator_expected_kernel_families": [
+        {
+          "name": "prompt_kv_write",
+          "operation": "prompt_kv_write",
+          "symbols": [
+            "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
+          ]
+        },
+        {
+          "name": "decode_kv_write",
+          "operation": "decode_kv_write",
+          "symbols": [
+            "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
+          ]
+        },
+        {
+          "name": "decode_attention_context",
+          "operation": "decode_attention",
+          "symbols": [
+            "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
+          ]
+        },
+        {
+          "name": "decode_attention_gate_reduce",
+          "operation": "decode_attention",
+          "symbols": [
+            "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
+          ]
+        }
+      ],
+      "validator_expected_kernel_families_sha256": "286f3631b5016d24b4b396a103827911e021f3adb8b219bcfec07cff516d05c0"
     },
     {
       "artifact_file_present": false,
@@ -50,10 +89,15 @@
       "readiness_gate": "kv_backed_decode",
       "recommended_command_kind": "resource_plan_refresh_command",
       "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
-      "required_for": "kv_backed_next_token_artifact_missing"
+      "required_for": "kv_backed_next_token_artifact_missing",
+      "validator_command": null,
+      "validator_command_kind": null,
+      "validator_command_sha256": null,
+      "validator_expected_kernel_families": null,
+      "validator_expected_kernel_families_sha256": null
     }
   ],
-  "artifact_status_handoff_sha256": "1271ee7aa1efaedcb6141cf24ad8d62b9419173abbd67e32aff346ff67af4899",
+  "artifact_status_handoff_sha256": "83d1c4ef1e648694639f34344f687853216fd2747f45ef17eb0f28e8eb4a5410",
   "artifacts_to_collect": [
     {
       "current_blocker_kind": "llama_cpp_oracle_timeout",
@@ -77,7 +121,43 @@
       "readiness_gate": "kv_backed_decode",
       "recommended_command_kind": "resource_plan_refresh_command",
       "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
-      "required_for": "kv_kernel_trace_artifact_missing"
+      "required_for": "kv_kernel_trace_artifact_missing",
+      "validator_command": "python3 scripts/stepfun_kv_trace_check.py --trace <kv_kernel_trace_artifact.csv-or-json> --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+      "validator_command_kind": "kv_trace_check_command",
+      "validator_command_sha256": "f114adb04cc88f038bb9c1c7fa365d5602a8ab3f6f02bb92741b773ce70155e8",
+      "validator_expected_kernel_families": [
+        {
+          "name": "prompt_kv_write",
+          "operation": "prompt_kv_write",
+          "symbols": [
+            "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
+          ]
+        },
+        {
+          "name": "decode_kv_write",
+          "operation": "decode_kv_write",
+          "symbols": [
+            "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
+          ]
+        },
+        {
+          "name": "decode_attention_context",
+          "operation": "decode_attention",
+          "symbols": [
+            "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
+          ]
+        },
+        {
+          "name": "decode_attention_gate_reduce",
+          "operation": "decode_attention",
+          "symbols": [
+            "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
+          ]
+        }
+      ],
+      "validator_expected_kernel_families_sha256": "286f3631b5016d24b4b396a103827911e021f3adb8b219bcfec07cff516d05c0",
+      "validator_failure_exit_code": 2,
+      "validator_success_status": "passed"
     },
     {
       "evidence": "one-token decode artifact recording generated token/logit path from KV-backed runtime execution, not host-composed layer-prefix outputs",
@@ -88,7 +168,7 @@
       "required_for": "kv_backed_next_token_artifact_missing"
     }
   ],
-  "artifacts_to_collect_sha256": "7ca5363f22e1d30ee90720061a2a9d0fce645ad432555e7616a4ff0cca72dbe5",
+  "artifacts_to_collect_sha256": "03a6bef1a7738cffaf08388ef677eb8de49fb375e30a21d02d976cb925aff1bf",
   "blocked_gates": [
     "oracle_parity",
     "kv_backed_decode",
@@ -176,7 +256,43 @@
             "readiness_gate": "kv_backed_decode",
             "recommended_command_kind": "resource_plan_refresh_command",
             "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
-            "required_for": "kv_kernel_trace_artifact_missing"
+            "required_for": "kv_kernel_trace_artifact_missing",
+            "validator_command": "python3 scripts/stepfun_kv_trace_check.py --trace <kv_kernel_trace_artifact.csv-or-json> --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+            "validator_command_kind": "kv_trace_check_command",
+            "validator_command_sha256": "f114adb04cc88f038bb9c1c7fa365d5602a8ab3f6f02bb92741b773ce70155e8",
+            "validator_expected_kernel_families": [
+              {
+                "name": "prompt_kv_write",
+                "operation": "prompt_kv_write",
+                "symbols": [
+                  "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
+                ]
+              },
+              {
+                "name": "decode_kv_write",
+                "operation": "decode_kv_write",
+                "symbols": [
+                  "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
+                ]
+              },
+              {
+                "name": "decode_attention_context",
+                "operation": "decode_attention",
+                "symbols": [
+                  "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
+                ]
+              },
+              {
+                "name": "decode_attention_gate_reduce",
+                "operation": "decode_attention",
+                "symbols": [
+                  "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
+                ]
+              }
+            ],
+            "validator_expected_kernel_families_sha256": "286f3631b5016d24b4b396a103827911e021f3adb8b219bcfec07cff516d05c0",
+            "validator_failure_exit_code": 2,
+            "validator_success_status": "passed"
           },
           {
             "evidence": "one-token decode artifact recording generated token/logit path from KV-backed runtime execution, not host-composed layer-prefix outputs",
@@ -221,7 +337,7 @@
       ]
     }
   ],
-  "entries_sha256": "dd08e314bbce03612a78a4e6fbd56ac80fed290e93ebcc3007bea2edd6aa912d",
+  "entries_sha256": "2e292f8636a14b10658094a78cadaeaad2cd0289207bbd895b0a4e79df8f3f5a",
   "entry_count": 2,
   "gate_status_handoff": [
     {
@@ -284,7 +400,12 @@
       "readiness_gate": "oracle_parity",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
       "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
-      "required_for": "oracle_parity_blocked"
+      "required_for": "oracle_parity_blocked",
+      "validator_command": null,
+      "validator_command_kind": null,
+      "validator_command_sha256": null,
+      "validator_expected_kernel_families": null,
+      "validator_expected_kernel_families_sha256": null
     },
     {
       "artifact_file_present": false,
@@ -300,7 +421,41 @@
       "readiness_gate": "kv_backed_decode",
       "recommended_command_kind": "resource_plan_refresh_command",
       "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
-      "required_for": "kv_kernel_trace_artifact_missing"
+      "required_for": "kv_kernel_trace_artifact_missing",
+      "validator_command": "python3 scripts/stepfun_kv_trace_check.py --trace <kv_kernel_trace_artifact.csv-or-json> --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+      "validator_command_kind": "kv_trace_check_command",
+      "validator_command_sha256": "f114adb04cc88f038bb9c1c7fa365d5602a8ab3f6f02bb92741b773ce70155e8",
+      "validator_expected_kernel_families": [
+        {
+          "name": "prompt_kv_write",
+          "operation": "prompt_kv_write",
+          "symbols": [
+            "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
+          ]
+        },
+        {
+          "name": "decode_kv_write",
+          "operation": "decode_kv_write",
+          "symbols": [
+            "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
+          ]
+        },
+        {
+          "name": "decode_attention_context",
+          "operation": "decode_attention",
+          "symbols": [
+            "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
+          ]
+        },
+        {
+          "name": "decode_attention_gate_reduce",
+          "operation": "decode_attention",
+          "symbols": [
+            "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
+          ]
+        }
+      ],
+      "validator_expected_kernel_families_sha256": "286f3631b5016d24b4b396a103827911e021f3adb8b219bcfec07cff516d05c0"
     },
     {
       "artifact_file_present": false,
@@ -316,10 +471,15 @@
       "readiness_gate": "kv_backed_decode",
       "recommended_command_kind": "resource_plan_refresh_command",
       "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
-      "required_for": "kv_backed_next_token_artifact_missing"
+      "required_for": "kv_backed_next_token_artifact_missing",
+      "validator_command": null,
+      "validator_command_kind": null,
+      "validator_command_sha256": null,
+      "validator_expected_kernel_families": null,
+      "validator_expected_kernel_families_sha256": null
     }
   ],
-  "missing_artifacts_handoff_sha256": "1271ee7aa1efaedcb6141cf24ad8d62b9419173abbd67e32aff346ff67af4899",
+  "missing_artifacts_handoff_sha256": "83d1c4ef1e648694639f34344f687853216fd2747f45ef17eb0f28e8eb4a5410",
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
     "performance_claim_allowed": false,
@@ -384,13 +544,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "90c782e7a9dc739c2818ff86c833a048ced9dc9395a171313bc47a53ef8ad218",
+    "readiness_summary_sha256": "4c8a0479a16586fba7f86983d1f87ba2b22d30f156b494845dcf002656b2890b",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "32316ffbb7d4ec54c261cde28e3330f5c9f6a66d6793f1d33f4f71f37411d344",
-        "size_bytes": 71534
+        "sha256": "f85374fea160689cb122d5518b9bf9c4589273ed4a12a4fe2028aad9f4058f72",
+        "size_bytes": 72194
       },
       "oracle": {
         "exists": true,
@@ -417,10 +577,10 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "fe2853e82d8f0ff2bbcc3dc27c7474d459ede195009ad309c0608400f27a58b6",
+    "source_artifacts_sha256": "3b9645622bb747d9fff3a4a320f22d6298a4424152282b8d5399cdf8bf9f0a0a",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
   },
-  "status_provenance_sha256": "a4243fbd2d05dcc9abf00b0ee8473347dec24be64989ba7d3c8378fd71acbb2d",
+  "status_provenance_sha256": "a6c96e49fe5a8bac0fd8624b97a89949376ff3fdc6327906b99be78321c69853",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",
