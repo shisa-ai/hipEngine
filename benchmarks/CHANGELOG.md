@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-03
+
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP / W7900/gfx1100 B=3 decode4 verifier: exact MTP smoke and one-prompt DFlash smoke pass; verifier kernel calls/pass `1019.00 -> 989.33` (-2.9%) and kernel time/pass `15.369 -> 14.949 ms` (-2.7%) by defaulting selected verifier GEMVs to 64 threads and enabling staged selected SiLU/down-rotate + ids-tensor down GEMV for `tokens>1`; diagnostic/default-on verifier-window speed work, not a full throughput claim; artifact `benchmarks/results/2026-06-03-hipengine-mtp-selected-moe-down-staged-default.json`.
+
 ## 2026-05-31
 
 - [diagnostic retained] hipEngine / DFlash 27B threshold4 json terminal20 graph-aware route / Qwen3.6-27B-PARO dense + z-lab DFlash / W7900/gfx1100 B=4 D64 9-prompt: exact `9/9`; terminal-tail route `1.298x -> 1.350x` AR (`42.07 -> 43.76 tok/s`, +4.0% spec tok/s by 3-run median) by adding default-off manifest `terminal_ar_tokens` overrides and routing `code:json_yaml_continuation` to chain for its safe prefix with `terminal_ar_tokens=20` while other prompts use `5` (8 chain / 1 AR); diagnostic/non-default because route history/verifier graph/bulk-direct/budget-prefix/threshold4/W4 site-mask/prompt-tail exactness are only proven for this gate; artifact `benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json`.

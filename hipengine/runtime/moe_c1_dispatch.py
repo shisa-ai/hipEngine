@@ -175,6 +175,8 @@ class MoeC1DispatchCache:
         selected_rotate_fuse_barrier: Tensor | None = None,
         selected_rotate_barrier_target: int = 0,
         selected_rotate_barrier_epoch: int = 0,
+        selected_down_barrier_target: int = 0,
+        selected_down_barrier_epoch: int = 0,
     ) -> Tensor:
         """Update per-call args and invoke the C dispatcher.  Returns ``out``."""
 
@@ -187,6 +189,8 @@ class MoeC1DispatchCache:
         args.stream = stream
         args.selected_rotate_barrier_target = int(selected_rotate_barrier_target)
         args.selected_rotate_barrier_epoch = int(selected_rotate_barrier_epoch)
+        args.selected_down_barrier_target = int(selected_down_barrier_target)
+        args.selected_down_barrier_epoch = int(selected_down_barrier_epoch)
         # ---- Scratch pointers (may change if scratch instance differs across
         # calls; the verifier reuses a persistent scratch so this is usually
         # the same address each time, but we refresh defensively) ----
@@ -264,6 +268,9 @@ def _build_fns_table() -> MoeC1Fns:
     )
     fns.gemv_awq_selected_pack8_transposed_fp16 = addr(
         awq_lib, "hipengine_gemv_awq_selected_pack8_transposed_fp16",
+    )
+    fns.gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16 = addr(
+        awq_lib, "hipengine_gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16",
     )
     fns.silu_mul_dual_rotate_out_fp16 = addr(
         silu_lib, "hipengine_silu_mul_dual_rotate_out_fp16",
@@ -408,7 +415,7 @@ def _fill_layer_constant_args(
     # Threads / tile defaults.  Match the Python wrapper defaults for the
     # verifier batched path (tokens > 1).
     args.router_threads = 256             # prefill_threads at tokens>1
-    args.selected_threads = 128           # gemv_awq_selected_* default
+    args.selected_threads = 64            # verifier-selected GEMV profile (B+1/top-k rows)
     args.shared_threads = 128             # small-batch shared expert (full-attn) default
     args.shared_prefill_tile_m = 16        # B+1 verifier small-batch tile (HIPENGINE_W4_PREFILL_SMALLBATCH_TILE_M default)
     args.shared_prefill_tile_n = 16        # rows < 32 → 16

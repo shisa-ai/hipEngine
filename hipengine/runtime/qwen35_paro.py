@@ -133,6 +133,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16,
     gemv_awq_selected_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_fp16,
+    gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16,
 )
 from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
     paro_rotate1_bf16,
@@ -4868,7 +4869,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
-        threads: int = 128,
+        threads: int = 64,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5023,7 +5024,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
-        threads: int = 128,
+        threads: int = 64,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5046,6 +5047,65 @@ class Qwen35ParoDecodeState:
             stream=stream,
             library=_library_for(library, "awq"),
             runtime=self.runtime,
+        )
+        return scratch.down_out
+
+    def selected_moe_activate_down_pack8_fp16(
+        self,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        threads: int = 64,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Fused selected SiLU/down-rotate + selected down GEMV.
+
+        The kernel stages the same FP16 ``down_input`` that the unfused
+        ``activate_rotate_moe_down_fp16`` path writes, then runs the existing
+        selected ids-tensor down GEMV after an in-kernel barrier.  This
+        preserves the unfused path's numerics while removing one launch.
+        """
+
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        pairs = self.tensor(f"{prefix}.down_weight_pairs")
+        qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
+        rows = tokens * self.config.num_experts_per_tok
+        runtime = self.runtime or get_hip_runtime()
+        barrier_target, barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
+            scratch.shared_rotate_fuse_barrier,
+            rows=rows,
+            in_features=self.config.moe_intermediate_size,
+            group_size=group_size,
+            stream=stream,
+            runtime=runtime,
+            rotations=1,
+        )
+        gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16(
+            scratch.gate_up.ptr,
+            scratch.down_input.ptr,
+            scratch.selected_experts.ptr,
+            pairs.ptr,
+            self.tensor(f"{prefix}.down_weight_theta").ptr,
+            self.tensor(f"{prefix}.down_weight_channel_scales").ptr,
+            qweight.ptr,
+            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+            self.tensor(f"{prefix}.stacked_down_scales").ptr,
+            scratch.down_out.ptr,
+            scratch.shared_rotate_fuse_barrier.ptr,
+            rows,
+            self.config.moe_intermediate_size,
+            _out_packed_from_transposed_qweight(qweight),
+            self.config.num_experts,
+            group_size,
+            _rotation_krot(pairs),
+            barrier_target,
+            barrier_epoch,
+            threads=threads,
+            stream=stream,
+            library=_library_for(library, "awq"),
+            runtime=runtime,
         )
         return scratch.down_out
 
@@ -6200,8 +6260,11 @@ class Qwen35ParoDecodeState:
             return out or scratch.moe_out
         self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         self.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        self.activate_rotate_moe_down_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        self.selected_moe_down_pack8_fp16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        if tokens > 1 and _selected_moe_down_staged_enabled() and hasattr(scratch, "shared_rotate_fuse_barrier"):
+            self.selected_moe_activate_down_pack8_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        else:
+            self.activate_rotate_moe_down_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.selected_moe_down_pack8_fp16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         shared = self.shared_expert_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         return self.combine_moe_c1_shared_residual_fp16(
             scratch,
@@ -6280,19 +6343,32 @@ class Qwen35ParoDecodeState:
         target_out = out if out is not None else scratch.moe_out
         selected_barrier_target = 0
         selected_barrier_epoch = 0
+        selected_down_barrier_target = 0
+        selected_down_barrier_epoch = 0
         selected_barrier = None
-        if _selected_moe_staged_rotate_enabled() and hasattr(scratch, "shared_rotate_fuse_barrier"):
+        if hasattr(scratch, "shared_rotate_fuse_barrier"):
             runtime = self.runtime or get_hip_runtime()
             selected_barrier = scratch.shared_rotate_fuse_barrier
-            selected_barrier_target, selected_barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
-                selected_barrier,
-                rows=tokens,
-                in_features=self.config.hidden_size,
-                group_size=group_size,
-                stream=stream,
-                runtime=runtime,
-                rotations=1,
-            )
+            if _selected_moe_staged_rotate_enabled():
+                selected_barrier_target, selected_barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
+                    selected_barrier,
+                    rows=tokens,
+                    in_features=self.config.hidden_size,
+                    group_size=group_size,
+                    stream=stream,
+                    runtime=runtime,
+                    rotations=1,
+                )
+            if _selected_moe_down_staged_enabled():
+                selected_down_barrier_target, selected_down_barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
+                    selected_barrier,
+                    rows=tokens * self.config.num_experts_per_tok,
+                    in_features=self.config.moe_intermediate_size,
+                    group_size=group_size,
+                    stream=stream,
+                    runtime=runtime,
+                    rotations=1,
+                )
         cache.dispatch(
             hidden=hidden,
             residual=residual,
@@ -6304,6 +6380,8 @@ class Qwen35ParoDecodeState:
             selected_rotate_fuse_barrier=selected_barrier,
             selected_rotate_barrier_target=selected_barrier_target,
             selected_rotate_barrier_epoch=selected_barrier_epoch,
+            selected_down_barrier_target=selected_down_barrier_target,
+            selected_down_barrier_epoch=selected_down_barrier_epoch,
         )
         return target_out
 
@@ -7302,6 +7380,19 @@ def _selected_moe_staged_rotate_enabled() -> bool:
     """
 
     return _env_enabled("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", default=False)
+
+
+def _selected_moe_down_staged_enabled() -> bool:
+    """Gate for staged selected SiLU/down-rotate + ids-tensor down GEMV.
+
+    Replaces ``silu_mul_dual_rotate_out_fp16`` +
+    ``gemv_awq_selected_pack8_transposed_fp16`` with a single HBM-staged kernel
+    for verifier ``tokens > 1``.  Enabled by default after W7900 rocprof showed
+    a net win when paired with the 64-thread selected GEMV verifier profile;
+    use ``HIPENGINE_SELECTED_MOE_DOWN_STAGED=0`` for the unfused fallback.
+    """
+
+    return _env_enabled("HIPENGINE_SELECTED_MOE_DOWN_STAGED", default=True)
 
 
 def _shared_expert_fused_rotate_enabled() -> bool:

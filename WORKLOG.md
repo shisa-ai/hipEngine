@@ -25229,3 +25229,81 @@ wall time.  It remains default-off and Task #30 stays open; the next viable
 attempt needs a true time-reducing selected-MoE consolidation (not just launch
 removal), likely a different down/combine fuse or a larger verifier-layer
 primitive with a cost model that beats the barrier overhead.
+
+## 2026-06-03 kernel(mtp): selected-MoE down staged default-on
+
+Task #30 follow-up landed a narrower selected-MoE consolidation that meets the
+verifier-window acceptance gate against the prior default path.  The new
+`gemv_awq_selected_pack8_transposed_silu_rotate_staged{,_keyed}_fp16` kernel
+stages `silu(gate) * up`, applies the PARO down rotation once per selected row,
+then runs the existing selected ids-tensor down GEMV after a keyed in-kernel
+barrier.  The staged grid uses `(row, pack_or_group)` block coordinates so all
+rotation groups are scheduled before GEMV waiters while avoiding the per-block
+64-bit row/pack division from the first diagnostic version.  The path is enabled
+by default for verifier `tokens > 1` via `HIPENGINE_SELECTED_MOE_DOWN_STAGED`
+(opt out with `=0`).  The selected verifier GEMV profile now uses 64 threads
+instead of 128 in the C MoE dispatcher and FP16 Python fallback; this was needed
+for the staged path to be a net win vs the prior default.
+
+Validation / correctness:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py \
+  hipengine/kernels/hip_gfx1100/quant/__init__.py \
+  hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py \
+  hipengine/runtime/moe_c1_dispatch.py hipengine/runtime/qwen35_paro.py \
+  tests/test_qwen35_decode_state.py
+PYTHONPATH=. pytest -q \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_selected_moe_down_fp16_uses_staged_keyed_kernel \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order \
+  tests/test_paro_awq_gemv_plan.py
+# ...... [100%]
+```
+
+Tiny FP16 GPU equality vs the existing two-kernel path
+(`silu_mul_dual_rotate_out_fp16 + gemv_awq_selected_pack8_transposed_fp16`):
+`down_equal=True`, `out_equal=True`, `max_abs=0.0`.
+
+Exact smoke gates with the new default path:
+
+```bash
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+  --json /tmp/mtp_smoke_selected_threads64_down_staged_default_d4.json
+# status=passed exact_ar_match=true accepted=[0,0,0]
+
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --max-prompts 1 --decode-tokens 4 --draft-budgets 3 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --verifier-graph off --tree-mode chain \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/dflash_chain_selected_threads64_down_staged_default_35b_1p4t.json
+# all_correctness_passed=true rows=1 speedup_vs_ar=0.244 (diagnostic only)
+```
+
+Rocprof MTP verifier window, B=3/decode4, `chain_attn_mode=batched`, comparing
+the prior 128-thread unfused selected-down default to the new default:
+
+| Metric | prior default | new default | delta |
+| --- | ---: | ---: | ---: |
+| kernel_calls/pass | 1019.00 | 989.33 | -29.67 |
+| kernel_time_ms/pass | 15.369 | 14.949 | -0.420 |
+| total kernel calls | 3057 | 2968 | -89 |
+| total kernel ms | 46.108 | 44.846 | -1.262 |
+| `moe_down_gemv` ms/pass | 1.475 | 1.283 | -0.192 |
+
+A 64-thread unfused control measured `14.779 ms/pass` but retains the old
+`1019.00` calls/pass; keeping staged down default-on is the M12.3 launch-count
+slice, while `HIPENGINE_SELECTED_MOE_DOWN_STAGED=0` remains available if a
+caller wants the absolute lowest kernel time before graph/launch amortization.
+The selected gate/up staged rotate path from the previous entry remains
+default-off because it still regresses kernel time.  Benchmark artifact:
+`benchmarks/results/2026-06-03-hipengine-mtp-selected-moe-down-staged-default.json`.

@@ -35,6 +35,8 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_pack8_strided_fp16,
     gemv_awq_selected_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_fp16,
+    gemv_awq_selected_pack8_transposed_silu_rotate_staged_fp16,
+    gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16,
     plan_paro_awq_gemv_build,
     register_paro_awq_gemv_kernels,
 )
@@ -84,6 +86,8 @@ __all__ = [
     "gemv_awq_selected_pack8_strided_fp16",
     "gemv_awq_selected_pack8_transposed_bf16",
     "gemv_awq_selected_pack8_transposed_fp16",
+    "gemv_awq_selected_pack8_transposed_silu_rotate_staged_fp16",
+    "gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16",
     "gemv_paro_marlin_k_fma_fp16",
     "marlin_k_default_threads",
     "plan_paro_awq_gemv_build",

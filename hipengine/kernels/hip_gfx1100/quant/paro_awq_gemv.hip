@@ -1670,6 +1670,188 @@ __global__ void gemv_awq_selected_pack8_kernel(
   }
 }
 
+template <typename scalar_t, bool qweight_transposed>
+__launch_bounds__(128, 4)
+__global__ void gemv_awq_selected_pack8_silu_rotate_staged_kernel(
+    const scalar_t* __restrict__ gate_up,
+    scalar_t* __restrict__ down_input,
+    const int64_t* __restrict__ selected,
+    const int16_t* __restrict__ pairs,
+    const scalar_t* __restrict__ theta,
+    const scalar_t* __restrict__ channel_scales,
+    const int32_t* __restrict__ qweight,
+    const int32_t* __restrict__ qzeros,
+    const scalar_t* __restrict__ scales,
+    scalar_t* __restrict__ out,
+    int32_t* __restrict__ barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int group_size,
+    int krot,
+    int barrier_count_target,
+    int barrier_ready_value) {
+  const int64_t row = blockIdx.x;
+  const int64_t pack_or_group = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int64_t groups = in_features / group_size;
+  const int half_group = group_size / 2;
+
+  if (row >= rows) return;
+
+  if (pack_or_group < groups) {
+    const int group = static_cast<int>(pack_or_group);
+    const int base = group * group_size;
+    const int col0 = base + tid;
+    const int col1 = col0 + half_group;
+    const int64_t row_base = row * in_features;
+    const int64_t gate_up_base = row_base * 2;
+    extern __shared__ float rotate_buf[];
+
+    if (tid < half_group) {
+      const float gate0 = scalar_to_float(gate_up[gate_up_base + col0]);
+      const float gate1 = scalar_to_float(gate_up[gate_up_base + col1]);
+      const float up0 = scalar_to_float(gate_up[gate_up_base + in_features + col0]);
+      const float up1 = scalar_to_float(gate_up[gate_up_base + in_features + col1]);
+      const scalar_t act0 = float_to_scalar<scalar_t>(gate0 * (1.0f / (1.0f + expf(-gate0))) * up0);
+      const scalar_t act1 = float_to_scalar<scalar_t>(gate1 * (1.0f / (1.0f + expf(-gate1))) * up1);
+      rotate_buf[tid] = scalar_to_float(act0) * scalar_to_float(channel_scales[col0]);
+      rotate_buf[tid + half_group] = scalar_to_float(act1) * scalar_to_float(channel_scales[col1]);
+    }
+    __syncthreads();
+
+    for (int r = 0; r < krot; ++r) {
+      if (tid < half_group) {
+        const int pair_base = r * static_cast<int>(in_features) + base + 2 * tid;
+        const int i = static_cast<int>(pairs[pair_base + 0]);
+        const int j = static_cast<int>(pairs[pair_base + 1]);
+        const float angle = scalar_to_float(theta[r * (in_features / 2) + group * half_group + tid]);
+        float s, c;
+        sincosf(angle, &s, &c);
+        const float xi = rotate_buf[i];
+        const float xj = rotate_buf[j];
+        rotate_buf[i] = fmaf(xj, s, xi * c);
+        rotate_buf[j] = fmaf(xi, -s, xj * c);
+      }
+      __syncthreads();
+    }
+
+    if (tid < half_group) {
+      down_input[row_base + col0] = float_to_scalar<scalar_t>(rotate_buf[tid]);
+      down_input[row_base + col1] = float_to_scalar<scalar_t>(rotate_buf[tid + half_group]);
+    }
+    __threadfence();
+    if (tid == 0) {
+      const int prior = atomicAdd(&barrier[0], 1);
+      if (prior + 1 == barrier_count_target) {
+        __threadfence();
+        atomicExch(&barrier[1], barrier_ready_value);
+      }
+    }
+  }
+
+  while (atomicAdd(&barrier[1], 0) < barrier_ready_value) {
+  }
+  __threadfence();
+
+  if (pack_or_group >= out_packed) return;
+  const int64_t out_pack = pack_or_group;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  const int64_t out_col = out_pack << 3;
+  const int64_t out_features = out_packed << 3;
+  const int64_t x_base = row * in_features;
+  const int64_t expert_qweight_base = expert_id * in_features * out_packed;
+  const int64_t expert_qweight_t_base = expert_id * out_packed * in_features;
+  const int64_t qw_base = qweight_transposed ? (expert_qweight_t_base + out_pack * in_features) : (expert_qweight_base + out_pack);
+  const int32_t* __restrict__ qzeros_e = qzeros + expert_id * groups * out_packed;
+  const scalar_t* __restrict__ scales_e = scales + expert_id * groups * out_features;
+
+  float acc0 = 0.0f;
+  float acc1 = 0.0f;
+  float acc2 = 0.0f;
+  float acc3 = 0.0f;
+  float acc4 = 0.0f;
+  float acc5 = 0.0f;
+  float acc6 = 0.0f;
+  float acc7 = 0.0f;
+
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const int64_t group = k_base / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros_e[group * out_packed + out_pack]);
+    const int z0 = static_cast<int>((pz >> awq_shift_for_pack_lane(0)) & 0xF);
+    const int z1 = static_cast<int>((pz >> awq_shift_for_pack_lane(1)) & 0xF);
+    const int z2 = static_cast<int>((pz >> awq_shift_for_pack_lane(2)) & 0xF);
+    const int z3 = static_cast<int>((pz >> awq_shift_for_pack_lane(3)) & 0xF);
+    const int z4 = static_cast<int>((pz >> awq_shift_for_pack_lane(4)) & 0xF);
+    const int z5 = static_cast<int>((pz >> awq_shift_for_pack_lane(5)) & 0xF);
+    const int z6 = static_cast<int>((pz >> awq_shift_for_pack_lane(6)) & 0xF);
+    const int z7 = static_cast<int>((pz >> awq_shift_for_pack_lane(7)) & 0xF);
+
+    const scalar_t* scale_ptr = &scales_e[group * out_features + out_col];
+    const float s0 = scalar_to_float(scale_ptr[0]);
+    const float s1 = scalar_to_float(scale_ptr[1]);
+    const float s2 = scalar_to_float(scale_ptr[2]);
+    const float s3 = scalar_to_float(scale_ptr[3]);
+    const float s4 = scalar_to_float(scale_ptr[4]);
+    const float s5 = scalar_to_float(scale_ptr[5]);
+    const float s6 = scalar_to_float(scale_ptr[6]);
+    const float s7 = scalar_to_float(scale_ptr[7]);
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const float xv = scalar_to_float(down_input[x_base + k_base + j]);
+      const int64_t qw_idx = qweight_transposed
+          ? (qw_base + k_base + j)
+          : (expert_qweight_base + (k_base + j) * out_packed + out_pack);
+      const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+      acc0 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(0)) & 0xF) - z0) * s0, acc0);
+      acc1 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(1)) & 0xF) - z1) * s1, acc1);
+      acc2 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(2)) & 0xF) - z2) * s2, acc2);
+      acc3 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(3)) & 0xF) - z3) * s3, acc3);
+      acc4 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(4)) & 0xF) - z4) * s4, acc4);
+      acc5 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(5)) & 0xF) - z5) * s5, acc5);
+      acc6 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(6)) & 0xF) - z6) * s6, acc6);
+      acc7 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(7)) & 0xF) - z7) * s7, acc7);
+    }
+  }
+
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    const int64_t group = in_col / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros_e[group * out_packed + out_pack]);
+    const int64_t qw_idx = qweight_transposed ? (qw_base + in_col) : (expert_qweight_base + in_col * out_packed + out_pack);
+    const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+    const scalar_t* scale_ptr = &scales_e[group * out_features + out_col];
+    const float xv = scalar_to_float(down_input[x_base + in_col]);
+    acc0 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(0)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(0)) & 0xF)) * scalar_to_float(scale_ptr[0]), acc0);
+    acc1 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(1)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(1)) & 0xF)) * scalar_to_float(scale_ptr[1]), acc1);
+    acc2 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(2)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(2)) & 0xF)) * scalar_to_float(scale_ptr[2]), acc2);
+    acc3 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(3)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(3)) & 0xF)) * scalar_to_float(scale_ptr[3]), acc3);
+    acc4 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(4)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(4)) & 0xF)) * scalar_to_float(scale_ptr[4]), acc4);
+    acc5 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(5)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(5)) & 0xF)) * scalar_to_float(scale_ptr[5]), acc5);
+    acc6 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(6)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(6)) & 0xF)) * scalar_to_float(scale_ptr[6]), acc6);
+    acc7 = fmaf(xv, static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(7)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(7)) & 0xF)) * scalar_to_float(scale_ptr[7]), acc7);
+  }
+
+  PARO_PACK8_SHFL_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7, r0, r1, r2, r3, r4, r5, r6, r7);
+
+  if (tid == 0) {
+    scalar_t* out_ptr = &out[row * out_features + out_col];
+    out_ptr[0] = float_to_scalar<scalar_t>(r0);
+    out_ptr[1] = float_to_scalar<scalar_t>(r1);
+    out_ptr[2] = float_to_scalar<scalar_t>(r2);
+    out_ptr[3] = float_to_scalar<scalar_t>(r3);
+    out_ptr[4] = float_to_scalar<scalar_t>(r4);
+    out_ptr[5] = float_to_scalar<scalar_t>(r5);
+    out_ptr[6] = float_to_scalar<scalar_t>(r6);
+    out_ptr[7] = float_to_scalar<scalar_t>(r7);
+  }
+}
+
 
 // Fused rotation + selected dual pack8 GEMV kernel
 // Applies PARO pairwise rotation to input, then runs selected-expert dual W4 GEMV
@@ -2357,6 +2539,121 @@ int launch_selected_pack8(
       num_experts,
       static_cast<int>(group_size));
   return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, bool qweight_transposed>
+int launch_selected_pack8_silu_rotate_staged_keyed(
+    const scalar_t* gate_up,
+    scalar_t* down_input,
+    const int64_t* selected,
+    const int16_t* pairs,
+    const scalar_t* theta,
+    const scalar_t* channel_scales,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const scalar_t* scales,
+    scalar_t* out,
+    int32_t* barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    int64_t barrier_count_target,
+    int64_t barrier_ready_value,
+    hipStream_t stream) {
+  const int64_t groups = (group_size > 0) ? (in_features / group_size) : 0;
+  const int64_t rotate_blocks = rows * groups;
+  const int64_t grid_y = (out_packed > groups) ? out_packed : groups;
+  if (rows <= 0 || in_features <= 0 || out_packed <= 0 || num_experts <= 0 || group_size <= 0 || krot <= 0 ||
+      (in_features % group_size) != 0 || (group_size % 2) != 0 || !valid_threads(threads) ||
+      rotate_blocks <= 0 || rows > 2147483647LL || grid_y <= 0 || grid_y > 2147483647LL ||
+      barrier_count_target <= 0 || barrier_count_target > 2147483647LL ||
+      barrier_ready_value <= 0 || barrier_ready_value > 2147483647LL) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gemv_awq_selected_pack8_silu_rotate_staged_kernel<scalar_t, qweight_transposed>),
+      dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(grid_y)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      gate_up,
+      down_input,
+      selected,
+      pairs,
+      theta,
+      channel_scales,
+      qweight,
+      qzeros,
+      scales,
+      out,
+      barrier,
+      rows,
+      in_features,
+      out_packed,
+      num_experts,
+      static_cast<int>(group_size),
+      static_cast<int>(krot),
+      static_cast<int>(barrier_count_target),
+      static_cast<int>(barrier_ready_value));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, bool qweight_transposed>
+int launch_selected_pack8_silu_rotate_staged(
+    const scalar_t* gate_up,
+    scalar_t* down_input,
+    const int64_t* selected,
+    const int16_t* pairs,
+    const scalar_t* theta,
+    const scalar_t* channel_scales,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const scalar_t* scales,
+    scalar_t* out,
+    int32_t* barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    hipStream_t stream) {
+  if (barrier == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t groups = (group_size > 0) ? (in_features / group_size) : 0;
+  const int64_t rotate_blocks = rows * groups;
+  hipError_t memset_err = hipMemsetAsync(barrier, 0, 2 * sizeof(int32_t), stream);
+  if (memset_err != hipSuccess) {
+    return static_cast<int>(memset_err);
+  }
+  return launch_selected_pack8_silu_rotate_staged_keyed<scalar_t, qweight_transposed>(
+      gate_up,
+      down_input,
+      selected,
+      pairs,
+      theta,
+      channel_scales,
+      qweight,
+      qzeros,
+      scales,
+      out,
+      barrier,
+      rows,
+      in_features,
+      out_packed,
+      num_experts,
+      group_size,
+      krot,
+      threads,
+      rotate_blocks,
+      1,
+      stream);
 }
 
 }  // namespace
@@ -3516,6 +3813,94 @@ extern "C" int hipengine_gemv_awq_selected_pack8_transposed_fp16(
     hipStream_t stream) {
   return launch_selected_pack8<half_t, true>(
       x, selected, qweight, qzeros, scales, out, rows, in_features, out_packed, num_experts, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_selected_pack8_transposed_silu_rotate_staged_fp16(
+    const half_t* gate_up,
+    half_t* down_input,
+    const int64_t* selected,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* channel_scales,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int32_t* barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_pack8_silu_rotate_staged<half_t, true>(
+      gate_up,
+      down_input,
+      selected,
+      pairs,
+      theta,
+      channel_scales,
+      qweight,
+      qzeros,
+      scales,
+      out,
+      barrier,
+      rows,
+      in_features,
+      out_packed,
+      num_experts,
+      group_size,
+      krot,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16(
+    const half_t* gate_up,
+    half_t* down_input,
+    const int64_t* selected,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* channel_scales,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int32_t* barrier,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    int64_t barrier_count_target,
+    int64_t barrier_ready_value,
+    hipStream_t stream) {
+  return launch_selected_pack8_silu_rotate_staged_keyed<half_t, true>(
+      gate_up,
+      down_input,
+      selected,
+      pairs,
+      theta,
+      channel_scales,
+      qweight,
+      qzeros,
+      scales,
+      out,
+      barrier,
+      rows,
+      in_features,
+      out_packed,
+      num_experts,
+      group_size,
+      krot,
+      threads,
+      barrier_count_target,
+      barrier_ready_value,
+      stream);
 }
 
 extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(

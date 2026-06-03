@@ -105,6 +105,16 @@ typedef hipengine_err_t (*silu_mul_dual_rotate_out_fp16_fn)(
     int64_t, int64_t, int64_t, int64_t,
     void*);
 
+// gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16:
+//   gate_up, down_input, selected, pairs, theta, channel_scales, qw, qz, scales,
+//   out, barrier, rows, in_features, out_packed, num_experts, group_size, krot,
+//   threads, barrier_count_target, barrier_ready_value, stream
+typedef hipengine_err_t (*gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16_fn)(
+    void*, void*, void*, void*, void*, void*, void*, void*, void*,
+    void*, void*,
+    int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+    void*);
+
 // silu_mul_separate_out_fp16:
 //   gate, up, out, rows, features, threads, stream
 typedef hipengine_err_t (*silu_mul_separate_out_fp16_fn)(
@@ -162,6 +172,7 @@ struct MoeC1Fns {
     void* gemv_awq_selected_dual_pack8_transposed_fp16;
     void* gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16;
     void* gemv_awq_selected_pack8_transposed_fp16;
+    void* gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16;
     void* silu_mul_dual_rotate_out_fp16;
     void* silu_mul_separate_out_fp16;
     void* awq_fusedw4_prefill_dual_fp16;       // linear-attn only
@@ -182,6 +193,8 @@ struct MoeC1Args {
     void* stream;
     int64_t selected_rotate_barrier_target;
     int64_t selected_rotate_barrier_epoch;
+    int64_t selected_down_barrier_target;
+    int64_t selected_down_barrier_epoch;
 
     // ---- Layer-constant scratch pointers ----
     void* router_logits;
@@ -346,6 +359,61 @@ static inline hipengine_err_t dispatch_selected_gate_up(
     return 0;
 }
 
+static inline hipengine_err_t dispatch_selected_down(
+    const MoeC1Fns* fns,
+    const MoeC1Args* args,
+    int64_t selected_rows)
+{
+    if (args->selected_down_barrier_target > 0 && args->selected_down_barrier_epoch > 0) {
+        auto fn = reinterpret_cast<gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16_fn>(
+            fns->gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16);
+        DISPATCH_CHECK(fn(
+            args->gate_up, args->down_input, args->selected_experts,
+            args->selected_down_pairs, args->selected_down_theta,
+            args->selected_down_channel_scales,
+            args->selected_stacked_down_qweight,
+            args->selected_stacked_down_qzeros,
+            args->selected_stacked_down_scales,
+            args->down_out, args->selected_rotate_fuse_barrier,
+            selected_rows, args->moe_intermediate_size,
+            args->out_packed_selected_down,
+            args->num_experts, args->group_size, args->krot_selected_down,
+            args->selected_threads,
+            args->selected_down_barrier_target,
+            args->selected_down_barrier_epoch,
+            args->stream));
+        return 0;
+    }
+
+    {
+        auto fn = reinterpret_cast<silu_mul_dual_rotate_out_fp16_fn>(
+            fns->silu_mul_dual_rotate_out_fp16);
+        DISPATCH_CHECK(fn(
+            args->gate_up,
+            args->selected_down_pairs, args->selected_down_theta,
+            args->selected_down_channel_scales,
+            args->down_input,
+            selected_rows, args->moe_intermediate_size, args->group_size,
+            args->krot_selected_down,
+            args->stream));
+    }
+    {
+        auto fn = reinterpret_cast<gemv_awq_selected_pack8_transposed_fp16_fn>(
+            fns->gemv_awq_selected_pack8_transposed_fp16);
+        DISPATCH_CHECK(fn(
+            args->down_input, args->selected_experts,
+            args->selected_stacked_down_qweight,
+            args->selected_stacked_down_qzeros,
+            args->selected_stacked_down_scales,
+            args->down_out,
+            selected_rows, args->moe_intermediate_size,
+            args->out_packed_selected_down,
+            args->num_experts, args->group_size, args->selected_threads,
+            args->stream));
+    }
+    return 0;
+}
+
 // ---------- Linear-attention dispatcher -----------------------------------
 
 hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
@@ -373,35 +441,8 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
     // ---- 2-3. Selected gate-up: optional staged rotate + selected dual GEMV ----
     DISPATCH_CHECK(dispatch_selected_gate_up(fns, args, selected_rows));
 
-    // ---- 4. Activate + rotate down: gate_up -> down_input ----
-    {
-        auto fn = reinterpret_cast<silu_mul_dual_rotate_out_fp16_fn>(
-            fns->silu_mul_dual_rotate_out_fp16);
-        DISPATCH_CHECK(fn(
-            args->gate_up,
-            args->selected_down_pairs, args->selected_down_theta,
-            args->selected_down_channel_scales,
-            args->down_input,
-            selected_rows, args->moe_intermediate_size, args->group_size,
-            args->krot_selected_down,
-            args->stream));
-    }
-
-    // ---- 5. Selected down GEMV: down_input -> down_out ----
-    {
-        auto fn = reinterpret_cast<gemv_awq_selected_pack8_transposed_fp16_fn>(
-            fns->gemv_awq_selected_pack8_transposed_fp16);
-        DISPATCH_CHECK(fn(
-            args->down_input, args->selected_experts,
-            args->selected_stacked_down_qweight,
-            args->selected_stacked_down_qzeros,
-            args->selected_stacked_down_scales,
-            args->down_out,
-            selected_rows, args->moe_intermediate_size,
-            args->out_packed_selected_down,
-            args->num_experts, args->group_size, args->selected_threads,
-            args->stream));
-    }
+    // ---- 4-5. Selected down: optional staged SiLU/rotate + selected down GEMV ----
+    DISPATCH_CHECK(dispatch_selected_down(fns, args, selected_rows));
 
     // ---- 6. Shared gate+up rotate: hidden -> shared_gate_input, shared_up_input ----
     // Linear path assumes gate_krot == up_krot (rotate2).  If krots differ, the
@@ -524,33 +565,8 @@ hipengine_err_t hipengine_moe_c1_dispatch_full_fp16(
     // ---- 2-3. Selected gate-up: optional staged rotate + selected dual GEMV ----
     DISPATCH_CHECK(dispatch_selected_gate_up(fns, args, selected_rows));
 
-    // ---- 4-5. Selected expert activation/down pipeline ----
-    {
-        auto fn = reinterpret_cast<silu_mul_dual_rotate_out_fp16_fn>(
-            fns->silu_mul_dual_rotate_out_fp16);
-        DISPATCH_CHECK(fn(
-            args->gate_up,
-            args->selected_down_pairs, args->selected_down_theta,
-            args->selected_down_channel_scales,
-            args->down_input,
-            selected_rows, args->moe_intermediate_size, args->group_size,
-            args->krot_selected_down,
-            args->stream));
-    }
-    {
-        auto fn = reinterpret_cast<gemv_awq_selected_pack8_transposed_fp16_fn>(
-            fns->gemv_awq_selected_pack8_transposed_fp16);
-        DISPATCH_CHECK(fn(
-            args->down_input, args->selected_experts,
-            args->selected_stacked_down_qweight,
-            args->selected_stacked_down_qzeros,
-            args->selected_stacked_down_scales,
-            args->down_out,
-            selected_rows, args->moe_intermediate_size,
-            args->out_packed_selected_down,
-            args->num_experts, args->group_size, args->selected_threads,
-            args->stream));
-    }
+    // ---- 4-5. Selected down: optional staged SiLU/rotate + selected down GEMV ----
+    DISPATCH_CHECK(dispatch_selected_down(fns, args, selected_rows));
 
     // ---- 6. Shared gate+up rotate (same as linear) ----
     {

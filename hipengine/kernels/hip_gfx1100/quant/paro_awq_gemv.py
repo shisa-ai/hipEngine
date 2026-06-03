@@ -58,6 +58,20 @@ _ARGTYPES_SELECTED_DUAL_ROTATE_STAGED_KEYED = (
     ctypes.c_int64, ctypes.c_int64,                                                        # barrier_count_target, barrier_ready_value
     ctypes.c_void_p,
 )
+_ARGTYPES_SELECTED_SINGLE_SILU_ROTATE_STAGED = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # gate_up, down_input, selected
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # pairs, theta, channel_scales
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight, qzeros, scales
+    ctypes.c_void_p, ctypes.c_void_p,                                                      # out, barrier
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,        # rows, in_features, out_packed, num_experts, group_size
+    ctypes.c_int64, ctypes.c_int64,                                                        # krot, threads
+    ctypes.c_void_p,                                                                       # stream
+)
+_ARGTYPES_SELECTED_SINGLE_SILU_ROTATE_STAGED_KEYED = (
+    *_ARGTYPES_SELECTED_SINGLE_SILU_ROTATE_STAGED[:-1],
+    ctypes.c_int64, ctypes.c_int64,                                                        # barrier_count_target, barrier_ready_value
+    ctypes.c_void_p,
+)
 _ARGTYPES_SELECTED_SINGLE = (
     ctypes.c_void_p, ctypes.c_void_p,                                                      # x, selected
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight, qzeros, scales
@@ -138,6 +152,8 @@ _SYMBOL_SELECTED_DUAL_STRIDED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_str
 _SYMBOL_SELECTED_DUAL_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_transposed_fp16"
 _SYMBOL_SELECTED_STRIDED_FP16 = "hipengine_gemv_awq_selected_pack8_strided_fp16"
 _SYMBOL_SELECTED_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_pack8_transposed_fp16"
+_SYMBOL_SELECTED_TRANSPOSED_SILU_ROTATE_STAGED_FP16 = "hipengine_gemv_awq_selected_pack8_transposed_silu_rotate_staged_fp16"
+_SYMBOL_SELECTED_TRANSPOSED_SILU_ROTATE_STAGED_KEYED_FP16 = "hipengine_gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16"
 _ALLOWED_THREADS = {64, 128}
 
 
@@ -1824,6 +1840,114 @@ def gemv_awq_selected_pack8_transposed_fp16(
     )
 
 
+def gemv_awq_selected_pack8_transposed_silu_rotate_staged_fp16(
+    gate_up_ptr: int,
+    down_input_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch staged selected SiLU+down-rotate + transposed single GEMV."""
+
+    _launch_selected_single_silu_rotate_staged(
+        _SYMBOL_SELECTED_TRANSPOSED_SILU_ROTATE_STAGED_FP16,
+        gate_up_ptr,
+        down_input_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        barrier_ptr,
+        rows,
+        in_features,
+        out_packed,
+        num_experts,
+        group_size,
+        krot,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16(
+    gate_up_ptr: int,
+    down_input_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    barrier_count_target: int,
+    barrier_ready_value: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Keyed staged selected SiLU+down-rotate + transposed single GEMV."""
+
+    _launch_selected_single_silu_rotate_staged(
+        _SYMBOL_SELECTED_TRANSPOSED_SILU_ROTATE_STAGED_KEYED_FP16,
+        gate_up_ptr,
+        down_input_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        barrier_ptr,
+        rows,
+        in_features,
+        out_packed,
+        num_experts,
+        group_size,
+        krot,
+        barrier_count_target=barrier_count_target,
+        barrier_ready_value=barrier_ready_value,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "pack8_gemv", "w4_paro", "strided"),
@@ -1963,6 +2087,16 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "selected_pack8_gemv", "w4_paro", "transposed_fp16"),
         gemv_awq_selected_pack8_transposed_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "silu_rotate+selected_pack8_gemv", "w4_paro", "transposed_staged_fp16"),
+        gemv_awq_selected_pack8_transposed_silu_rotate_staged_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "silu_rotate+selected_pack8_gemv", "w4_paro", "transposed_staged_keyed_fp16"),
+        gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16,
         replace=replace,
     )
 
@@ -2403,6 +2537,77 @@ def _launch_selected_dual(
              out_ptr,
              x_rows, rows, in_features, out_packed_a, out_packed_b, num_experts, group_size, threads,
              stream)
+    _check_launch(runtime, err)
+
+
+def _launch_selected_single_silu_rotate_staged(
+    symbol: str,
+    gate_up_ptr: int,
+    down_input_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    *,
+    barrier_count_target: int | None = None,
+    barrier_ready_value: int | None = None,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_selected_single_shape(rows, in_features, out_packed, num_experts, group_size, threads)
+    if krot <= 0:
+        raise ValueError("krot must be positive")
+    if group_size % 2 != 0:
+        raise ValueError("group_size must be even for staged SiLU rotation")
+    keyed = barrier_count_target is not None or barrier_ready_value is not None
+    if keyed:
+        if barrier_count_target is None or barrier_ready_value is None:
+            raise ValueError("keyed selected SiLU-rotate staged GEMV requires both barrier target values")
+        if barrier_count_target <= 0 or barrier_ready_value <= 0:
+            raise ValueError("keyed selected SiLU-rotate staged barrier targets must be positive")
+        if barrier_count_target > 0x7FFFFFFF or barrier_ready_value > 0x7FFFFFFF:
+            raise ValueError("keyed selected SiLU-rotate staged barrier targets must fit int32")
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    argtypes = _ARGTYPES_SELECTED_SINGLE_SILU_ROTATE_STAGED_KEYED if keyed else _ARGTYPES_SELECTED_SINGLE_SILU_ROTATE_STAGED
+    fn = signed_kernel_fn(library, symbol, argtypes, ctypes.c_int)
+    common_args = (
+        gate_up_ptr,
+        down_input_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        barrier_ptr,
+        rows,
+        in_features,
+        out_packed,
+        num_experts,
+        group_size,
+        krot,
+        threads,
+    )
+    if keyed:
+        err = fn(*common_args, barrier_count_target, barrier_ready_value, stream)
+    else:
+        err = fn(*common_args, stream)
     _check_launch(runtime, err)
 
 

@@ -1770,6 +1770,46 @@ def test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate(monkeypa
     assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
 
 
+def test_qwen35_decode_state_selected_moe_down_fp16_uses_staged_keyed_kernel(monkeypatch) -> None:
+    qwen_runtime._reset_shared_rotate_fuse_barrier_state()
+    monkeypatch.delenv("HIPENGINE_SELECTED_MOE_DOWN_STAGED", raising=False)
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
+    calls = []
+
+    def record(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", record("unexpected_silu_rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_fp16", record("unexpected_down"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16",
+        record("staged_down"),
+    )
+
+    out1 = state.selected_moe_activate_down_pack8_fp16(scratch, tokens=2)
+    out2 = state.selected_moe_activate_down_pack8_fp16(scratch, tokens=2)
+
+    assert out1 is scratch.down_out
+    assert out2 is scratch.down_out
+    labels = [label for label, _args, _kwargs in calls]
+    assert labels == ["staged_down", "staged_down"]
+    first_args = calls[0][1]
+    second_args = calls[1][1]
+    assert first_args[0:3] == (scratch.gate_up.ptr, scratch.down_input.ptr, scratch.selected_experts.ptr)
+    assert first_args[9:12] == (scratch.down_out.ptr, scratch.shared_rotate_fuse_barrier.ptr, 16)
+    # 2 tokens * top_k 8 = 16 selected rows; 768 intermediate / group 128
+    # -> 6 groups, so the staged activation/rotation phase has 96 blocks.
+    assert first_args[17:19] == (96, 1)
+    assert second_args[17:19] == (192, 2)
+    barrier_memsets = [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
+    assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
+
+
 def test_qwen35_decode_state_runs_shared_expert_paro_w4_bf16(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())

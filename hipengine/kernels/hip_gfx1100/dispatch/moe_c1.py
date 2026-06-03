@@ -79,6 +79,7 @@ class MoeC1Fns(ctypes.Structure):
         ("gemv_awq_selected_dual_pack8_transposed_fp16", ctypes.c_void_p),
         ("gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16", ctypes.c_void_p),
         ("gemv_awq_selected_pack8_transposed_fp16", ctypes.c_void_p),
+        ("gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16", ctypes.c_void_p),
         ("silu_mul_dual_rotate_out_fp16", ctypes.c_void_p),
         ("silu_mul_separate_out_fp16", ctypes.c_void_p),
         ("awq_fusedw4_prefill_dual_fp16", ctypes.c_void_p),    # linear-attn only
@@ -101,6 +102,8 @@ class MoeC1Args(ctypes.Structure):
         ("stream", ctypes.c_void_p),
         ("selected_rotate_barrier_target", ctypes.c_int64),
         ("selected_rotate_barrier_epoch", ctypes.c_int64),
+        ("selected_down_barrier_target", ctypes.c_int64),
+        ("selected_down_barrier_epoch", ctypes.c_int64),
         # ---- Layer-constant scratch pointers ----
         ("router_logits", ctypes.c_void_p),
         ("selected_experts", ctypes.c_void_p),

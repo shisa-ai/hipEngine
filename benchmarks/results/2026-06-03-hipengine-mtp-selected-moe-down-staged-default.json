@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "date": "2026-06-03",
+  "status": "diagnostic_retained_default_on",
+  "performance_claim": false,
+  "task": "#30 Consolidate selected-expert MoE verifier kernels",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "change": "Default verifier selected GEMV profile uses 64 threads and enables HBM-staged selected SiLU/down-rotate + ids-tensor down GEMV for tokens>1 (HIPENGINE_SELECTED_MOE_DOWN_STAGED=1 default).",
+  "acceptance_summary": {
+    "unit_kernel_correctness": "pytest targeted tests pass; tiny FP16 GPU staged-down equals unfused silu_mul_dual_rotate_out + selected down GEMV bit-for-bit (down_equal/out_equal true, max_abs 0.0)",
+    "mtp_smoke": "/tmp/mtp_smoke_selected_threads64_down_staged_default_d4.json status=passed exact_ar_match=true",
+    "dflash_smoke": "/tmp/dflash_chain_selected_threads64_down_staged_default_35b_1p4t.json all_correctness_passed=true",
+    "rocprof": "default path reduces kernel calls/pass and kernel time/pass vs prior 128-thread unfused selected-down baseline"
+  },
+  "commands": {
+    "pycompile_pytest": "PYTHONPATH=. python3 -m py_compile ... && PYTHONPATH=. pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_selected_moe_down_fp16_uses_staged_keyed_kernel tests/test_qwen35_decode_state.py::test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order tests/test_paro_awq_gemv_plan.py",
+    "tiny_kernel_correctness": "inline Python GPU comparison in WORKLOG; old silu+selected_down vs new staged_down keyed",
+    "mtp_smoke": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off --json /tmp/mtp_smoke_selected_threads64_down_staged_default_d4.json",
+    "dflash_smoke": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --max-prompts 1 --decode-tokens 4 --draft-budgets 3 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --verifier-graph off --tree-mode chain --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/dflash_chain_selected_threads64_down_staged_default_35b_1p4t.json",
+    "rocprof_baseline_prior": "(captured before this change, prior default selected_threads=128/unfused selected-down) ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SELECTED_MOE_DOWN_STAGED=0 PYTHONPATH=. python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 4 --candidate-budget 3 --steady-state-skip 0 --out /tmp/mtp_rocprof_selected_down_staged_off.json",
+    "rocprof_default_new": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 4 --candidate-budget 3 --steady-state-skip 0 --out /tmp/mtp_rocprof_selected_threads64_down_staged_default.json"
+  },
+  "measurements": {
+    "prior_128thread_unfused_baseline": {
+      "source": "/tmp/mtp_rocprof_selected_down_staged_off.json",
+      "kernel_calls": 3057,
+      "kernel_time_ms": 46.108456,
+      "kernel_calls_per_pass": 1019.0,
+      "kernel_time_ms_per_pass": 15.369485333333332,
+      "moe_down_gemv_ms_per_pass": 1.4747756666666667,
+      "moe_silu_rotate_out_ms_per_pass": 0.249725
+    },
+    "thread64_unfused_control": {
+      "source": "/tmp/mtp_rocprof_selected_threads64_off.json",
+      "kernel_calls": 3057,
+      "kernel_time_ms": 44.33619,
+      "kernel_calls_per_pass": 1019.0,
+      "kernel_time_ms_per_pass": 14.778730000000001,
+      "moe_down_gemv_ms_per_pass": 0.9522123333333333,
+      "note": "Faster than the staged default but does not reduce kernel launch count; kept as opt-out via HIPENGINE_SELECTED_MOE_DOWN_STAGED=0."
+    },
+    "new_default_thread64_staged_down": {
+      "source": "/tmp/mtp_rocprof_selected_threads64_down_staged_default.json",
+      "kernel_calls": 2968,
+      "kernel_time_ms": 44.845874,
+      "kernel_calls_per_pass": 989.3333333333334,
+      "kernel_time_ms_per_pass": 14.948624666666667,
+      "moe_down_gemv_ms_per_pass": 1.2846383333333333,
+      "moe_silu_rotate_out_ms_per_pass": 0.06045366666666666
+    },
+    "delta_prior_to_new": {
+      "kernel_calls": -89,
+      "kernel_calls_per_pass": -29.66666666666663,
+      "kernel_time_ms": -1.2625819999999948,
+      "kernel_time_ms_per_pass": -0.42086066666666433,
+      "kernel_time_ms_per_pass_pct": -2.7382873111170603
+    }
+  },
+  "notes": [
+    "The prior baseline was captured before the 64-thread selected GEMV default change; rerunning the command at this commit with HIPENGINE_SELECTED_MOE_DOWN_STAGED=0 gives the documented thread64_unfused_control row instead.",
+    "The selected MoE gate/up staged rotate path remains default-off because it reduces launches but regresses kernel time.",
+    "The staged-down default is a narrower first slice: it removes the selected-down silu/rotate launch for verifier tokens>1 while the 64-thread selected GEMV profile offsets the staged barrier overhead relative to the previous default.",
+    "performance_claim=false because this is a verifier-window diagnostic/smoke, not a full prompt-suite throughput promotion."
+  ]
+}
