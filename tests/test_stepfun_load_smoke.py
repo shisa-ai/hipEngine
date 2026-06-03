@@ -273,6 +273,26 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
         "kv_backed_next_token_artifact_missing",
     ]
     assert [blocker["name"] for blocker in run_plan["streaming_runner_blockers"]] == expected_blockers
+    streaming_trace = run_plan["streaming_decode_launch_trace"]
+    assert streaming_trace["schema_version"] == 1
+    assert streaming_trace["executable"] is False
+    assert streaming_trace["ready"] is False
+    assert streaming_trace["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert streaming_trace["layer_count"] == 45
+    assert streaming_trace["operation_count"] == 135
+    assert len(streaming_trace["operation_records"]) == 135
+    assert streaming_trace["first_operation"]["operation"] == "layers.0.prompt_kv_write"
+    assert streaming_trace["first_operation"]["kernel_key"] == run_plan["kv_dispatch_keys"]["prompt_kv_write"]
+    assert streaming_trace["last_operation"]["operation"] == "layers.44.decode_attention"
+    assert streaming_trace["last_operation"]["kernel_key"] == run_plan["kv_dispatch_keys"]["decode_attention"]
+    assert streaming_trace["span_uploads_by_operation"]["decode_attention"] == [
+        "decode_base_offsets",
+        "decode_attention_live_counts",
+    ]
+    assert streaming_trace["pre_run_upload_order"] == decode_upload_plan["upload_order"]
+    assert streaming_trace["all_launches_have_dispatch_keys"] is True
+    assert streaming_trace["all_launches_ready"] is True
+    assert streaming_trace["no_kernel_launches"] is True
     blocker_summary = run_plan["kv_decode_blocker_summary"]
     assert blocker_summary["schema_version"] == 1
     assert blocker_summary["status"] == "blocked"

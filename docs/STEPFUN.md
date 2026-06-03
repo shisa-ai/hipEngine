@@ -706,18 +706,25 @@ reporting.
   launching kernels. `kv_decode_run_plan.streaming_decode_loop_status` now adds
   a compact runtime-produced readiness summary (blocker count/names, first
   blocker digest, blueprint digest, and `next_action=wire_streaming_decode_loop`)
-  next to the blueprint. The canonical resource artifact now contains the
-  blueprint and loop-status summary, and the correctness-status KV gap report
-  validates that the blueprint is recorded, matches the launch schedule, matches
-  the pre-run upload order, points at the same first blocker, and has a matching
-  loop-status summary. The KV gap report now persists the validated blueprint and
-  loop-status summary digests, and compact `--kv-streaming-blueprint-only` /
+  next to the blueprint. `kv_decode_run_plan.streaming_decode_launch_trace`
+  additionally records the metadata-only 135-operation per-layer trace with
+  dispatch keys, span contracts, pre-run span uploads, expected runtime inputs,
+  and `execution_status=not_launched_metadata_only` for every planned launch. The
+  canonical resource artifact now contains the blueprint, loop-status summary,
+  and launch trace, and the correctness-status KV gap report validates that the
+  blueprint is recorded, matches the launch schedule, matches the pre-run upload
+  order, points at the same first blocker, has a matching loop-status summary,
+  and carries a matching non-executable launch trace. The KV gap report now
+  persists the validated blueprint, loop-status, and launch-trace digests, and
+  compact `--kv-streaming-blueprint-only` /
   `--kv-streaming-blueprint-sha-only`, `--kv-streaming-loop-status-only` /
-  `--kv-streaming-loop-status-sha-only`, and
+  `--kv-streaming-loop-status-sha-only`,
   `--kv-streaming-loop-next-action-only` /
-  `--kv-streaming-loop-next-action-sha-only` outputs expose the recorded
-  summaries/digests plus the direct `wire_streaming_decode_loop` handoff target
-  and its persisted digest. Compact `--kv-decode-blocker-summary-only` /
+  `--kv-streaming-loop-next-action-sha-only`, and
+  `--kv-streaming-launch-trace-only` /
+  `--kv-streaming-launch-trace-sha-only` outputs expose the recorded
+  summaries/trace/digests plus the direct `wire_streaming_decode_loop` handoff
+  target and its persisted digest. Compact `--kv-decode-blocker-summary-only` /
   `--kv-decode-blocker-summary-sha-only` outputs expose the resource artifact's
   `kv_decode_blocker_summary` directly through the correctness-status gap report,
   and `--kv-streaming-blocker-records-only` /
@@ -730,8 +737,8 @@ reporting.
   `kv_backed_next_token_artifact`) and digest directly from the blocker summary.
   Status integrity also
   verifies the KV compact output-mode mappings for blocker names, blocker records,
-  first blocker, blueprint, loop status/next-action, blocker summary, required
-  artifacts, and resource
+  first blocker, blueprint, loop status/next-action, launch trace, blocker summary,
+  required artifacts, and resource
   refresh command routes; cross-checks the blocker-summary digest/recorded flag; recomputes its
   first-blocker/upload/launch mirror invariants against the resource-plan gap
   report, and continues to check the mirrored blueprint digest, loop-status

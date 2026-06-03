@@ -527,6 +527,3613 @@
       2,
       128007
     ],
+    "streaming_decode_launch_trace": {
+      "all_launches_have_dispatch_keys": true,
+      "all_launches_ready": true,
+      "blocked_by": "streaming_decode_loop_not_wired",
+      "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+      "executable": false,
+      "first_operation": {
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "dispatch_key_name": "prompt_kv_write",
+        "execution_status": "not_launched_metadata_only",
+        "expected_runtime_inputs": [
+          "layer_prompt_key",
+          "layer_prompt_value"
+        ],
+        "kernel_key": {
+          "backend": "hip_gfx1151",
+          "layer": "paged_kv_write",
+          "quant": "gguf_step35",
+          "variant": "mixed_bf16_prompt_spans"
+        },
+        "launch_ready": true,
+        "layer": 0,
+        "name": "prompt_kv_write",
+        "op_index": 0,
+        "operation": "layers.0.prompt_kv_write",
+        "pre_run_uploads": [
+          "prompt_base_offsets",
+          "prompt_live_counts"
+        ],
+        "span_contract": "prompt_span",
+        "stage_name": "prompt_prefill_kv_write"
+      },
+      "last_operation": {
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "dispatch_key_name": "decode_attention",
+        "execution_status": "not_launched_metadata_only",
+        "expected_runtime_inputs": [
+          "layer_decode_query",
+          "layer_decode_attention_gate"
+        ],
+        "kernel_key": {
+          "backend": "hip_gfx1151",
+          "layer": "paged_attn_decode",
+          "quant": "gguf_step35",
+          "variant": "bf16_split_k_gate_f32_spans"
+        },
+        "launch_ready": true,
+        "layer": 44,
+        "name": "decode_attention",
+        "op_index": 134,
+        "operation": "layers.44.decode_attention",
+        "pre_run_uploads": [
+          "decode_base_offsets",
+          "decode_attention_live_counts"
+        ],
+        "span_contract": "decode_span",
+        "stage_name": "one_token_gated_attention_decode"
+      },
+      "layer_count": 45,
+      "no_kernel_launches": true,
+      "note": "Metadata-only per-layer launch trace for the future StepFun KV streaming decode loop; it records dispatch/span/upload contracts but does not launch kernels or produce a token.",
+      "operation_count": 135,
+      "operation_records": [
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 0,
+          "name": "prompt_kv_write",
+          "op_index": 0,
+          "operation": "layers.0.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 0,
+          "name": "decode_kv_write",
+          "op_index": 1,
+          "operation": "layers.0.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 0,
+          "name": "decode_attention",
+          "op_index": 2,
+          "operation": "layers.0.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 1,
+          "name": "prompt_kv_write",
+          "op_index": 3,
+          "operation": "layers.1.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 1,
+          "name": "decode_kv_write",
+          "op_index": 4,
+          "operation": "layers.1.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 1,
+          "name": "decode_attention",
+          "op_index": 5,
+          "operation": "layers.1.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 2,
+          "name": "prompt_kv_write",
+          "op_index": 6,
+          "operation": "layers.2.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 2,
+          "name": "decode_kv_write",
+          "op_index": 7,
+          "operation": "layers.2.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 2,
+          "name": "decode_attention",
+          "op_index": 8,
+          "operation": "layers.2.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 3,
+          "name": "prompt_kv_write",
+          "op_index": 9,
+          "operation": "layers.3.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 3,
+          "name": "decode_kv_write",
+          "op_index": 10,
+          "operation": "layers.3.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 3,
+          "name": "decode_attention",
+          "op_index": 11,
+          "operation": "layers.3.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 4,
+          "name": "prompt_kv_write",
+          "op_index": 12,
+          "operation": "layers.4.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 4,
+          "name": "decode_kv_write",
+          "op_index": 13,
+          "operation": "layers.4.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 4,
+          "name": "decode_attention",
+          "op_index": 14,
+          "operation": "layers.4.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 5,
+          "name": "prompt_kv_write",
+          "op_index": 15,
+          "operation": "layers.5.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 5,
+          "name": "decode_kv_write",
+          "op_index": 16,
+          "operation": "layers.5.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 5,
+          "name": "decode_attention",
+          "op_index": 17,
+          "operation": "layers.5.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 6,
+          "name": "prompt_kv_write",
+          "op_index": 18,
+          "operation": "layers.6.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 6,
+          "name": "decode_kv_write",
+          "op_index": 19,
+          "operation": "layers.6.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 6,
+          "name": "decode_attention",
+          "op_index": 20,
+          "operation": "layers.6.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 7,
+          "name": "prompt_kv_write",
+          "op_index": 21,
+          "operation": "layers.7.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 7,
+          "name": "decode_kv_write",
+          "op_index": 22,
+          "operation": "layers.7.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 7,
+          "name": "decode_attention",
+          "op_index": 23,
+          "operation": "layers.7.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 8,
+          "name": "prompt_kv_write",
+          "op_index": 24,
+          "operation": "layers.8.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 8,
+          "name": "decode_kv_write",
+          "op_index": 25,
+          "operation": "layers.8.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 8,
+          "name": "decode_attention",
+          "op_index": 26,
+          "operation": "layers.8.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 9,
+          "name": "prompt_kv_write",
+          "op_index": 27,
+          "operation": "layers.9.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 9,
+          "name": "decode_kv_write",
+          "op_index": 28,
+          "operation": "layers.9.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 9,
+          "name": "decode_attention",
+          "op_index": 29,
+          "operation": "layers.9.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 10,
+          "name": "prompt_kv_write",
+          "op_index": 30,
+          "operation": "layers.10.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 10,
+          "name": "decode_kv_write",
+          "op_index": 31,
+          "operation": "layers.10.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 10,
+          "name": "decode_attention",
+          "op_index": 32,
+          "operation": "layers.10.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 11,
+          "name": "prompt_kv_write",
+          "op_index": 33,
+          "operation": "layers.11.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 11,
+          "name": "decode_kv_write",
+          "op_index": 34,
+          "operation": "layers.11.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 11,
+          "name": "decode_attention",
+          "op_index": 35,
+          "operation": "layers.11.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 12,
+          "name": "prompt_kv_write",
+          "op_index": 36,
+          "operation": "layers.12.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 12,
+          "name": "decode_kv_write",
+          "op_index": 37,
+          "operation": "layers.12.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 12,
+          "name": "decode_attention",
+          "op_index": 38,
+          "operation": "layers.12.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 13,
+          "name": "prompt_kv_write",
+          "op_index": 39,
+          "operation": "layers.13.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 13,
+          "name": "decode_kv_write",
+          "op_index": 40,
+          "operation": "layers.13.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 13,
+          "name": "decode_attention",
+          "op_index": 41,
+          "operation": "layers.13.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 14,
+          "name": "prompt_kv_write",
+          "op_index": 42,
+          "operation": "layers.14.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 14,
+          "name": "decode_kv_write",
+          "op_index": 43,
+          "operation": "layers.14.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 14,
+          "name": "decode_attention",
+          "op_index": 44,
+          "operation": "layers.14.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 15,
+          "name": "prompt_kv_write",
+          "op_index": 45,
+          "operation": "layers.15.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 15,
+          "name": "decode_kv_write",
+          "op_index": 46,
+          "operation": "layers.15.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 15,
+          "name": "decode_attention",
+          "op_index": 47,
+          "operation": "layers.15.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 16,
+          "name": "prompt_kv_write",
+          "op_index": 48,
+          "operation": "layers.16.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 16,
+          "name": "decode_kv_write",
+          "op_index": 49,
+          "operation": "layers.16.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 16,
+          "name": "decode_attention",
+          "op_index": 50,
+          "operation": "layers.16.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 17,
+          "name": "prompt_kv_write",
+          "op_index": 51,
+          "operation": "layers.17.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 17,
+          "name": "decode_kv_write",
+          "op_index": 52,
+          "operation": "layers.17.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 17,
+          "name": "decode_attention",
+          "op_index": 53,
+          "operation": "layers.17.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 18,
+          "name": "prompt_kv_write",
+          "op_index": 54,
+          "operation": "layers.18.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 18,
+          "name": "decode_kv_write",
+          "op_index": 55,
+          "operation": "layers.18.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 18,
+          "name": "decode_attention",
+          "op_index": 56,
+          "operation": "layers.18.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 19,
+          "name": "prompt_kv_write",
+          "op_index": 57,
+          "operation": "layers.19.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 19,
+          "name": "decode_kv_write",
+          "op_index": 58,
+          "operation": "layers.19.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 19,
+          "name": "decode_attention",
+          "op_index": 59,
+          "operation": "layers.19.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 20,
+          "name": "prompt_kv_write",
+          "op_index": 60,
+          "operation": "layers.20.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 20,
+          "name": "decode_kv_write",
+          "op_index": 61,
+          "operation": "layers.20.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 20,
+          "name": "decode_attention",
+          "op_index": 62,
+          "operation": "layers.20.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 21,
+          "name": "prompt_kv_write",
+          "op_index": 63,
+          "operation": "layers.21.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 21,
+          "name": "decode_kv_write",
+          "op_index": 64,
+          "operation": "layers.21.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 21,
+          "name": "decode_attention",
+          "op_index": 65,
+          "operation": "layers.21.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 22,
+          "name": "prompt_kv_write",
+          "op_index": 66,
+          "operation": "layers.22.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 22,
+          "name": "decode_kv_write",
+          "op_index": 67,
+          "operation": "layers.22.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 22,
+          "name": "decode_attention",
+          "op_index": 68,
+          "operation": "layers.22.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 23,
+          "name": "prompt_kv_write",
+          "op_index": 69,
+          "operation": "layers.23.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 23,
+          "name": "decode_kv_write",
+          "op_index": 70,
+          "operation": "layers.23.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 23,
+          "name": "decode_attention",
+          "op_index": 71,
+          "operation": "layers.23.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 24,
+          "name": "prompt_kv_write",
+          "op_index": 72,
+          "operation": "layers.24.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 24,
+          "name": "decode_kv_write",
+          "op_index": 73,
+          "operation": "layers.24.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 24,
+          "name": "decode_attention",
+          "op_index": 74,
+          "operation": "layers.24.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 25,
+          "name": "prompt_kv_write",
+          "op_index": 75,
+          "operation": "layers.25.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 25,
+          "name": "decode_kv_write",
+          "op_index": 76,
+          "operation": "layers.25.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 25,
+          "name": "decode_attention",
+          "op_index": 77,
+          "operation": "layers.25.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 26,
+          "name": "prompt_kv_write",
+          "op_index": 78,
+          "operation": "layers.26.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 26,
+          "name": "decode_kv_write",
+          "op_index": 79,
+          "operation": "layers.26.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 26,
+          "name": "decode_attention",
+          "op_index": 80,
+          "operation": "layers.26.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 27,
+          "name": "prompt_kv_write",
+          "op_index": 81,
+          "operation": "layers.27.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 27,
+          "name": "decode_kv_write",
+          "op_index": 82,
+          "operation": "layers.27.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 27,
+          "name": "decode_attention",
+          "op_index": 83,
+          "operation": "layers.27.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 28,
+          "name": "prompt_kv_write",
+          "op_index": 84,
+          "operation": "layers.28.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 28,
+          "name": "decode_kv_write",
+          "op_index": 85,
+          "operation": "layers.28.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 28,
+          "name": "decode_attention",
+          "op_index": 86,
+          "operation": "layers.28.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 29,
+          "name": "prompt_kv_write",
+          "op_index": 87,
+          "operation": "layers.29.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 29,
+          "name": "decode_kv_write",
+          "op_index": 88,
+          "operation": "layers.29.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 29,
+          "name": "decode_attention",
+          "op_index": 89,
+          "operation": "layers.29.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 30,
+          "name": "prompt_kv_write",
+          "op_index": 90,
+          "operation": "layers.30.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 30,
+          "name": "decode_kv_write",
+          "op_index": 91,
+          "operation": "layers.30.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 30,
+          "name": "decode_attention",
+          "op_index": 92,
+          "operation": "layers.30.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 31,
+          "name": "prompt_kv_write",
+          "op_index": 93,
+          "operation": "layers.31.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 31,
+          "name": "decode_kv_write",
+          "op_index": 94,
+          "operation": "layers.31.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 31,
+          "name": "decode_attention",
+          "op_index": 95,
+          "operation": "layers.31.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 32,
+          "name": "prompt_kv_write",
+          "op_index": 96,
+          "operation": "layers.32.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 32,
+          "name": "decode_kv_write",
+          "op_index": 97,
+          "operation": "layers.32.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 32,
+          "name": "decode_attention",
+          "op_index": 98,
+          "operation": "layers.32.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 33,
+          "name": "prompt_kv_write",
+          "op_index": 99,
+          "operation": "layers.33.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 33,
+          "name": "decode_kv_write",
+          "op_index": 100,
+          "operation": "layers.33.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 33,
+          "name": "decode_attention",
+          "op_index": 101,
+          "operation": "layers.33.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 34,
+          "name": "prompt_kv_write",
+          "op_index": 102,
+          "operation": "layers.34.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 34,
+          "name": "decode_kv_write",
+          "op_index": 103,
+          "operation": "layers.34.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 34,
+          "name": "decode_attention",
+          "op_index": 104,
+          "operation": "layers.34.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 35,
+          "name": "prompt_kv_write",
+          "op_index": 105,
+          "operation": "layers.35.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 35,
+          "name": "decode_kv_write",
+          "op_index": 106,
+          "operation": "layers.35.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 35,
+          "name": "decode_attention",
+          "op_index": 107,
+          "operation": "layers.35.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 36,
+          "name": "prompt_kv_write",
+          "op_index": 108,
+          "operation": "layers.36.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 36,
+          "name": "decode_kv_write",
+          "op_index": 109,
+          "operation": "layers.36.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 36,
+          "name": "decode_attention",
+          "op_index": 110,
+          "operation": "layers.36.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 37,
+          "name": "prompt_kv_write",
+          "op_index": 111,
+          "operation": "layers.37.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 37,
+          "name": "decode_kv_write",
+          "op_index": 112,
+          "operation": "layers.37.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 37,
+          "name": "decode_attention",
+          "op_index": 113,
+          "operation": "layers.37.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 38,
+          "name": "prompt_kv_write",
+          "op_index": 114,
+          "operation": "layers.38.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 38,
+          "name": "decode_kv_write",
+          "op_index": 115,
+          "operation": "layers.38.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 38,
+          "name": "decode_attention",
+          "op_index": 116,
+          "operation": "layers.38.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 39,
+          "name": "prompt_kv_write",
+          "op_index": 117,
+          "operation": "layers.39.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 39,
+          "name": "decode_kv_write",
+          "op_index": 118,
+          "operation": "layers.39.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 39,
+          "name": "decode_attention",
+          "op_index": 119,
+          "operation": "layers.39.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 40,
+          "name": "prompt_kv_write",
+          "op_index": 120,
+          "operation": "layers.40.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 40,
+          "name": "decode_kv_write",
+          "op_index": 121,
+          "operation": "layers.40.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 40,
+          "name": "decode_attention",
+          "op_index": 122,
+          "operation": "layers.40.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 41,
+          "name": "prompt_kv_write",
+          "op_index": 123,
+          "operation": "layers.41.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 41,
+          "name": "decode_kv_write",
+          "op_index": 124,
+          "operation": "layers.41.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 41,
+          "name": "decode_attention",
+          "op_index": 125,
+          "operation": "layers.41.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 42,
+          "name": "prompt_kv_write",
+          "op_index": 126,
+          "operation": "layers.42.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 42,
+          "name": "decode_kv_write",
+          "op_index": 127,
+          "operation": "layers.42.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 42,
+          "name": "decode_attention",
+          "op_index": 128,
+          "operation": "layers.42.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 43,
+          "name": "prompt_kv_write",
+          "op_index": 129,
+          "operation": "layers.43.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 43,
+          "name": "decode_kv_write",
+          "op_index": 130,
+          "operation": "layers.43.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 43,
+          "name": "decode_attention",
+          "op_index": 131,
+          "operation": "layers.43.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "prompt_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_prompt_key",
+            "layer_prompt_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans"
+          },
+          "launch_ready": true,
+          "layer": 44,
+          "name": "prompt_kv_write",
+          "op_index": 132,
+          "operation": "layers.44.prompt_kv_write",
+          "pre_run_uploads": [
+            "prompt_base_offsets",
+            "prompt_live_counts"
+          ],
+          "span_contract": "prompt_span",
+          "stage_name": "prompt_prefill_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_kv_write",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_key",
+            "layer_decode_value"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans"
+          },
+          "launch_ready": true,
+          "layer": 44,
+          "name": "decode_kv_write",
+          "op_index": 133,
+          "operation": "layers.44.decode_kv_write",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_kv_write_position"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_decode_kv_write"
+        },
+        {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "dispatch_key_name": "decode_attention",
+          "execution_status": "not_launched_metadata_only",
+          "expected_runtime_inputs": [
+            "layer_decode_query",
+            "layer_decode_attention_gate"
+          ],
+          "kernel_key": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans"
+          },
+          "launch_ready": true,
+          "layer": 44,
+          "name": "decode_attention",
+          "op_index": 134,
+          "operation": "layers.44.decode_attention",
+          "pre_run_uploads": [
+            "decode_base_offsets",
+            "decode_attention_live_counts"
+          ],
+          "span_contract": "decode_span",
+          "stage_name": "one_token_gated_attention_decode"
+        }
+      ],
+      "operation_records_sha256": "92a34ac5ef9cdd00df33da1e6ab72adb2e269be03346a2259316209a00bafafe",
+      "operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+      "per_layer_order": [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention"
+      ],
+      "pre_run_upload_order": [
+        "input_ids",
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts"
+      ],
+      "ready": false,
+      "schema_version": 1,
+      "source": "kv_decode_run_plan",
+      "span_uploads_by_operation": {
+        "decode_attention": [
+          "decode_base_offsets",
+          "decode_attention_live_counts"
+        ],
+        "decode_kv_write": [
+          "decode_base_offsets",
+          "decode_kv_write_position"
+        ],
+        "prompt_kv_write": [
+          "prompt_base_offsets",
+          "prompt_live_counts"
+        ]
+      }
+    },
     "streaming_decode_loop_blueprint": {
       "blocked_by": "streaming_decode_loop_not_wired",
       "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",

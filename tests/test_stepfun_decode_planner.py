@@ -464,6 +464,65 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         "layer_count": 45,
         "ready": True,
     }
+    streaming_trace = payload["streaming_decode_launch_trace"]
+    assert streaming_trace["schema_version"] == 1
+    assert streaming_trace["source"] == "kv_decode_run_plan"
+    assert streaming_trace["executable"] is False
+    assert streaming_trace["ready"] is False
+    assert streaming_trace["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert streaming_trace["blocked_by_sha256"] == expected_first_streaming_blocker_sha
+    assert streaming_trace["layer_count"] == 45
+    assert streaming_trace["per_layer_order"] == payload["kv_decode_launch_per_layer_order"]
+    assert streaming_trace["operation_count"] == 135
+    assert streaming_trace["operation_sequence_sha256"] == hashlib.sha256(
+        json.dumps(expected_operation_sequence, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert len(streaming_trace["operation_records"]) == 135
+    assert streaming_trace["operation_records_sha256"] == hashlib.sha256(
+        json.dumps(
+            streaming_trace["operation_records"], sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
+    assert streaming_trace["first_operation"] == {
+        "op_index": 0,
+        "operation": "layers.0.prompt_kv_write",
+        "layer": 0,
+        "name": "prompt_kv_write",
+        "stage_name": "prompt_prefill_kv_write",
+        "dispatch_key_name": "prompt_kv_write",
+        "kernel_key": payload["kv_dispatch_keys"]["prompt_kv_write"],
+        "span_contract": "prompt_span",
+        "pre_run_uploads": ["prompt_base_offsets", "prompt_live_counts"],
+        "expected_runtime_inputs": ["layer_prompt_key", "layer_prompt_value"],
+        "launch_ready": True,
+        "execution_status": "not_launched_metadata_only",
+        "blocked_by": "streaming_decode_loop_not_wired",
+    }
+    assert streaming_trace["last_operation"] == {
+        "op_index": 134,
+        "operation": "layers.44.decode_attention",
+        "layer": 44,
+        "name": "decode_attention",
+        "stage_name": "one_token_gated_attention_decode",
+        "dispatch_key_name": "decode_attention",
+        "kernel_key": payload["kv_dispatch_keys"]["decode_attention"],
+        "span_contract": "decode_span",
+        "pre_run_uploads": ["decode_base_offsets", "decode_attention_live_counts"],
+        "expected_runtime_inputs": ["layer_decode_query", "layer_decode_attention_gate"],
+        "launch_ready": True,
+        "execution_status": "not_launched_metadata_only",
+        "blocked_by": "streaming_decode_loop_not_wired",
+    }
+    assert streaming_trace["span_uploads_by_operation"] == {
+        "prompt_kv_write": ["prompt_base_offsets", "prompt_live_counts"],
+        "decode_kv_write": ["decode_base_offsets", "decode_kv_write_position"],
+        "decode_attention": ["decode_base_offsets", "decode_attention_live_counts"],
+    }
+    assert streaming_trace["pre_run_upload_order"] == upload_plan["upload_order"]
+    assert streaming_trace["all_launches_have_dispatch_keys"] is True
+    assert streaming_trace["all_launches_ready"] is True
+    assert streaming_trace["no_kernel_launches"] is True
+    assert "does not launch kernels" in streaming_trace["note"]
     streaming_status = payload["streaming_decode_loop_status"]
     assert streaming_status == {
         "source": "kv_decode_run_plan",

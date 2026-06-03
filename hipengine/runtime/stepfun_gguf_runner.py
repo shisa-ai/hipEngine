@@ -1037,6 +1037,83 @@ class StepFunKVDecodeRunPlan:
         }
 
     @property
+    def streaming_decode_launch_trace(self) -> dict[str, object]:
+        """Return the metadata-only per-layer launch trace for the KV loop."""
+
+        blueprint = self.streaming_decode_loop_blueprint
+        launch_schedule = self.resource_plan.kv_decode_launch_schedule
+        per_layer_order = list(blueprint["per_layer_order"])
+        layer_count = int(blueprint["layer_count"])
+        stage_by_dispatch_key = {
+            str(stage["dispatch_key"]): stage for stage in launch_schedule["stages"]
+        }
+        span_uploads_by_operation = {
+            "prompt_kv_write": ["prompt_base_offsets", "prompt_live_counts"],
+            "decode_kv_write": ["decode_base_offsets", "decode_kv_write_position"],
+            "decode_attention": ["decode_base_offsets", "decode_attention_live_counts"],
+        }
+        runtime_inputs_by_operation = {
+            "prompt_kv_write": ["layer_prompt_key", "layer_prompt_value"],
+            "decode_kv_write": ["layer_decode_key", "layer_decode_value"],
+            "decode_attention": ["layer_decode_query", "layer_decode_attention_gate"],
+        }
+        records: list[dict[str, object]] = []
+        for layer_id in range(layer_count):
+            for op_name in per_layer_order:
+                stage = dict(stage_by_dispatch_key[op_name])
+                operation_name = f"layers.{layer_id}.{op_name}"
+                records.append(
+                    {
+                        "op_index": len(records),
+                        "operation": operation_name,
+                        "layer": layer_id,
+                        "name": op_name,
+                        "stage_name": stage["name"],
+                        "dispatch_key_name": op_name,
+                        "kernel_key": _kernel_key_to_dict(
+                            self.decode_plan.kv_dispatch_keys[op_name]
+                        ),
+                        "span_contract": stage["span_contract"],
+                        "pre_run_uploads": list(span_uploads_by_operation[op_name]),
+                        "expected_runtime_inputs": list(
+                            runtime_inputs_by_operation[op_name]
+                        ),
+                        "launch_ready": bool(stage["ready"]),
+                        "execution_status": "not_launched_metadata_only",
+                        "blocked_by": blueprint["blocked_by"],
+                    }
+                )
+        operation_sequence = [str(record["operation"]) for record in records]
+        return {
+            "schema_version": 1,
+            "source": "kv_decode_run_plan",
+            "executable": False,
+            "ready": self.streaming_runner_ready,
+            "blocked_by": blueprint["blocked_by"],
+            "blocked_by_sha256": blueprint["blocked_by_sha256"],
+            "layer_count": layer_count,
+            "per_layer_order": per_layer_order,
+            "operation_count": len(records),
+            "operation_sequence_sha256": _stable_json_sha256(operation_sequence),
+            "operation_records_sha256": _stable_json_sha256(records),
+            "first_operation": records[0] if records else None,
+            "last_operation": records[-1] if records else None,
+            "span_uploads_by_operation": span_uploads_by_operation,
+            "pre_run_upload_order": list(blueprint["pre_run_upload_order"]),
+            "all_launches_have_dispatch_keys": all(
+                bool(record["kernel_key"]) for record in records
+            ),
+            "all_launches_ready": all(bool(record["launch_ready"]) for record in records),
+            "no_kernel_launches": True,
+            "operation_records": records,
+            "note": (
+                "Metadata-only per-layer launch trace for the future StepFun KV "
+                "streaming decode loop; it records dispatch/span/upload contracts but "
+                "does not launch kernels or produce a token."
+            ),
+        }
+
+    @property
     def kv_decode_blocker_summary(self) -> dict[str, object]:
         """Return machine-readable blocker evidence for the KV decode runner."""
 
@@ -1139,6 +1216,7 @@ class StepFunKVDecodeRunPlan:
             "decode_input_upload_plan": self.decode_input_upload_plan,
             "streaming_decode_loop_blueprint": self.streaming_decode_loop_blueprint,
             "streaming_decode_loop_status": self.streaming_decode_loop_status,
+            "streaming_decode_launch_trace": self.streaming_decode_launch_trace,
             "kv_decode_blocker_summary": self.kv_decode_blocker_summary,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,

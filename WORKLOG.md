@@ -33513,3 +33513,38 @@ git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_correctness_status.py
 ```
 
 Results: targeted oracle partial-output/status tests passed (`4` tests); the full correctness-status test file passed (`154` tests); source artifact verification returned `"match"`; compact `--oracle-partial-output-handoff-only` / `--oracle-partial-output-handoff-sha-only` outputs recorded `status=safe`, `partial_output_status=running`, source-path match, execute/output-path command checks, and `oracle_partial_output_handoff_sha256=c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`269` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=8a353d2495c4526dea024364e311184fff3bacb758343512a9bdf84b2b27aae4`, `handoff_summary_sha256=2bed041408ba180d49a4c5856cf14f1fd8cc19a7fff1ad849d4e8ae666dcc59d`, `readiness_summary_sha256=c20d26cb3ed7962c8001867bddfb375261fc89051044ea09e7ef7723df3f751a`, `next_action_commands_sha256=37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346`, `oracle_progress_sha256=554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea`, and `status_integrity_sha256=335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; no backend/quant branch special-casing was added; the diff contains no unsupported StepFun performance or throughput claim.
+
+## 2026-06-03 — StepFun KV streaming launch-trace handoff
+
+Added a metadata-only KV streaming launch trace for the remaining KV-backed decode blocker. `StepFunKVDecodeRunPlan.to_dict()` now includes `streaming_decode_launch_trace`, a 135-operation per-layer trace (45 layers × prompt KV write, decode KV write, decode attention) with dispatch keys, span contracts, pre-run span uploads, expected runtime inputs, and `execution_status=not_launched_metadata_only`. `scripts/stepfun_correctness_status.py` now records the trace in the KV gap report, validates it as an eighth metadata precondition, persists summary/full trace digests, and exposes compact `--kv-streaming-launch-trace-only` / `--kv-streaming-launch-trace-sha-only` outputs for drift polling. This is launch-contract handoff evidence only: the trace is `executable=false`, `no_kernel_launches=true`, readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`), and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py::test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans tests/test_stepfun_load_smoke.py::test_stepfun_load_smoke_dry_run_plan_emits_resource_json tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_kv_streaming_launch_trace_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_correctness_status.py --kv-streaming-launch-trace-only --pretty >/tmp/stepfun-kv-streaming-launch-trace.json
+python3 scripts/stepfun_correctness_status.py --kv-streaming-launch-trace-sha-only >/tmp/stepfun-kv-streaming-launch-trace-sha.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+trace=json.loads(Path('/tmp/stepfun-kv-streaming-launch-trace.json').read_text())
+sha=json.loads(Path('/tmp/stepfun-kv-streaming-launch-trace-sha.json').read_text())
+assert trace['operation_count']==135
+assert trace['first_operation']['operation']=='layers.0.prompt_kv_write'
+assert trace['last_operation']['operation']=='layers.44.decode_attention'
+assert trace['no_kernel_launches'] is True
+print('kv launch trace compact ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' hipengine/runtime/stepfun_gguf_runner.py scripts/stepfun_correctness_status.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md hipengine/runtime/stepfun_gguf_runner.py scripts/stepfun_correctness_status.py tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+```
+
+Results: targeted KV launch-trace/status tests passed (`5` tests); the full correctness-status test file passed (`155` tests); source artifact verification returned `"match"`; compact `--kv-streaming-launch-trace-only` / `--kv-streaming-launch-trace-sha-only` outputs recorded `operation_count=135`, first operation `layers.0.prompt_kv_write`, last operation `layers.44.decode_attention`, `no_kernel_launches=true`, and `streaming_decode_launch_trace_sha256=2d507c1e46ea27a9f62643d42b17bd32f07e70f048e104de999fa0f4723d7675`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`270` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=fa4ea95bb3695b911122814bd61888d16c56012edfedccb7a8b53f6306e7bf2e`, `handoff_summary_sha256=c942df803bf6ab7de40ebec3c88b8c52aeebc39415b3695a3169b8855c183764`, `readiness_summary_sha256=462bd73b2bd6abe0e7d2e3785ea3c9064557e4d7fbc782c6f3d5c7e791531324`, `next_action_commands_sha256=37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346`, `oracle_progress_sha256=554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea`, `oracle_partial_output_handoff_sha256=c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769`, `streaming_decode_launch_trace_summary_sha256=f4594694d4cbc7c1a644ad852f5a87964b0b1b091eee2498198661e06b256559`, and `status_integrity_sha256=335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; no backend/quant branch special-casing was added; the diff contains no unsupported StepFun performance or throughput claim.
