@@ -1,0 +1,148 @@
+{
+  "all_entries_have_recommended_commands": true,
+  "all_entries_have_success_criteria": true,
+  "artifact_count": 3,
+  "artifacts_to_collect": [
+    {
+      "current_blocker_kind": "llama_cpp_oracle_timeout",
+      "current_status": "timeout",
+      "expected_next_token_id": 369,
+      "expected_next_token_text": " |",
+      "first_missing_evidence": "oracle_completed_successfully",
+      "name": "llama_cpp_oracle_success_artifact",
+      "partial_output_handoff_safe": true,
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "readiness_gate": "oracle_parity",
+      "recommended_command_kind": "oracle_helper_long_timeout_command",
+      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "required_for": "oracle_parity_blocked",
+      "source_sha256": "844f6939c3bb675928a904a4aa21ebd188da2510a398aea0281e5388adec494b"
+    },
+    {
+      "evidence": "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt",
+      "name": "kv_kernel_trace_artifact",
+      "required_for": "kv_kernel_trace_artifact_missing"
+    },
+    {
+      "evidence": "one-token decode artifact recording generated token/logit path from KV-backed runtime execution, not host-composed layer-prefix outputs",
+      "name": "kv_backed_next_token_artifact",
+      "required_for": "kv_backed_next_token_artifact_missing"
+    }
+  ],
+  "blocked_gates": [
+    "oracle_parity",
+    "kv_backed_decode",
+    "e2e_inference"
+  ],
+  "entries": [
+    {
+      "artifact_handoff": {
+        "current_blocker_kind": "llama_cpp_oracle_timeout",
+        "current_status": "timeout",
+        "expected_next_token_id": 369,
+        "expected_next_token_text": " |",
+        "first_missing_evidence": "oracle_completed_successfully",
+        "name": "llama_cpp_oracle_success_artifact",
+        "partial_output_handoff_safe": true,
+        "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "readiness_gate": "oracle_parity",
+        "recommended_command_kind": "oracle_helper_long_timeout_command",
+        "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+        "required_for": "oracle_parity_blocked",
+        "source_sha256": "844f6939c3bb675928a904a4aa21ebd188da2510a398aea0281e5388adec494b"
+      },
+      "blocker_kind": "oracle_parity_blocked",
+      "checklist_item": "P11 llama.cpp greedy next-token/logit comparison",
+      "first_missing_evidence": "oracle_completed_successfully",
+      "gate_blocked_by": "llama_cpp_oracle_timeout",
+      "gate_ready": false,
+      "missing_evidence": [
+        "oracle_completed_successfully",
+        "oracle_generated_comparable_text",
+        "oracle_exact_text_match"
+      ],
+      "queue_index": 0,
+      "readiness_gate": "oracle_parity",
+      "recommended_command_kind": "oracle_helper_long_timeout_command",
+      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress.",
+      "success_criteria": [
+        "oracle_gap_report.status is ready",
+        "oracle_gap_report.missing_preconditions is empty",
+        "oracle_gap_report.missing_evidence is empty",
+        "oracle_parity is true",
+        "readiness_gates.oracle_parity.ready is true"
+      ]
+    },
+    {
+      "artifact_handoff": {
+        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+        "launch_trace_non_executable": true,
+        "launch_trace_operation_count": 135,
+        "name": "kv_backed_decode_runtime_artifacts",
+        "readiness_gate": "kv_backed_decode",
+        "required_artifact_names": [
+          "kv_kernel_trace_artifact",
+          "kv_backed_next_token_artifact"
+        ],
+        "required_artifacts": [
+          {
+            "evidence": "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt",
+            "name": "kv_kernel_trace_artifact",
+            "required_for": "kv_kernel_trace_artifact_missing"
+          },
+          {
+            "evidence": "one-token decode artifact recording generated token/logit path from KV-backed runtime execution, not host-composed layer-prefix outputs",
+            "name": "kv_backed_next_token_artifact",
+            "required_for": "kv_backed_next_token_artifact_missing"
+          }
+        ],
+        "required_artifacts_sha256": "f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9",
+        "required_for": "kv_backed_decode_not_wired",
+        "streaming_decode_launch_trace_sha256": "2d507c1e46ea27a9f62643d42b17bd32f07e70f048e104de999fa0f4723d7675",
+        "streaming_decode_launch_trace_summary_sha256": "f4594694d4cbc7c1a644ad852f5a87964b0b1b091eee2498198661e06b256559",
+        "streaming_runner_blocker_names": [
+          "streaming_decode_loop_not_wired",
+          "kv_kernel_trace_artifact_missing",
+          "kv_backed_next_token_artifact_missing"
+        ]
+      },
+      "blocker_kind": "kv_backed_decode_not_wired",
+      "checklist_item": "P11 text-only c=1 KV-backed decode runner",
+      "first_missing_evidence": "streaming_runner_ready_flags",
+      "gate_blocked_by": "kv_backed_decode_not_wired",
+      "gate_ready": false,
+      "missing_evidence": [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact"
+      ],
+      "queue_index": 1,
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "required_evidence": "A streaming runner must materialize prompt KV rows, launch one-token decode KV write and gated paged attention from the resident cache, then feed final logits without host-composed layer outputs.",
+      "success_criteria": [
+        "kv_backed_decode_gap_report.status is ready",
+        "kv_backed_decode_gap_report.missing_evidence is empty",
+        "kv_backed_decode_ready is true",
+        "readiness_gates.kv_backed_decode.ready is true",
+        "e2e_inference_ready is true only after oracle_parity is also true"
+      ]
+    }
+  ],
+  "entry_count": 2,
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "StepFun performance or e2e readiness claims require oracle_parity and kv_backed_decode readiness gates to pass first."
+  },
+  "open_or_partial_items_p0_p12": 2,
+  "remaining_blocker_count": 2,
+  "remaining_blocker_kinds": [
+    "oracle_parity_blocked",
+    "kv_backed_decode_not_wired"
+  ],
+  "schema_version": 1,
+  "status": "blocked"
+}

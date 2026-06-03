@@ -620,6 +620,12 @@ reporting.
   StepFun-capable oracle and KV-backed decode blockers, and supports
   `--fail-on-blocked` for CI/handoff checks, including compact readiness/queue/status-refresh/KV-resource/oracle-helper/first-blocker outputs;
   the handoff also records the ready/source-mismatch/blocked exit-code expectations.
+  `scripts/stepfun_final_blocker_manifest.py` now emits a compact final-blocker
+  evidence manifest (and `--sha-only` digest) that joins the two remaining P11
+  partial checklist items to their readiness gates, first missing evidence,
+  recommended-command digests, oracle rerun artifact path, KV runtime artifacts,
+  launch-trace digests, and the no-claim policy without parsing the full status
+  artifact.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
   one-token decode path.
