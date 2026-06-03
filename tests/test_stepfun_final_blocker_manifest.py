@@ -78,6 +78,39 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["artifacts_to_collect_sha256"] == _stable_json_sha256(
         manifest["artifacts_to_collect"]
     )
+    assert manifest["artifact_status_handoff_sha256"] == _stable_json_sha256(
+        manifest["artifact_status_handoff"]
+    )
+    assert manifest["missing_artifacts_handoff_sha256"] == _stable_json_sha256(
+        manifest["missing_artifacts_handoff"]
+    )
+    assert manifest["all_required_artifacts_satisfied"] is False
+    assert manifest["missing_artifact_count"] == 3
+    assert [record["name"] for record in manifest["artifact_status_handoff"]] == [
+        "llama_cpp_oracle_success_artifact",
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
+    assert [record["name"] for record in manifest["missing_artifacts_handoff"]] == [
+        "llama_cpp_oracle_success_artifact",
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
+    assert manifest["artifact_status_handoff"][0]["artifact_file_present"] is True
+    assert manifest["artifact_status_handoff"][0]["evidence_satisfied"] is False
+    assert manifest["artifact_status_handoff"][0]["missing_reason"] == (
+        "oracle_completed_successfully"
+    )
+    assert manifest["artifact_status_handoff"][1]["artifact_file_present"] is False
+    assert manifest["artifact_status_handoff"][1]["readiness_gate"] == (
+        "kv_backed_decode"
+    )
+    assert manifest["artifact_status_handoff"][1]["recommended_command_kind"] == (
+        "resource_plan_refresh_command"
+    )
+    assert manifest["artifact_status_handoff"][1]["missing_reason"] == (
+        "kv_kernel_trace_artifact_missing"
+    )
     assert manifest["success_criteria_handoff_sha256"] == _stable_json_sha256(
         manifest["success_criteria_handoff"]
     )
@@ -150,6 +183,10 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "entries_sha_only": "entries_sha256",
         "artifacts_only": "artifacts_to_collect",
         "artifacts_sha_only": "artifacts_to_collect_sha256",
+        "artifact_status_only": "artifact_status_handoff",
+        "artifact_status_sha_only": "artifact_status_handoff_sha256",
+        "missing_artifacts_only": "missing_artifacts_handoff",
+        "missing_artifacts_sha_only": "missing_artifacts_handoff_sha256",
         "success_criteria_only": "success_criteria_handoff",
         "success_criteria_sha_only": "success_criteria_handoff_sha256",
         "no_claim_policy_only": "no_claim_policy",
@@ -265,6 +302,10 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     entries_sha_output = tmp_path / "final-blocker-entries-sha.json"
     artifacts_output = tmp_path / "final-blocker-artifacts.json"
     artifacts_sha_output = tmp_path / "final-blocker-artifacts-sha.json"
+    artifact_status_output = tmp_path / "final-blocker-artifact-status.json"
+    artifact_status_sha_output = tmp_path / "final-blocker-artifact-status-sha.json"
+    missing_artifacts_output = tmp_path / "final-blocker-missing-artifacts.json"
+    missing_artifacts_sha_output = tmp_path / "final-blocker-missing-artifacts-sha.json"
     success_criteria_output = tmp_path / "final-blocker-success-criteria.json"
     success_criteria_sha_output = tmp_path / "final-blocker-success-criteria-sha.json"
     no_claim_output = tmp_path / "final-blocker-no-claim-policy.json"
@@ -366,6 +407,100 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert rc == 0
     assert json.loads(artifacts_sha_output.read_text()) == expected[
         "artifacts_to_collect_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--artifact-status-only",
+            "--output",
+            str(artifact_status_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    artifact_status_payload = json.loads(artifact_status_output.read_text())
+    assert artifact_status_payload == expected["artifact_status_handoff"]
+    assert artifact_status_payload[0]["artifact_file_present"] is True
+    assert artifact_status_payload[0]["missing_reason"] == (
+        "oracle_completed_successfully"
+    )
+    assert artifact_status_payload[1]["missing_reason"] == (
+        "kv_kernel_trace_artifact_missing"
+    )
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--artifact-status-sha-only",
+            "--output",
+            str(artifact_status_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(artifact_status_sha_output.read_text()) == expected[
+        "artifact_status_handoff_sha256"
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--missing-artifacts-only",
+            "--output",
+            str(missing_artifacts_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    missing_artifacts_payload = json.loads(missing_artifacts_output.read_text())
+    assert missing_artifacts_payload == expected["missing_artifacts_handoff"]
+    assert [record["name"] for record in missing_artifacts_payload] == [
+        "llama_cpp_oracle_success_artifact",
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--missing-artifacts-sha-only",
+            "--output",
+            str(missing_artifacts_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(missing_artifacts_sha_output.read_text()) == expected[
+        "missing_artifacts_handoff_sha256"
     ]
 
     rc = main(

@@ -1,10 +1,63 @@
 {
   "all_entries_have_recommended_commands": true,
   "all_entries_have_success_criteria": true,
+  "all_required_artifacts_satisfied": false,
   "artifact_count": 3,
+  "artifact_status_handoff": [
+    {
+      "artifact_file_present": true,
+      "current_blocker_kind": "llama_cpp_oracle_timeout",
+      "current_returncode": null,
+      "current_status": "timeout",
+      "evidence_satisfied": false,
+      "first_missing_evidence": "oracle_completed_successfully",
+      "missing": true,
+      "missing_reason": "oracle_completed_successfully",
+      "name": "llama_cpp_oracle_success_artifact",
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "readiness_gate": "oracle_parity",
+      "recommended_command_kind": "oracle_helper_long_timeout_command",
+      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "required_for": "oracle_parity_blocked"
+    },
+    {
+      "artifact_file_present": false,
+      "current_blocker_kind": null,
+      "current_returncode": null,
+      "current_status": null,
+      "evidence_satisfied": false,
+      "first_missing_evidence": null,
+      "missing": true,
+      "missing_reason": "kv_kernel_trace_artifact_missing",
+      "name": "kv_kernel_trace_artifact",
+      "path": null,
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "required_for": "kv_kernel_trace_artifact_missing"
+    },
+    {
+      "artifact_file_present": false,
+      "current_blocker_kind": null,
+      "current_returncode": null,
+      "current_status": null,
+      "evidence_satisfied": false,
+      "first_missing_evidence": null,
+      "missing": true,
+      "missing_reason": "kv_backed_next_token_artifact_missing",
+      "name": "kv_backed_next_token_artifact",
+      "path": null,
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "required_for": "kv_backed_next_token_artifact_missing"
+    }
+  ],
+  "artifact_status_handoff_sha256": "1271ee7aa1efaedcb6141cf24ad8d62b9419173abbd67e32aff346ff67af4899",
   "artifacts_to_collect": [
     {
       "current_blocker_kind": "llama_cpp_oracle_timeout",
+      "current_returncode": null,
       "current_status": "timeout",
       "expected_next_token_id": 369,
       "expected_next_token_text": " |",
@@ -21,27 +74,37 @@
     {
       "evidence": "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt",
       "name": "kv_kernel_trace_artifact",
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
       "required_for": "kv_kernel_trace_artifact_missing"
     },
     {
       "evidence": "one-token decode artifact recording generated token/logit path from KV-backed runtime execution, not host-composed layer-prefix outputs",
       "name": "kv_backed_next_token_artifact",
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
       "required_for": "kv_backed_next_token_artifact_missing"
     }
   ],
-  "artifacts_to_collect_sha256": "fc304dc6a3577dca8be8d2a99c5338b410f468f3aaa6e96723422294ef3f50d4",
+  "artifacts_to_collect_sha256": "7ca5363f22e1d30ee90720061a2a9d0fce645ad432555e7616a4ff0cca72dbe5",
   "blocked_gates": [
     "oracle_parity",
     "kv_backed_decode",
     "e2e_inference"
   ],
   "compact_output_modes": {
+    "artifact_status_only": "artifact_status_handoff",
+    "artifact_status_sha_only": "artifact_status_handoff_sha256",
     "artifacts_only": "artifacts_to_collect",
     "artifacts_sha_only": "artifacts_to_collect_sha256",
     "entries_only": "entries",
     "entries_sha_only": "entries_sha256",
     "gate_status_only": "gate_status_handoff",
     "gate_status_sha_only": "gate_status_handoff_sha256",
+    "missing_artifacts_only": "missing_artifacts_handoff",
+    "missing_artifacts_sha_only": "missing_artifacts_handoff_sha256",
     "no_claim_policy_only": "no_claim_policy",
     "no_claim_policy_sha_only": "no_claim_policy_sha256",
     "recommended_commands_only": "recommended_commands_handoff",
@@ -58,6 +121,7 @@
     {
       "artifact_handoff": {
         "current_blocker_kind": "llama_cpp_oracle_timeout",
+        "current_returncode": null,
         "current_status": "timeout",
         "expected_next_token_id": 369,
         "expected_next_token_text": " |",
@@ -109,11 +173,17 @@
           {
             "evidence": "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt",
             "name": "kv_kernel_trace_artifact",
+            "readiness_gate": "kv_backed_decode",
+            "recommended_command_kind": "resource_plan_refresh_command",
+            "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
             "required_for": "kv_kernel_trace_artifact_missing"
           },
           {
             "evidence": "one-token decode artifact recording generated token/logit path from KV-backed runtime execution, not host-composed layer-prefix outputs",
             "name": "kv_backed_next_token_artifact",
+            "readiness_gate": "kv_backed_decode",
+            "recommended_command_kind": "resource_plan_refresh_command",
+            "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
             "required_for": "kv_backed_next_token_artifact_missing"
           }
         ],
@@ -151,7 +221,7 @@
       ]
     }
   ],
-  "entries_sha256": "6718833f6f165accb6cb1e997dd1ae9b1c18a6c9e4ae5a9cbfb560fd26b1a9e6",
+  "entries_sha256": "dd08e314bbce03612a78a4e6fbd56ac80fed290e93ebcc3007bea2edd6aa912d",
   "entry_count": 2,
   "gate_status_handoff": [
     {
@@ -198,6 +268,58 @@
     }
   ],
   "gate_status_handoff_sha256": "e4fc3075353f0d721a4a1da19163aaafd96de9f2409a6e035addb40359b3e7b3",
+  "missing_artifact_count": 3,
+  "missing_artifacts_handoff": [
+    {
+      "artifact_file_present": true,
+      "current_blocker_kind": "llama_cpp_oracle_timeout",
+      "current_returncode": null,
+      "current_status": "timeout",
+      "evidence_satisfied": false,
+      "first_missing_evidence": "oracle_completed_successfully",
+      "missing": true,
+      "missing_reason": "oracle_completed_successfully",
+      "name": "llama_cpp_oracle_success_artifact",
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "readiness_gate": "oracle_parity",
+      "recommended_command_kind": "oracle_helper_long_timeout_command",
+      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "required_for": "oracle_parity_blocked"
+    },
+    {
+      "artifact_file_present": false,
+      "current_blocker_kind": null,
+      "current_returncode": null,
+      "current_status": null,
+      "evidence_satisfied": false,
+      "first_missing_evidence": null,
+      "missing": true,
+      "missing_reason": "kv_kernel_trace_artifact_missing",
+      "name": "kv_kernel_trace_artifact",
+      "path": null,
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "required_for": "kv_kernel_trace_artifact_missing"
+    },
+    {
+      "artifact_file_present": false,
+      "current_blocker_kind": null,
+      "current_returncode": null,
+      "current_status": null,
+      "evidence_satisfied": false,
+      "first_missing_evidence": null,
+      "missing": true,
+      "missing_reason": "kv_backed_next_token_artifact_missing",
+      "name": "kv_backed_next_token_artifact",
+      "path": null,
+      "readiness_gate": "kv_backed_decode",
+      "recommended_command_kind": "resource_plan_refresh_command",
+      "recommended_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "required_for": "kv_backed_next_token_artifact_missing"
+    }
+  ],
+  "missing_artifacts_handoff_sha256": "1271ee7aa1efaedcb6141cf24ad8d62b9419173abbd67e32aff346ff67af4899",
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
     "performance_claim_allowed": false,
@@ -262,13 +384,13 @@
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
     "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
     "oracle_progress_sha256": "554aa2a68a8e2c9619b8e3437acbe98339da3201cd105f526e8abb394737c3ea",
-    "readiness_summary_sha256": "fa8a4fa8c9184efc8f5143b2793ff01315241fb85cdae2c27f4427610394e8e7",
+    "readiness_summary_sha256": "90c782e7a9dc739c2818ff86c833a048ced9dc9395a171313bc47a53ef8ad218",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "dcd9d5aa3b31394e9fdb13ab68c6af76b48dad233105c02e1771db5456a40513",
-        "size_bytes": 71412
+        "sha256": "32316ffbb7d4ec54c261cde28e3330f5c9f6a66d6793f1d33f4f71f37411d344",
+        "size_bytes": 71534
       },
       "oracle": {
         "exists": true,
@@ -295,10 +417,10 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "e20ea961b546e51193203ba40df3403c1c708787f001c49b9e873aed078a5a6c",
+    "source_artifacts_sha256": "fe2853e82d8f0ff2bbcc3dc27c7474d459ede195009ad309c0608400f27a58b6",
     "status_integrity_sha256": "335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53"
   },
-  "status_provenance_sha256": "a98a0805d8f509aae9c04f4d83cef7841ab555f3441ef13d8b70d588146ca106",
+  "status_provenance_sha256": "a4243fbd2d05dcc9abf00b0ee8473347dec24be64989ba7d3c8378fd71acbb2d",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",

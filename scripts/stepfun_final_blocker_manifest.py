@@ -16,6 +16,81 @@ if str(REPO_ROOT) not in sys.path:
 from scripts import stepfun_correctness_status as status_mod
 
 
+def _artifact_file_present(path_value: object) -> bool:
+    """Return whether an artifact path is provided and currently exists."""
+
+    if not isinstance(path_value, str) or not path_value:
+        return False
+    return Path(path_value).exists()
+
+
+def _artifact_evidence_satisfied(artifact: dict[str, object]) -> bool:
+    """Return whether a required artifact currently satisfies its blocker gate."""
+
+    name = artifact.get("name")
+    if name == "llama_cpp_oracle_success_artifact":
+        return (
+            artifact.get("current_status") == "executed"
+            and artifact.get("current_returncode") == 0
+            and artifact.get("first_missing_evidence") is None
+        )
+    if artifact.get("current") not in (None, ""):
+        return True
+    required_for = str(artifact.get("required_for") or "")
+    if required_for.endswith("_missing"):
+        return False
+    return _artifact_file_present(artifact.get("path"))
+
+
+def _artifact_missing_reason(artifact: dict[str, object]) -> object:
+    """Return the most specific machine-readable reason an artifact is unsatisfied."""
+
+    for key in (
+        "first_missing_evidence",
+        "current_blocker_kind",
+        "required_for",
+        "current_status",
+    ):
+        reason = artifact.get(key)
+        if reason not in (None, ""):
+            return reason
+    if not _artifact_file_present(artifact.get("path")):
+        return "artifact_file_missing"
+    return None
+
+
+def _summarize_required_artifact(artifact: dict[str, object]) -> dict[str, object]:
+    """Return a compact satisfaction record for one required artifact."""
+
+    evidence_satisfied = _artifact_evidence_satisfied(artifact)
+    return {
+        "name": artifact.get("name"),
+        "readiness_gate": artifact.get("readiness_gate"),
+        "required_for": artifact.get("required_for"),
+        "path": artifact.get("path"),
+        "artifact_file_present": _artifact_file_present(artifact.get("path")),
+        "evidence_satisfied": evidence_satisfied,
+        "missing": not evidence_satisfied,
+        "missing_reason": None
+        if evidence_satisfied
+        else _artifact_missing_reason(artifact),
+        "current_status": artifact.get("current_status"),
+        "current_returncode": artifact.get("current_returncode"),
+        "current_blocker_kind": artifact.get("current_blocker_kind"),
+        "first_missing_evidence": artifact.get("first_missing_evidence"),
+        "recommended_command_kind": artifact.get("recommended_command_kind"),
+        "recommended_command_sha256": artifact.get("recommended_command_sha256"),
+    }
+
+
+def _summarize_required_artifacts(
+    artifacts: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Return compact satisfaction records for required blocker artifacts."""
+
+    return [_summarize_required_artifact(artifact) for artifact in artifacts]
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -88,6 +163,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--artifacts-sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of artifacts_to_collect.",
+    )
+    parser.add_argument(
+        "--artifact-status-only",
+        action="store_true",
+        help="Emit only compact satisfaction status for required artifacts.",
+    )
+    parser.add_argument(
+        "--artifact-status-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of artifact status.",
+    )
+    parser.add_argument(
+        "--missing-artifacts-only",
+        action="store_true",
+        help="Emit only required artifacts whose evidence is not satisfied.",
+    )
+    parser.add_argument(
+        "--missing-artifacts-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of missing artifact status.",
     )
     parser.add_argument(
         "--success-criteria-only",
@@ -205,6 +300,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                 "path": oracle_source.get("path"),
                 "source_sha256": oracle_source.get("sha256"),
                 "current_status": oracle_progress.get("status"),
+                "current_returncode": oracle_progress.get("returncode"),
                 "current_blocker_kind": oracle_progress.get("oracle_blocker_kind"),
                 "expected_next_token_id": oracle_progress.get("expected_next_token_id"),
                 "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
@@ -221,11 +317,19 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
             entry["artifact_handoff"] = artifact
             artifacts_to_collect.append(artifact)
         elif blocker_kind == "kv_backed_decode_not_wired":
-            kv_required_artifacts = [
-                dict(record)
-                for record in kv_blocker_summary.get("artifacts_needed", [])
-                if isinstance(record, dict)
-            ]
+            kv_required_artifacts = []
+            for record in kv_blocker_summary.get("artifacts_needed", []):
+                if not isinstance(record, dict):
+                    continue
+                enriched_record = dict(record)
+                enriched_record.setdefault("readiness_gate", "kv_backed_decode")
+                enriched_record.setdefault(
+                    "recommended_command_kind", item.get("recommended_command_kind")
+                )
+                enriched_record.setdefault(
+                    "recommended_command_sha256", item.get("recommended_command_sha256")
+                )
+                kv_required_artifacts.append(enriched_record)
             artifact = {
                 "name": "kv_backed_decode_runtime_artifacts",
                 "required_for": blocker_kind,
@@ -295,6 +399,10 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         }
         for entry in entries
     ]
+    artifact_status_handoff = _summarize_required_artifacts(artifacts_to_collect)
+    missing_artifacts_handoff = [
+        record for record in artifact_status_handoff if record.get("missing") is True
+    ]
     entry_by_gate = {
         str(entry.get("readiness_gate")): entry
         for entry in entries
@@ -319,6 +427,12 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
     no_claim_policy = dict(remaining.get("no_claim_policy", {}))
     entries_sha256 = status_mod._stable_json_sha256(entries)
     artifacts_to_collect_sha256 = status_mod._stable_json_sha256(artifacts_to_collect)
+    artifact_status_handoff_sha256 = status_mod._stable_json_sha256(
+        artifact_status_handoff
+    )
+    missing_artifacts_handoff_sha256 = status_mod._stable_json_sha256(
+        missing_artifacts_handoff
+    )
     success_criteria_handoff_sha256 = status_mod._stable_json_sha256(
         success_criteria_handoff
     )
@@ -334,6 +448,10 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "entries_sha_only": "entries_sha256",
         "artifacts_only": "artifacts_to_collect",
         "artifacts_sha_only": "artifacts_to_collect_sha256",
+        "artifact_status_only": "artifact_status_handoff",
+        "artifact_status_sha_only": "artifact_status_handoff_sha256",
+        "missing_artifacts_only": "missing_artifacts_handoff",
+        "missing_artifacts_sha_only": "missing_artifacts_handoff_sha256",
         "success_criteria_only": "success_criteria_handoff",
         "success_criteria_sha_only": "success_criteria_handoff_sha256",
         "no_claim_policy_only": "no_claim_policy",
@@ -363,6 +481,12 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
         "entries_sha256": entries_sha256,
         "artifacts_to_collect": artifacts_to_collect,
         "artifacts_to_collect_sha256": artifacts_to_collect_sha256,
+        "artifact_status_handoff": artifact_status_handoff,
+        "artifact_status_handoff_sha256": artifact_status_handoff_sha256,
+        "missing_artifacts_handoff": missing_artifacts_handoff,
+        "missing_artifacts_handoff_sha256": missing_artifacts_handoff_sha256,
+        "all_required_artifacts_satisfied": not missing_artifacts_handoff,
+        "missing_artifact_count": len(missing_artifacts_handoff),
         "recommended_commands_handoff": recommended_commands_handoff,
         "recommended_commands_handoff_sha256": recommended_commands_handoff_sha256,
         "success_criteria_handoff": success_criteria_handoff,
@@ -454,6 +578,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = manifest["artifacts_to_collect_sha256"]
     elif args.artifacts_only:
         payload = manifest["artifacts_to_collect"]
+    elif args.artifact_status_sha_only:
+        payload = manifest["artifact_status_handoff_sha256"]
+    elif args.artifact_status_only:
+        payload = manifest["artifact_status_handoff"]
+    elif args.missing_artifacts_sha_only:
+        payload = manifest["missing_artifacts_handoff_sha256"]
+    elif args.missing_artifacts_only:
+        payload = manifest["missing_artifacts_handoff"]
     elif args.success_criteria_sha_only:
         payload = manifest["success_criteria_handoff_sha256"]
     elif args.success_criteria_only:

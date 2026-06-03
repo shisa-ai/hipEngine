@@ -648,6 +648,8 @@ reporting.
   `--blocker-status-only` / `--blocker-status-sha-only`,
   `--final-blocker-summary-only` / `--final-blocker-summary-sha-only`,
   `--action-summary-only` / `--action-summary-sha-only`,
+  `--artifact-status-only` / `--artifact-status-sha-only`,
+  `--missing-artifacts-only` / `--missing-artifacts-sha-only`,
   `--exit-code-policy-only` / `--exit-code-policy-sha-only`,
   `--digest-summary-only` / `--digest-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift

@@ -63,6 +63,9 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["blocker_status_sha256"] == _stable_json_sha256(
         report["blocker_status"]
     )
+    assert report["missing_artifact_summary_sha256"] == _stable_json_sha256(
+        report["missing_artifact_summary"]
+    )
     assert report["readiness_summary"]["status"] == "blocked"
     assert report["readiness_summary"]["oracle_parity"] is False
     assert report["readiness_summary"]["kv_backed_decode_ready"] is False
@@ -116,6 +119,9 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
             "e2e_readiness_gate_summary_sha256"
         ],
         "blocker_status_sha256": report["blocker_status_sha256"],
+        "missing_artifact_summary_sha256": report[
+            "missing_artifact_summary_sha256"
+        ],
         "action_summary_sha256": report["action_summary_sha256"],
         "exit_code_policy_sha256": report["exit_code_policy_sha256"],
         "verification_failures_sha256": report["verification_failures_sha256"],
@@ -143,6 +149,14 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "required_artifacts": current_manifest["artifacts_to_collect"],
         "required_artifacts_sha256": current_manifest[
             "artifacts_to_collect_sha256"
+        ],
+        "artifact_status": current_manifest["artifact_status_handoff"],
+        "artifact_status_sha256": current_manifest[
+            "artifact_status_handoff_sha256"
+        ],
+        "missing_artifacts": current_manifest["missing_artifacts_handoff"],
+        "missing_artifacts_sha256": current_manifest[
+            "missing_artifacts_handoff_sha256"
         ],
         "success_criteria": current_manifest["success_criteria_handoff"],
         "success_criteria_sha256": current_manifest[
@@ -224,6 +238,33 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
         "exit_code_with_fail_on_blocked": 2,
         "fail_on_blocked_option": "--fail-on-blocked",
     }
+    assert report["missing_artifact_summary"] == {
+        "schema_version": 1,
+        "status": "blocked_verified",
+        "remaining_blocker_count": 2,
+        "remaining_blocker_kinds": [
+            "oracle_parity_blocked",
+            "kv_backed_decode_not_wired",
+        ],
+        "all_required_artifacts_satisfied": False,
+        "missing_artifact_count": 3,
+        "artifact_status": current_manifest["artifact_status_handoff"],
+        "artifact_status_sha256": current_manifest[
+            "artifact_status_handoff_sha256"
+        ],
+        "missing_artifacts": current_manifest["missing_artifacts_handoff"],
+        "missing_artifacts_sha256": current_manifest[
+            "missing_artifacts_handoff_sha256"
+        ],
+        "no_claim_policy": current_manifest["no_claim_policy"],
+        "no_claim_policy_sha256": current_manifest["no_claim_policy_sha256"],
+    }
+    assert report["missing_artifact_summary"]["missing_artifacts"][0][
+        "missing_reason"
+    ] == "oracle_completed_successfully"
+    assert report["missing_artifact_summary"]["missing_artifacts"][1][
+        "missing_reason"
+    ] == "kv_kernel_trace_artifact_missing"
     assert report["action_summary"]["recommended_commands"][0][
         "recommended_command_kind"
     ] == "oracle_helper_long_timeout_command"
@@ -319,6 +360,10 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     final_blocker_summary_sha_output = tmp_path / "handoff-final-blocker-summary-sha.json"
     action_summary_output = tmp_path / "handoff-action-summary.json"
     action_summary_sha_output = tmp_path / "handoff-action-summary-sha.json"
+    artifact_status_output = tmp_path / "handoff-artifact-status.json"
+    artifact_status_sha_output = tmp_path / "handoff-artifact-status-sha.json"
+    missing_artifacts_output = tmp_path / "handoff-missing-artifacts.json"
+    missing_artifacts_sha_output = tmp_path / "handoff-missing-artifacts-sha.json"
     exit_code_policy_output = tmp_path / "handoff-exit-code-policy.json"
     exit_code_policy_sha_output = tmp_path / "handoff-exit-code-policy-sha.json"
     digest_summary_output = tmp_path / "handoff-digest-summary.json"
@@ -871,6 +916,115 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     assert json.loads(action_summary_sha_output.read_text()) == expected[
         "action_summary_sha256"
     ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--artifact-status-only",
+            "--output",
+            str(artifact_status_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    artifact_status_payload = json.loads(artifact_status_output.read_text())
+    assert artifact_status_payload == expected["missing_artifact_summary"][
+        "artifact_status"
+    ]
+    assert artifact_status_payload[0]["artifact_file_present"] is True
+    assert artifact_status_payload[0]["evidence_satisfied"] is False
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--artifact-status-sha-only",
+            "--output",
+            str(artifact_status_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(artifact_status_sha_output.read_text()) == expected[
+        "missing_artifact_summary"
+    ]["artifact_status_sha256"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--missing-artifacts-only",
+            "--output",
+            str(missing_artifacts_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    missing_artifacts_payload = json.loads(missing_artifacts_output.read_text())
+    assert missing_artifacts_payload == expected["missing_artifact_summary"][
+        "missing_artifacts"
+    ]
+    assert [record["name"] for record in missing_artifacts_payload] == [
+        "llama_cpp_oracle_success_artifact",
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--missing-artifacts-sha-only",
+            "--output",
+            str(missing_artifacts_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(missing_artifacts_sha_output.read_text()) == expected[
+        "missing_artifact_summary"
+    ]["missing_artifacts_sha256"]
 
     rc = main(
         [
