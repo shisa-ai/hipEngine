@@ -677,23 +677,22 @@ What is still not green:
   is eliminated; the issue is not caused by the original rowchunk cache/table
   layout seen by the batch context kernel
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-batch-compact-cache/summary.json`).
-  Forcing the full-attention input RMSNorm and QKV prep/scratch to per-row also
-  does not change rowchunk3: rowchunk2 remains generated-token green with no
-  projection drift and no full-attention stage failures or bit drift, while
-  rowchunk3 keeps L5 layer4 QKV/Z drift, the L6 truncated-token failure, and L8
-  layer7 `attn_input_pre_qkv`/`attn_context` failures. Pre-QKV setup is
-  eliminated; with this diagnostic the strict layer3 drift first appears after
-  context/gate at layer3 `gated_attn`/O/residual/MLP/output under tolerance, then
-  is amplified by the later layer7 input/pre-QKV path
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-preqkv/summary.json`).
-  Forcing the whole post-context full-attention suffix to per-row interleaved
-  order (KV append, context+gate, O, post-attention add/RMSNorm, and MoE) is also
-  not a safe fix. It removes the rowchunk3 L6 generated-token failure, but
-  rowchunk3 remains hidden/projection/stage-red with L5 layer4 QKV/Z drift and L8
-  layer7 `attn_input_pre_qkv`/`attn_context` failures; the rowchunk2 control
-  becomes token-red at L8 and gains QKV/Z drift under the same suffix. Suffix
-  phasing/post-attention/MoE interleaving is eliminated; the O-bearing suffix can
-  move tokens but does not repair the inherited hidden trajectory
+  The row-chunk diagnostic branch now forwards full-attention force flags and
+  chunk-local per-row context/append tuples into each chunked runtime call; before
+  that fix, rowchunk force-flag artifacts could record fallback metadata without
+  actually exercising the fallback inside the chunk. The forwarded pre-QKV rerun
+  confirms the same shape with trustworthy execution: forcing full-attention
+  input RMSNorm and QKV prep/scratch to per-row does not change rowchunk3;
+  rowchunk2 remains generated-token green with no projection drift and no
+  full-attention stage failures or bit drift, while rowchunk3 keeps L5 layer4
+  QKV/Z drift, the L6 generated-token failure, and L8 layer7
+  `attn_input_pre_qkv`/`attn_context` failures. Pre-QKV setup remains eliminated;
+  the grouped>=3 issue is downstream/inherited from the layer3 trajectory rather
+  than unforwarded diagnostic metadata
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-preqkv/summary.json`).
+  A pre-forwarding suffix-interleave attempt changed token shape via the
+  O-bearing path but is no longer used as proof that the full per-row suffix ran;
+  rerun suffix-specific probes after the forwarding fix if they become relevant
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected

@@ -1,0 +1,5 @@
+HIP version: 7.2.53211-364a905
+AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)
+Target: x86_64-pc-linux-gnu
+Thread model: posix
+InstalledDir: /opt/rocm/lib/llvm/bin

@@ -4495,7 +4495,12 @@ class Qwen35ParoResidentSession:
                                 chunk_moe_scratch = self._ensure_moe_decode_batch_scratch(
                                     layer_id,
                                     chunk_rows,
-                                    force_selected_c1_moe=force_selected_c1_moe,
+                                    force_selected_c1_moe=(
+                                        force_selected_c1_moe
+                                        or force_per_row_full_attention_moe
+                                        or force_per_row_full_attention_scratch
+                                        or force_per_row_full_attention_suffix
+                                    ),
                                 )
                                 chunk_post_input_rmsnorm_trace = None
                                 chunk_input_scratch_trace = None
@@ -4547,6 +4552,14 @@ class Qwen35ParoResidentSession:
                                             rows=1,
                                             stream=_stream,
                                         )
+                                chunk_per_row_contexts = (
+                                    per_row_contexts[chunk_start:chunk_end] if per_row_contexts is not None else None
+                                )
+                                chunk_per_row_append_contexts = (
+                                    per_row_append_contexts[chunk_start:chunk_end]
+                                    if per_row_append_contexts is not None
+                                    else None
+                                )
                                 chunk_out = state.run_full_attention_moe_decode_batch_layer_fp16(
                                     chunk_hidden,
                                     key_cache=key_cache,
@@ -4561,7 +4574,23 @@ class Qwen35ParoResidentSession:
                                     moe_scratch=chunk_moe_scratch,
                                     tokens=chunk_rows,
                                     force_selected_c1_moe=force_selected_c1_moe,
+                                    force_per_row_input_rmsnorm=force_per_row_full_attention_input,
+                                    force_per_row_qkv_scratch=force_per_row_full_attention_qkv,
+                                    force_per_row_layer_scratch=force_per_row_full_attention_scratch,
+                                    force_per_row_context=force_per_row_full_attention_context,
+                                    force_per_row_context_only=force_per_row_full_attention_context_only,
+                                    force_batch_temp_context=force_batch_temp_full_attention_context,
+                                    force_batch_compact_context=force_batch_compact_full_attention_context,
+                                    force_per_row_gate=force_per_row_full_attention_gate,
+                                    per_row_contexts=chunk_per_row_contexts,
+                                    force_per_row_kv_append=force_per_row_full_attention_kv_append,
+                                    per_row_append_contexts=chunk_per_row_append_contexts,
+                                    force_per_row_append_context=force_per_row_full_attention_append_context,
+                                    force_per_row_suffix=force_per_row_full_attention_suffix,
+                                    force_per_row_output=force_per_row_full_attention_output,
                                     force_batch_gemv_output=force_batch_gemv_full_attention_output,
+                                    force_per_row_post_attention=force_per_row_post_attention,
+                                    force_per_row_moe=force_per_row_full_attention_moe,
                                     post_input_rmsnorm_trace=chunk_post_input_rmsnorm_trace,
                                     input_scratch_trace=chunk_input_scratch_trace,
                                     qkv_tensor_trace=chunk_qkv_tensor_trace,
@@ -4581,13 +4610,23 @@ class Qwen35ParoResidentSession:
                                     rows=chunk_rows,
                                     stream=stream,
                                 )
-                                self.runtime.memcpy_async(
-                                    next_hidden.ptr + chunk_start * self.hidden_nbytes,
-                                    chunk_out.ptr,
-                                    chunk_rows * self.hidden_nbytes,
-                                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                                    stream,
-                                )
+                                if force_per_row_full_attention_layer_copy:
+                                    for row in range(chunk_rows):
+                                        self.runtime.memcpy_async(
+                                            next_hidden.ptr + (chunk_start + row) * self.hidden_nbytes,
+                                            chunk_out.ptr + row * self.hidden_nbytes,
+                                            self.hidden_nbytes,
+                                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                                            stream,
+                                        )
+                                else:
+                                    self.runtime.memcpy_async(
+                                        next_hidden.ptr + chunk_start * self.hidden_nbytes,
+                                        chunk_out.ptr,
+                                        chunk_rows * self.hidden_nbytes,
+                                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                                        stream,
+                                    )
                             batch_full_spans_metadata = {
                                 "row_chunk_size": int(chunk_size),
                                 "chunks": chunk_records,
