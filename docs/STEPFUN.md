@@ -660,9 +660,14 @@ reporting.
   `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` alongside the
   status and final-blocker artifacts. `--fail-on-blocked` returns the documented
   blocked exit code when CI should fail until oracle/KV readiness is real.
-  This checklist item is partial rather than complete because the current runner
-  is host-composed/chunked and does not yet implement the final KV-backed
-  one-token decode path.
+  `scripts/stepfun_kv_trace_check.py` validates the missing KV kernel trace
+  artifact when a future real `rocprofv3` CSV or compact JSON trace is retained:
+  it checks the expected StepFun prompt-KV write, decode-KV write,
+  split-K attention context, and gated attention reduce kernel families against
+  the planned layer count and emits compact summary/status/SHA outputs without
+  making token or performance claims. This checklist item is partial rather than
+  complete because the current runner is host-composed/chunked and does not yet
+  implement the final KV-backed one-token decode path.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
