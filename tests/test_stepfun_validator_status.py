@@ -178,6 +178,11 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
         "kv_trace_check_command",
         "kv_next_token_check_command",
     ]
+    assert summary["validator_results_sha256"] == report["validator_results_sha256"]
+    assert summary["blocked_validator_results_sha256"] == report[
+        "blocked_validator_results_sha256"
+    ]
+    assert report["blocked_validator_results"] == []
     assert summary["no_claim_policy"]["validator_artifacts_passed"] is True
     assert summary["no_claim_policy"]["e2e_inference_claim_allowed"] is False
     assert [record["status"] for record in report["validator_results"]] == [
@@ -222,7 +227,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["missing_count"] == 1
     assert summary["failed_count"] == 0
     results = {record["artifact_name"]: record for record in report["validator_results"]}
-    assert results["kv_kernel_trace_artifact"] == {
+    expected_missing_trace = {
         "artifact_name": "kv_kernel_trace_artifact",
         "readiness_gate": "kv_backed_decode",
         "required_for": "kv_kernel_trace_artifact_missing",
@@ -234,6 +239,11 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
         "ready": False,
         "reason": "artifact_file_missing",
     }
+    assert results["kv_kernel_trace_artifact"] == expected_missing_trace
+    assert report["blocked_validator_results"] == [expected_missing_trace]
+    assert summary["blocked_validator_results_sha256"] == report[
+        "blocked_validator_results_sha256"
+    ]
 
 
 def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
@@ -244,6 +254,10 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     manifest = tmp_path / "manifest.json"
     summary_output = tmp_path / "summary.json"
+    results_output = tmp_path / "results.json"
+    results_sha_output = tmp_path / "results-sha.json"
+    blocked_output = tmp_path / "blocked.json"
+    blocked_sha_output = tmp_path / "blocked-sha.json"
     sha_output = tmp_path / "sha.json"
     status_output = tmp_path / "status.json"
     _write_prompt(prompt)
@@ -288,7 +302,84 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert rc == 0
     assert len(json.loads(sha_output.read_text())) == 64
 
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--results-only",
+            "--output",
+            str(results_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    results_payload = json.loads(results_output.read_text())
+    assert [record["status"] for record in results_payload] == [
+        "passed",
+        "passed",
+        "passed",
+    ]
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--results-sha-only",
+            "--output",
+            str(results_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(results_sha_output.read_text())) == 64
+
     trace.unlink()
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-only",
+            "--output",
+            str(blocked_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    blocked_payload = json.loads(blocked_output.read_text())
+    assert [record["artifact_name"] for record in blocked_payload] == [
+        "kv_kernel_trace_artifact"
+    ]
+    assert blocked_payload[0]["status"] == "missing"
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-sha-only",
+            "--output",
+            str(blocked_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(blocked_sha_output.read_text())) == 64
+
     rc = main(
         [
             "--manifest",

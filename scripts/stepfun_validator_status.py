@@ -73,6 +73,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the compact validator_status_summary payload.",
     )
     parser.add_argument(
+        "--results-only",
+        action="store_true",
+        help="Emit only the per-validator result records.",
+    )
+    parser.add_argument(
+        "--results-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of per-validator results.",
+    )
+    parser.add_argument(
+        "--blocked-only",
+        action="store_true",
+        help="Emit only failed or missing validator result records.",
+    )
+    parser.add_argument(
+        "--blocked-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of failed/missing validator records.",
+    )
+    parser.add_argument(
         "--sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the full report or compact summary.",
@@ -220,6 +240,9 @@ def build_validator_status_report(
         )
         for record in validator_commands
     ]
+    blocked_results = [
+        record for record in results if record.get("status") in {"missing", "failed"}
+    ]
     passed = sum(1 for record in results if record.get("status") == "passed")
     missing = sum(1 for record in results if record.get("status") == "missing")
     failed = sum(1 for record in results if record.get("status") == "failed")
@@ -239,6 +262,9 @@ def build_validator_status_report(
             record.get("validator_artifact_path") for record in results
         ],
         "validator_results_sha256": status_mod._stable_json_sha256(results),
+        "blocked_validator_results_sha256": status_mod._stable_json_sha256(
+            blocked_results
+        ),
         "manifest_sha256": status_mod._stable_json_sha256(manifest),
         "no_claim_policy": {
             "validator_artifacts_passed": ready,
@@ -259,6 +285,10 @@ def build_validator_status_report(
         "validator_status_summary_sha256": status_mod._stable_json_sha256(summary),
         "validator_results": results,
         "validator_results_sha256": status_mod._stable_json_sha256(results),
+        "blocked_validator_results": blocked_results,
+        "blocked_validator_results_sha256": status_mod._stable_json_sha256(
+            blocked_results
+        ),
         "readiness_impact": {
             "validator_artifacts_passed": ready,
             "oracle_parity": False,
@@ -290,6 +320,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.status_only:
         payload: object = report["status"]
+    elif args.blocked_sha_only:
+        payload = report["blocked_validator_results_sha256"]
+    elif args.blocked_only:
+        payload = report["blocked_validator_results"]
+    elif args.results_sha_only:
+        payload = report["validator_results_sha256"]
+    elif args.results_only:
+        payload = report["validator_results"]
     elif args.sha_only:
         payload = report["validator_status_summary_sha256"] if args.summary_only else report["report_sha256"]
     elif args.summary_only:
