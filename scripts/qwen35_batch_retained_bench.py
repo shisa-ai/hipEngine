@@ -4004,10 +4004,11 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c=2 profiling shows native selected-c1 batch MoE is generated-token
-    # green and materially faster than grouped-compact, while c=4/c=8 retained
-    # rows already have accepted grouped-compact evidence.
-    return "selected_c1" if int(batch_size) == 2 else "grouped_compact"
+    # c=2/c=4 profiling shows native selected-c1 batch MoE is
+    # generated-token green and materially faster than grouped-compact, while
+    # c=8 stays on grouped-compact for the linear layers because c=8 selected
+    # MoE plus native full-attention is not yet generated-token green.
+    return "selected_c1" if int(batch_size) in {2, 4} else "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4019,12 +4020,12 @@ def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Native batch full-attention is generated-token green for the active c=2
-    # gate. Current c=4/c=8 evidence isolates the next correctness blocker to
-    # native batch full-attention, while the per-row full-attention fallback is
-    # green. Keep larger unproven row counts on native_batch so they still fail
-    # loudly until covered by equality artifacts.
-    return "per_row" if int(batch_size) in {4, 8} else "native_batch"
+    # Native batch full-attention is generated-token green for c=2 and c=4
+    # once auto MoE selects the selected-c1 batch path. c=8 still requires the
+    # per-row full-attention fallback for correctness; keep larger unproven row
+    # counts on native_batch so they still fail loudly until covered by equality
+    # artifacts.
+    return "per_row" if int(batch_size) == 8 else "native_batch"
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
@@ -4742,7 +4743,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-full-attn-path",
         choices=("auto", "native_batch", "per_row"),
         default="auto",
-        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for the active c=2 gate, uses per_row for c=4/c=8 correctness while native batch full-attention remains blocked, and leaves larger unproven row counts on native_batch.",
+        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2/c=4, uses per_row for c=8 correctness while native batch full-attention remains blocked there, and leaves larger unproven row counts on native_batch.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",
