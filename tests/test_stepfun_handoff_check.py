@@ -50,6 +50,7 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["status"] == "blocked_verified"
     assert report["verification_failures"] == []
     assert report["verification_failures_sha256"] == _stable_json_sha256([])
+    assert report["summary_sha256"] == _stable_json_sha256(report["summary"])
     assert report["correctness_status_verification"]["status"] == "match"
     assert report["final_blocker_manifest_verification"]["status"] == "match"
     summary = report["summary"]
@@ -90,8 +91,18 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
         tmp_path
     )
     summary_output = tmp_path / "handoff-summary.json"
+    summary_sha_output = tmp_path / "handoff-summary-sha.json"
     status_output = tmp_path / "handoff-status.json"
     failures_output = tmp_path / "handoff-failures.json"
+    failures_sha_output = tmp_path / "handoff-failures-sha.json"
+    expected = build_handoff_check(
+        prompt_artifact=prompt,
+        oracle_artifact=oracle,
+        resource_artifact=resource,
+        docs=docs,
+        status_artifact=status_artifact,
+        manifest_artifact=manifest_artifact,
+    )
 
     rc = main(
         [
@@ -114,7 +125,30 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
         ]
     )
     assert rc == 0
-    assert json.loads(summary_output.read_text())["status"] == "blocked_verified"
+    assert json.loads(summary_output.read_text()) == expected["summary"]
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--summary-sha-only",
+            "--output",
+            str(summary_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(summary_sha_output.read_text()) == expected["summary_sha256"]
 
     rc = main(
         [
@@ -161,6 +195,31 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     )
     assert rc == 0
     assert json.loads(failures_output.read_text()) == []
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-artifact",
+            str(status_artifact),
+            "--manifest-artifact",
+            str(manifest_artifact),
+            "--failures-sha-only",
+            "--output",
+            str(failures_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(failures_sha_output.read_text()) == expected[
+        "verification_failures_sha256"
+    ]
 
     rc = main(
         [

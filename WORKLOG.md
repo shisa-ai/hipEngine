@@ -33778,3 +33778,32 @@ git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_handoff_check.py test
 ```
 
 Results: targeted handoff/final-blocker tests passed (`8` tests); correctness-status source verification returned `"match"`; final-blocker manifest verification returned `"match"`; `stepfun_handoff_check.py --status-only` returned `"blocked_verified"`; `--failures-only` returned `[]`; `--fail-on-blocked --status-only` returned exit code `2` with status `"blocked_verified"`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`277` StepFun/registry tests without failures plus CPU-reference fixture checks). Current hashes: `manifest_sha256=72be3dd00693ba166cccaa795a749e88c210ddc401d9f1454e550f2aa939bd06`, `source_artifacts_sha256=5a9b3ec42d7a2fefb790de7f938cc1b87cb5cfc0811dbc8ba92ea58bb9cfe98b`, `readiness_summary_sha256=57189ae25aa7bcdb49611877077ac5520ad2aa4fe8908e04e50837c9a955445e`, and `status_integrity_sha256=335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; no backend/quant branch special-casing was added; the diff contains no unsupported StepFun performance or throughput claim.
+
+## 2026-06-03 — StepFun handoff verifier digest compact outputs
+
+Added digest-only compact outputs to the combined StepFun handoff verifier. `scripts/stepfun_handoff_check.py` now records `summary_sha256` and supports `--summary-sha-only` plus `--failures-sha-only`, so automation can poll verified-blocked summary/failure drift without parsing the full verifier report. This is handoff verification evidence only: readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`) and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_handoff_check.py
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --summary-only --pretty >/tmp/stepfun-handoff-check-summary.json
+python3 scripts/stepfun_handoff_check.py --summary-sha-only --pretty >/tmp/stepfun-handoff-check-summary-sha.json
+python3 scripts/stepfun_handoff_check.py --failures-only --pretty >/tmp/stepfun-handoff-check-failures.json
+python3 scripts/stepfun_handoff_check.py --failures-sha-only --pretty >/tmp/stepfun-handoff-check-failures-sha.json
+python3 scripts/stepfun_handoff_check.py --status-only >/tmp/stepfun-handoff-check-status.json
+python3 scripts/stepfun_handoff_check.py --fail-on-blocked --summary-sha-only >/tmp/stepfun-handoff-check-fail-on-blocked-summary-sha.json  # exit 2 expected
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -m pytest -q tests/test_stepfun_handoff_check.py tests/test_stepfun_final_blocker_manifest.py tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_reports_remaining_blockers
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_handoff_check.py scripts/stepfun_final_blocker_manifest.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_handoff_check.py tests/test_stepfun_handoff_check.py benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+```
+
+Results: targeted handoff verifier tests passed (`3` tests), and the handoff/final-blocker cross-check passed (`8` tests); correctness-status source verification returned `"match"`; final-blocker manifest verification returned `"match"`; `stepfun_handoff_check.py --status-only` returned `"blocked_verified"`; `--failures-only` returned `[]`; `--fail-on-blocked --summary-sha-only` returned exit code `2` with `summary_sha256=0f85a72d550bc16c01ac063c11fb38d7a11ef7e28552fad90cce1b0227f8b551`; `verification_failures_sha256=4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`277` StepFun/registry tests without failures plus CPU-reference fixture checks). Current hashes: `manifest_sha256=9e29eaa89fa6496c8aacbf3a3eeb6f209fe7046e37825df598a147a69d16a143`, `source_artifacts_sha256=d892077ca35ec639ff81b63baf35d8fa304173fffd543bb162dfe9da7416480f`, `readiness_summary_sha256=1c7c4b6f8a8e62dce3ff56d604da04af16b5b2165b201252da294882999b1906`, and `status_integrity_sha256=335066bed7f506ee343e84dc3cbcad26c2d3fa5876624edcd24201daa811ff53`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; no backend/quant branch special-casing was added; the diff contains no unsupported StepFun performance or throughput claim.
