@@ -4487,6 +4487,56 @@ class Qwen35ParoResidentSession:
                                     chunk_rows,
                                     force_selected_c1_moe=force_selected_c1_moe,
                                 )
+                                chunk_post_input_rmsnorm_trace = None
+                                chunk_input_scratch_trace = None
+                                chunk_qkv_tensor_trace = None
+                                if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
+                                    def chunk_post_input_rmsnorm_trace(
+                                        attention_scratch: Qwen35ParoAttentionScratch,
+                                        *,
+                                        _layer_id: int = layer_id,
+                                        _rows: int = chunk_rows,
+                                        _stream: int = stream,
+                                    ) -> None:
+                                        self._trace_decode_full_attention(
+                                            layer_id=_layer_id,
+                                            stage="attn_input_pre_qkv",
+                                            hidden=attention_scratch.attn_input,
+                                            rows=_rows,
+                                            stream=_stream,
+                                        )
+
+                                    def chunk_input_scratch_trace(
+                                        stage: str,
+                                        row: int,
+                                        attention_scratch: Qwen35ParoAttentionScratch,
+                                        *,
+                                        _layer_id: int = layer_id,
+                                        _stream: int = stream,
+                                    ) -> None:
+                                        self._trace_decode_full_attention(
+                                            layer_id=_layer_id,
+                                            stage=stage,
+                                            hidden=attention_scratch.attn_input,
+                                            rows=1,
+                                            stream=_stream,
+                                        )
+
+                                    def chunk_qkv_tensor_trace(
+                                        stage: str,
+                                        row: int,
+                                        tensor: Tensor,
+                                        *,
+                                        _layer_id: int = layer_id,
+                                        _stream: int = stream,
+                                    ) -> None:
+                                        self._trace_decode_full_attention_tensor(
+                                            layer_id=_layer_id,
+                                            stage=stage,
+                                            tensor=tensor,
+                                            rows=1,
+                                            stream=_stream,
+                                        )
                                 chunk_out = state.run_full_attention_moe_decode_batch_layer_fp16(
                                     chunk_hidden,
                                     key_cache=key_cache,
@@ -4502,6 +4552,9 @@ class Qwen35ParoResidentSession:
                                     tokens=chunk_rows,
                                     force_selected_c1_moe=force_selected_c1_moe,
                                     force_batch_gemv_output=force_batch_gemv_full_attention_output,
+                                    post_input_rmsnorm_trace=chunk_post_input_rmsnorm_trace,
+                                    input_scratch_trace=chunk_input_scratch_trace,
+                                    qkv_tensor_trace=chunk_qkv_tensor_trace,
                                     library=self.libraries,
                                     stream=stream,
                                 )

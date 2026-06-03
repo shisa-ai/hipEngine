@@ -2471,6 +2471,20 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(mo
         force_selected_c1_moe=force_selected_c1_moe,
     )
     copies: list[tuple[int, int, int, int]] = []
+    trace_calls: list[tuple[str, int, int, int]] = []
+    tensor_trace_calls: list[tuple[str, int, int, int]] = []
+    session._decode_full_attention_trace = []
+    session._trace_decode_full_attention_scratch = lambda **kwargs: None
+    session._trace_decode_full_attention_moe_scratch = lambda **kwargs: None
+
+    def trace_decode_full_attention(*, layer_id, stage, hidden, rows, stream=0):
+        trace_calls.append((str(stage), int(rows), int(hidden.ptr), int(stream)))
+
+    def trace_decode_full_attention_tensor(*, layer_id, stage, tensor, rows, stream=0):
+        tensor_trace_calls.append((str(stage), int(rows), int(tensor.ptr), int(stream)))
+
+    session._trace_decode_full_attention = trace_decode_full_attention
+    session._trace_decode_full_attention_tensor = trace_decode_full_attention_tensor
 
     class FakeRuntime:
         def memcpy_async(self, dst, src, nbytes, kind, stream):
@@ -2482,6 +2496,10 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(mo
 
         def run_full_attention_moe_decode_batch_layer_fp16(self, hidden, **kwargs):
             self.calls.append((hidden, kwargs))
+            scratch = SimpleNamespace(attn_input=hidden)
+            kwargs["post_input_rmsnorm_trace"](scratch)
+            kwargs["input_scratch_trace"]("attn_input_after_rotate", 0, scratch)
+            kwargs["qkv_tensor_trace"]("q_proj_key_after_project", 0, hidden)
             return Tensor.from_handle(0x9000 + (len(self.calls) - 1) * 0x100, (hidden.shape[0], 8), DType.FP16, device)
 
     state = FakeState()
@@ -2496,6 +2514,22 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(mo
     assert [call[0].shape for call in state.calls] == [(2, 8), (2, 8)]
     assert [call[1]["tokens"] for call in state.calls] == [2, 2]
     assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True, True]
+    assert all(call[1]["post_input_rmsnorm_trace"] is not None for call in state.calls)
+    assert all(call[1]["input_scratch_trace"] is not None for call in state.calls)
+    assert all(call[1]["qkv_tensor_trace"] is not None for call in state.calls)
+    chunk_trace_calls = [
+        call for call in trace_calls if call[0] in {"attn_input_pre_qkv", "attn_input_after_rotate"}
+    ]
+    assert chunk_trace_calls == [
+        ("attn_input_pre_qkv", 2, 0x1000, 7),
+        ("attn_input_after_rotate", 1, 0x1000, 7),
+        ("attn_input_pre_qkv", 2, 0x1000 + 2 * session.hidden_nbytes, 7),
+        ("attn_input_after_rotate", 1, 0x1000 + 2 * session.hidden_nbytes, 7),
+    ]
+    assert tensor_trace_calls == [
+        ("q_proj_key_after_project", 1, 0x1000, 7),
+        ("q_proj_key_after_project", 1, 0x1000 + 2 * session.hidden_nbytes, 7),
+    ]
     assert copies == [
         (0x2000, 0x9000, 2 * session.hidden_nbytes, 7),
         (0x2000 + 2 * session.hidden_nbytes, 0x9000 + 0x100, 2 * session.hidden_nbytes, 7),
