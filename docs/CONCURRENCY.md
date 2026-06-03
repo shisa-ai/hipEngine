@@ -730,6 +730,15 @@ What is still not green:
   cause; the remaining failure is inherited from the rowchunk3 layer3 trajectory
   into the next linear layer rather than a standalone O mismatch
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-o-proj/summary.json`).
+  The forwarded context+gate+O rerun is also not a repair and no longer
+  reproduces the pre-forwarding rowchunk3 token movement: forcing both the
+  context/gate branch and O projection to per-row poisons rowchunk2 at L6, leaves
+  rowchunk3 token-red at L6, gives both paths L5 layer4 QKV/Z drift, and leaves
+  both paths with L8 layer7 `attn_input_pre_qkv`/query/`attn_context`/
+  `mlp_input` failures. The O-bearing suffix is eliminated as a
+  retained-compatible fix under trustworthy forwarded execution, and the earlier
+  token-movement signal is superseded
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-forwarded-context-gate-o/summary.json`).
   The forwarded layer-copy-only rerun also keeps rowchunk2 token-green with no
   projection drift or full-attention stage failures, while rowchunk3 still has L5
   layer4 QKV/Z drift, the L6 token failure, and L8 layer7
