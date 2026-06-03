@@ -592,6 +592,15 @@ What is still not green:
   projection kernel as the cause of that drift; the projection differences are
   inherited from the grouped>=3 layer3 output/hidden trajectory
   (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-selected-projection-bridge/summary.json`).
+  Forcing full-attention layer-copy and post-attention add/RMSNorm to per-row
+  diagnostics also does not change the shape: rowchunk2 stays generated-token
+  green with zero linear-projection drift and no full-attention stage failures,
+  while rowchunk3 keeps the L5 layer4 QKV/Z drift, L6 truncated-token failure,
+  and L8 layer7 `attn_input_pre_qkv` failure. The grouped>=3 c4 drift is
+  therefore not caused by the layer3 output-to-layer4 copy/RMSNorm handoff; the
+  bad trajectory is already in the layer3 full-attention output values that feed
+  the next linear layer
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-handoff/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
