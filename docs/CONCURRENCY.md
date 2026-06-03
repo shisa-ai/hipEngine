@@ -478,6 +478,16 @@ What is still not green:
   therefore keeps 512/128 generated-token equality green by changing later
   trajectory, not by making the L8 pre-QKV hidden trace parity-green
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-layer7-transition/summary.json`, corrected by `benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-tracefix/summary.json`).
+  Using the retained-compatible `--c1-decode-path native_batch` oracle and the
+  retained warmup, a trace over the first native token-divergence window
+  separates the paths cleanly: full-native remains retained-red `[45,11,137]`
+  and is hidden/token red at row 1 index 11, while rowchunk2 remains retained-green
+  `[137,137,137]` and hidden/token green in the same L40 trace window. The first
+  native traced full-attention mismatch at that window is already layer 7 `input`,
+  so by the token flip the bad trajectory has propagated into the layer input;
+  rowchunk2 fixes that trajectory by the divergence window even though early L8
+  pre-QKV hidden drift can appear under narrower probes
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-token-window-c1native/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

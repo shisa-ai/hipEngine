@@ -1,0 +1,431 @@
+{
+  "commands": {
+    "hidden_native_c1_native": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --warmup-decode-tokens 8 --decode-tokens 12 --c1-decode-path native_batch --max-layers 40 --layer-limits 40 --max-sequence-length 1024 --trace-decode-start 10 --trace-decode-end 12 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L40-c3-rows456-native-c1native-warmup8-trace10-12-iter148.json",
+    "hidden_rowchunk2_c1_native": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --warmup-decode-tokens 8 --decode-tokens 12 --c1-decode-path native_batch --max-layers 40 --layer-limits 40 --max-sequence-length 1024 --trace-decode-start 10 --trace-decode-end 12 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --json /tmp/hipengine-hidden-bisect-L40-c3-rows456-rowchunk2-c1native-warmup8-trace10-12-iter148.json",
+    "retained_native": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --json /tmp/hipengine-e2e-native-c3-rows456-native-tracefix-retained-iter148.json",
+    "retained_rowchunk2": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --json /tmp/hipengine-e2e-native-c3-rows456-rowchunk2-tracefix-retained-iter148.json"
+  },
+  "comparison": {
+    "hidden_c1_native_native_full_token_passed": false,
+    "hidden_c1_native_rowchunk2_hidden_passed": true,
+    "hidden_c1_native_rowchunk2_token_passed": true,
+    "native_first_token_mismatch": {
+      "batch": [
+        2193,
+        13,
+        5044,
+        2962,
+        440,
+        61446,
+        10597,
+        58655,
+        883,
+        68022,
+        11,
+        81726,
+        35464,
+        11,
+        321,
+        81347,
+        13,
+        271,
+        248068,
+        198,
+        8160
+      ],
+      "c1": [
+        2193,
+        13,
+        5044,
+        2962,
+        440,
+        61446,
+        10597,
+        58655,
+        883,
+        68022,
+        11,
+        61369,
+        11,
+        4779,
+        32288,
+        11,
+        321,
+        81347,
+        13,
+        498,
+        20
+      ],
+      "first_index": 11,
+      "layer_limit": 40,
+      "row": 1
+    },
+    "native_trace_first_full_attention_stage": "input",
+    "retained_native_red_prefixes": [
+      45,
+      11,
+      137
+    ],
+    "retained_rowchunk2_green_prefixes": [
+      137,
+      137,
+      137
+    ],
+    "rowchunk2_trace_has_no_full_attention_mismatch": true,
+    "rowchunk2_trace_matches_retained_c1_native_oracle": true
+  },
+  "conclusion": "With the retained-compatible c1 native-batch oracle and warmup=8, the rows4/5/6 c3 first token-divergence window separates cleanly: full-native is token/hidden red at row 1 index 11 and first traced full-attention mismatch is layer7 input, while rowchunk2 is hidden/token green in the same trace window and the retained 512/128 rowchunk2 run remains [137,137,137]. The earlier serial-c1 hidden-bisect rowchunk mismatch was an oracle mismatch, not retained-run evidence. The generated-token blocker is therefore a native full-attention grouping>=3 trajectory that rowchunk2 fixes by the token-divergence window, even though both paths can show harmless early L8 pre-QKV drift under other oracles/windows.",
+  "created_at": "2026-06-03T08:47:52.724303+00:00",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json",
+  "git_commit": "10987f3d3e78e8934649f8d74063d07cfdace797",
+  "hidden_native_c1_native": {
+    "decode_full_attention_failed_stages": [
+      "input",
+      "attn_input_pre_qkv",
+      "attn_input_after_rotate",
+      "attn_input_after_project",
+      "q_proj_key_after_project",
+      "value_after_project",
+      "query_raw_after_split",
+      "key_raw_after_cast",
+      "gate_after_split",
+      "query_after_prepare",
+      "key_after_prepare",
+      "attn_input_after_prepare",
+      "attn_input",
+      "gate",
+      "query",
+      "attn_context",
+      "gated_attn",
+      "o_proj",
+      "residual",
+      "mlp_input",
+      "output"
+    ],
+    "decode_full_attention_first_mismatch": {
+      "decode_step": 10,
+      "elements_over_atol": 1,
+      "generated_index": 11,
+      "layer_index": 7,
+      "max_abs": 0.001953125,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "row": 0,
+      "stage": "input"
+    },
+    "decode_linear_input_first_mismatch": {
+      "decode_step": 10,
+      "elements_over_atol": 356,
+      "generated_index": 11,
+      "layer_index": 6,
+      "max_abs": 0.0025787353515625,
+      "max_abs_flat_index": 745,
+      "max_abs_index": [
+        0,
+        745
+      ],
+      "row": 1
+    },
+    "first_hidden_mismatch": {
+      "bit_mismatch": 1771,
+      "decode_step": 0,
+      "elements_over_atol": 34,
+      "generated_index": 1,
+      "last_layer_index": 39,
+      "last_layer_type": "full_attention",
+      "layer_limit": 40,
+      "max_abs": 0.005859375,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "passed_under_atol": false,
+      "row": 0
+    },
+    "first_token_mismatch": {
+      "batch": [
+        2193,
+        13,
+        5044,
+        2962,
+        440,
+        61446,
+        10597,
+        58655,
+        883,
+        68022,
+        11,
+        81726,
+        35464,
+        11,
+        321,
+        81347,
+        13,
+        271,
+        248068,
+        198,
+        8160
+      ],
+      "c1": [
+        2193,
+        13,
+        5044,
+        2962,
+        440,
+        61446,
+        10597,
+        58655,
+        883,
+        68022,
+        11,
+        61369,
+        11,
+        4779,
+        32288,
+        11,
+        321,
+        81347,
+        13,
+        498,
+        20
+      ],
+      "first_index": 11,
+      "layer_limit": 40,
+      "row": 1
+    },
+    "hidden_passed": false,
+    "name": "native_full_c1_native_warmup8_trace10_12",
+    "projection_first_over_atol_drift": {
+      "bit_mismatch": 3377,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 10,
+      "elements_over_atol": 10,
+      "generated_index": 11,
+      "layer_index": 4,
+      "layer_limit": 40,
+      "max_abs": 0.001953125,
+      "max_abs_flat_index": 128,
+      "max_abs_index": [
+        0,
+        128
+      ],
+      "passed_under_atol": false,
+      "row": 2,
+      "stage": "qkv"
+    },
+    "source_artifact": {
+      "path": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-native-c1native-warmup8-trace10-12-iter148.json",
+      "sha256": "a747ab091960dda580b881800ce18a9cf177212f2da153b8579bc9e9aa962f17",
+      "size_bytes": 23928324
+    },
+    "status": "mismatch_found",
+    "token_passed": false
+  },
+  "hidden_rowchunk2_c1_native": {
+    "decode_full_attention_failed_stages": [],
+    "decode_full_attention_first_mismatch": null,
+    "decode_linear_input_first_mismatch": null,
+    "first_hidden_mismatch": null,
+    "first_token_mismatch": null,
+    "hidden_passed": true,
+    "name": "rowchunk2_c1_native_warmup8_trace10_12",
+    "projection_first_over_atol_drift": null,
+    "source_artifact": {
+      "path": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-rowchunk2-c1native-warmup8-trace10-12-iter148.json",
+      "sha256": "6cf0c6e6e70156cd03c3eef749a256e3933302182d0a546fb455a369eec10daa",
+      "size_bytes": 6399620
+    },
+    "status": "eq_ok",
+    "token_passed": true
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 148,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "retained_native": {
+    "decode_paths": {
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_input_decode_path": "native_batch",
+      "full_attention_qkv_decode_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true,
+      "post_attention_decode_path": "native_batch"
+    },
+    "first_mismatch_indices": [
+      45,
+      11,
+      null
+    ],
+    "generated_token_equality_passed": false,
+    "min_equal_prefix_tokens": 11,
+    "mismatch_summaries": [
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 45,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          }
+        ],
+        "batch_token_at_mismatch": 220,
+        "batch_window": [
+          471,
+          561,
+          1156,
+          682,
+          3766,
+          220,
+          16,
+          17,
+          18922,
+          318,
+          269
+        ],
+        "c1_token_at_mismatch": 264,
+        "c1_window": [
+          471,
+          561,
+          1156,
+          682,
+          3766,
+          264,
+          3878,
+          314,
+          18922,
+          2600,
+          76168
+        ],
+        "first_mismatch_index": 45,
+        "row": 0
+      },
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 11,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          }
+        ],
+        "batch_token_at_mismatch": 81726,
+        "batch_window": [
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          81726,
+          35464,
+          11,
+          321,
+          81347,
+          13
+        ],
+        "c1_token_at_mismatch": 61369,
+        "c1_window": [
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321
+        ],
+        "first_mismatch_index": 11,
+        "row": 1
+      }
+    ],
+    "name": "native_full_retained_shape",
+    "prefixes": [
+      45,
+      11,
+      137
+    ],
+    "source_artifact": {
+      "path": "/tmp/hipengine-e2e-native-c3-rows456-native-tracefix-retained-iter148.json",
+      "sha256": "80d52b750466b2b513af4f0e043a4b33b0a6cd3c39260e0d575ab980b00116bd",
+      "size_bytes": 186431
+    },
+    "status": "rejected_correctness"
+  },
+  "retained_ready": false,
+  "retained_rowchunk2": {
+    "decode_paths": {
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_input_decode_path": "native_batch",
+      "full_attention_qkv_decode_path": "native_batch",
+      "full_attention_row_chunk_size": 2,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": false,
+      "post_attention_decode_path": "native_batch"
+    },
+    "first_mismatch_indices": [
+      null,
+      null,
+      null
+    ],
+    "generated_token_equality_passed": true,
+    "min_equal_prefix_tokens": 137,
+    "mismatch_summaries": [],
+    "name": "rowchunk2_retained_shape",
+    "prefixes": [
+      137,
+      137,
+      137
+    ],
+    "source_artifact": {
+      "path": "/tmp/hipengine-e2e-native-c3-rows456-rowchunk2-tracefix-retained-iter148.json",
+      "sha256": "d18b91f85859e43ecf3624d1dfe4b32f3204ba716d9e6b0879ead936a849e16a",
+      "size_bytes": 193997
+    },
+    "status": "blocked"
+  },
+  "schema_version": 1,
+  "workload": {
+    "batch_size": 3,
+    "c1_decode_path": "native_batch",
+    "decode_tokens_retained": 128,
+    "hidden_layer_limits": [
+      40
+    ],
+    "hidden_trace_decode_tokens": 12,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "trace_decode_window": [
+      10,
+      12
+    ],
+    "warmup_decode_tokens": 8
+  }
+}
