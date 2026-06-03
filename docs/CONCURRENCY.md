@@ -540,6 +540,14 @@ What is still not green:
   not beat the c1 scaling baseline, and c4/c8 still rely on rowchunk2 full
   attention, so no retained c>N performance claim is made
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json`).
+  A follow-up full-attention group-size audit with that combined projection
+  catalog confirms the threshold: c4/c8 rowchunk2 controls stay green, but
+  rowchunk3 and full-native grouping reproduce the same failures (`c4` prefixes
+  `[82,137,137,137]`; `c8` prefixes `[82,137,137,137,45,11,137,137]`). Projection
+  dispatch is therefore eliminated from the c4/c8 full-native failure, and the
+  next native attention target is the grouped pre-QKV/hidden interaction that
+  appears when a full-attention group contains three or more rows
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-fullnative-projection-c4c8-audit/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
