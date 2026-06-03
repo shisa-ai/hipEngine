@@ -742,7 +742,11 @@ reporting.
   status/return code, recorded llama.cpp binary/model metadata, no Step35
   architecture rejection or timeout blocker, prompt-length / one-token run
   alignment, token/logit metadata parity, non-empty generated text, and exact
-  text match, while keeping KV/e2e/performance claims separate. It carries explicit status,
+  text match, while keeping KV/e2e/performance claims separate; the final-blocker
+  manifest and combined handoff report attach this command under the missing
+  `llama_cpp_oracle_success_artifact` as
+  `validator_command_kind=oracle_artifact_check_command` with stable command and
+  expected evidence-check digests. It carries explicit status,
   readiness-summary, and handoff-summary schema versions plus compact
   `schema_versions` / `schema_versions_sha256` handoff payloads, verifies those
   compact schema-version output-mode mappings in status integrity, records both blockers

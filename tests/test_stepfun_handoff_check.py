@@ -262,6 +262,32 @@ def test_stepfun_handoff_check_reports_verified_blocked_state(tmp_path: Path) ->
     assert report["missing_artifact_summary"]["missing_artifacts"][0][
         "missing_reason"
     ] == "oracle_completed_successfully"
+    assert report["missing_artifact_summary"]["missing_artifacts"][0][
+        "validator_command_kind"
+    ] == "oracle_artifact_check_command"
+    assert report["missing_artifact_summary"]["missing_artifacts"][0][
+        "validator_command_sha256"
+    ] == _stable_json_sha256(
+        report["missing_artifact_summary"]["missing_artifacts"][0][
+            "validator_command"
+        ]
+    )
+    assert report["missing_artifact_summary"]["missing_artifacts"][0][
+        "validator_expected_evidence_checks"
+    ] == [
+        "oracle_success_status",
+        "oracle_returncode_zero",
+        "oracle_binary_metadata_recorded",
+        "step35_supported_by_oracle",
+        "no_timeout_or_oracle_blocker",
+        "prompt_length_matches_target",
+        "n_predict_one",
+        "expected_token_metadata_matches_target",
+        "top_token_metadata_matches_target",
+        "top_token_logit_matches_target",
+        "generated_text_nonempty",
+        "generated_text_matches_target",
+    ]
     assert report["missing_artifact_summary"]["missing_artifacts"][1][
         "missing_reason"
     ] == "kv_kernel_trace_artifact_missing"
@@ -938,6 +964,12 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
         "kv_kernel_trace_artifact",
         "kv_backed_next_token_artifact",
     ]
+    assert action_summary_payload["required_artifacts"][0][
+        "validator_command_kind"
+    ] == "oracle_artifact_check_command"
+    assert "scripts/stepfun_oracle_artifact_check.py" in action_summary_payload[
+        "required_artifacts"
+    ][0]["validator_command"]
     assert action_summary_payload["required_artifacts"][1][
         "validator_command_kind"
     ] == "kv_trace_check_command"
@@ -1003,6 +1035,9 @@ def test_stepfun_handoff_check_cli_compact_outputs(capsys, tmp_path: Path) -> No
     ]
     assert artifact_status_payload[0]["artifact_file_present"] is True
     assert artifact_status_payload[0]["evidence_satisfied"] is False
+    assert artifact_status_payload[0]["validator_command_kind"] == (
+        "oracle_artifact_check_command"
+    )
     assert artifact_status_payload[1]["validator_command_kind"] == (
         "kv_trace_check_command"
     )

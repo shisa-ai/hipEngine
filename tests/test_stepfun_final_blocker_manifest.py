@@ -98,6 +98,33 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     ]
     assert manifest["artifact_status_handoff"][0]["artifact_file_present"] is True
     assert manifest["artifact_status_handoff"][0]["evidence_satisfied"] is False
+    assert manifest["artifact_status_handoff"][0]["validator_command_kind"] == (
+        "oracle_artifact_check_command"
+    )
+    assert "scripts/stepfun_oracle_artifact_check.py" in manifest[
+        "artifact_status_handoff"
+    ][0]["validator_command"]
+    assert manifest["artifact_status_handoff"][0][
+        "validator_command_sha256"
+    ] == _stable_json_sha256(
+        manifest["artifact_status_handoff"][0]["validator_command"]
+    )
+    assert manifest["artifact_status_handoff"][0][
+        "validator_expected_evidence_checks"
+    ] == [
+        "oracle_success_status",
+        "oracle_returncode_zero",
+        "oracle_binary_metadata_recorded",
+        "step35_supported_by_oracle",
+        "no_timeout_or_oracle_blocker",
+        "prompt_length_matches_target",
+        "n_predict_one",
+        "expected_token_metadata_matches_target",
+        "top_token_metadata_matches_target",
+        "top_token_logit_matches_target",
+        "generated_text_nonempty",
+        "generated_text_matches_target",
+    ]
     assert manifest["artifact_status_handoff"][0]["missing_reason"] == (
         "oracle_completed_successfully"
     )
@@ -271,6 +298,11 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert oracle_artifact["current_blocker_kind"] == (
         "llama_cpp_missing_step35_architecture"
     )
+    assert oracle_artifact["validator_command_kind"] == (
+        "oracle_artifact_check_command"
+    )
+    assert oracle_artifact["validator_success_status"] == "passed"
+    assert oracle_artifact["validator_failure_exit_code"] == 2
     assert oracle_artifact["partial_output_handoff_safe"] is True
 
     kv_entry = entries["kv_backed_decode_not_wired"]
@@ -499,6 +531,12 @@ def test_stepfun_final_blocker_manifest_cli_compact_outputs(
     assert artifact_status_payload[0]["missing_reason"] == (
         "oracle_completed_successfully"
     )
+    assert artifact_status_payload[0]["validator_command_kind"] == (
+        "oracle_artifact_check_command"
+    )
+    assert "<llama_cpp_oracle_success_artifact.json>" in artifact_status_payload[0][
+        "validator_command"
+    ]
     assert artifact_status_payload[1]["missing_reason"] == (
         "kv_kernel_trace_artifact_missing"
     )

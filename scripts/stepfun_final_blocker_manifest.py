@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from scripts import stepfun_correctness_status as status_mod
 from scripts import stepfun_kv_next_token_check as kv_next_token_check_mod
 from scripts import stepfun_kv_trace_check as kv_trace_check_mod
+from scripts import stepfun_oracle_artifact_check as oracle_check_mod
 
 
 def _artifact_file_present(path_value: object) -> bool:
@@ -108,6 +109,46 @@ def _summarize_required_artifacts(
     """Return compact satisfaction records for required blocker artifacts."""
 
     return [_summarize_required_artifact(artifact) for artifact in artifacts]
+
+
+def _oracle_validator_handoff(prompt_artifact: object) -> dict[str, object]:
+    """Return the validation command for a retained llama.cpp oracle artifact."""
+
+    artifact_placeholder = "<llama_cpp_oracle_success_artifact.json>"
+    prompt_arg = str(prompt_artifact) if prompt_artifact else str(
+        status_mod.DEFAULT_PROMPT_ARTIFACT
+    )
+    command = (
+        "python3 scripts/stepfun_oracle_artifact_check.py "
+        f"--artifact {artifact_placeholder} "
+        f"--prompt-artifact {prompt_arg} "
+        "--summary-only --fail-on-missing --pretty"
+    )
+    expected_checks = [
+        "oracle_success_status",
+        "oracle_returncode_zero",
+        "oracle_binary_metadata_recorded",
+        "step35_supported_by_oracle",
+        "no_timeout_or_oracle_blocker",
+        "prompt_length_matches_target",
+        "n_predict_one",
+        "expected_token_metadata_matches_target",
+        "top_token_metadata_matches_target",
+        "top_token_logit_matches_target",
+        "generated_text_nonempty",
+        "generated_text_matches_target",
+    ]
+    return {
+        "validator_command_kind": "oracle_artifact_check_command",
+        "validator_command": command,
+        "validator_command_sha256": status_mod._stable_json_sha256(command),
+        "validator_expected_evidence_checks": expected_checks,
+        "validator_expected_evidence_checks_sha256": status_mod._stable_json_sha256(
+            expected_checks
+        ),
+        "validator_success_status": "passed",
+        "validator_failure_exit_code": oracle_check_mod.FAILED_EXIT_CODE,
+    }
 
 
 def _kv_trace_validator_handoff(resource_artifact: object) -> dict[str, object]:
@@ -406,6 +447,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                 )
                 is True,
             }
+            artifact.update(_oracle_validator_handoff(prompt_source.get("path")))
             entry["artifact_handoff"] = artifact
             artifacts_to_collect.append(artifact)
         elif blocker_kind == "kv_backed_decode_not_wired":
