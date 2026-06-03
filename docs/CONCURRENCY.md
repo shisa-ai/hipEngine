@@ -365,6 +365,13 @@ What is still not green:
   and keeps the target on prompt/window-sensitive native full-attention behavior
   when three or more logical rows share one full-attention group
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-row-permutation/summary.json`).
+  The retained bench auto path now caps covered c=3/c=4/c=8 full-attention
+  groups at rowchunk2 by default. Candidate validation passed derived rows4..6
+  c3, derived rows4..7 c4, original c4, and original c8 at `[137]` equal-prefix
+  under auto with no per-row full-attention fallback. This is a correctness
+  default only: rowchunk2 still marks `native_caware_decode=false`, and full
+  native grouping >=3 remains the retained blocker
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-auto-rowchunk2-c3-c4/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence

@@ -4018,9 +4018,10 @@ def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_full_attn_path", "native_batch"))
     if path != "auto":
         return path
-    # Native batch full-attention is generated-token green for c=2/c=4 as one
-    # batch. c=8 is green through the native row-chunk diagnostic below rather
-    # than the older per-row full-attention fallback.
+    # Native batch full-attention is generated-token green for c=2 as one
+    # batch. For c>=3, prompt/window-sensitive rows can fail when three or
+    # more rows share one native full-attention group, so the correctness-first
+    # auto path keeps native kernels but caps row groups below.
     return "native_batch"
 
 
@@ -4033,11 +4034,12 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c=8 native full-attention is generated-token green when split into c=2
-    # native row chunks, while full c=8/c=4 rows4..7 remain blocked. Larger
-    # unproven row counts stay on the explicit native path and fail loudly until
-    # covered by equality artifacts.
-    return 2 if int(batch_size) == 8 else 0
+    # c=3/c=4/c=8 diagnostics show native full-attention is generated-token
+    # green when split into <=2-row native chunks, while c>=3 grouping
+    # reproduces prompt/window-sensitive failures on rows4..7. Larger unproven
+    # row counts stay on the explicit native path and fail loudly until covered
+    # by equality artifacts.
+    return 2 if int(batch_size) in {3, 4, 8} else 0
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
@@ -4759,7 +4761,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-full-attn-path",
         choices=("auto", "native_batch", "per_row"),
         default="auto",
-        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2/c=4 and uses the native row-chunk diagnostic for c=8 correctness while full native c=8 remains blocked there.",
+        help="Full-attention decode path for c>N batch decode; auto keeps native_batch for c=2 and uses native row-chunk2 diagnostics for covered c=3/c=4/c=8 correctness while full native grouping >=3 remains blocked there.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-row-chunk-size",
