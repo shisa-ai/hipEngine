@@ -552,10 +552,17 @@ What is still not green:
   runtime therefore keeps native batch O projection on the leading row chunk but
   forces row-aware `batch_gemv` for nonzero multi-row chunks; with CLI output path
   `batch`, c4/c8 rowchunk2 now preserve equality (`[137]*4`, `[137]*8`) while
-  recording `native_batch_with_tail_batch_gemv`. This is correctness-only evidence:
-  rowchunk full attention remains `native_caware_decode=false`, and full-native
-  no-chunk grouped>=3 attention is still the retained blocker
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-tail-gemv-output-fix/summary.json`).
+  recording `native_batch_with_tail_batch_gemv`. Retained-bench now uses `batch`
+  as the default full-attention output path so the default c4/c8 diagnostic keeps
+  those green rowchunk2 results (`[137]*4`, `[137]*8`) without forcing GEMV on the
+  leading chunk. A no-chunk full-native contrast with output `batch_gemv` is still
+  red (`c4=[82,137,137,137]`, `c8=[82,137,137,137,45,11,137,137]`), so forcing
+  GEMV O projection alone is not the retained full-native fix. This is
+  correctness-only evidence: rowchunk full attention remains
+  `native_caware_decode=false`, and full-native no-chunk grouped>=3 attention is
+  still the retained blocker
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-tail-gemv-output-fix/summary.json`,
+  `benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-default-output-batch/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
