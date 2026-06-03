@@ -672,7 +672,9 @@ reporting.
   it exceeded the pi tool supervision window before helper JSON was produced, so
   the CPU/no-GPU timeout artifact remains the canonical machine-readable oracle
   blocker for now. The consolidated correctness-status artifact surfaces the oracle version,
-  elapsed time, stdout/stderr lengths, `oracle_progress` fields, and an `oracle_gap_report`
+  elapsed time, stdout/stderr lengths, `oracle_progress` fields, and an `oracle_progress_sha256`
+  digest; compact `--oracle-progress-only` / `--oracle-progress-sha-only` outputs expose that
+  current-attempt payload/digest directly for oracle blocker polling. It also surfaces an `oracle_gap_report`
   that separates recorded deterministic-target prerequisites from missing run/match evidence
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
   text ` |`, top-5 expected tokens, timeout 60 s, elapsed 61.75 s, generated text
@@ -812,7 +814,9 @@ reporting.
   `--oracle-helper-long-timeout-command-sha-only` and
   `--first-blocker-recommended-command-only` /
   `--first-blocker-recommended-command-sha-only` outputs expose the rerun
-  command/digests directly. The blocker queue also records a compact
+  command/digests directly. Status integrity also verifies the oracle progress
+  digest and oracle compact output-mode mappings, including the progress routes.
+  The blocker queue also records a compact
   `blocker_recommended_commands` list plus SHA so automation can inspect both
   the front oracle rerun and the queued KV resource refresh without parsing full
   work-item payloads; `stepfun_correctness_status.py --output ...` now writes

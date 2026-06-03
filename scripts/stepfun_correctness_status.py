@@ -662,6 +662,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-progress-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_progress for compact current oracle-attempt polling. "
+            "Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-progress-sha-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_progress_sha256 for compact oracle-attempt drift polling. "
+            "Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-helper-long-timeout-command-only",
         action="store_true",
         help=(
@@ -809,6 +825,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         else None
     )
     readiness_gates = status.get("readiness_gates", {})
+    oracle_progress = status.get("oracle_progress", {})
     next_action_commands = status.get("next_action_commands", {})
     handoff_integrity_commands = (
         next_action_commands.get("handoff_integrity", {})
@@ -1615,6 +1632,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             and status.get("next_action_commands_sha256") == _stable_json_sha256(next_action_commands)
         ),
         "handoff_integrity_command_metadata": handoff_integrity_command_metadata,
+        "oracle_progress_sha256": (
+            isinstance(oracle_progress, dict)
+            and status.get("oracle_progress_sha256") == _stable_json_sha256(oracle_progress)
+        ),
         "handoff_integrity_compact_output_modes": (
             isinstance(compact_output_modes, dict)
             and compact_output_modes.get("source_verify_command_only")
@@ -1644,6 +1665,8 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
             and compact_output_modes.get("oracle_helper_command_sha_only")
             == "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256"
+            and compact_output_modes.get("oracle_progress_only") == "oracle_progress"
+            and compact_output_modes.get("oracle_progress_sha_only") == "oracle_progress_sha256"
             and compact_output_modes.get("oracle_helper_long_timeout_command_only")
             == "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
             and compact_output_modes.get("oracle_helper_long_timeout_command_sha_only")
@@ -3818,6 +3841,8 @@ def _handoff_summary(
             "oracle_helper_command_sha_only": (
                 "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256"
             ),
+            "oracle_progress_only": "oracle_progress",
+            "oracle_progress_sha_only": "oracle_progress_sha256",
             "oracle_helper_long_timeout_command_only": (
                 "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
             ),
@@ -4211,6 +4236,7 @@ def build_status(
         "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
         "step35_supported_by_local_llama_cpp": oracle.get("step35_supported"),
         "oracle_progress": oracle_progress,
+        "oracle_progress_sha256": _stable_json_sha256(oracle_progress),
         "oracle_gap_report": oracle_gap_report,
         "linear_projection_progress": _linear_projection_progress(prompt),
         "kv_decode_dispatch_progress": kv_decode_dispatch_progress,
@@ -4359,6 +4385,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_refresh_command"
         )
+    elif args.oracle_progress_sha_only:
+        result = status["oracle_progress_sha256"]
+    elif args.oracle_progress_only:
+        result = status["oracle_progress"]
     elif args.oracle_helper_long_timeout_command_sha_only:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_long_timeout_command_sha256"
