@@ -4005,10 +4005,11 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
     # c=2/c=4 profiling shows native selected-c1 batch MoE is
-    # generated-token green and materially faster than grouped-compact, while
-    # c=8 stays on grouped-compact for the linear layers because c=8 selected
-    # MoE plus native full-attention is not yet generated-token green.
-    return "selected_c1" if int(batch_size) in {2, 4} else "grouped_compact"
+    # generated-token green and materially faster than grouped-compact. c=8
+    # still cannot pair selected-c1 MoE with native full-attention, but auto
+    # full-attention uses the green per-row fallback there, where selected-c1
+    # MoE remains generated-token green and faster than grouped-compact.
+    return "selected_c1" if int(batch_size) in {2, 4, 8} else "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
