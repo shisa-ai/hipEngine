@@ -482,6 +482,15 @@ What is still not green:
   selected-c1 MoE retained metadata, and row-GEMV projection dispatch/no current
   accepted c-aware evidence
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-current-profile/summary.json`).
+  The same evidence is now attached for c8: the current rowchunk2/selected-c1
+  512/128 retained-bench rerun keeps equality green at
+  `[137,137,137,137,137,137,137,137]`, primitive correctness is loaded/passed,
+  profiler provenance / kernel-duration blockers are absent, and c1 / serial
+  scaling references are complete. It remains non-retained for the same reasons:
+  rowchunked full attention (`native_caware_decode=false`), selected-c1 MoE
+  metadata, and row-GEMV projection dispatch/no current accepted c-aware
+  evidence
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-current-profile/summary.json`).
   A current rows4/5/6 c3 contrast keeps the full-native 512/128 run red
   (`[45,11,137]`) while rowchunk2 is green (`[137,137,137]`). The paired L40
   decode-step-0 trace shows native full attention first fails at layer 7
