@@ -77,10 +77,11 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 
 **hipEngine now has most host-side continuous-batching scaffolding in code, but
 it still must not claim true retained c>N throughput.** Qwen/PARO BF16 c=2/c=4/c=8
-generated-token equality vs independent c=1 is green, and c=2/c=4/c=8 retained
-profiler preflights are captured. The remaining hard gate is native execution
-closure (native projection dispatch, graph replay, retained profiler/scaling
-metadata, and any residual fallback labels) plus accepted retained scaling evidence.
+generated-token equality vs independent c=1 is green, and c=2/c=4/c=8 projection
+dispatch evidence selects the row-bounded native projection candidate from one
+combined catalog. The remaining hard gates are accepted retained scaling/graph
+replay evidence, full-native c4/c8 attention without rowchunk diagnostics, and
+any residual fallback labels.
 
 What is in place:
 
@@ -411,8 +412,8 @@ What is still not green:
   generated-token equality at equal-prefix 137 for every row: c2 remains full
   native, while c4/c8 use native rowchunk2. This confirms the covered c>1
   correctness path at the current commit, but c4/c8 remain non-retained because
-  rowchunk2 reports `native_caware_decode=false` and projection evidence is
-  still missing
+  rowchunk2 reports `native_caware_decode=false` and retained projection/throughput
+  evidence was not yet attached at that point
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-clean-c2-c4-c8-auto-matrix/summary.json`).
   A fresh post-change c8 profiler smoke confirms the current auto rowchunk2 path
   still launches native batch full-attention context kernels (16,320 calls,
@@ -531,6 +532,14 @@ What is still not green:
   both; retained throughput remains blocked because rowchunk2 full attention is
   `native_caware_decode=false`
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/summary.json`).
+  The c2 and c4/c8 projection evidence is also merged into one combined
+  projection-dispatch catalog. Runtime validation with that single artifact keeps
+  c2/c4/c8 generated-token equality green (`[137]` for every row) and selects
+  row-bounded `gemv_awq_selected_dual_pack8_strided_c{2,4,8}` candidates for the
+  matching row counts. This is a dispatch/catalog validation only: c2 still does
+  not beat the c1 scaling baseline, and c4/c8 still rely on rowchunk2 full
+  attention, so no retained c>N performance claim is made
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json`).
   c=8 native A/B projection is green under the selected-QKV/Z diagnostic, while
   paged KV row setup and the segmented state update itself under selected
   projections remain lower on the list. C2.3 and retained/performance evidence
@@ -2072,7 +2081,7 @@ roll-up/status view.
       to name an evidence-backed non-row-GEMV c-aware path whose selected
       candidate is present in `projection_dispatch_candidates` and profiler
       expected/trace/duration kernel names; retained native batch metadata records a `projection_dispatch` row-GEMV fallback
-      with an explicit blocker when no c-aware projection candidate is available, can load optional `HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT` retained candidate metadata when available only if candidate evidence artifacts are loadable/accepted/self-describing and in-bounds, and retained-bench/c-sweep can pass that metadata with `--projection-dispatch-artifact` while fail-closing non-`benchmarks/results/`, symlinked/non-regular, invalid, or missing candidate artifacts plus missing/out-of-bounds candidate evidence artifacts before an expensive run, validating that c-sweep summaries keep the flag on c>N retained commands and off c=1 baselines, and copying schema-checked candidates into the artifact payload; retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON carrying self-matching `artifact_path`/`source_artifact_path` plus matching >1 aggregate/per-request row-GEMV speedup ratios, evidence, and profiler expected/trace/duration kernel names; the 2026-06-03 c2 projection artifact validates the `gemv_awq_selected_dual_pack8_strided` candidate (`1.0814x` vs selected-c1/row-GEMV projection) with profiled runtime metadata selecting `benchmark_accepted_caware_projection`; and the c4/c8 projection artifact validates row-bounded candidates for the same variant (`1.2149x` at c4, `1.2927x` at c8) with runtime metadata selecting `benchmark_accepted_caware_projection` for both. The
+      with an explicit blocker when no c-aware projection candidate is available, can load optional `HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT` retained candidate metadata when available only if candidate evidence artifacts are loadable/accepted/self-describing and in-bounds, and retained-bench/c-sweep can pass that metadata with `--projection-dispatch-artifact` while fail-closing non-`benchmarks/results/`, symlinked/non-regular, invalid, or missing candidate artifacts plus missing/out-of-bounds candidate evidence artifacts before an expensive run, validating that c-sweep summaries keep the flag on c>N retained commands and off c=1 baselines, and copying schema-checked candidates into the artifact payload; retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON carrying self-matching `artifact_path`/`source_artifact_path` plus matching >1 aggregate/per-request row-GEMV speedup ratios, evidence, and profiler expected/trace/duration kernel names; the 2026-06-03 c2 projection artifact validates the `gemv_awq_selected_dual_pack8_strided` candidate (`1.0814x` vs selected-c1/row-GEMV projection) with profiled runtime metadata selecting `benchmark_accepted_caware_projection`; the c4/c8 projection artifact validates row-bounded candidates for the same variant (`1.2149x` at c4, `1.2927x` at c8) with runtime metadata selecting `benchmark_accepted_caware_projection` for both; and the combined c2/c4/c8 catalog proves one `--projection-dispatch-artifact` can select the matching row-bounded candidate while preserving full generated-token equality for c=2/c=4/c=8. The
       item remains open for retained aggregate scaling and full native c4/c8
       attention; c=2/c4/c8 projection dispatch now uses selected c-aware paths
       but is still not a retained throughput claim.

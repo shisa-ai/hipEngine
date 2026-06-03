@@ -1,0 +1,303 @@
+{
+  "artifacts": {
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+      "sha256": "a06f1d60739da1953dc2839f55fa28efefa4c664e7ad0cd0215765fb1c27c9b5",
+      "size_bytes": 13243
+    },
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+      "sha256": "211a7bc96605d8ebcc3416abb9a9bfd0f6f7f22c1ca4227da1c9c479387917f2",
+      "size_bytes": 2022
+    },
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+      "sha256": "a40903b236bd8ed27638380450f9e7a39501483afd4e4e9236ea540db9986316",
+      "size_bytes": 2130
+    },
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/summary.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/summary.json",
+      "sha256": "d3f0fee61dc7c999c3876e0e119d5d14efb0ac700b29b829b7047b2f7a0d319d",
+      "size_bytes": 8589
+    },
+    "c2-with-combined-projection-dispatch.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/c2-with-combined-projection-dispatch.json",
+      "sha256": "c8d8741f294fbafec9ff385b193114bf4e4b672ed5d449b29e3820cd7e929ab4",
+      "size_bytes": 136603
+    },
+    "c4-with-combined-projection-dispatch.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/c4-with-combined-projection-dispatch.json",
+      "sha256": "b791621c5299f240fccf91741244b873b22b93ddb324008c0a45ba01a02d8f1c",
+      "size_bytes": 235183
+    },
+    "c8-with-combined-projection-dispatch.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/c8-with-combined-projection-dispatch.json",
+      "sha256": "618b68e1d80ae629db42c2c940a0920b2d739a30216bfd100867bfa8f1c1a730",
+      "size_bytes": 410976
+    },
+    "hipcc-version.txt": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    }
+  },
+  "conclusion": "One combined projection-dispatch artifact selects benchmark_accepted_caware_projection and preserves full generated-token equality for c2/c4/c8 512/128 vs independent c1. c2 stays native_caware_decode=true but retained performance is blocked by c1 scaling; c4/c8 stay generated-token green only under rowchunk2 full-attention diagnostics, so no retained c>N performance claim is made.",
+  "created_utc": "2026-06-03T10:33:16Z",
+  "git_commit": "94e633ea8ec3f684e361dd3417965fb8565d380a",
+  "hardware": {
+    "device": "GPU1",
+    "gpu": "RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "kind": "projection_dispatch_candidate_catalog",
+  "measurements": {
+    "c2": {
+      "decode_tok_s_aggregate": 113.24366468735965,
+      "decode_tok_s_per_request": 56.62183234367983,
+      "generated_token_equality": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+    },
+    "c4": {
+      "decode_tok_s_aggregate": 143.84381906655756,
+      "decode_tok_s_per_request": 35.96095476663939,
+      "generated_token_equality": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4"
+    },
+    "c8": {
+      "decode_tok_s_aggregate": 171.3235873195216,
+      "decode_tok_s_per_request": 21.4154484149402,
+      "generated_token_equality": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8"
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "notes": "Single projection-dispatch catalog for c2/c4/c8 retained validation. c2 evidence remains blocked for retained throughput by aggregate_vs_c1; c4/c8 remain rowchunk2 native-full-attention diagnostics, so no c>N retained performance claim is made.",
+  "performance_claim": false,
+  "projection_dispatch_candidates": [
+    {
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.081395195821912,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+        "per_request_vs_row_gemv": 1.081395195821912
+      },
+      "max_rows": 2,
+      "min_rows": 2,
+      "name": "gemv_awq_selected_dual_pack8_strided_c2",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "gemv_awq_selected_dual_pack8_strided"
+      }
+    },
+    {
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.214849947729695,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+        "per_request_vs_row_gemv": 1.214849947729695
+      },
+      "max_rows": 4,
+      "min_rows": 4,
+      "name": "gemv_awq_selected_dual_pack8_strided_c4",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "gemv_awq_selected_dual_pack8_strided"
+      }
+    },
+    {
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.2927399483678248,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+        "per_request_vs_row_gemv": 1.2927399483678248
+      },
+      "max_rows": 8,
+      "min_rows": 8,
+      "name": "gemv_awq_selected_dual_pack8_strided_c8",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "gemv_awq_selected_dual_pack8_strided"
+      }
+    }
+  ],
+  "retained_ready": false,
+  "rows": [
+    2,
+    4,
+    8
+  ],
+  "runtime_validation": {
+    "c2": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/c2-with-combined-projection-dispatch.json",
+      "batch_blockers": [],
+      "correctness_passed": false,
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunk_size": null,
+        "full_attention_row_chunk_source": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      },
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.081395195821912,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+          "per_request_vs_row_gemv": 1.081395195821912
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "rows": 2,
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "selection": {
+          "layer": "linear",
+          "quant": "w4_paro",
+          "variant": "gemv_awq_selected_dual_pack8_strided"
+        },
+        "throughput_claim_eligible": true
+      },
+      "status": "blocked"
+    },
+    "c4": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/c4-with-combined-projection-dispatch.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "correctness_passed": false,
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_source": "env",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.214849947729695,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+          "per_request_vs_row_gemv": 1.214849947729695
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "rows": 4,
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "selection": {
+          "layer": "linear",
+          "quant": "w4_paro",
+          "variant": "gemv_awq_selected_dual_pack8_strided"
+        },
+        "throughput_claim_eligible": true
+      },
+      "status": "blocked"
+    },
+    "c8": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/c8-with-combined-projection-dispatch.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "correctness_passed": false,
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_source": "env",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.2927399483678248,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+          "per_request_vs_row_gemv": 1.2927399483678248
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "rows": 8,
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "selection": {
+          "layer": "linear",
+          "quant": "w4_paro",
+          "variant": "gemv_awq_selected_dual_pack8_strided"
+        },
+        "throughput_claim_eligible": true
+      },
+      "status": "blocked"
+    }
+  },
+  "schema_version": 1,
+  "source_artifacts": [
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/summary.json"
+  ],
+  "status": "catalog",
+  "updated_utc": "2026-06-03T10:38:19Z",
+  "workload": {
+    "batch_decode_full_attention_path": "auto",
+    "batch_decode_moe_path": "grouped_compact",
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}
