@@ -138,6 +138,7 @@
             "required_for": "kv_backed_next_token_artifact_missing"
           }
         ],
+        "artifacts_needed_sha256": "f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9",
         "blocker_count": 3,
         "blocker_names": [
           "streaming_decode_loop_not_wired",
@@ -176,7 +177,7 @@
         "upload_plan_ready": true,
         "upload_total_nbytes": 484
       },
-      "kv_decode_blocker_summary_sha256": "d21868cabe9fbb5f8a36aae4dc0981c38f07637e66be90d5959b0797980c1e50",
+      "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
       "kv_decode_dispatch_ready": true,
       "missing_evidence": [
         "streaming_runner_ready_flags",
@@ -518,6 +519,8 @@
       "kv_decode_blocker_summary_sha_only": "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256",
       "kv_first_streaming_blocker_only": "kv_backed_decode_gap_report.first_streaming_runner_blocker",
       "kv_first_streaming_blocker_sha_only": "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256",
+      "kv_required_artifacts_only": "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed",
+      "kv_required_artifacts_sha_only": "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed_sha256",
       "kv_resource_command_only": "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command",
       "kv_resource_command_sha_only": "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command_sha256",
       "kv_streaming_blocker_records_only": "kv_backed_decode_gap_report.streaming_runner_blockers",
@@ -766,7 +769,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "ddf663cd67351b3a13611c997e5186ced08614603969d21c719c875d4d930a8c",
+  "handoff_summary_sha256": "a317bf7a5333388780565a8170f2b461a6b25e6e642827b59af0fd5b4105830c",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -787,6 +790,7 @@
           "required_for": "kv_backed_next_token_artifact_missing"
         }
       ],
+      "artifacts_needed_sha256": "f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9",
       "blocker_count": 3,
       "blocker_names": [
         "streaming_decode_loop_not_wired",
@@ -827,7 +831,7 @@
     },
     "kv_decode_blocker_summary_mirrors_run_plan": true,
     "kv_decode_blocker_summary_recorded": true,
-    "kv_decode_blocker_summary_sha256": "d21868cabe9fbb5f8a36aae4dc0981c38f07637e66be90d5959b0797980c1e50",
+    "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
     "missing_evidence": [
       "streaming_runner_ready_flags",
       "kv_kernel_launch_trace",
@@ -1052,6 +1056,7 @@
           "required_for": "kv_backed_next_token_artifact_missing"
         }
       ],
+      "artifacts_needed_sha256": "f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9",
       "blocker_count": 3,
       "blocker_names": [
         "streaming_decode_loop_not_wired",
@@ -1091,7 +1096,7 @@
       "upload_total_nbytes": 484
     },
     "kv_decode_blocker_summary_recorded": true,
-    "kv_decode_blocker_summary_sha256": "d21868cabe9fbb5f8a36aae4dc0981c38f07637e66be90d5959b0797980c1e50",
+    "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
     "kv_storage_dtype": "bf16",
     "launch_schedule": {
       "all_stage_dispatch_ready": true,
@@ -1368,6 +1373,7 @@
             "required_for": "kv_backed_next_token_artifact_missing"
           }
         ],
+        "artifacts_needed_sha256": "f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9",
         "blocker_count": 3,
         "blocker_names": [
           "streaming_decode_loop_not_wired",
@@ -2387,6 +2393,7 @@
               "required_for": "kv_backed_next_token_artifact_missing"
             }
           ],
+          "artifacts_needed_sha256": "f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9",
           "blocker_count": 3,
           "blocker_names": [
             "streaming_decode_loop_not_wired",
@@ -2427,7 +2434,7 @@
         },
         "kv_decode_blocker_summary_mirrors_run_plan": true,
         "kv_decode_blocker_summary_recorded": true,
-        "kv_decode_blocker_summary_sha256": "d21868cabe9fbb5f8a36aae4dc0981c38f07637e66be90d5959b0797980c1e50",
+        "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
         "missing_evidence": [
           "streaming_runner_ready_flags",
           "kv_kernel_launch_trace",
@@ -2711,7 +2718,7 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
-  "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
+  "readiness_gates_sha256": "b749cebebd0586e44528d623f48bbaf1bb04f511dc820e2d488cac7d5d6316f5",
   "readiness_summary": {
     "blocked_gates_sha256": "5442237ae2416bd189f0635665bf630d6061793d9f5e1c52e038ae4d86804120",
     "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
@@ -2722,7 +2729,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "538c1cb4f9e2c364a96134d3781307161768af3e24ebd114eef701336b6fc385",
-    "handoff_summary_sha256": "ddf663cd67351b3a13611c997e5186ced08614603969d21c719c875d4d930a8c",
+    "handoff_summary_sha256": "a317bf7a5333388780565a8170f2b461a6b25e6e642827b59af0fd5b4105830c",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346",
@@ -2730,12 +2737,12 @@
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
-    "readiness_gates_sha256": "fa78133c2473a138195458e6bbc78a353fd116aa60725af848686eb34c46253d",
+    "readiness_gates_sha256": "b749cebebd0586e44528d623f48bbaf1bb04f511dc820e2d488cac7d5d6316f5",
     "schema_version": 1,
-    "source_artifacts_sha256": "56ca359a380d7973408de33e13c790645047c924ef8e51f8f9ac8a6cfd1ce337",
+    "source_artifacts_sha256": "89fc4a815cdec95ea752d926829e946bb60ee0630fa54ad25139fb2f8b166d1f",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "210d4c814a62323f51e0f6ec65e502745b3bc4a30823468b14d7402543a10861",
+  "readiness_summary_sha256": "e8c6e8f28a26264023a431a225fc8ed90c9dd1c5a2e63319e46184b7ed4e1212",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -2854,8 +2861,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "eb316637ed7efd555111fe86ca55fa8bd1f152c1fd4a6956f28c9a582cbb2955",
-      "size_bytes": 67340
+      "sha256": "b927e592d9b590f84b4cb62749a0fc07bdb48bed292b60c6b44fa7ed8a18cec9",
+      "size_bytes": 67605
     },
     "oracle": {
       "exists": true,
@@ -2878,11 +2885,11 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "2fb7588a6f4a4223009a7b6aca349a0e15e1df57c7f6cff83acb82fb77a002ac",
-      "size_bytes": 52292
+      "sha256": "34476cceda62a87e6e039271176b57de76592dd5ea0f117d8733d48bef74ccba",
+      "size_bytes": 52393
     }
   },
-  "source_artifacts_sha256": "56ca359a380d7973408de33e13c790645047c924ef8e51f8f9ac8a6cfd1ce337",
+  "source_artifacts_sha256": "89fc4a815cdec95ea752d926829e946bb60ee0630fa54ad25139fb2f8b166d1f",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

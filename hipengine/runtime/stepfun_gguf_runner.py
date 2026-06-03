@@ -1087,6 +1087,7 @@ class StepFunKVDecodeRunPlan:
             "launch_operation_count": int(blueprint["operation_count"]),
             "per_layer_order": list(blueprint["per_layer_order"]),
             "artifacts_needed": artifacts_needed,
+            "artifacts_needed_sha256": _stable_json_sha256(artifacts_needed),
             "artifact_count": len(artifacts_needed),
             "no_claim_policy": {
                 "oracle_parity_claim_allowed": False,

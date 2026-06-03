@@ -476,6 +476,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-required-artifacts-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.kv_decode_blocker_summary."
+            "artifacts_needed for KV evidence-artifact handoff. Overrides --summary-only "
+            "and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-required-artifacts-sha-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.kv_decode_blocker_summary."
+            "artifacts_needed_sha256 for KV evidence-artifact drift polling. Overrides "
+            "--summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -1119,6 +1137,11 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         == kv_streaming_blueprint.get("pre_run_upload_checks_passed")
         and kv_decode_blocker_summary.get("launch_stage_count")
         == kv_streaming_blueprint.get("stage_count")
+        and isinstance(kv_decode_blocker_summary.get("artifacts_needed"), list)
+        and kv_decode_blocker_summary.get("artifact_count")
+        == len(kv_decode_blocker_summary.get("artifacts_needed", []))
+        and kv_decode_blocker_summary.get("artifacts_needed_sha256")
+        == _stable_json_sha256(kv_decode_blocker_summary.get("artifacts_needed", []))
     )
     blocker_work_queue_sha256_match = (
         isinstance(blocker_work_queue, list)
@@ -1574,6 +1597,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "kv_backed_decode_gap_report.kv_decode_blocker_summary"
             and compact_output_modes.get("kv_decode_blocker_summary_sha_only")
             == "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256"
+            and compact_output_modes.get("kv_required_artifacts_only")
+            == "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed"
+            and compact_output_modes.get("kv_required_artifacts_sha_only")
+            == "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed_sha256"
             and compact_output_modes.get("kv_resource_command_only")
             == "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
             and compact_output_modes.get("kv_resource_command_sha_only")
@@ -3737,6 +3764,12 @@ def _handoff_summary(
             "kv_decode_blocker_summary_sha_only": (
                 "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256"
             ),
+            "kv_required_artifacts_only": (
+                "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed"
+            ),
+            "kv_required_artifacts_sha_only": (
+                "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed_sha256"
+            ),
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -4393,6 +4426,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.kv_decode_blocker_summary_only:
         result = status["kv_backed_decode_gap_report"].get(
             "kv_decode_blocker_summary"
+        )
+    elif args.kv_required_artifacts_sha_only:
+        blocker_summary = status["kv_backed_decode_gap_report"].get(
+            "kv_decode_blocker_summary", {}
+        )
+        result = (
+            blocker_summary.get("artifacts_needed_sha256")
+            if isinstance(blocker_summary, dict)
+            else None
+        )
+    elif args.kv_required_artifacts_only:
+        blocker_summary = status["kv_backed_decode_gap_report"].get(
+            "kv_decode_blocker_summary", {}
+        )
+        result = (
+            blocker_summary.get("artifacts_needed")
+            if isinstance(blocker_summary, dict)
+            else None
         )
     elif args.kv_streaming_loop_status_sha_only:
         result = status["kv_backed_decode_gap_report"].get(

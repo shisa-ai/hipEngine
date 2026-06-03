@@ -284,6 +284,11 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert blocker_summary["launch_operation_count"] == 135
     assert blocker_summary["artifact_count"] == 2
     assert blocker_summary["artifacts_needed"][0]["name"] == "kv_kernel_trace_artifact"
+    assert blocker_summary["artifacts_needed_sha256"] == hashlib.sha256(
+        json.dumps(
+            blocker_summary["artifacts_needed"], sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
     assert blocker_summary["no_claim_policy"] == {
         "oracle_parity_claim_allowed": False,
         "kv_backed_decode_claim_allowed": False,

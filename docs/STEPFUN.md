@@ -722,9 +722,14 @@ reporting.
   `--kv-streaming-blocker-records-sha-only` expose the full KV streaming blocker
   records plus digest, so KV automation can poll the first runtime blocker,
   validated upload/launch prerequisites, required evidence artifacts, and
-  no-claim policy without reading the full resource plan; status integrity also
+  no-claim policy without reading the full resource plan. Compact
+  `--kv-required-artifacts-only` / `--kv-required-artifacts-sha-only` now emit
+  the concrete KV evidence-artifact list (`kv_kernel_trace_artifact` and
+  `kv_backed_next_token_artifact`) and digest directly from the blocker summary.
+  Status integrity also
   verifies the KV compact output-mode mappings for blocker names, blocker records,
-  first blocker, blueprint, loop status/next-action, blocker summary, and resource
+  first blocker, blueprint, loop status/next-action, blocker summary, required
+  artifacts, and resource
   refresh command routes; cross-checks the blocker-summary digest/recorded flag; recomputes its
   first-blocker/upload/launch mirror invariants against the resource-plan gap
   report, and continues to check the mirrored blueprint digest, loop-status

@@ -348,6 +348,7 @@ def _kv_decode_blocker_summary() -> dict[str, object]:
         "launch_operation_count": 135,
         "per_layer_order": ["prompt_kv_write", "decode_kv_write", "decode_attention"],
         "artifacts_needed": artifacts_needed,
+        "artifacts_needed_sha256": _stable_json_sha256(artifacts_needed),
         "artifact_count": len(artifacts_needed),
         "no_claim_policy": {
             "oracle_parity_claim_allowed": False,
@@ -1494,6 +1495,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ),
         "kv_decode_blocker_summary_sha_only": (
             "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256"
+        ),
+        "kv_required_artifacts_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed"
+        ),
+        "kv_required_artifacts_sha_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed_sha256"
         ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
@@ -3311,6 +3318,8 @@ def test_stepfun_correctness_status_kv_decode_blocker_summary_outputs(
     resource = tmp_path / "resource.json"
     summary_output = tmp_path / "kv-decode-blocker-summary.json"
     sha_output = tmp_path / "kv-decode-blocker-summary-sha.json"
+    artifacts_output = tmp_path / "kv-required-artifacts.json"
+    artifacts_sha_output = tmp_path / "kv-required-artifacts-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -3376,6 +3385,50 @@ def test_stepfun_correctness_status_kv_decode_blocker_summary_outputs(
         "kv_decode_blocker_summary_sha256"
     ]
     assert sha_payload == _kv_decode_blocker_summary_sha256()
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(artifacts_output),
+            "--summary-only",
+            "--kv-required-artifacts-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    artifacts_payload = json.loads(artifacts_output.read_text())
+    assert artifacts_payload == _kv_decode_blocker_summary()["artifacts_needed"]
+    assert artifacts_payload[0]["name"] == "kv_kernel_trace_artifact"
+    assert artifacts_payload[1]["name"] == "kv_backed_next_token_artifact"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(artifacts_sha_output),
+            "--summary-only",
+            "--kv-required-artifacts-sha-only",
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    artifacts_sha_payload = json.loads(artifacts_sha_output.read_text())
+    assert artifacts_sha_payload == _kv_decode_blocker_summary()["artifacts_needed_sha256"]
 
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -4520,6 +4573,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "kv_decode_blocker_summary_sha_only": (
             "kv_backed_decode_gap_report.kv_decode_blocker_summary_sha256"
+        ),
+        "kv_required_artifacts_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed"
+        ),
+        "kv_required_artifacts_sha_only": (
+            "kv_backed_decode_gap_report.kv_decode_blocker_summary.artifacts_needed_sha256"
         ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"

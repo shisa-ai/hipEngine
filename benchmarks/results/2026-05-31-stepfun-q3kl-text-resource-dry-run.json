@@ -186,6 +186,7 @@
           "required_for": "kv_backed_next_token_artifact_missing"
         }
       ],
+      "artifacts_needed_sha256": "f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9",
       "blocker_count": 3,
       "blocker_names": [
         "streaming_decode_loop_not_wired",

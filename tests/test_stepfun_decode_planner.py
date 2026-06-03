@@ -486,6 +486,24 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         ),
     }
     blocker_summary = payload["kv_decode_blocker_summary"]
+    expected_artifacts_needed = [
+        {
+            "name": "kv_kernel_trace_artifact",
+            "required_for": "kv_kernel_trace_artifact_missing",
+            "evidence": (
+                "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, "
+                "and gated decode-attention kernels for the canonical prompt"
+            ),
+        },
+        {
+            "name": "kv_backed_next_token_artifact",
+            "required_for": "kv_backed_next_token_artifact_missing",
+            "evidence": (
+                "one-token decode artifact recording generated token/logit path from KV-backed "
+                "runtime execution, not host-composed layer-prefix outputs"
+            ),
+        },
+    ]
     assert blocker_summary == {
         "schema_version": 1,
         "source": "kv_decode_run_plan",
@@ -512,24 +530,10 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         "launch_stage_count": 4,
         "launch_operation_count": 135,
         "per_layer_order": ["prompt_kv_write", "decode_kv_write", "decode_attention"],
-        "artifacts_needed": [
-            {
-                "name": "kv_kernel_trace_artifact",
-                "required_for": "kv_kernel_trace_artifact_missing",
-                "evidence": (
-                    "rocprofv3 or equivalent trace showing prompt KV write, decode KV write, "
-                    "and gated decode-attention kernels for the canonical prompt"
-                ),
-            },
-            {
-                "name": "kv_backed_next_token_artifact",
-                "required_for": "kv_backed_next_token_artifact_missing",
-                "evidence": (
-                    "one-token decode artifact recording generated token/logit path from KV-backed "
-                    "runtime execution, not host-composed layer-prefix outputs"
-                ),
-            },
-        ],
+        "artifacts_needed": expected_artifacts_needed,
+        "artifacts_needed_sha256": hashlib.sha256(
+            json.dumps(expected_artifacts_needed, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
         "artifact_count": 2,
         "no_claim_policy": {
             "oracle_parity_claim_allowed": False,

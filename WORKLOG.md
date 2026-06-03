@@ -33408,3 +33408,38 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted handoff-integrity compact-route tests passed (`6` tests); compact-mode smoke passed with `status_integrity_sha256=60350575a556aabbca7972a66b2b937443d606c1799c5797d9d9a7843c9ef260`; persisted source-artifact verification returned `"match"`; fresh status-integrity checks passed (`all_match=true`, no failed checks); the full correctness-status test file passed (`152` tests); P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`267` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=56ca359a380d7973408de33e13c790645047c924ef8e51f8f9ac8a6cfd1ce337`, `handoff_summary_sha256=ddf663cd67351b3a13611c997e5186ced08614603969d21c719c875d4d930a8c`, and `readiness_summary_sha256=210d4c814a62323f51e0f6ec65e502745b3bc4a30823468b14d7402543a10861`. Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; `git diff --name-only` shows only `WORKLOG.md`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `docs/STEPFUN.md`, `scripts/stepfun_correctness_status.py`, and `tests/test_stepfun_correctness_status.py`; no `hipengine/` runtime file or engine-wide backend/quant dispatch path was changed, and docs/status continue to state Step throughput/performance claims require later correctness and benchmark gates.
+
+## 2026-06-03 — StepFun KV required-artifacts compact handoff
+
+Added machine-readable KV evidence-artifact handoff for the remaining KV-backed decode blocker. `StepFunKVDecodeRunPlan.kv_decode_blocker_summary` now records `artifacts_needed_sha256`, and `scripts/stepfun_correctness_status.py` exposes compact `--kv-required-artifacts-only` / `--kv-required-artifacts-sha-only` outputs for the concrete required artifacts (`kv_kernel_trace_artifact`, `kv_backed_next_token_artifact`). Status integrity now treats those routes as part of the KV compact-output mapping and cross-checks the blocker-summary artifact list/count/digest. Refreshed the metadata-only resource artifact and consolidated correctness-status artifact. Readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`); no oracle parity, KV-backed token/logit artifact, e2e correctness, or Step throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py::test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans tests/test_stepfun_load_smoke.py::test_stepfun_load_smoke_dry_run_plan_emits_resource_json tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_kv_decode_blocker_summary_outputs tests/test_stepfun_correctness_status.py::test_stepfun_correctness_status_status_integrity_only
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+s=json.loads(Path('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json').read_text())
+checks=s['status_integrity']['checks']
+assert checks['kv_compact_output_modes'] is True
+assert checks['kv_decode_blocker_summary_mirrors_run_plan'] is True
+summary=s['kv_backed_decode_gap_report']['kv_decode_blocker_summary']
+assert summary['artifacts_needed_sha256']=='f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9'
+assert s['docs_checklist']['open_or_partial_count_p0_p12']==2
+print('status ok', s['status_integrity_sha256'], s['source_artifacts_sha256'])
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+git diff --name-only
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' hipengine/runtime/stepfun_gguf_runner.py scripts/stepfun_correctness_status.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md hipengine/runtime/stepfun_gguf_runner.py scripts/stepfun_correctness_status.py tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py | grep -nEi '^\+.*(tok/s|throughput|performance claim|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+```
+
+Results: targeted KV blocker-summary tests passed (`4` tests); the full correctness-status test file passed (`152` tests); resource/status artifact refresh succeeded; persisted source-artifact verification returned `"match"`; the P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`267` StepFun/registry tests without failures plus CPU-reference fixture checks). Current artifact hashes: `source_artifacts_sha256=89fc4a815cdec95ea752d926829e946bb60ee0630fa54ad25139fb2f8b166d1f`, `handoff_summary_sha256=a317bf7a5333388780565a8170f2b461a6b25e6e642827b59af0fd5b4105830c`, `readiness_summary_sha256=e8c6e8f28a26264023a431a225fc8ed90c9dd1c5a2e63319e46184b7ed4e1212`, `next_action_commands_sha256=37d8d8b229a3c58f20b93b64bb2eac10e04c2907698ce2caa201f1d5e6cde346`, and `kv_required_artifacts_sha256=f4632638502b06daacdac0b0fc4799920d66c8a86752cada7b424721ce8addc9`. Prompt-verifier evidence: `git grep "import torch" -- hipengine` found no runtime torch imports; changed files are limited to StepFun runtime/status/tests/docs/worklog plus the two refreshed StepFun JSON artifacts; no engine-wide backend/quant special-casing was added; the diff contains no unsupported StepFun performance or throughput claim.
