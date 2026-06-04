@@ -112,7 +112,7 @@ _BATCH_SAMPLE_COMMAND_FLAGS = (
 _DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE = (
     "benchmarks/results/2026-06-02-hipengine-qwen35-c{rows}-native-batch-sampler-equality.json"
 )
-_DEFAULT_BATCH_SAMPLE_EQ_ROWS = (4, 8)
+_DEFAULT_BATCH_SAMPLE_EQ_ROWS = (2, 4, 8)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
 _ACCEPTED_MODE = RETAINED_ARTIFACT_ACCEPTED_MODE
 _ACCEPTED_SUMMARY = RETAINED_ARTIFACT_ACCEPTED_SUMMARY
@@ -132,12 +132,10 @@ def _argv_has_flag(argv: Sequence[str], flag: str) -> bool:
 def _apply_default_batch_sample_evidence(args: argparse.Namespace, argv: Sequence[str]) -> None:
     """Enable the row-aware batched LM-head only when canonical evidence exists.
 
-    The active c=4/c=8 retained diagnostic gates have repo-retained
+    The active c=2/c=4/c=8 retained diagnostic gates have repo-retained
     generated-token equality artifacts for the row-aware sampler.  Use them as
     the no-flag diagnostic default for covered rows while preserving an explicit
-    user override and the existing evidence gate.  c=2 intentionally remains on
-    the serial LM-head default until the post-c9 grouped-stress batched-sampler
-    flake is fixed.
+    user override and the existing evidence gate.
     """
 
     if any(_argv_has_flag(argv, flag) for flag in _BATCH_SAMPLE_COMMAND_FLAGS):

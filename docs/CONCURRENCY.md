@@ -775,6 +775,13 @@ What is still not green:
   c4 uses selected dense-context batch-gate layers `3,7,11`, and c8 remains
   native rowchunk2
   (`benchmarks/results/2026-06-04-hipengine-qwen35-current-default-c248-after-c4-selected-271/summary.json`).
+  The no-flag sampler default now also covers c2: three explicit c2
+  `batched_lm_head` repeats were green (`[137,137]`), and a post-change
+  current-default c=2/c=4/c=8 matrix is green with row-aware `batched_lm_head`
+  on every row count. c2 now has no decode or sampler blockers; c4/c8 remain
+  correctness-only due to selected dense-context and rowchunk attention labels,
+  respectively
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-c2-batched-sampler-default-272/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
