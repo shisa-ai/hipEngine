@@ -581,6 +581,13 @@ What is still not green:
   at step0. This keeps the c4 no-rowchunk target on the paged-context producer
   mode across full-attention layers, not sampler or later token feedback
   (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-paged-prefix-dense-sweep-246/summary.json`).
+  The dense-context producer can still use the normal batch gate: c4 step0 is
+  green with row-local dense context plus batch gate, while row-local paged
+  context and native batch paged context both fail at the same layer-7
+  current-token KV/context point. This eliminates the gate kernel/downstream
+  suffix as the step0 cause when dense contexts feed it, leaving the paged
+  context producer/addressing mode as the focused blocker
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-dense-context-batch-gate-247/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

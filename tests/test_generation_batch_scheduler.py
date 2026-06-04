@@ -12811,6 +12811,30 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert dense_layer_attn_context_payload["workload"]["batch_decode_attention_dense_context_layers"] == "3,7"
     assert dense_layer_attn_context_payload["workload"]["native_caware_decode"] is False
 
+    dense_context_batch_gate = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-attn-context-path",
+            "per_row_dense_context_batch_gate",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "4",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    dense_context_batch_gate_payload = run_hidden_bisect(
+        dense_context_batch_gate,
+        ["--dry-run", "--batch-decode-attn-context-path", "per_row_dense_context_batch_gate", "--layer-limits", "8"],
+    )
+    assert dense_context_batch_gate_payload["workload"]["batch_decode_attention_context_path"] == "per_row_dense_context_batch_gate"
+    assert dense_context_batch_gate_payload["workload"]["native_caware_decode"] is False
+
     batch_temp_attn_context = build_hidden_bisect_parser().parse_args(
         [
             "--dry-run",

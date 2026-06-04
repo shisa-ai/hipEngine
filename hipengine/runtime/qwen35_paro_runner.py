@@ -4099,6 +4099,9 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_dense_context_only = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_ONLY"
         )
+        force_per_row_full_attention_dense_context_batch_gate = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"
+        )
         force_per_row_full_attention_paged_context_only = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PAGED_CONTEXT_ONLY"
         )
@@ -4175,6 +4178,8 @@ class Qwen35ParoResidentSession:
             if force_per_row_full_attention_context_only
             else "per_row_dense_context_only_fallback"
             if force_per_row_full_attention_dense_context_only
+            else "per_row_dense_context_batch_gate_fallback"
+            if force_per_row_full_attention_dense_context_batch_gate
             else "per_row_paged_context_only_fallback"
             if force_per_row_full_attention_paged_context_only
             else "per_row_dense_context_layer_override"
@@ -4395,6 +4400,7 @@ class Qwen35ParoResidentSession:
                             force_per_row_full_attention_dense_context_only
                             or layer_id in force_per_row_full_attention_dense_context_layers
                         )
+                        layer_force_per_row_dense_context_batch_gate = force_per_row_full_attention_dense_context_batch_gate
                         layer_force_per_row_paged_context_only = force_per_row_full_attention_paged_context_only
                         if layer_id in force_per_row_full_attention_dense_context_layers:
                             layer_force_per_row_paged_context_only = False
@@ -4405,6 +4411,8 @@ class Qwen35ParoResidentSession:
                             if force_per_row_full_attention_context_only
                             else "per_row_dense_context_only_fallback"
                             if layer_force_per_row_dense_context_only
+                            else "per_row_dense_context_batch_gate_fallback"
+                            if layer_force_per_row_dense_context_batch_gate
                             else "per_row_paged_context_only_fallback"
                             if layer_force_per_row_paged_context_only
                             else "batch_temp_output_diagnostic"
@@ -4458,6 +4466,7 @@ class Qwen35ParoResidentSession:
                                 force_per_row_full_attention_context
                                 or force_per_row_full_attention_context_only
                                 or layer_force_per_row_dense_context_only
+                                or layer_force_per_row_dense_context_batch_gate
                                 or layer_force_per_row_paged_context_only
                                 or force_batch_compact_full_attention_context
                                 or force_per_row_full_attention_kv_append
@@ -4466,7 +4475,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_persistent_scratch
                             )
                         ):
-                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or layer_force_per_row_dense_context_only or layer_force_per_row_paged_context_only or force_batch_compact_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
+                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or layer_force_per_row_dense_context_only or layer_force_per_row_dense_context_batch_gate or layer_force_per_row_paged_context_only or force_batch_compact_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
                             per_row_append_contexts = [] if force_per_row_full_attention_kv_append or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
                             for slot in slots:
                                 row_key_cache, row_value_cache = self._slot_full_cache(layer_id, slot)
@@ -4662,6 +4671,7 @@ class Qwen35ParoResidentSession:
                                     force_per_row_context=force_per_row_full_attention_context,
                                     force_per_row_context_only=force_per_row_full_attention_context_only,
                                     force_per_row_dense_context_only=layer_force_per_row_dense_context_only,
+                                    force_per_row_dense_context_batch_gate=layer_force_per_row_dense_context_batch_gate,
                                     force_per_row_paged_context_only=layer_force_per_row_paged_context_only,
                                     force_batch_temp_context=force_batch_temp_full_attention_context,
                                     force_batch_compact_context=force_batch_compact_full_attention_context,
@@ -4807,6 +4817,7 @@ class Qwen35ParoResidentSession:
                                 force_per_row_context=force_per_row_full_attention_context,
                                 force_per_row_context_only=force_per_row_full_attention_context_only,
                                 force_per_row_dense_context_only=layer_force_per_row_dense_context_only,
+                                force_per_row_dense_context_batch_gate=layer_force_per_row_dense_context_batch_gate,
                                 force_per_row_paged_context_only=layer_force_per_row_paged_context_only,
                                 force_batch_temp_context=force_batch_temp_full_attention_context,
                                 force_batch_compact_context=force_batch_compact_full_attention_context,
@@ -4882,6 +4893,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_context
                                 or force_per_row_full_attention_context_only
                                 or layer_force_per_row_dense_context_only
+                                or layer_force_per_row_dense_context_batch_gate
                                 or layer_force_per_row_paged_context_only
                                 or force_batch_temp_full_attention_context
                                 or force_batch_compact_full_attention_context
@@ -4908,6 +4920,7 @@ class Qwen35ParoResidentSession:
                             force_per_row_full_attention_context
                             or force_per_row_full_attention_context_only
                             or layer_force_per_row_dense_context_only
+                            or layer_force_per_row_dense_context_batch_gate
                             or layer_force_per_row_paged_context_only
                             or force_batch_temp_full_attention_context
                             or force_batch_compact_full_attention_context
@@ -5077,6 +5090,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention context forced to per-row diagnostic path with diagnostic gate")
             if force_per_row_full_attention_dense_context_only:
                 decode_blockers.append("full-attention context forced to row-local dense diagnostic path with diagnostic gate")
+            if force_per_row_full_attention_dense_context_batch_gate:
+                decode_blockers.append("full-attention context forced to row-local dense diagnostic path with batch gate")
             if force_per_row_full_attention_dense_context_layers:
                 decode_blockers.append("full-attention context forced to row-local dense diagnostic path on selected layers")
             if force_per_row_full_attention_paged_context_only:
@@ -5143,6 +5158,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_context
                 and not force_per_row_full_attention_context_only
                 and not force_per_row_full_attention_dense_context_only
+                and not force_per_row_full_attention_dense_context_batch_gate
                 and not force_per_row_full_attention_dense_context_layers
                 and not force_per_row_full_attention_paged_context_only
                 and not force_batch_temp_full_attention_context

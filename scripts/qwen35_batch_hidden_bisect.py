@@ -5760,12 +5760,13 @@ def build_parser() -> argparse.ArgumentParser:
             "per_row",
             "per_row_context_only",
             "per_row_dense_context_only",
+            "per_row_dense_context_batch_gate",
             "per_row_paged_context_only",
             "batch_temp_output",
             "batch_compact_cache",
         ),
         default="batch",
-        help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context+gate kernels, per_row_context_only keeps the current row-count split, per_row_dense_context_only forces row-local dense context before row-local gate, per_row_paged_context_only forces row-local paged context before row-local gate, batch_temp_output writes native batch context into a fresh FP32 buffer before copying into the normal context scratch, batch_compact_cache runs the native batch context kernel on compact copied row caches, and all non-batch modes block retained claims.",
+        help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context+gate kernels, per_row_context_only keeps the current row-count split, per_row_dense_context_only forces row-local dense context before row-local gate, per_row_dense_context_batch_gate forces row-local dense context before the batch gate, per_row_paged_context_only forces row-local paged context before row-local gate, batch_temp_output writes native batch context into a fresh FP32 buffer before copying into the normal context scratch, batch_compact_cache runs the native batch context kernel on compact copied row caches, and all non-batch modes block retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-dense-context-layers",
@@ -6056,6 +6057,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_ONLY"] = (
         "1" if args.batch_decode_attn_context_path == "per_row_dense_context_only" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] = (
+        "1" if args.batch_decode_attn_context_path == "per_row_dense_context_batch_gate" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PAGED_CONTEXT_ONLY"] = (
         "1" if args.batch_decode_attn_context_path == "per_row_paged_context_only" else "0"
