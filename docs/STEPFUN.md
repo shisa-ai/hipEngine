@@ -666,6 +666,7 @@ reporting.
   `--blocked-evidence-gate-sha-only`, `--blocked-evidence-gate-artifacts-only` /
   `--blocked-evidence-gate-artifacts-sha-only`,
   `--blocked-evidence-gate-artifact-count-only`,
+  `--blocked-evidence-gate-blocked-count-only`,
   `--blocked-evidence-gate-status-counts-only` /
   `--blocked-evidence-gate-status-counts-sha-only`,
   `--blocked-evidence-gate-producer-commands-only` /

@@ -162,6 +162,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the artifact count for --blocked-evidence-gate.",
     )
     parser.add_argument(
+        "--blocked-evidence-gate-blocked-count-only",
+        action="store_true",
+        help="Emit only the blocked artifact count for --blocked-evidence-gate.",
+    )
+    parser.add_argument(
         "--blocked-evidence-gate-status-counts-only",
         action="store_true",
         help="Emit only the status-count map for --blocked-evidence-gate.",
@@ -799,6 +804,11 @@ def build_validator_status_report(
         if isinstance(selected_blocked_gate_artifact_names, list)
         else None
     )
+    selected_blocked_gate_blocked_count = (
+        selected_blocked_gate.get("blocked_count")
+        if isinstance(selected_blocked_gate, dict)
+        else None
+    )
     selected_blocked_gate_status_counts = (
         selected_blocked_gate.get("status_counts")
         if isinstance(selected_blocked_gate, dict)
@@ -866,6 +876,7 @@ def build_validator_status_report(
         "selected_blocked_gate_artifact_names_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate_artifact_names
         ),
+        "selected_blocked_gate_blocked_count": selected_blocked_gate_blocked_count,
         "selected_blocked_gate_status_counts": selected_blocked_gate_status_counts,
         "selected_blocked_gate_status_counts_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate_status_counts
@@ -969,6 +980,7 @@ def build_validator_status_report(
         "selected_blocked_gate_artifact_names_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate_artifact_names
         ),
+        "selected_blocked_gate_blocked_count": selected_blocked_gate_blocked_count,
         "selected_blocked_gate_status_counts": selected_blocked_gate_status_counts,
         "selected_blocked_gate_status_counts_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate_status_counts
@@ -1079,6 +1091,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["blocked_readiness_gates"]
     elif args.blocked_evidence_gate_artifact_count_only:
         payload = report["selected_blocked_gate_artifact_count"]
+    elif args.blocked_evidence_gate_blocked_count_only:
+        payload = report["selected_blocked_gate_blocked_count"]
     elif args.blocked_evidence_gate_status_counts_sha_only:
         payload = report["selected_blocked_gate_status_counts_sha256"]
     elif args.blocked_evidence_gate_status_counts_only:

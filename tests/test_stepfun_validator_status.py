@@ -290,6 +290,7 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["selected_blocked_gate_artifact_names_sha256"] == report[
         "selected_blocked_gate_artifact_names_sha256"
     ]
+    assert summary["selected_blocked_gate_blocked_count"] is None
     assert summary["selected_blocked_gate_status_counts"] is None
     assert summary["selected_blocked_gate_status_counts_sha256"] == report[
         "selected_blocked_gate_status_counts_sha256"
@@ -460,6 +461,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["selected_blocked_gate_artifact_names_sha256"] == report[
         "selected_blocked_gate_artifact_names_sha256"
     ]
+    assert summary["selected_blocked_gate_blocked_count"] == 1
     assert summary["selected_blocked_gate_status_counts"] == {"missing": 1}
     assert summary["selected_blocked_gate_status_counts_sha256"] == report[
         "selected_blocked_gate_status_counts_sha256"
@@ -587,6 +589,9 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
         "selected_blocked_gate_artifact_names"
     ] is None
     assert report["validator_status_summary"][
+        "selected_blocked_gate_blocked_count"
+    ] is None
+    assert report["validator_status_summary"][
         "selected_blocked_gate_status_counts"
     ] is None
     assert report["validator_status_summary"][
@@ -699,6 +704,7 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     selected_blocked_gate_artifacts_output = tmp_path / "selected-blocked-gate-artifacts.json"
     selected_blocked_gate_artifacts_sha_output = tmp_path / "selected-blocked-gate-artifacts-sha.json"
     selected_blocked_gate_artifact_count_output = tmp_path / "selected-blocked-gate-artifact-count.json"
+    selected_blocked_gate_blocked_count_output = tmp_path / "selected-blocked-gate-blocked-count.json"
     selected_blocked_gate_status_counts_output = tmp_path / "selected-blocked-gate-status-counts.json"
     selected_blocked_gate_status_counts_sha_output = tmp_path / "selected-blocked-gate-status-counts-sha.json"
     selected_blocked_gate_producer_commands_output = tmp_path / "selected-blocked-gate-producer-commands.json"
@@ -1081,6 +1087,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert json.loads(selected_blocked_gate_artifact_count_output.read_text()) == 1
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-blocked-count-only",
+            "--output",
+            str(selected_blocked_gate_blocked_count_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_blocked_count_output.read_text()) == 1
 
     rc = main(
         [
