@@ -3687,11 +3687,35 @@ class Qwen35ParoDecodeState:
         gate: Tensor | None = None,
         block_size: int = 256,
         scale: float | None = None,
+        force_paged_context: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         gate_tensor = scratch.gate if gate is None else gate
-        if spans.max_live_count < 1024:
+        if force_paged_context:
+            # Per-row diagnostics after a batch KV append must honor the same
+            # KVLiveSpans block-table addressing as the native batch context
+            # kernel; the dense token-1 context kernel assumes a compact row
+            # cache and is kept only for the normal c=1 path.
+            if spans.storage_dtype != DType.BF16:
+                raise NotImplementedError("forced paged full-attention context diagnostic currently requires BF16 KV")
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                scratch.query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.attn_out.ptr,
+                spans,
+                spans.max_live_count,
+                block_size,
+                self.config.num_attention_heads,
+                self.config.num_key_value_heads,
+                self.config.head_dim,
+                (self.config.head_dim ** -0.5) if scale is None else scale,
+                stream=stream,
+                library=_library_for(library, "attention"),
+                runtime=self.runtime,
+            )
+        elif spans.max_live_count < 1024:
             qwen35_full_attn_decode_context_bf16(
                 scratch.query.ptr,
                 key_cache.ptr,
@@ -4448,6 +4472,7 @@ class Qwen35ParoDecodeState:
                         spans=row_decode_spans,
                         gate=row_gate,
                         block_size=block_size,
+                        force_paged_context=True,
                         library=library,
                         stream=stream,
                     )
@@ -4467,39 +4492,22 @@ class Qwen35ParoDecodeState:
                     row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
                     if row_decode_spans.storage_dtype != DType.BF16:
                         raise NotImplementedError("per-row full-attention context-only diagnostic currently requires BF16 KV")
-                    if row_decode_spans.max_live_count < 1024:
-                        qwen35_full_attn_decode_context_bf16(
-                            row_scratch.query.ptr,
-                            row_key_cache.ptr,
-                            row_value_cache.ptr,
-                            attention_scratch.attn_out.ptr,
-                            row_decode_spans.live_counts.ptr,
-                            row_decode_spans.max_live_count,
-                            self.config.num_attention_heads,
-                            self.config.num_key_value_heads,
-                            self.config.head_dim,
-                            self.config.head_dim ** -0.5,
-                            stream=stream,
-                            library=_library_for(library, "attention"),
-                            runtime=self.runtime,
-                        )
-                    else:
-                        qwen35_paged_full_attn_decode_context_bf16_spans(
-                            row_scratch.query.ptr,
-                            row_key_cache.ptr,
-                            row_value_cache.ptr,
-                            attention_scratch.attn_out.ptr,
-                            row_decode_spans,
-                            row_decode_spans.max_live_count,
-                            block_size,
-                            self.config.num_attention_heads,
-                            self.config.num_key_value_heads,
-                            self.config.head_dim,
-                            self.config.head_dim ** -0.5,
-                            stream=stream,
-                            library=_library_for(library, "attention"),
-                            runtime=self.runtime,
-                        )
+                    qwen35_paged_full_attn_decode_context_bf16_spans(
+                        row_scratch.query.ptr,
+                        row_key_cache.ptr,
+                        row_value_cache.ptr,
+                        attention_scratch.attn_out.ptr,
+                        row_decode_spans,
+                        row_decode_spans.max_live_count,
+                        block_size,
+                        self.config.num_attention_heads,
+                        self.config.num_key_value_heads,
+                        self.config.head_dim,
+                        self.config.head_dim ** -0.5,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
                     row_context = self._row_tensor_view(attention_scratch.query_raw, row)
                     self.runtime.memcpy_async(
                         row_context.ptr,

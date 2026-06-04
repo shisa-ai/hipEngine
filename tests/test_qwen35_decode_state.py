@@ -492,7 +492,7 @@ def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_conte
             ),
         ),
     )
-    calls: list[tuple[str, int | None, int | None]] = []
+    calls: list[tuple[str, int | None, int | None] | tuple[str, int | None, int | None, bool]] = []
 
     monkeypatch.setattr(state, "input_rmsnorm_fp16", lambda *args, **kwargs: calls.append(("input_norm", None, None)) or scratch.attn_input)
     monkeypatch.setattr(
@@ -508,7 +508,14 @@ def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_conte
     )
 
     def fake_row_context(row_scratch, **kwargs):
-        calls.append(("row_context", int(row_scratch.attn_out.ptr), int(kwargs["spans"].max_live_count)))
+        calls.append(
+            (
+                "row_context",
+                int(row_scratch.attn_out.ptr),
+                int(kwargs["spans"].max_live_count),
+                bool(kwargs.get("force_paged_context")),
+            )
+        )
         return row_scratch.gated_attn
 
     monkeypatch.setattr(state, "decode_full_attention_context_gate_fp16", fake_row_context)
@@ -543,8 +550,8 @@ def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_conte
         ("input_norm", None, None),
         ("prepare", None, None),
         ("append", None, None),
-        ("row_context", scratch.attn_out.ptr, 5),
-        ("row_context", scratch.attn_out.ptr, 8),
+        ("row_context", scratch.attn_out.ptr, 5, True),
+        ("row_context", scratch.attn_out.ptr, 8, True),
         ("o_proj", None, None),
         ("post_norm", None, None),
         ("grouped_moe", None, None),
