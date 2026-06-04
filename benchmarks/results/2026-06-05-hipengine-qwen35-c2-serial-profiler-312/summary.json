@@ -1,0 +1,199 @@
+{
+  "artifacts": {
+    "current_c2_profiled_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-serial-profiler-312/current-c2-profiled-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-serial-profiler-312/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_c2_sampler_demotion": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/summary.json"
+    },
+    "previous_post_c2_sampler_baselines": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-post-c2-sampler-baseline-attach-311/summary.json"
+    },
+    "raw_trace_not_committed": {
+      "path": "/tmp/hipengine-iter312-c2-serial-profiler/rocprof-c2/epyc/1116851_kernel_trace.csv",
+      "sha256": "fe0a8971f36ea3840b38b9ca586d081de22419fb169096fa4140e9003905b49f",
+      "size_bytes": 128536155
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-serial-profiler-312/summary.json"
+    }
+  },
+  "commands": {
+    "profiled_c2": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-iter312-c2-serial-profiler/rocprof-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter312-c2-serial-profiler/current-c2-profiled.json"
+  },
+  "conclusion": "Current c2 no-flag serial-sampler profiler evidence is generated-token green at [137,137] with full native/c-aware decode, accepted c-aware projection, and sampler_execution.mode=serial_lm_head. The rocprofv3 kernel trace contains expected native batch full-attention context/KV append, grouped-MoE, c-aware projection, row-aware output GEMV, linear segment decode, and serial argmax kernels, while batched argmax kernels are absent. This refreshes required runtime/profiler evidence after the c2 sampler demotion; no retained throughput/scaling claim is made.",
+  "created_at": "2026-06-04T23:42:54.337381+00:00",
+  "git_commit_before_commit": "ebcb8276d81fb928961e3f365b7b7b51f1f1e6f6",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 312,
+  "kind": "current_c2_serial_sampler_profiler",
+  "performance_claim": false,
+  "profiler": {
+    "agent_dispatch_counts": {
+      "Agent 2": 473491
+    },
+    "dispatches": 473491,
+    "expected_kernel_fragments_present": true,
+    "fragments": {
+      "batched_sampler_argmax": {
+        "calls": 0,
+        "duration_ns": 0,
+        "present": false,
+        "top_kernels": []
+      },
+      "caware_projection": {
+        "calls": 32640,
+        "duration_ns": 618695170,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 16320,
+            "duration_ns": 327411775,
+            "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+          },
+          {
+            "calls": 16320,
+            "duration_ns": 291283395,
+            "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+          }
+        ]
+      },
+      "full_attention_context": {
+        "calls": 4080,
+        "duration_ns": 467547457,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 4080,
+            "duration_ns": 467547457,
+            "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+          }
+        ]
+      },
+      "grouped_moe": {
+        "calls": 16680,
+        "duration_ns": 45823388,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 5560,
+            "duration_ns": 22731529,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)"
+          },
+          {
+            "calls": 5560,
+            "duration_ns": 14581420,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)"
+          },
+          {
+            "calls": 5560,
+            "duration_ns": 8510439,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)"
+          }
+        ]
+      },
+      "kv_append": {
+        "calls": 4110,
+        "duration_ns": 22301522,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 4080,
+            "duration_ns": 22119802,
+            "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+          },
+          {
+            "calls": 30,
+            "duration_ns": 181720,
+            "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+          }
+        ]
+      },
+      "linear_attention_segment_decode": {
+        "calls": 8160,
+        "duration_ns": 30203792,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 8160,
+            "duration_ns": 30203792,
+            "kernel_name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)"
+          }
+        ]
+      },
+      "row_aware_output_gemv": {
+        "calls": 8160,
+        "duration_ns": 28355775,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 8160,
+            "duration_ns": 28355775,
+            "kernel_name": "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)"
+          }
+        ]
+      },
+      "serial_sampler_argmax": {
+        "calls": 1096,
+        "duration_ns": 4092880,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 548,
+            "duration_ns": 2459787,
+            "kernel_name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)"
+          },
+          {
+            "calls": 548,
+            "duration_ns": 1633093,
+            "kernel_name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+          }
+        ]
+      }
+    },
+    "present": true,
+    "raw_trace_not_committed": true,
+    "sha256": "fe0a8971f36ea3840b38b9ca586d081de22419fb169096fa4140e9003905b49f",
+    "size_bytes": 128536155,
+    "total_kernel_duration_ns": 4492258399,
+    "trace_file": "/tmp/hipengine-iter312-c2-serial-profiler/rocprof-c2/epyc/1116851_kernel_trace.csv",
+    "unique_kernel_count": 59
+  },
+  "result": {
+    "profiled_c2": {
+      "decode_blockers": [],
+      "expected_kernel_fragments_present": true,
+      "generated_token_equality_passed": true,
+      "native_caware_decode": true,
+      "native_row_aware_lm_head": false,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "profiler_trace_file": "/tmp/hipengine-iter312-c2-serial-profiler/rocprof-c2/epyc/1116851_kernel_trace.csv",
+      "profiler_trace_sha256": "fe0a8971f36ea3840b38b9ca586d081de22419fb169096fa4140e9003905b49f",
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "sampler_mode": "serial_lm_head"
+    }
+  },
+  "schema": 1,
+  "status": "passed",
+  "workload": {
+    "batch_size": 2,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "sampler_default": "serial_lm_head",
+    "warmup_decode_tokens": 8
+  }
+}

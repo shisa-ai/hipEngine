@@ -1,0 +1,44 @@
+{
+  "batch_execution": {
+    "blockers": [],
+    "native_caware_decode": true,
+    "projection_dispatch": {
+      "blockers": [],
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+    }
+  },
+  "decode_execution": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "full_attention_row_chunked_layers": null,
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "sampler_execution": {
+      "argmax_mode": "serial_per_row",
+      "blockers": [],
+      "mode": "serial_lm_head",
+      "native_row_aware_lm_head": false,
+      "requested_mode": "serial_lm_head"
+    }
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "performance_claim": false,
+  "raw_artifact": {
+    "path": "/tmp/hipengine-iter312-c2-serial-profiler/current-c2-profiled.json",
+    "sha256": "013f50169aaf70874c5d54288b145982121bac781bc3ab0217553c77f9399dd4",
+    "size_bytes": 143205
+  },
+  "status": "blocked"
+}
