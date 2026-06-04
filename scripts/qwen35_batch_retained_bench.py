@@ -4094,25 +4094,19 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c=3 and c=5..c=8 diagnostics show native full-attention is
-    # generated-token green when split into <=2-row native chunks, while c>=3
-    # grouping reproduces prompt/window-sensitive failures. c=4 has a stronger
-    # no-rowchunk fallback through row-local dense context + batch gate, so it
-    # can avoid rowchunk/O blockers while remaining correctness-only.
-    return 2 if int(batch_size) in {3, 5, 6, 7, 8} else 0
-
-
-_C4_AUTO_DENSE_CONTEXT_BATCH_GATE_LAYERS = "3,11"
+    # c=3..c=8 diagnostics show native full-attention is generated-token green
+    # when split into <=2-row native chunks, while larger groups reproduce
+    # prompt/window-sensitive failures. c=4 has a narrow no-rowchunk selected-
+    # dense-context repair for the first-four fixture, but the derived rows4..7
+    # fixture is only green with rowchunk2, so correctness-first auto rowchunks
+    # c=4 as well.
+    return 2 if int(batch_size) in {3, 4, 5, 6, 7, 8} else 0
 
 
 def _resolved_batch_decode_attn_context_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_attn_context_path", "batch"))
     if path != "batch":
         return path
-    # c=4 no-rowchunk native paged context is prompt/window-sensitive, while a
-    # selected row-local dense-context + batch-gate producer set is generated-
-    # token green. Keep the top-level context path as "batch" and install the
-    # selected layer override separately so the fallback scope is explicit.
     return path
 
 
@@ -4124,10 +4118,9 @@ def _resolved_batch_decode_attn_dense_context_batch_gate_layers(args: argparse.N
         return ""
     if str(getattr(args, "batch_decode_attn_context_path", "batch")) != "batch":
         return ""
-    batch_size = getattr(args, "batch_size", 0)
-    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
-        batch_size = 0
-    return _C4_AUTO_DENSE_CONTEXT_BATCH_GATE_LAYERS if int(batch_size) == 4 else ""
+    # Auto correctness now prefers rowchunk2 for c=4/c=8 hard windows. Keep
+    # selected dense-context layers as an explicit diagnostic override only.
+    return ""
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
@@ -4923,7 +4916,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-attn-dense-context-batch-gate-layers",
         default="",
-        help="Optional comma/range list of full-attention layer ids that should use the row-local dense context diagnostic while keeping the normal batch gate; auto defaults c=4 to layers 3,11 to narrow the dense-context fallback.",
+        help="Optional comma/range list of full-attention layer ids that should use the row-local dense context diagnostic while keeping the normal batch gate; auto defaults use rowchunk2 for c>=3 correctness and leave this diagnostic unset.",
     )
     parser.add_argument(
         "--batch-decode-attn-gate-path",

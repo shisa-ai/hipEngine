@@ -80,8 +80,8 @@ it still must not claim true retained c>N throughput.** Qwen/PARO BF16 c=2/c=4/c
 generated-token equality vs independent c=1 is green, and c=2/c=4/c=8 projection
 dispatch evidence selects the row-bounded native projection candidate from one
 combined catalog. The remaining hard gates are accepted retained scaling/graph
-replay evidence, full-native c4/c8 attention without selected-layer/rowchunk
-attention diagnostics, and any residual fallback labels.
+replay evidence, full-native c4/c8 attention without rowchunk diagnostics, and
+any residual fallback labels.
 
 What is in place:
 
@@ -110,9 +110,8 @@ What is still not green:
   correctness-first auto projection path (no-selected batch metadata using the
   128-thread batch-GEMV QKV/Z diagnostic for c=2/c=4/c=8), native segmented
   linear state, batch-GEMV/Marlin linear output, grouped-compact MoE for
-  c<=8 auto decode, native full-attention decode for c=2, selected-layer
-  dense-context full-attention diagnostics for c=4, and native row-chunked
-  full-attention diagnostics for c=8. The c=2/c=4/c=8 profiler
+  c<=8 auto decode, native full-attention decode for c=2, and native
+  row-chunked full-attention diagnostics for c=4/c=8. The c=2/c=4/c=8 profiler
   preflights now capture compact `rocprofv3 --kernel-trace` summaries with
   native batch attention, KV write, and `batch_argmax_stage{1,2}` sampler
   kernels. These artifacts remain
@@ -801,6 +800,12 @@ What is still not green:
   (`[137]*4`). The default is therefore retained for the primary first-four c4
   gate, while the rows4..7/c8 boundary stays on rowchunk2
   (`benchmarks/results/2026-06-04-hipengine-qwen35-hard-c4-full-attn-boundary-275/summary.json`).
+  The correctness-first auto default now rowchunks c4 as well as c3/c5..c8 and
+  disables the implicit selected-layer c4 fallback unless explicitly requested:
+  hard rows4..7 c4 turns green (`[137]*4`), primary c4 stays green, and the
+  current c=2/c=4/c=8 matrix remains green with c4/c8 carrying only the rowchunk
+  full-attention blocker
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-c4-auto-rowchunk2-default-276/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
