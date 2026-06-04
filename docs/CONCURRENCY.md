@@ -550,6 +550,12 @@ What is still not green:
   `[137,137,137,118]`; c2 keeps the current split because dense-only c2 is red
   `[103,137]` while the existing c2 context-only path remains `[137,137]`
   (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c4-dense-vs-paged-context-fix242/summary.json`).
+  Real-shape random-input primitive probes for c4/c8 then showed the paged batch
+  context kernel exactly matches independent paged c1 (`max_abs=0.0`)
+  and differs from dense c1 by only ~2e-08 at Qwen-like shape/context lengths,
+  so the E2E red path is not a broad primitive shape bug; next compare
+  actual model-layer context tensors or captured failing-window inputs
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

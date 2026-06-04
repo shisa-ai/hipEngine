@@ -178,6 +178,18 @@ def _parse_context_lens(text: str, *, rows: int, max_context_len: int) -> np.nda
     return np.asarray(values, dtype=np.int64)
 
 
+def _max_abs_delta(lhs: np.ndarray, rhs: np.ndarray) -> dict[str, object]:
+    delta = np.abs(lhs - rhs)
+    flat_index = int(np.argmax(delta))
+    index = tuple(int(value) for value in np.unravel_index(flat_index, delta.shape))
+    return {
+        "max_abs": float(delta[index]),
+        "index": list(index),
+        "lhs": float(lhs[index]),
+        "rhs": float(rhs[index]),
+    }
+
+
 def _fill_context_cache_rows(
     key_cache: np.ndarray,
     value_cache: np.ndarray,
@@ -432,9 +444,12 @@ def run(
     finally:
         arena.close()
 
-    batch_vs_c1 = float(np.max(np.abs(batch_out - c1_out)))
-    batch_vs_numpy = float(np.max(np.abs(batch_out - expected)))
-    attn_batch_aa = float(np.max(np.abs(batch_out - batch_out_aa)))
+    batch_vs_c1_delta = _max_abs_delta(batch_out, c1_out)
+    batch_vs_numpy_delta = _max_abs_delta(batch_out, expected)
+    attn_batch_aa_delta = _max_abs_delta(batch_out, batch_out_aa)
+    batch_vs_c1 = float(batch_vs_c1_delta["max_abs"])
+    batch_vs_numpy = float(batch_vs_numpy_delta["max_abs"])
+    attn_batch_aa = float(attn_batch_aa_delta["max_abs"])
     result = {
         "schema": _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
         "rows": rows,
@@ -451,8 +466,11 @@ def run(
         "append_batch_aa_key_mismatch": append_batch_aa_key_mismatch,
         "append_batch_aa_value_mismatch": append_batch_aa_value_mismatch,
         "attn_batch_vs_c1_max_abs": batch_vs_c1,
+        "attn_batch_vs_c1_delta": batch_vs_c1_delta,
         "attn_batch_vs_numpy_max_abs": batch_vs_numpy,
+        "attn_batch_vs_numpy_delta": batch_vs_numpy_delta,
         "attn_batch_aa_max_abs": attn_batch_aa,
+        "attn_batch_aa_delta": attn_batch_aa_delta,
         "aa_passed": (
             append_batch_aa_key_mismatch == 0
             and append_batch_aa_value_mismatch == 0
@@ -469,10 +487,17 @@ def run(
         ),
     }
     if dense_c1_out is not None:
+        batch_vs_dense_delta = _max_abs_delta(batch_out, dense_c1_out)
+        paged_c1_vs_dense_delta = _max_abs_delta(c1_out, dense_c1_out)
+        dense_vs_numpy_delta = _max_abs_delta(dense_c1_out, expected)
         result.update(
             {
-                "attn_batch_vs_dense_c1_max_abs": float(np.max(np.abs(batch_out - dense_c1_out))),
-                "attn_dense_c1_vs_numpy_max_abs": float(np.max(np.abs(dense_c1_out - expected))),
+                "attn_batch_vs_dense_c1_max_abs": float(batch_vs_dense_delta["max_abs"]),
+                "attn_batch_vs_dense_c1_delta": batch_vs_dense_delta,
+                "attn_paged_c1_vs_dense_c1_max_abs": float(paged_c1_vs_dense_delta["max_abs"]),
+                "attn_paged_c1_vs_dense_c1_delta": paged_c1_vs_dense_delta,
+                "attn_dense_c1_vs_numpy_max_abs": float(dense_vs_numpy_delta["max_abs"]),
+                "attn_dense_c1_vs_numpy_delta": dense_vs_numpy_delta,
             }
         )
     return result

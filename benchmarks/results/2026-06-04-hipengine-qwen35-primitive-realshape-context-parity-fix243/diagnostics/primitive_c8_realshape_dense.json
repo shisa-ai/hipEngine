@@ -1,0 +1,111 @@
+{
+  "aa_passed": true,
+  "append_batch_aa_key_mismatch": 0,
+  "append_batch_aa_value_mismatch": 0,
+  "append_key_mismatch": 0,
+  "append_value_mismatch": 0,
+  "attn_batch_aa_delta": {
+    "index": [
+      0,
+      0,
+      0
+    ],
+    "lhs": -0.006373223848640919,
+    "max_abs": 0.0,
+    "rhs": -0.006373223848640919
+  },
+  "attn_batch_aa_max_abs": 0.0,
+  "attn_batch_vs_c1_delta": {
+    "index": [
+      0,
+      0,
+      0
+    ],
+    "lhs": -0.006373223848640919,
+    "max_abs": 0.0,
+    "rhs": -0.006373223848640919
+  },
+  "attn_batch_vs_c1_max_abs": 0.0,
+  "attn_batch_vs_dense_c1_delta": {
+    "index": [
+      2,
+      7,
+      103
+    ],
+    "lhs": -0.03945913165807724,
+    "max_abs": 2.2351741790771484e-08,
+    "rhs": -0.03945915400981903
+  },
+  "attn_batch_vs_dense_c1_max_abs": 2.2351741790771484e-08,
+  "attn_batch_vs_numpy_delta": {
+    "index": [
+      2,
+      10,
+      70
+    ],
+    "lhs": -0.026790441945195198,
+    "max_abs": 2.2351741790771484e-08,
+    "rhs": -0.026790419593453407
+  },
+  "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+  "attn_dense_c1_vs_numpy_delta": {
+    "index": [
+      1,
+      11,
+      171
+    ],
+    "lhs": -0.022391846403479576,
+    "max_abs": 1.862645149230957e-08,
+    "rhs": -0.022391827777028084
+  },
+  "attn_dense_c1_vs_numpy_max_abs": 1.862645149230957e-08,
+  "attn_paged_c1_vs_dense_c1_delta": {
+    "index": [
+      2,
+      7,
+      103
+    ],
+    "lhs": -0.03945913165807724,
+    "max_abs": 2.2351741790771484e-08,
+    "rhs": -0.03945915400981903
+  },
+  "attn_paged_c1_vs_dense_c1_max_abs": 2.2351741790771484e-08,
+  "block_size": 256,
+  "context_lens": [
+    512,
+    513,
+    514,
+    515,
+    516,
+    517,
+    518,
+    519
+  ],
+  "device": {
+    "current_device": 0,
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    },
+    "hipDeviceGetName_error": 0,
+    "hipGetDeviceCount_error": 0,
+    "hipGetDevice_error": 0,
+    "visible_device_count": 1
+  },
+  "head_dim": 256,
+  "label": "primitive_c8_realshape_dense",
+  "max_context_len": 640,
+  "num_kv_heads": 2,
+  "num_q_heads": 16,
+  "passed": true,
+  "phase": "primitive",
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "613a1cd82fe5d7084b1989d5845ab91db5ef6921245a3feb20bb3a75076f5a13",
+  "raw_size_bytes": 2198,
+  "raw_source_path": "/tmp/hipengine-iter243-primitive-c8-realshape-dense.json",
+  "repeat": 1,
+  "rows": 8,
+  "schema": 1,
+  "seed": 1234,
+  "variant": "c8_realshape_context_parity"
+}
