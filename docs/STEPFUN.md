@@ -676,7 +676,8 @@ reporting.
   `--blocked-evidence-gate-validator-commands-sha-only`,
   `--blocked-evidence-gate-validator-command-count-only`, and
   `--blocked-evidence-gate-missing-evidence-only` /
-  `--blocked-evidence-gate-missing-evidence-sha-only`,
+  `--blocked-evidence-gate-missing-evidence-sha-only` /
+  `--blocked-evidence-gate-missing-evidence-count-only`,
   `--next-blocked-gate-only` /
   `--next-blocked-gate-sha-only`, and `--next-action-only` /
   `--next-action-sha-only` expose compact pollable validator

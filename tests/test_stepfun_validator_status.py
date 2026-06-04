@@ -714,6 +714,7 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     selected_blocked_gate_validator_commands_sha_output = tmp_path / "selected-blocked-gate-validator-commands-sha.json"
     selected_blocked_gate_validator_command_count_output = tmp_path / "selected-blocked-gate-validator-command-count.json"
     selected_blocked_gate_missing_output = tmp_path / "selected-blocked-gate-missing.json"
+    selected_blocked_gate_missing_count_output = tmp_path / "selected-blocked-gate-missing-count.json"
     selected_blocked_gate_missing_sha_output = tmp_path / "selected-blocked-gate-missing-sha.json"
     next_blocked_gate_output = tmp_path / "next-blocked-gate.json"
     next_blocked_gate_sha_output = tmp_path / "next-blocked-gate-sha.json"
@@ -1285,6 +1286,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert json.loads(selected_blocked_gate_missing_output.read_text()) == [
         "artifact_file_present"
     ]
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-missing-evidence-count-only",
+            "--output",
+            str(selected_blocked_gate_missing_count_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_missing_count_output.read_text()) == 1
 
     rc = main(
         [
