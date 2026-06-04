@@ -877,6 +877,13 @@ What is still not green:
   this is still evidence-only because c8 is also rowchunk2 with
   `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-serial-baseline-refresh-287/summary.json`).
+  A focused long-context primitive probe for rows4/rows8 at 512..640 live tokens
+  is green: batch paged KV append/context decode matches independent c1 exactly
+  (`attn_batch_vs_c1_max_abs=0.0`, A/A `0.0`) and matches NumPy/dense-c1 within
+  about `1.4e-8`. The rowchunk2 E2E blocker is therefore not reproduced by the
+  isolated BF16 paged full-attention context/KV primitives alone; it likely sits
+  in E2E full-attention composition/state/ordering
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-long-context-primitive-parity-288/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

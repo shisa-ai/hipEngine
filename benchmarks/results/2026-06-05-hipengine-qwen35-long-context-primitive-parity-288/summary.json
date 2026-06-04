@@ -1,0 +1,100 @@
+{
+  "cases": [
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-long-context-primitive-parity-288/long-context-primitive-c4.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_dense_c1_max_abs": 1.1175870895385742e-08,
+      "attn_batch_vs_numpy_max_abs": 1.30385160446167e-08,
+      "attn_dense_c1_vs_numpy_max_abs": 9.313225746154785e-09,
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --max-context-len 640 --context-lens 512,520,600,640 --include-dense-c1 --json /tmp/hipengine-iter288-long-context-primitive/rows4_ctx640_lens512_520_600_640.json",
+      "context_lens": [
+        512,
+        520,
+        600,
+        640
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "log_path": "/tmp/hipengine-iter288-long-context-primitive/rows4_ctx640_lens512_520_600_640.log",
+      "max_context_len": 640,
+      "name": "rows4_ctx640_lens512_520_600_640",
+      "passed": true,
+      "rows": 4
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-long-context-primitive-parity-288/long-context-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_dense_c1_max_abs": 1.1175870895385742e-08,
+      "attn_batch_vs_numpy_max_abs": 9.313225746154785e-09,
+      "attn_dense_c1_vs_numpy_max_abs": 1.30385160446167e-08,
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --max-context-len 640 --context-lens 512,520,536,560,584,600,620,640 --include-dense-c1 --json /tmp/hipengine-iter288-long-context-primitive/rows8_ctx640_lens512_520_536_560_584_600_620_640.json",
+      "context_lens": [
+        512,
+        520,
+        536,
+        560,
+        584,
+        600,
+        620,
+        640
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "log_path": "/tmp/hipengine-iter288-long-context-primitive/rows8_ctx640_lens512_520_536_560_584_600_620_640.log",
+      "max_context_len": 640,
+      "name": "rows8_ctx640_lens512_520_536_560_584_600_620_640",
+      "passed": true,
+      "rows": 8
+    }
+  ],
+  "child_artifacts_not_committed": "/tmp/hipengine-iter288-long-context-primitive",
+  "created_utc": "2026-06-04T17:08:14Z",
+  "finding": "Rows=4 and rows=8 long-context primitive parity are green at 512..640 live tokens: batch paged KV append/context decode matches independent c1 exactly (max_abs=0.0) and matches NumPy/dense-c1 within ~1.4e-8. The current c4/c8 rowchunk2 E2E blocker is therefore not reproduced by the isolated BF16 paged full-attention context/KV primitives at long context; it likely sits in E2E full-attention composition/state/ordering rather than the primitive context kernel alone.",
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 288,
+  "mode": "qwen35_long_context_primitive_parity",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: focused full-attention/KV primitive parity blocker is green with committed c4/c8 long-context artifacts on GPU1/XTX; no throughput/scaling claim.",
+    "passed": true
+  },
+  "retained_ready": false,
+  "schema": 1,
+  "software": {
+    "hipengine_commit": "caf6f641ff2a037af41b20bfd074bea7337ecb79"
+  },
+  "status": "passed_focused_full_attention_primitive_parity"
+}
