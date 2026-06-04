@@ -133,6 +133,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the next action bundle.",
     )
     parser.add_argument(
+        "--next-action-validator-summary-only",
+        action="store_true",
+        help=(
+            "Print only the validator summary embedded in the next-action payload."
+        ),
+    )
+    parser.add_argument(
+        "--next-action-validator-summary-sha-only",
+        action="store_true",
+        help=(
+            "Print only the SHA-256 digest of the validator summary embedded "
+            "in the next-action payload."
+        ),
+    )
+
+    parser.add_argument(
         "--sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the full report or compact summary.",
@@ -548,8 +564,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         prompt_artifact=args.prompt_artifact,
         resource_artifact=args.resource_artifact,
     )
+    next_action = report.get("next_action")
+    next_action_validator_summary = (
+        next_action.get("validator_summary") if isinstance(next_action, dict) else None
+    )
     if args.status_only:
         payload: object = report["status"]
+    elif args.next_action_validator_summary_sha_only:
+        payload = status_mod._stable_json_sha256(next_action_validator_summary)
+    elif args.next_action_validator_summary_only:
+        payload = next_action_validator_summary
     elif args.next_action_sha_only:
         payload = report["next_action_sha256"]
     elif args.next_action_only:

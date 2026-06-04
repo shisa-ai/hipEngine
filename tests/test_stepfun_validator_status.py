@@ -784,3 +784,55 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 2
     assert json.loads(status_output.read_text()) == "blocked"
+
+
+def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    from scripts import stepfun_correctness_status as status_mod
+
+    prompt = tmp_path / "prompt.json"
+    resource = tmp_path / "resource.json"
+    oracle = tmp_path / "oracle-timeout.json"
+    trace = tmp_path / "trace.json"
+    token = tmp_path / "token.json"
+    manifest = tmp_path / "manifest.json"
+    _write_prompt(prompt)
+    _write_resource(resource)
+    _write_timeout_oracle(oracle)
+    _write_trace(trace)
+    _write_token(token)
+    manifest.write_text(json.dumps(_manifest(oracle, trace, token), sort_keys=True))
+
+    args = [
+        "--manifest",
+        str(manifest),
+        "--prompt-artifact",
+        str(prompt),
+        "--resource-artifact",
+        str(resource),
+    ]
+
+    rc = main([*args, "--next-action-validator-summary-only", "--pretty"])
+
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["oracle_status"] == "timeout"
+    assert summary["oracle_returncode"] is None
+    assert summary["oracle_blocker_kind"] == "llama_cpp_oracle_timeout"
+    assert summary["generated_text_len"] == 0
+    assert summary["missing_evidence"] == [
+        "oracle_success_status",
+        "oracle_returncode_zero",
+        "no_timeout_or_oracle_blocker",
+        "generated_text_nonempty",
+        "generated_text_matches_target",
+    ]
+
+    rc = main([*args, "--next-action-validator-summary-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        summary
+    )
