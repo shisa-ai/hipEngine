@@ -457,7 +457,12 @@ What is still not green:
   controls (`[137]*9`) followed by five green active c2 runs (`[137,137]` each),
   narrowing the suspect toward c9 grouped-compact/red-path stress rather than
   high-row rowchunk2 alone, though not proving causality
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-selectedc1-control223/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-selectedc1-control223/summary.json`). A covered c8 grouped-compact rowchunk2 control likewise ran five green
+  c8 controls (`[137]*8`) followed by five green active c2 runs (`[137,137]`
+  each), so grouped-compact MoE at the covered c8 boundary is not enough to
+  reproduce the c2 flake; the suspect narrows further toward the c9
+  grouped-compact boundary/red path
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

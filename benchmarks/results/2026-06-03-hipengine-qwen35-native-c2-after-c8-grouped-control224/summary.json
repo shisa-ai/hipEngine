@@ -1,0 +1,863 @@
+{
+  "artifacts": {
+    "c2-default-after-c8-grouped-cycle1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle1.json",
+      "sha256": "adc0414e94c87afc67a3c5fe3524d6c4dd86f2a04271c1dc419e395a709e5716",
+      "size_bytes": 1531
+    },
+    "c2-default-after-c8-grouped-cycle2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle2.json",
+      "sha256": "227cb01621a0505d1c4a44f2a378b2360c9876d25662184dd20c4dd9a9260304",
+      "size_bytes": 1531
+    },
+    "c2-default-after-c8-grouped-cycle3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle3.json",
+      "sha256": "913fd3efec74c450bd48631fc0a4b6486205a40d2bc9358c3ad20421e8bb068f",
+      "size_bytes": 1531
+    },
+    "c2-default-after-c8-grouped-cycle4": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle4.json",
+      "sha256": "6d494f11cc1251ce69e001ebd4ac66ac6087425a3e83febf4a4234a63f4bcf07",
+      "size_bytes": 1531
+    },
+    "c2-default-after-c8-grouped-cycle5": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle5.json",
+      "sha256": "b500130136f99613dc4a8c2f583f3f365ac1e3c2bf7a1b789c2b89e86c321a48",
+      "size_bytes": 1531
+    },
+    "c8-grouped-rowchunk2-before-c2-cycle1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle1.json",
+      "sha256": "ad3e245ebb293a9fba230d318e865a9c0d4884f9c2f6548dc839ca0ff8415c74",
+      "size_bytes": 2122
+    },
+    "c8-grouped-rowchunk2-before-c2-cycle2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle2.json",
+      "sha256": "a1c30c90f5b2ae7b09c5a64b054893ab76a226ea2c3ded829a38c2a02e4fa52e",
+      "size_bytes": 2122
+    },
+    "c8-grouped-rowchunk2-before-c2-cycle3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle3.json",
+      "sha256": "cb73716aca50ad3c1409dae94879e68d1ced76616f8e47ad7996b59ebfdd1b24",
+      "size_bytes": 2122
+    },
+    "c8-grouped-rowchunk2-before-c2-cycle4": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle4.json",
+      "sha256": "a70f292796cd2f58a39e2e130e13fa7e7b40e80b57f0b66a7df2f1f3c0396c13",
+      "size_bytes": 2122
+    },
+    "c8-grouped-rowchunk2-before-c2-cycle5": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle5.json",
+      "sha256": "6366f9b68abfe9e0133fe21f0201550941f764e07ca4bd71c67dbb9e2464037f",
+      "size_bytes": 2122
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "iter222_c9_grouped_stress_comparison": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-stress222/summary.json",
+      "sha256": "32528e13193ef560ef3dd3ad7852454e27f8b579419e36e3e73984b944539405",
+      "size_bytes": 32531
+    },
+    "iter223_c9_selectedc1_control_comparison": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-selectedc1-control223/summary.json",
+      "sha256": "778fedf3c3fe628a0f05bfd36a2f2328c0f8a87987572e50242886f90d540659",
+      "size_bytes": 28492
+    }
+  },
+  "comparison_to_recent_controls": {
+    "iter222_c2_after_c9_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        103,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "iter222_c2_after_c9_red_cycles": [
+      2
+    ],
+    "iter222_c9_grouped_prefixes": [
+      [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ]
+    ],
+    "iter223_c2_after_c9_selectedc1_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "iter223_c9_selectedc1_prefixes": [
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    ],
+    "iter224_c2_after_c8_grouped_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "iter224_c8_grouped_prefixes": [
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    ]
+  },
+  "conclusion": "Green c8 grouped-compact rowchunk2 work did not reproduce the active-c2 [103,137] flake: five c8 grouped rowchunk2 controls were [137]*8 and the five immediately following c2 default runs were all [137,137]. Together with iter223 c9 selected_c1 controls and iter222 c9 grouped-compact red stress, the suspect narrows further toward the c9 grouped-compact boundary/red-path rather than grouped-compact MoE at covered c8 or high-row rowchunk2 alone. This is nondeterministic evidence, not proof of causality. No throughput claim is made.",
+  "created_at": "2026-06-04T00:34:07Z",
+  "git_commit_before_result_commit": "51e028d118a7f53be04f4f51b20bb285266a045c",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 224,
+  "kind": "native_c2_after_c8_grouped_rowchunk2_control",
+  "observations": {
+    "c2_after_c8_grouped_green_cycles": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "c2_after_c8_grouped_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "c2_after_c8_grouped_red_count": 0,
+    "c2_after_c8_grouped_red_cycles": [],
+    "c2_after_c8_grouped_run_count": 5,
+    "c8_grouped_control_reproduced_103_137_flake": false,
+    "c8_grouped_prefixes": [
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    ],
+    "c8_grouped_rowchunk2_green_all_cycles": true
+  },
+  "performance_claim": false,
+  "remaining_blockers": [
+    "isolate whether c9 grouped-compact MoE writes/state, red generated trajectory, or c9-only row-count/resource pressure triggers the subsequent c2 flake",
+    "active c2 retained readiness remains blocked until the intermittent [103,137] flake is explained or retired with stronger evidence",
+    "c9 grouped-compact rowchunk2 remains red",
+    "full-native/no-rowchunk grouped full-attention remains the retained c4/c8 blocker"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle1.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 1,
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c8-grouped-rowchunk2-before-c2",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle1.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 1,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c8-grouped",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle2.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 2,
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c8-grouped-rowchunk2-before-c2",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle2.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 2,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c8-grouped",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle3.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 3,
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c8-grouped-rowchunk2-before-c2",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle3.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 3,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c8-grouped",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle4.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 4,
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c8-grouped-rowchunk2-before-c2",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle4.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 4,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c8-grouped",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c8-grouped-rowchunk2-before-c2-cycle5.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 5,
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c8-grouped-rowchunk2-before-c2",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/diagnostics/c2-default-after-c8-grouped-cycle5.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 5,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c8-grouped",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_mode": "batched_lm_head",
+      "workload_batch_size": null
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "c2_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "c8_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "cycle_command_shape": "for each cycle: run c8 --batch-size 8 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-moe-path grouped_compact, then immediately run active c2 default retained bench in a new Python process",
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}
