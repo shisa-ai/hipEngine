@@ -637,7 +637,16 @@ What is still not green:
   full-attention output path, but rowchunk diagnostics repair multi-row chunks
   internally. A no-chunk full-native contrast with output `batch_gemv` is still
   red (`c4=[82,137,137,137]`, `c8=[82,137,137,137,45,11,137,137]`), so forcing
-  GEMV O projection alone is not the retained full-native fix. This is
+  GEMV O projection alone is not the retained full-native fix. A post-fix
+  full-native refresh keeps that boundary: c4 native context+native O is red
+  (`[137,137,137,118]`), forced batch-GEMV O alone is red
+  (`[82,137,137,137]`), c4 context-only replay with native O remains green
+  (`[137]*4`), and context-only plus batch-GEMV O is red
+  (`[137,104,137,137]`); c8 stays red for batch-GEMV O and context-only plus
+  batch-GEMV O (`[82,137,137,137,45,11,137,137]` and
+  `[137,104,137,137,45,11,83,137]`). The remaining retained blocker is native
+  grouped full-attention context/pre-QKV/no-rowchunk behavior, not the rowchunk O
+  path (`benchmarks/results/2026-06-03-hipengine-qwen35-native-fullnative-context-output-refresh235/summary.json`). This is
   correctness-only evidence: rowchunk full attention remains
   `native_caware_decode=false`, and full-native no-chunk grouped>=3 attention is
   still the retained blocker

@@ -1,0 +1,63 @@
+{
+  "batch_blockers": [
+    "full-attention context forced to per-row diagnostic path with batch gate",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [
+    "full-attention context forced to per-row diagnostic path with batch gate"
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "per_row_context_only_fallback",
+  "full_attention_context_layer_paths": [
+    "per_row_context_only_fallback"
+  ],
+  "full_attention_decode_path": "native_batch",
+  "full_attention_output_layer_paths": [],
+  "full_attention_row_chunk_size": null,
+  "generated_token_equality_passed": true,
+  "label": "c4_fullnative_contextonly",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "grouped_compact",
+  "moe_grouped_compact_layers": 40,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "093a447c338cab27d124c2d13a6b23b4fd0d47f4c7090a8e382f34b802bd4459",
+  "raw_size_bytes": 215621,
+  "raw_source_path": "/tmp/hipengine-iter235-c4-fullnative-contextonly.json",
+  "sampler_execution": {
+    "argmax_audit_enabled": false,
+    "argmax_mode": "batch",
+    "blockers": [],
+    "c2_equality_green": true,
+    "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+    "equality_rows": 4,
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true,
+    "requested_mode": "batched_lm_head",
+    "rows": 4
+  },
+  "status": "blocked",
+  "variant": "c4 no rowchunk, per-row context-only replay with native O output",
+  "workload_batch_decode_attention_context_path": "per_row_context_only",
+  "workload_batch_decode_full_attention_output_path": "batch",
+  "workload_batch_decode_full_attention_path": "native_batch",
+  "workload_batch_decode_full_attention_row_chunk_size": 0,
+  "workload_batch_decode_moe_path": "grouped_compact",
+  "workload_batch_sample_mode": "batched_lm_head",
+  "workload_batch_size": 4,
+  "workload_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json"
+}
