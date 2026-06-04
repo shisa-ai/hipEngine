@@ -516,7 +516,14 @@ What is still not green:
   `[103,137]` with `selected_c1_batch` MoE and `native_caware_decode=true`; an
   immediate repeat returned `[137,137]`. Treat c2 equality stability as still open
   even when the latest repeat is green
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-context-producer-refresh236/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-context-producer-refresh236/summary.json`). A c2 split after that flake ran the exact default selected-c1/native-context
+  command green 3/3 and grouped-compact/native-context green 3/3, while the
+  `per_row_context_only` diagnostic deterministically reproduced the same row0
+  `[103,137]` / token-6007-vs-1483 signature 3/3. The final active verify was
+  green `[137,137]`; the flake now points toward a full-attention context-path
+  signature, not sampler or MoE mode alone, but why native-context metadata can
+  intermittently land there remains unresolved
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-stability-split237/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
