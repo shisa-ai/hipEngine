@@ -894,11 +894,18 @@ What is still not green:
   A layer-scoped rowchunk diagnostic narrows that hard-c4 target: with row-aware
   batch-GEMV O, no-rowchunk is red (`[45,11,137,137]`), rowchunking only layer 3
   is red (`[45,58,137,137]`), rowchunking layers 3+7 is red
-  (`[137,109,137,137]`), but rowchunking layers 3+7+11 is green (`[137]*4`).
-  Single/paired controls for 11, 7+11, and 3+11 stay red, so the first three
-  full-attention producer layers together are sufficient while each tested
-  smaller subset is not
+  (`[137,109,137,137]`), but rowchunking layers 3+7+11 is green on the hard
+  rows4..7 fixture (`[137]*4`). Single/paired controls for 11, 7+11, and 3+11
+  stay red
   (`benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-rowchunk-layer-scope-290/summary.json`).
+  The following default-promotion check showed the first three layers are not
+  enough for the original c4/c8 fixtures (`[137,137,137,118]` for c4 and
+  `[137,137,137,118,137,137,137,137]` for c8), but rowchunking the first four
+  full-attention producer layers (3,7,11,15) with row-aware batch-GEMV O keeps
+  original c4, hard rows4..7 c4, and original c8 generated-token green. The
+  correctness-first c4/c8 auto path now uses that narrower layer scope, while it
+  remains diagnostic/non-retained because `native_caware_decode=false`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-c8-auto-layer-scope-291/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

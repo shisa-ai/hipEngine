@@ -4103,6 +4103,35 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     return 2 if int(batch_size) in {3, 4, 5, 6, 7, 8} else 0
 
 
+def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) -> str:
+    explicit = str(getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or "").strip()
+    if explicit:
+        return explicit
+    if str(getattr(args, "batch_decode_full_attn_path", "native_batch")) != "auto":
+        return ""
+    batch_size = getattr(args, "batch_size", 0)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = 0
+    # Hard rows4..7 c=4 plus original c4/c8 evidence shows rowchunking only
+    # the first four full-attention producer layers preserves generated-token
+    # equality while smaller tested c4 subsets remain red. Keep other covered
+    # row counts on all-layer rowchunk2 until equivalent layer-scope artifacts
+    # exist for them.
+    return "3,7,11,15" if int(batch_size) in {4, 8} else ""
+
+
+def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> str:
+    path = str(getattr(args, "batch_decode_full_attn_output_path", "batch"))
+    if path != "batch":
+        return path
+    if _resolved_batch_decode_full_attn_row_chunk_layers(args):
+        # Layer-scoped c4 rowchunk leaves later full-attention layers on the
+        # native path, so keep the already accepted row-aware batch-GEMV O
+        # projection for all full-attention layers in that narrowed diagnostic.
+        return "batch_gemv"
+    return path
+
+
 def _resolved_batch_decode_attn_context_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_attn_context_path", "batch"))
     if path != "batch":
@@ -4171,9 +4200,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(
         _resolved_batch_decode_full_attn_row_chunk_size(args)
     )
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = str(
-        getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
-    ).strip()
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = _resolved_batch_decode_full_attn_row_chunk_layers(args)
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
     )
@@ -4226,7 +4253,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_SUFFIX"] = (
         "1" if getattr(args, "batch_decode_attn_suffix_order", "phased") == "interleaved" else "0"
     )
-    batch_full_attention_output_path = getattr(args, "batch_decode_full_attn_output_path", "batch")
+    batch_full_attention_output_path = _resolved_batch_decode_full_attn_output_path(args)
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] = (
         "1" if batch_full_attention_output_path == "per_row" else "0"
     )
@@ -4723,9 +4750,7 @@ def _build_payload(
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
             "batch_decode_full_attention_path": _resolved_batch_decode_full_attn_path(args),
             "batch_decode_full_attention_row_chunk_size": _resolved_batch_decode_full_attn_row_chunk_size(args),
-            "batch_decode_full_attention_row_chunk_layers": str(
-                getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
-            ).strip(),
+            "batch_decode_full_attention_row_chunk_layers": _resolved_batch_decode_full_attn_row_chunk_layers(args),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -4735,7 +4760,7 @@ def _build_payload(
             "batch_decode_full_attention_kv_append_path": str(getattr(args, "batch_decode_full_attn_kv_append_path", "batch")),
             "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
             "batch_decode_attention_suffix_order": str(getattr(args, "batch_decode_attn_suffix_order", "phased")),
-            "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
+            "batch_decode_full_attention_output_path": _resolved_batch_decode_full_attn_output_path(args),
             "batch_decode_full_attention_layer_copy": str(getattr(args, "batch_decode_full_attn_layer_copy", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
