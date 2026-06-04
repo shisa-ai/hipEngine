@@ -689,6 +689,7 @@ reporting.
   `--next-action-readiness-gate-only` / `--next-action-status-only` /
   `--next-action-reason-only` /
   `--next-action-validator-command-kind-only` /
+  `--next-action-validator-command-only` /
   `--next-action-producer-command-kind-only` /
   `--next-action-producer-command-only` expose compact pollable validator
   records/commands/evidence gaps by artifact, all gates,
