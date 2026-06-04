@@ -861,6 +861,14 @@ What is still not green:
   ratio was only `0.822` while native/serial-bridge was `1.049`, so this is
   baseline evidence only and still not a retained throughput/scaling claim
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/summary.json`).
+  The same baseline-evidence path now covers c4 rowchunk2: a compact c4
+  scheduler-serial-bridge reference is correctness-passed but blocked at
+  `108.524` aggregate / `27.131` per-request tok/s, and a current c4 retained
+  run with compact c1+c4-serial references stays green (`[137]*4`) with
+  `scaling.complete=true`. Its aggregate native/c1 and native/serial ratios are
+  `1.053` and `1.303`, respectively, but this is still evidence-only because
+  the retained run is rowchunk2 with `native_caware_decode=false`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-serial-baseline-refresh-286/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
