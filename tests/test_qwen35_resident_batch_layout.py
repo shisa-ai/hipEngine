@@ -2884,6 +2884,89 @@ def test_qwen35_resident_sample_batch_rejects_stale_equality_artifact_metadata(t
     )
 
 
+def test_qwen35_resident_sample_batch_batched_lm_head_serial_argmax_diagnostic(tmp_path, monkeypatch) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    artifact_path = "benchmarks/results/qwen35-c2-eq.json"
+    equality_payload = {
+        "schema": 1,
+        "rows": 2,
+        "artifact_path": artifact_path,
+        "source_artifact_path": artifact_path,
+        "passed": True,
+        "generated_token_equality": {
+            "passed": True,
+            "skipped": False,
+            "batch_sequences": [[11, 12], [21, 22]],
+            "c1_sequences": [[11, 12], [21, 22]],
+            "mismatches": [],
+        },
+        "execution": {
+            "batch_execution": {
+                "decode_execution": {
+                    "sampler_execution": {
+                        "requested_mode": "batched_lm_head",
+                        "mode": "batched_lm_head",
+                        "native_row_aware_lm_head": True,
+                        "blockers": [],
+                    }
+                }
+            }
+        },
+    }
+    (artifact_dir / "qwen35-c2-eq.json").write_text(json.dumps(equality_payload), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "batched_lm_head")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE", "serial_per_row")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT", artifact_path)
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS", "2")
+
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 2
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8, rms_norm_eps=1e-6)
+    session.vocab_size = 16
+    session.lm_head_threads = 256
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.libraries = {"norm": object(), "cast": object(), "w8a16": object(), "lm_head": object()}
+    session.norm_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x7000))
+    session.batch_norm_out = SimpleNamespace(ptr=0x7100)
+    session.batch_norm_out_bf16 = SimpleNamespace(ptr=0x7200)
+    session.lm_head_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x7300))
+    session.lm_head_scale = SimpleNamespace(tensor=SimpleNamespace(ptr=0x7400))
+    session.batch_lm_logits = SimpleNamespace(ptr=0x7500)
+    session.lm_block_values = SimpleNamespace(ptr=0x7600)
+    session.lm_block_indices = SimpleNamespace(ptr=0x7700)
+    session.lm_out_index = SimpleNamespace(ptr=0x7800)
+    session.lm_out_value = SimpleNamespace(ptr=0x7900)
+    hidden = Tensor.from_handle(0x6000, (2, 8), DType.FP16, Device("hip", 0))
+    calls: list[tuple[str, tuple[object, ...]]] = []
+    read_tokens = iter([101, 202])
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args))
+        return _inner
+
+    monkeypatch.setattr(runner_module, "paro_rmsnorm_out_fp16", record("norm"))
+    monkeypatch.setattr(runner_module, "fp16_to_bf16", record("cast"))
+    monkeypatch.setattr(runner_module, "w8a16_linear_bf16_f32_out", record("lm_head"))
+    monkeypatch.setattr(runner_module, "batch_argmax_f32", lambda *args, **kwargs: pytest.fail("batch argmax should be bypassed"))
+    monkeypatch.setattr(runner_module, "argmax_f32", record("argmax"))
+    session._read_sample = lambda: SimpleNamespace(token_id=next(read_tokens), token_text="", logit=0.0)
+
+    results = session._sample_batch_from_hidden(hidden, rows=2)
+
+    assert [result.token_id for result in results] == [101, 202]
+    assert [args[0] for name, args in calls if name == "argmax"] == [0x7500, 0x7500 + 16 * DType.FP32.itemsize]
+    assert session.last_batch_sampler_execution["requested_mode"] == "batched_lm_head"
+    assert session.last_batch_sampler_execution["mode"] == "batched_lm_head"
+    assert session.last_batch_sampler_execution["argmax_mode"] == "serial_per_row"
+    assert session.last_batch_sampler_execution["native_row_aware_lm_head"] is False
+    assert "batched LM-head argmax forced to serial_per_row diagnostic" in session.last_batch_sampler_execution["blockers"]
+
+
 def test_qwen35_resident_sample_batch_rejects_unknown_mode(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "surprise")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)

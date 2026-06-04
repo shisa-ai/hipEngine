@@ -6009,10 +6009,18 @@ class Qwen35ParoResidentSession:
             )
         except ValueError as exc:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE must be serial_lm_head or batched_lm_head") from exc
-        self.last_batch_sampler_execution = sampler_decision.to_json_dict()
+        sampler_argmax_mode = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE", "batch").strip() or "batch"
+        if sampler_argmax_mode not in {"batch", "serial_per_row"}:
+            raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE must be batch or serial_per_row")
+        sampler_execution = sampler_decision.to_json_dict()
+        sampler_execution["argmax_mode"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else sampler_argmax_mode
+        if sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "serial_per_row":
+            sampler_execution["native_row_aware_lm_head"] = False
+            sampler_execution["blockers"].append("batched LM-head argmax forced to serial_per_row diagnostic")
+        self.last_batch_sampler_execution = sampler_execution
         decode_execution = getattr(self, "last_batch_decode_execution", None)
         if isinstance(decode_execution, dict):
-            decode_execution["sampler_execution"] = sampler_decision.to_json_dict()
+            decode_execution["sampler_execution"] = dict(sampler_execution)
         if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD:
             results: list[Qwen35ParoAutoregressiveStepResult] = []
             for row in range(rows):
@@ -6056,6 +6064,24 @@ class Qwen35ParoResidentSession:
             library=self.libraries["w8a16"],
             runtime=self.runtime,
         )
+        if sampler_argmax_mode == "serial_per_row":
+            results: list[Qwen35ParoAutoregressiveStepResult] = []
+            for row in range(rows):
+                argmax_f32(
+                    self.batch_lm_logits.ptr + row * self.vocab_size * DType.FP32.itemsize,
+                    self.lm_block_values.ptr,
+                    self.lm_block_indices.ptr,
+                    self.lm_out_index.ptr,
+                    self.lm_out_value.ptr,
+                    self.vocab_size,
+                    threads=self.lm_head_threads,
+                    stream=stream,
+                    library=self.libraries["lm_head"],
+                    runtime=self.runtime,
+                )
+                self.runtime.device_synchronize()
+                results.append(self._read_sample())
+            return tuple(results)
         batch_argmax_f32(
             self.batch_lm_logits.ptr,
             self.batch_lm_block_values.ptr,

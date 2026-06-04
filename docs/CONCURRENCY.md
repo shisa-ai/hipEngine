@@ -475,7 +475,13 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/summary.json`). A post-demotion no-flag c2/c4/c8 matrix confirms the default gate is still
   generated-token green throughout: c2 uses `serial_lm_head` and c4/c8 use
   retained `batched_lm_head` evidence plus rowchunk2 full-attention diagnostics
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-default-sampler-demotion-matrix227/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-default-sampler-demotion-matrix227/summary.json`). A new diagnostic `--batch-sample-argmax-mode=serial_per_row` keeps the
+  batched LM-head projection/norm but resolves each row's argmax with the serial
+  per-row kernel. Under the same red c9 grouped stress, three explicit c2
+  `batched_lm_head` + `serial_per_row` argmax controls stayed green (`[137,137]`)
+  and recorded a sampler blocker, narrowing the explicit c2 batched-sampler
+  flake toward `batch_argmax_f32` rather than batched projection/norm logits
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-serial-argmax-after-c9-control228/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

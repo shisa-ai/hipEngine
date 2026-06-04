@@ -103,6 +103,7 @@ _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILE
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _BATCH_SAMPLE_COMMAND_FLAGS = (
     "--batch-sample-mode",
+    "--batch-sample-argmax-mode",
     "--batch-sample-eq-ok",
     "--batch-sample-eq-artifact",
     "--batch-sample-eq-rows",
@@ -4208,6 +4209,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] = str(getattr(args, "batch_sample_mode", "serial_lm_head"))
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE"] = str(getattr(args, "batch_sample_argmax_mode", "batch"))
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] = (
         "1" if getattr(args, "batch_sample_eq_ok", False) else "0"
     )
@@ -4691,6 +4693,7 @@ def _build_payload(
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
             "batch_sample_mode": str(getattr(args, "batch_sample_mode", "serial_lm_head")),
+            "batch_sample_argmax_mode": str(getattr(args, "batch_sample_argmax_mode", "batch")),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
             "batch_sample_eq_artifact": (
                 str(getattr(args, "batch_sample_eq_artifact", "") or "")
@@ -4911,7 +4914,13 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-sample-mode",
         choices=("serial_lm_head", "batched_lm_head"),
         default="serial_lm_head",
-        help="Sampler/LM-head path for native c>N decode; when omitted for c=2/4/8 the bench uses the repo-retained row-aware batched_lm_head equality artifact if it validates, while explicit batched_lm_head still requires generated-token equality evidence via --batch-sample-eq-*.",
+        help="Sampler/LM-head path for native c>N decode; when omitted for c=4/8 the bench uses the repo-retained row-aware batched_lm_head equality artifact if it validates, while c=2 stays serial by default until the post-c9 batched-sampler flake is fixed. Explicit batched_lm_head still requires generated-token equality evidence via --batch-sample-eq-*.",
+    )
+    parser.add_argument(
+        "--batch-sample-argmax-mode",
+        choices=("batch", "serial_per_row"),
+        default="batch",
+        help="Diagnostic argmax path when --batch-sample-mode=batched_lm_head; serial_per_row keeps the batched LM-head projection but resolves row argmax with the serial per-row kernel and blocks retained sampler claims.",
     )
     parser.add_argument(
         "--batch-sample-eq-ok",
