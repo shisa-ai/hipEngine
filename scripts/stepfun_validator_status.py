@@ -1157,6 +1157,9 @@ def build_validator_status_report(
             next_producer_command
         ),
         "next_action": next_action,
+        "next_action_producer_command_sha256": summary[
+            "next_action_producer_command_sha256"
+        ],
         "next_action_sha256": status_mod._stable_json_sha256(next_action),
         "readiness_impact": {
             "validator_artifacts_passed": ready,
@@ -1257,9 +1260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             next_action.get("producer_command") if isinstance(next_action, dict) else None
         )
     elif args.next_action_producer_command_sha_only:
-        payload = status_mod._stable_json_sha256(
-            next_action.get("producer_command") if isinstance(next_action, dict) else None
-        )
+        payload = report["next_action_producer_command_sha256"]
     elif args.next_action_only:
         payload = report["next_action"]
     elif args.next_producer_command_kind_only:

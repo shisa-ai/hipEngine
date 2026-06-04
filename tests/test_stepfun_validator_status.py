@@ -342,6 +342,9 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_producer_command_sha256"] == status_mod._stable_json_sha256(
         None
     )
+    assert summary["next_action_producer_command_sha256"] == report[
+        "next_action_producer_command_sha256"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
@@ -573,6 +576,9 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_producer_command_sha256"] == status_mod._stable_json_sha256(
         "python3 scripts/refresh_stepfun_kv_artifacts.py"
     )
+    assert summary["next_action_producer_command_sha256"] == report[
+        "next_action_producer_command_sha256"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert summary["blocked_validator_results_sha256"] == report[
