@@ -613,6 +613,13 @@ What is still not green:
   `[137]*8`, so c8 still needs the rowchunk2 cap while the dense-context/native-O
   no-rowchunk fallback is c4-only
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-dense-context-batch-gate-frontier-250/summary.json`).
+  Repackaging original c8 rows4..7 as a compact c4 fixture confirms the residual
+  c8 rows are prompt-identity/full-attention row-grouping issues rather than an
+  eight-row scheduler/sampler effect: the compact tail quartet is red under
+  no-rowchunk dense-context+batch-gate/native-O (`[45,11,83,137]`) and native
+  paged/native-O (`[45,31,68,137]`), but green under rowchunk2 and rowchunk1
+  native-paged controls (`[137]*4`)
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rows-rowchunk2-isolation-251/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
