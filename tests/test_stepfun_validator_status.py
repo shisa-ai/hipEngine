@@ -330,6 +330,7 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
         "next_producer_command_sha256"
     ]
     assert summary["next_action_artifact_name"] is None
+    assert summary["next_action_artifact_name"] == report["next_action_artifact_name"]
     assert summary["next_action_status"] is None
     assert summary["next_action_reason"] is None
     assert summary["next_action_validator_command_kind"] is None
@@ -563,6 +564,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     }
     assert report["next_action"] == expected_next_action
     assert summary["next_action_artifact_name"] == "kv_kernel_trace_artifact"
+    assert summary["next_action_artifact_name"] == report["next_action_artifact_name"]
     assert summary["next_action_status"] == "missing"
     assert summary["next_action_reason"] == "artifact_file_missing"
     assert summary["next_action_validator_command_kind"] == "kv_trace_check_command"
