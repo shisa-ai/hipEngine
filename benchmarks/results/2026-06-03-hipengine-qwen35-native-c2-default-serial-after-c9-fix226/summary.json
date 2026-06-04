@@ -1,0 +1,1221 @@
+{
+  "artifacts": {
+    "c2-default-after-c9-grouped-demoted-sampler-cycle1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c2-default-after-c9-grouped-demoted-sampler-cycle1.json",
+      "sha256": "53b560ddc4c84a219f2d5c34715a80542044e490fb295149c42d32e5f0de66f8",
+      "size_bytes": 1826
+    },
+    "c2-default-after-c9-grouped-demoted-sampler-cycle2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c2-default-after-c9-grouped-demoted-sampler-cycle2.json",
+      "sha256": "a2c6c09ff911718947787b5179b5a9e41d1508f795fcfad76adfbf9fcf69d224",
+      "size_bytes": 1826
+    },
+    "c2-default-after-c9-grouped-demoted-sampler-cycle3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c2-default-after-c9-grouped-demoted-sampler-cycle3.json",
+      "sha256": "9137501b0c5c43abdb68de789e3b46b432e322a3ee7d125e2ee67380d2abf307",
+      "size_bytes": 1826
+    },
+    "c9-grouped-rowchunk2-before-c2-default-cycle1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c9-grouped-rowchunk2-before-c2-default-cycle1.json",
+      "sha256": "6c741e14e4e1a674b9fd221c3843f05e6ab5f487ad0c3dca4e6be821e40d32c6",
+      "size_bytes": 6581
+    },
+    "c9-grouped-rowchunk2-before-c2-default-cycle2": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c9-grouped-rowchunk2-before-c2-default-cycle2.json",
+      "sha256": "dc1728cb6ec92beb5c2386acb7d141d73647a064aaa58754b794ad36b603a6fb",
+      "size_bytes": 6581
+    },
+    "c9-grouped-rowchunk2-before-c2-default-cycle3": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c9-grouped-rowchunk2-before-c2-default-cycle3.json",
+      "sha256": "b97cfa96361113700fb802daf76dbddf7560fc93cd1d5d7143641fc17e97f743",
+      "size_bytes": 6581
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "iter222_default_batched_c2_after_c9_grouped_stress": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-stress222/summary.json",
+      "sha256": "32528e13193ef560ef3dd3ad7852454e27f8b579419e36e3e73984b944539405",
+      "size_bytes": 32531
+    },
+    "iter225_explicit_serial_c2_after_c9_grouped_control": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-serial-after-c9-grouped-control225/summary.json",
+      "sha256": "ece74f8beb16dd0505a4d663ee73ba85ae51a8b5e8479a9faaa3796d4ff8c0d2",
+      "size_bytes": 54739
+    }
+  },
+  "code_change": {
+    "description": "Remove c2 from the no-flag retained-bench batched LM-head sampler auto-evidence rows; c2 default now stays serial_lm_head unless batched_lm_head is explicitly requested with evidence. c4/c8 auto-evidence remains enabled.",
+    "files": [
+      "scripts/qwen35_batch_retained_bench.py",
+      "tests/test_generation_batch_scheduler.py"
+    ]
+  },
+  "comparison_to_recent_controls": {
+    "iter222_default_c2_after_c9_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        103,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "iter222_default_c2_after_c9_red_cycles": [
+      2
+    ],
+    "iter225_serial_c2_after_c9_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "iter225_serial_c2_after_c9_red_cycles": [],
+    "iter226_default_c2_after_c9_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "iter226_default_c2_after_c9_sampler_modes": [
+      "serial_lm_head",
+      "serial_lm_head",
+      "serial_lm_head"
+    ]
+  },
+  "conclusion": "After demoting c2 out of no-flag batched-sampler auto-evidence, the active c2 default path uses serial_lm_head sampling by default and stayed generated-token-equality green in three post-c9 grouped-stress cycles. The preceding c9 grouped rowchunk2 runs still reproduced the known red boundary. This removes the observed post-c9 batched-sampler flake from the active c2 default correctness gate while preserving explicit batched_lm_head diagnostics and c4/c8 auto sampler evidence. No retained throughput claim is made.",
+  "created_at": "2026-06-04T01:06:30Z",
+  "git_commit_before_result_commit": "12d6acfd2b171c011f6994b35e716f0b0d992c3f",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 226,
+  "kind": "native_c2_default_sampler_demotion_after_c9_grouped_stress",
+  "observations": {
+    "c2_default_after_c9_green_cycles": [
+      1,
+      2,
+      3
+    ],
+    "c2_default_after_c9_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "c2_default_after_c9_red_count": 0,
+    "c2_default_after_c9_red_cycles": [],
+    "c2_default_after_c9_run_count": 3,
+    "c2_default_sample_modes": [
+      "serial_lm_head"
+    ],
+    "c2_default_sampler_execution_modes": [
+      "serial_lm_head"
+    ],
+    "c9_grouped_prefixes": [
+      [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ]
+    ],
+    "c9_grouped_rowchunk2_red_all_cycles": true,
+    "default_demotion_reproduced_103_137_flake": false
+  },
+  "performance_claim": false,
+  "remaining_blockers": [
+    "fix or retire the explicit c2 batched_lm_head post-c9 grouped-stress flake before re-enabling c2 batched sampler by default",
+    "c9 grouped-compact rowchunk2 remains red",
+    "full-native/no-rowchunk grouped full-attention remains the retained c4/c8 blocker",
+    "c2 default now uses serial LM-head sampling, so c2 retained/performance claims remain blocked until a post-stress green batched sampler path is restored"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c9-grouped-rowchunk2-before-c2-default-cycle1.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "linear-attention projections forced to selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 1,
+      "decode_blockers": [
+        "linear-attention projections forced to selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118,
+        null,
+        31,
+        81,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": false,
+      "label": "c9-grouped-rowchunk2-before-c2-default",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "selected_c1_forced",
+      "min_equal_prefix_tokens": 31,
+      "mismatch_count": 3,
+      "mismatch_summaries": [
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 118,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 11,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 8
+            }
+          ],
+          "batch_token_at_mismatch": 4203,
+          "batch_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            4203,
+            9781,
+            310,
+            328,
+            2078,
+            1
+          ],
+          "c1_token_at_mismatch": 9781,
+          "c1_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            9781,
+            80086,
+            279,
+            1483,
+            11316,
+            310
+          ],
+          "first_mismatch_index": 118,
+          "row": 3
+        },
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 31,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 11,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 8
+            }
+          ],
+          "batch_token_at_mismatch": 16,
+          "batch_window": [
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            16,
+            18,
+            13,
+            1165,
+            513,
+            7262
+          ],
+          "c1_token_at_mismatch": 20,
+          "c1_window": [
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            20,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "first_mismatch_index": 31,
+          "row": 5
+        },
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 81,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 29,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 29,
+              "row": 8
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            }
+          ],
+          "batch_token_at_mismatch": 9640,
+          "batch_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            9640,
+            2713,
+            220,
+            21,
+            13,
+            1165
+          ],
+          "c1_token_at_mismatch": 271,
+          "c1_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            271,
+            248068,
+            198,
+            8160,
+            579,
+            264
+          ],
+          "first_mismatch_index": 81,
+          "row": 6
+        }
+      ],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ],
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "rows": 9
+      },
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c2-default-after-c9-grouped-demoted-sampler-cycle1.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 1,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c9-grouped-demoted-sampler",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "rows": 2
+      },
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c9-grouped-rowchunk2-before-c2-default-cycle2.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "linear-attention projections forced to selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 2,
+      "decode_blockers": [
+        "linear-attention projections forced to selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118,
+        null,
+        31,
+        81,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": false,
+      "label": "c9-grouped-rowchunk2-before-c2-default",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "selected_c1_forced",
+      "min_equal_prefix_tokens": 31,
+      "mismatch_count": 3,
+      "mismatch_summaries": [
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 118,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 11,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 8
+            }
+          ],
+          "batch_token_at_mismatch": 4203,
+          "batch_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            4203,
+            9781,
+            310,
+            328,
+            2078,
+            1
+          ],
+          "c1_token_at_mismatch": 9781,
+          "c1_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            9781,
+            80086,
+            279,
+            1483,
+            11316,
+            310
+          ],
+          "first_mismatch_index": 118,
+          "row": 3
+        },
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 31,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 11,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 8
+            }
+          ],
+          "batch_token_at_mismatch": 16,
+          "batch_window": [
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            16,
+            18,
+            13,
+            1165,
+            513,
+            7262
+          ],
+          "c1_token_at_mismatch": 20,
+          "c1_window": [
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            20,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "first_mismatch_index": 31,
+          "row": 5
+        },
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 81,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 29,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 29,
+              "row": 8
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            }
+          ],
+          "batch_token_at_mismatch": 9640,
+          "batch_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            9640,
+            2713,
+            220,
+            21,
+            13,
+            1165
+          ],
+          "c1_token_at_mismatch": 271,
+          "c1_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            271,
+            248068,
+            198,
+            8160,
+            579,
+            264
+          ],
+          "first_mismatch_index": 81,
+          "row": 6
+        }
+      ],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ],
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "rows": 9
+      },
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c2-default-after-c9-grouped-demoted-sampler-cycle2.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 2,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c9-grouped-demoted-sampler",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "rows": 2
+      },
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c9-grouped-rowchunk2-before-c2-default-cycle3.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "linear-attention projections forced to selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 3,
+      "decode_blockers": [
+        "linear-attention projections forced to selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118,
+        null,
+        31,
+        81,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": false,
+      "label": "c9-grouped-rowchunk2-before-c2-default",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "selected_c1_forced",
+      "min_equal_prefix_tokens": 31,
+      "mismatch_count": 3,
+      "mismatch_summaries": [
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 118,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 11,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 8
+            }
+          ],
+          "batch_token_at_mismatch": 4203,
+          "batch_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            4203,
+            9781,
+            310,
+            328,
+            2078,
+            1
+          ],
+          "c1_token_at_mismatch": 9781,
+          "c1_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            9781,
+            80086,
+            279,
+            1483,
+            11316,
+            310
+          ],
+          "first_mismatch_index": 118,
+          "row": 3
+        },
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 31,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 11,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 8
+            }
+          ],
+          "batch_token_at_mismatch": 16,
+          "batch_window": [
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            16,
+            18,
+            13,
+            1165,
+            513,
+            7262
+          ],
+          "c1_token_at_mismatch": 20,
+          "c1_window": [
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            20,
+            13,
+            1165,
+            513,
+            7262,
+            17603
+          ],
+          "first_mismatch_index": 31,
+          "row": 5
+        },
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 81,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 29,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 29,
+              "row": 8
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            }
+          ],
+          "batch_token_at_mismatch": 9640,
+          "batch_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            9640,
+            2713,
+            220,
+            21,
+            13,
+            1165
+          ],
+          "c1_token_at_mismatch": 271,
+          "c1_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            271,
+            248068,
+            198,
+            8160,
+            579,
+            264
+          ],
+          "first_mismatch_index": 81,
+          "row": 6
+        }
+      ],
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118,
+        137,
+        31,
+        81,
+        137,
+        137
+      ],
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "rows": 9
+      },
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 2,
+      "workload_batch_decode_moe_path": "grouped_compact",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head",
+      "workload_batch_size": null
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/diagnostics/c2-default-after-c9-grouped-demoted-sampler-cycle3.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "cycle": 3,
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-after-c9-grouped-demoted-sampler",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "moe_grouped_compact_layers": 0,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "rows": 2
+      },
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_full_attention_row_chunk_size": 0,
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_mode": "serial_lm_head",
+      "workload_batch_size": null
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "c2_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "c9_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_9x512_prompt_ids_from8.json",
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "cycle_command_shape": "for each cycle after code change: run c9 --batch-size 9 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-moe-path grouped_compact, then immediately run active no-flag c2 default retained bench in a new Python process",
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

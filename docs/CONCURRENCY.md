@@ -467,7 +467,12 @@ What is still not green:
   (`[137,137]`), narrowing the observed post-c9 trigger toward interaction with
   the default batched LM-head sampler path rather than upstream c2 hidden/decode
   state alone
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-serial-after-c9-grouped-control225/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-serial-after-c9-grouped-control225/summary.json`). The correctness-first c2 default now leaves c2 on `serial_lm_head`
+  instead of auto-enabling the retained batched-sampler artifact until that
+  explicit batched path is fixed; three post-c9 grouped-stress cycles kept the
+  active no-flag c2 default green (`[137,137]`) with sampler metadata confirming
+  `serial_lm_head`, while c4/c8 auto sampler evidence remains enabled
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
