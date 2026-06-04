@@ -848,6 +848,12 @@ What is still not green:
   (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`), confirming the current profiler
   evidence work did not perturb the primary equality gates
   (`benchmarks/results/2026-06-04-hipengine-qwen35-current-c248-post-profiler-refresh-283/summary.json`).
+  The hard rows4..7 c4 gate also remains green under the current no-flag
+  rowchunk2 default (`[137]*4`), while explicit no-rowchunk native full
+  attention stays red (`[45,31,68,137]`) and no-rowchunk dense-context+batch-gate
+  stays red (`[45,11,83,137]`); the hard c4 boundary therefore remains
+  rowchunk/full-attention grouping, not selected dense context or metadata drift
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-hard-c4-post-profiler-refresh-284/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
