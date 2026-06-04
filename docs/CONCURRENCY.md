@@ -942,13 +942,20 @@ What is still not green:
   correctness work should target c4/c8/full-attention evidence rather than
   another c2 mismatch hunt
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/summary.json`).
-  The follow-up current c=2/c=4/c=8 equality matrix is green for every row at
-  prefix 137 with empty mismatch summaries, satisfying the correctness-extension
-  milestone after c2. It remains correctness-only: c4/c8 use rowchunked native
-  full-attention diagnostics, current decode metadata uses `selected_c1_batch`
-  MoE, projection dispatch falls back to row-GEMV without accepted c-aware
-  evidence, and profiler/scaling/baseline artifacts are not attached
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-current-equality/summary.json`).
+  A fresh current c=2/c=4/c=8 baseline-attachment refresh is green for every
+  row at prefix 137 and now loads compact c1/serial baselines, primitive GPU
+  correctness, and accepted c-aware projection-dispatch evidence under the
+  post-c8-profiler no-flag defaults. The retained bench now also auto-loads the
+  committed projection-dispatch catalog when no explicit artifact/env override is
+  supplied, so the active no-flag c2 verify uses the same accepted c-aware
+  projection path instead of intermittently falling back to row-GEMV. C2 is full
+  native/c-aware with grouped MoE and accepted projection but remains below c1
+  on aggregate scaling; c4/c8 beat
+  their serial bridges in this evidence run but remain diagnostic because
+  rowchunked full attention keeps `native_caware_decode=false` (c4 selected
+  layers `[3,7,11,15]`, c8 all rowchunk layers). No retained throughput/scaling
+  claim is made
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

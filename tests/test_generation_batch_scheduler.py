@@ -3592,6 +3592,49 @@ def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: P
     _clear_qwen35_batch_env()
 
 
+def test_retained_bench_defaults_to_committed_projection_dispatch_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    default_artifact = Path(retained_bench._DEFAULT_PROJECTION_DISPATCH_ARTIFACT)
+    artifact_path = tmp_path / default_artifact
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path = "benchmarks/results/default-projection-evidence-c2.json"
+    candidate = {
+        "name": "wmma_caware_default",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware_default"},
+        "min_rows": 2,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": evidence_path,
+            "aggregate_vs_row_gemv": 1.25,
+            "per_request_vs_row_gemv": 1.05,
+            "accepted": True,
+        },
+    }
+    (tmp_path / evidence_path).write_text(
+        json.dumps(
+            _projection_evidence_payload(
+                rows=2,
+                artifact_path=evidence_path,
+                aggregate_vs_row_gemv=1.25,
+                per_request_vs_row_gemv=1.05,
+            )
+        ),
+        encoding="utf-8",
+    )
+    artifact_path.write_text(json.dumps({"projection_dispatch_candidates": [candidate]}), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, raising=False)
+    args = SimpleNamespace(projection_dispatch_artifact=None)
+
+    retained_bench._apply_runtime_env_args(args)
+    candidates = retained_bench._projection_dispatch_candidates_for_payload(args)
+
+    assert os.environ[retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV] == str(default_artifact)
+    assert candidates == [candidate]
+    _clear_qwen35_batch_env()
+
+
 def test_retained_bench_defaults_to_valid_batched_sampler_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)

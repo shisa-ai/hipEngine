@@ -93,6 +93,9 @@ _ROCPROF_EXECUTABLE = RETAINED_ARTIFACT_ROCPROF_EXECUTABLE
 _ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _PROJECTION_DISPATCH_ARTIFACT_ENV = "HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT"
+_DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json"
+)
 _RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
 _RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
 _RETAINED_KV_POLICY_FLAGS = RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
@@ -4008,13 +4011,23 @@ def _generated_token_equality_mismatch_summaries(
     return summaries
 
 
+def _default_projection_dispatch_artifact_arg() -> str | None:
+    path = Path.cwd() / _DEFAULT_PROJECTION_DISPATCH_ARTIFACT
+    if not path.is_file() or path.is_symlink():
+        return None
+    return _DEFAULT_PROJECTION_DISPATCH_ARTIFACT
+
+
 def _projection_dispatch_artifact_arg(args: argparse.Namespace) -> str | None:
     artifact = getattr(args, "projection_dispatch_artifact", None)
     if artifact is None:
         raw_artifact = os.environ.get(_PROJECTION_DISPATCH_ARTIFACT_ENV)
         if raw_artifact is None or not raw_artifact.strip():
-            return None
-        artifact = raw_artifact.strip()
+            artifact = _default_projection_dispatch_artifact_arg()
+            if artifact is None:
+                return None
+        else:
+            artifact = raw_artifact.strip()
     artifact_text = str(artifact).strip()
     if not artifact_text:
         return None
