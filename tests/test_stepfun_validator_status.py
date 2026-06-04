@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts import stepfun_correctness_status as status_mod
 from scripts.stepfun_validator_status import build_validator_status_report, main
 
 PROMPT_KV = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
@@ -333,6 +334,9 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_reason"] is None
     assert summary["next_action_validator_command_kind"] is None
     assert summary["next_action_validator_command"] is None
+    assert summary["next_action_validator_command_sha256"] == status_mod._stable_json_sha256(
+        None
+    )
     assert summary["next_action_producer_command_kind"] is None
     assert summary["next_action_producer_command"] is None
     assert summary["next_action_sha256"] == report["next_action_sha256"]
@@ -556,6 +560,9 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_validator_command"] == expected_missing_trace[
         "validator_command_concrete"
     ]
+    assert summary["next_action_validator_command_sha256"] == status_mod._stable_json_sha256(
+        expected_missing_trace["validator_command_concrete"]
+    )
     assert summary["next_action_producer_command_kind"] == "resource_plan_refresh_command"
     assert summary["next_action_producer_command"] == (
         "python3 scripts/refresh_stepfun_kv_artifacts.py"
@@ -774,6 +781,9 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
         "next-action-validator-command-kind.json"
     )
     next_action_validator_command_output = tmp_path / "next-action-validator-command.json"
+    next_action_validator_command_sha_output = tmp_path / (
+        "next-action-validator-command-sha.json"
+    )
     next_action_producer_command_kind_output = tmp_path / (
         "next-action-producer-command-kind.json"
     )
@@ -1789,6 +1799,27 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert rc == 0
     assert json.loads(next_action_validator_command_output.read_text()) == (
         f"python3 scripts/stepfun_kv_trace_check.py --trace {trace}"
+    )
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-action-validator-command-sha-only",
+            "--output",
+            str(next_action_validator_command_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(next_action_validator_command_sha_output.read_text()) == (
+        status_mod._stable_json_sha256(
+            f"python3 scripts/stepfun_kv_trace_check.py --trace {trace}"
+        )
     )
 
     rc = main(
