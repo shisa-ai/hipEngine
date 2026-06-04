@@ -556,6 +556,16 @@ What is still not green:
   so the E2E red path is not a broad primitive shape bug; next compare
   actual model-layer context tensors or captured failing-window inputs
   (`benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/summary.json`).
+  Hidden-bisect now exposes the same explicit dense-vs-paged context-only
+  controls. On actual c4 no-rowchunk model tensors, row-local dense context is
+  green at step 0 and in the long failing window, but row-local paged context is
+  hidden-red at the first generated token: both paged kernels match their own
+  NumPy softmax oracles, while batch-vs-c1 NumPy context first differs at layer
+  7 from a single current-token KV-prefix hash mismatch at position 512. The
+  long paged trace later becomes token-red (row0 index 82 / row1 index 104), so
+  the blocker is model-trajectory/current-token KV sensitivity on the paged
+  context path, not broad primitive arithmetic
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-model-context-dense-vs-paged-244/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
