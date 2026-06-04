@@ -724,6 +724,15 @@ What is still not green:
   the retained decision is now blocked only by
   `scaling.ratios.aggregate_vs_c1 <= 1.0`, so no throughput claim is made
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/summary.json`).
+  A current c=2/c=4/c=8 frontier rerun attaches the combined c-aware projection
+  catalog plus primitive and row-aware sampler evidence for every control row:
+  equality remains green (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`) and
+  projection/sampler blockers are empty. The remaining c4/c8 frontier is still
+  full-attention grouping: c4 is green only through the dense-context batch-gate
+  fallback, c8 is green through rowchunk2, and rowchunk3 probes stay red
+  (`c4 [137,104,137,137]`, `c8 [82,137,137,137,45,11,137,137]`), with no
+  throughput claim
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-full-attn-frontier-266/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
