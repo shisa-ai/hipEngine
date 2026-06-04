@@ -588,6 +588,13 @@ What is still not green:
   suffix as the step0 cause when dense contexts feed it, leaving the paged
   context producer/addressing mode as the focused blocker
   (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-dense-context-batch-gate-247/summary.json`).
+  The same split holds across the historical long window: c4 no-rowchunk
+  dense context plus batch gate stays `eq_ok` for warmup8+decode112, matching
+  the dense row-local gate control, while row-local paged context and native
+  batch paged context both become token-red at row0 index82 and show the same
+  traced decode-step117 layer-3 KV/context divergence. This keeps the long-run
+  blocker on paged context production rather than batch-gate feedback
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-long-dense-context-batch-gate-248/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
