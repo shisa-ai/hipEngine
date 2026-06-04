@@ -814,6 +814,13 @@ What is still not green:
   c8 blocker stays rowchunk/full-attention grouping rather than a standalone
   full-attention O projection choice
   (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-no-rowchunk-output-frontier-277/summary.json`).
+  A follow-up rowchunk2 pairing permutation sweep shows the current c8 rowchunk2
+  correctness is not only a property of the original contiguous row pairs:
+  original order, pair-swapped order `[0,2,1,3,4,6,5,7]`, and head/tail cross
+  order `[0,4,1,5,2,6,3,7]` all pass generated-token equality at `[137]*8`.
+  This eliminates a narrow contiguous-pair-only suspicion while leaving the
+  rowchunk2 diagnostic blocker itself in place
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-rowchunk2-pairing-permutation-278/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
