@@ -667,7 +667,9 @@ reporting.
   `--blocked-evidence-gate-artifacts-sha-only`,
   `--blocked-evidence-gate-artifact-count-only`,
   `--blocked-evidence-gate-producer-commands-only` /
-  `--blocked-evidence-gate-producer-commands-sha-only`, and
+  `--blocked-evidence-gate-producer-commands-sha-only`,
+  `--blocked-evidence-gate-validator-commands-only` /
+  `--blocked-evidence-gate-validator-commands-sha-only`, and
   `--blocked-evidence-gate-missing-evidence-only` /
   `--blocked-evidence-gate-missing-evidence-sha-only`,
   `--next-blocked-gate-only` /
