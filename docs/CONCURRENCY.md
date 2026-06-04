@@ -919,14 +919,17 @@ What is still not green:
   Current c=2/c=4/c=8 no-flag generated-token equality is green vs independent
   c1 for every row (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`); c2 is
   full-native/c-aware, c4 uses selected rowchunk layers `[3,7,11,15]` plus
-  row-aware batch-GEMV full-attention O, and c8 uses all-layer rowchunk2 after
-  selected-layer stress ran 4/5 with one row-6 prefix-40 mismatch. Follow-up
-  c3/c5/c6/c7 coverage has c3/c5/c6 using the selected layers `[3,7,11,15]`,
-  while c7 also stays on all-layer rowchunk2 after a selected-layer c7 repeat
+  row-aware batch-GEMV full-attention O, and c8 now uses first-six selected
+  layers `[3,7,11,15,19,23]`. C8 first-four was not repeat-stable, first-five
+  was red in 5/5 runs (`[137,137,137,137,137,31,137,137]`), and first-six was
+  green in 5/5 runs, so this is the current correctness-first c8 scope. Follow-
+  up c3/c5/c6/c7 coverage has c3/c5/c6 using selected layers `[3,7,11,15]`,
+  while c7 stays on all-layer rowchunk2 after a selected-layer c7 repeat
   produced a mismatch. This remains a correctness-only diagnostic path
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first6-layer-scope-298/summary.json`).
   A later active-loop c2 512/128 audit confirms there is no current c2 generated-
   token mismatch to chase: both rows match independent c1 for all 137 generated
   tokens. The artifact remains `status=blocked` only for retained/performance

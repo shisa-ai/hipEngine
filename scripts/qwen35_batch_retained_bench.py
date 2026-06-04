@@ -4115,9 +4115,15 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     # Hard rows4..7 c=4 plus original c3/c4/c5/c6 evidence shows rowchunking
     # only the first four full-attention producer layers preserves generated-
     # token equality for those correctness-first auto row counts while smaller
-    # tested c4/c8 subsets remain red. Keep c7/c8 on all-layer rowchunk2 until
-    # their selected-layer paths are repeat-stable.
-    return "3,7,11,15" if int(batch_size) in {3, 4, 5, 6} else ""
+    # tested c4/c8 subsets remain red. C8 needs the first six full-attention
+    # producer layers for repeat-stable equality; keep c7 on all-layer
+    # rowchunk2 until its selected-layer path is repeat-stable.
+    batch_size = int(batch_size)
+    if batch_size in {3, 4, 5, 6}:
+        return "3,7,11,15"
+    if batch_size == 8:
+        return "3,7,11,15,19,23"
+    return ""
 
 
 def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> str:

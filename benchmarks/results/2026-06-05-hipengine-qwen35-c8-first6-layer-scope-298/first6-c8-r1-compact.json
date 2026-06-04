@@ -1,0 +1,78 @@
+{
+  "artifact_path": "/tmp/hipengine-iter298-c8-first6-stress/first6-c8-r1.json",
+  "artifact_sha256": "60e1a8e264cb73c837c5345b1d9bc86caab1722a579963c5d71a2bafcf79f7bb",
+  "artifact_size_bytes": 395891,
+  "batch_size": 8,
+  "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15,19,23 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter298-c8-first6-stress/first6-c8-r1.json",
+  "decode_execution": {
+    "blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+    ],
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_output_decode_path": "batch_gemv",
+    "full_attention_row_chunk_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23
+    ],
+    "full_attention_row_chunk_size": 2,
+    "full_attention_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23
+    ],
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": false
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ]
+  },
+  "label": "first6_selected_stress",
+  "log_path": "/tmp/hipengine-iter298-c8-first6-stress/first6-c8-r1.log",
+  "log_sha256": "60e1a8e264cb73c837c5345b1d9bc86caab1722a579963c5d71a2bafcf79f7bb",
+  "log_size_bytes": 395891,
+  "performance_claim": false,
+  "repeat_index": 1,
+  "sampler_execution": {
+    "blockers": [],
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true
+  },
+  "status": "blocked",
+  "workload": {
+    "batch_decode_full_attention_output_path": "batch_gemv",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_layers": "3,7,11,15,19,23",
+    "batch_decode_full_attention_row_chunk_size": 2,
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_sample_mode": "batched_lm_head",
+    "native_caware_decode": false,
+    "shape": "c=8 prompt=512 decode=128"
+  }
+}
