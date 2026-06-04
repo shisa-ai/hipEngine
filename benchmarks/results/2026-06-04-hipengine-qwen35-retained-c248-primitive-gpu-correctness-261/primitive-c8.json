@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "rows": 8,
+  "seed": 1234,
+  "block_size": 256,
+  "max_context_len": 4,
+  "num_q_heads": 4,
+  "num_kv_heads": 1,
+  "head_dim": 8,
+  "context_lens": [
+    1,
+    2,
+    3,
+    4,
+    1,
+    2,
+    3,
+    4
+  ],
+  "device": {
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    },
+    "hipGetDeviceCount_error": 0,
+    "visible_device_count": 1,
+    "hipGetDevice_error": 0,
+    "current_device": 0,
+    "hipDeviceGetName_error": 0,
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "append_key_mismatch": 0,
+  "append_value_mismatch": 0,
+  "append_batch_aa_key_mismatch": 0,
+  "append_batch_aa_value_mismatch": 0,
+  "attn_batch_vs_c1_max_abs": 0.0,
+  "attn_batch_vs_c1_delta": {
+    "max_abs": 0.0,
+    "index": [
+      0,
+      0,
+      0
+    ],
+    "lhs": -0.051513671875,
+    "rhs": -0.051513671875
+  },
+  "attn_batch_vs_numpy_max_abs": 5.960464477539063e-08,
+  "attn_batch_vs_numpy_delta": {
+    "max_abs": 5.960464477539063e-08,
+    "index": [
+      5,
+      0,
+      1
+    ],
+    "lhs": 0.2588382661342621,
+    "rhs": 0.25883832573890686
+  },
+  "attn_batch_aa_max_abs": 0.0,
+  "attn_batch_aa_delta": {
+    "max_abs": 0.0,
+    "index": [
+      0,
+      0,
+      0
+    ],
+    "lhs": -0.051513671875,
+    "rhs": -0.051513671875
+  },
+  "aa_passed": true,
+  "passed": true,
+  "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json"
+}

@@ -689,6 +689,12 @@ What is still not green:
   segment decode, and GEMV/Marlin projections. Raw CSV remains under `/tmp`; the
   compact evidence artifact is committed
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-evidence-260/summary.json`).
+  The primitive GPU correctness gate now also has repo-relative c=2/c=4/c=8
+  artifacts on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. All three pass append K/V,
+  batch-vs-c1 attention, batch-vs-numpy tolerance, and append+attention AA
+  checks with `attn_batch_vs_c1_max_abs=0.0` and `attn_batch_aa_max_abs=0.0`.
+  This is correctness/runtime evidence only and still makes no throughput claim
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

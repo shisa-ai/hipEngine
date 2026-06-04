@@ -1,0 +1,200 @@
+{
+  "active_verify": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "moe_decode_path": "grouped_compact",
+    "moe_grouped_compact_layers": 40,
+    "native_caware_decode": true,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "result_metric": 137
+  },
+  "finding_table": [
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+      "passed": true,
+      "rows": 2
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08,
+      "passed": true,
+      "rows": 4
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 5.960464477539063e-08,
+      "passed": true,
+      "rows": 8
+    }
+  ],
+  "findings": [
+    "Primitive GPU correctness now has committed repo-relative artifacts for c=2, c=4, and c=8 on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX.",
+    "All rows passed append K/V checks, batch-vs-c1 attention equality, batch-vs-numpy tolerance checks, and append+attention AA checks. attn_batch_vs_c1_max_abs=0.0 and attn_batch_aa_max_abs=0.0 for c=2/c=4/c=8.",
+    "This is correctness/runtime evidence only and makes no throughput/scaling claim; c1/serial baselines, retained projection/sampler gates, and c4/c8 decode blockers remain separate work."
+  ],
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 261,
+  "mode": "qwen35_retained_c248_primitive_gpu_correctness",
+  "performance_claim": false,
+  "primitive_runs": [
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+      "block_size": 256,
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json",
+      "context_lens": [
+        1,
+        2
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "max_context_len": 4,
+      "passed": true,
+      "rows": 2,
+      "seed": 1234
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08,
+      "block_size": 256,
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json",
+      "context_lens": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "max_context_len": 4,
+      "passed": true,
+      "rows": 4,
+      "seed": 1234
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 5.960464477539063e-08,
+      "block_size": 256,
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json",
+      "context_lens": [
+        1,
+        2,
+        3,
+        4,
+        1,
+        2,
+        3,
+        4
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "max_context_len": 4,
+      "passed": true,
+      "rows": 8,
+      "seed": 1234
+    }
+  ],
+  "prompt_verifier": {
+    "evidence": "Pass: required primitive GPU correctness evidence is now committed under benchmarks/results for c=2/c=4/c=8 on HIP_VISIBLE_DEVICES=1, and active c2 E2E equality remains green. No throughput/scaling claim.",
+    "passed": true
+  },
+  "purpose": "Repo-relative primitive GPU correctness artifacts for the native c=2/c=4/c=8 retained equality frontier.",
+  "schema": 1,
+  "status": "diagnostic_primitive_correctness_passed",
+  "timestamp": "2026-06-04T11:30:15.342407+00:00"
+}
