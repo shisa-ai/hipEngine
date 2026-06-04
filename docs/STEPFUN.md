@@ -660,9 +660,10 @@ reporting.
   `--next-command-only` / `--next-command-sha-only`,
   `--next-producer-command-only` / `--next-producer-command-sha-only`,
   `--blocked-evidence-summary-only` / `--blocked-evidence-summary-sha-only`,
-  `--blocked-evidence-by-gate-only` / `--blocked-evidence-by-gate-sha-only`, and
+  `--blocked-evidence-by-gate-only` / `--blocked-evidence-by-gate-sha-only`,
+  `--next-blocked-gate-only` / `--next-blocked-gate-sha-only`, and
   `--next-action-only` / `--next-action-sha-only` expose compact pollable
-  validator records/commands/evidence gaps by artifact and gate,
+  validator records/commands/evidence gaps by artifact, gate, and first blocked gate,
   `--next-action-validator-summary-only` /
   `--next-action-validator-summary-sha-only` expose just the embedded validator
   summary/digest, and `--next-action-missing-evidence-only` /
