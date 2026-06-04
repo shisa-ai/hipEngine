@@ -839,6 +839,11 @@ What is still not green:
   sampler argmax kernels. This is runtime/profiler evidence only because
   rowchunk2 still reports `native_caware_decode=false`
   (`benchmarks/results/2026-06-04-hipengine-qwen35-current-c8-rowchunk2-profiler-281/summary.json`).
+  The matching current c4 rowchunk2 profiler refresh is likewise green
+  (`[137]*4`) and contains the same expected native batch attention/KV,
+  grouped-MoE, c-aware projection, segmented-state, and batched sampler kernels;
+  it is also runtime/profiler evidence only because rowchunk2 remains diagnostic
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-current-c4-rowchunk2-profiler-282/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
