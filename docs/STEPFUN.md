@@ -663,7 +663,8 @@ reporting.
   `--blocked-evidence-by-gate-only` / `--blocked-evidence-by-gate-sha-only`,
   `--blocked-readiness-gates-only` / `--blocked-readiness-gates-sha-only`,
   `--blocked-evidence-gate <gate>` with `--blocked-evidence-gate-only` /
-  `--blocked-evidence-gate-sha-only` and
+  `--blocked-evidence-gate-sha-only`, `--blocked-evidence-gate-artifacts-only` /
+  `--blocked-evidence-gate-artifacts-sha-only`, and
   `--blocked-evidence-gate-missing-evidence-only` /
   `--blocked-evidence-gate-missing-evidence-sha-only`,
   `--next-blocked-gate-only` /
