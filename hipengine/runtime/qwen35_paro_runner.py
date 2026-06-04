@@ -4233,6 +4233,7 @@ class Qwen35ParoResidentSession:
             else "native_batch"
         )
         row_chunk_batch_gemv_full_attention_output = False
+        row_chunk_auto_batch_gemv_full_attention_output = False
         row_chunk_native_full_attention_output = False
         full_attention_layer_copy_decode_path = (
             "per_row_layer_copy_fallback" if force_per_row_full_attention_layer_copy else "batch_copy"
@@ -4562,6 +4563,7 @@ class Qwen35ParoResidentSession:
 
                         copied_full_attention_output = False
                         layer_row_chunk_batch_gemv_full_attention_output = False
+                        layer_row_chunk_auto_batch_gemv_full_attention_output = False
                         layer_row_chunk_native_full_attention_output = False
                         if force_full_attention_row_chunks:
                             chunk_records: list[dict[str, Any]] = []
@@ -4683,15 +4685,22 @@ class Qwen35ParoResidentSession:
                                     # equality-stable for every prompt/window even
                                     # in the leading row chunk.  Keep the native
                                     # context/MoE work, but use the row-aware GEMV
-                                    # O projection that matches c=1 numerics for
-                                    # every multi-row chunk.  A dedicated diagnostic
-                                    # env may temporarily bypass this to re-test the
-                                    # native row-chunk O projection with artifact
-                                    # evidence.
+                                    # O projection that matches c=1 numerics.  Two-
+                                    # row chunks inherit the accepted rows=2
+                                    # batch_gemv_auto default; larger chunks remain
+                                    # an explicit rowchunk O repair until covered by
+                                    # equality evidence.  A dedicated diagnostic env
+                                    # may temporarily bypass this to re-test native
+                                    # row-chunk O with artifact evidence.
                                     chunk_force_batch_gemv_output = True
-                                    layer_row_chunk_batch_gemv_full_attention_output = True
-                                    row_chunk_batch_gemv_full_attention_output = True
-                                    chunk_records[-1]["full_attention_output_decode_path"] = "batch_gemv_row_chunk"
+                                    if chunk_rows == 2:
+                                        layer_row_chunk_auto_batch_gemv_full_attention_output = True
+                                        row_chunk_auto_batch_gemv_full_attention_output = True
+                                        chunk_records[-1]["full_attention_output_decode_path"] = "batch_gemv_auto_row_chunk"
+                                    else:
+                                        layer_row_chunk_batch_gemv_full_attention_output = True
+                                        row_chunk_batch_gemv_full_attention_output = True
+                                        chunk_records[-1]["full_attention_output_decode_path"] = "batch_gemv_row_chunk"
                                 chunk_out = state.run_full_attention_moe_decode_batch_layer_fp16(
                                     chunk_hidden,
                                     key_cache=key_cache,
@@ -4977,6 +4986,8 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_suffix_decode_path"] = full_attention_suffix_decode_path
                         if layer_row_chunk_batch_gemv_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = "native_batch_with_row_chunk_batch_gemv"
+                        elif layer_row_chunk_auto_batch_gemv_full_attention_output:
+                            layer_execution["full_attention_output_decode_path"] = "native_batch_row_chunks_with_batch_gemv_auto"
                         elif layer_row_chunk_native_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = "native_batch_row_chunk_forced"
                         elif (

@@ -2753,21 +2753,16 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
     assert session.last_batch_decode_execution["full_attention_row_chunk_size"] == 2
     assert session.last_batch_decode_execution["full_attention_row_chunk_source"] == expected_source
     assert not session.last_batch_decode_execution["native_caware_decode"]
-    expected_output_blocker = (
-        "full-attention O projection forced to native row-chunk diagnostic path"
-        if force_native_row_chunk_output
-        else "full-attention O projection forced to batch GEMV for multi-row chunks"
-    )
-    assert session.last_batch_decode_execution["blockers"] == [
-        expected_blocker,
-        expected_output_blocker,
-    ]
+    expected_blockers = [expected_blocker]
+    if force_native_row_chunk_output:
+        expected_blockers.append("full-attention O projection forced to native row-chunk diagnostic path")
+    assert session.last_batch_decode_execution["blockers"] == expected_blockers
     assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_size"] == 2
     assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_source"] == expected_source
     expected_output_path = (
         "native_batch_row_chunk_forced"
         if force_native_row_chunk_output
-        else "native_batch_with_row_chunk_batch_gemv"
+        else "native_batch_row_chunks_with_batch_gemv_auto"
     )
     assert (
         session.last_batch_decode_execution["layer_executions"][0]["full_attention_output_decode_path"]

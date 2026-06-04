@@ -663,6 +663,13 @@ What is still not green:
   rowchunk batch-GEMV O. This is still correctness-only, with no retained/scaling
   claim
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-c4-no-rowchunk-default-257/summary.json`).
+  Rowchunked two-row groups now inherit the accepted rows=2 `batch_gemv_auto` O
+  default instead of reporting a separate O projection blocker. The default
+  matrix stays green (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`); c8 still uses
+  rowchunk2 full attention, but its first full-attention layer output path is
+  `native_batch_row_chunks_with_batch_gemv_auto` and only the rowchunk blocker
+  remains
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-rowchunk-auto-gemv-output-258/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
