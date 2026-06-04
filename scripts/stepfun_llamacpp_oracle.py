@@ -166,6 +166,40 @@ def _partial_execution_result(
     return partial
 
 
+class _SupervisorSignal(Exception):
+    """Raised when an outer supervisor asks the oracle helper to stop."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+
+def _signal_name(signum: int) -> str:
+    try:
+        return signal.Signals(signum).name
+    except ValueError:  # pragma: no cover - defensive for non-standard platforms
+        return f"SIGNAL_{signum}"
+
+
+def _terminate_process_group(
+    proc: subprocess.Popen[bytes],
+    termination: dict[str, object],
+) -> tuple[str, str, dict[str, object]]:
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:  # pragma: no cover - process exited during timeout handling
+        termination["process_exited_before_signal"] = True
+        termination["termination_path"] = "process_exited_before_killpg"
+    try:
+        stdout, stderr = proc.communicate(timeout=10)
+    except subprocess.TimeoutExpired:  # pragma: no cover - defensive fallback
+        termination["fallback_proc_kill_used"] = True
+        termination["termination_path"] = "killpg_sigkill_then_proc_kill"
+        proc.kill()
+        stdout, stderr = proc.communicate()
+    return _as_text(stdout), _as_text(stderr), termination
+
+
 def _run_with_timeout(
     command: list[str],
     timeout_s: float,
@@ -177,51 +211,77 @@ def _run_with_timeout(
         stderr=subprocess.PIPE,
         start_new_session=True,
     )
+    previous_handlers: dict[int, signal.Handlers] = {}
+
+    def raise_supervisor_signal(signum: int, _frame: object) -> None:
+        raise _SupervisorSignal(signum)
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        previous_handlers[signum] = signal.getsignal(signum)
+        signal.signal(signum, raise_supervisor_signal)
     try:
-        stdout, stderr = proc.communicate(timeout=timeout_s)
-        return (
-            "executed",
-            proc.returncode,
-            _as_text(stdout),
-            _as_text(stderr),
-            time.perf_counter() - started,
-            None,
-        )
-    except subprocess.TimeoutExpired as exc:
-        termination: dict[str, object] = {
-            "timeout_reached": True,
-            "timeout_s": timeout_s,
-            "process_group_started": True,
-            "termination_method": "os.killpg",
-            "termination_signal": "SIGKILL",
-            "termination_signal_number": int(signal.SIGKILL),
-            "termination_path": "killpg_sigkill_then_communicate",
-            "communicate_after_signal_timeout_s": 10.0,
-            "process_exited_before_signal": False,
-            "fallback_proc_kill_used": False,
-        }
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:  # pragma: no cover - process exited during timeout handling
-            termination["process_exited_before_signal"] = True
-            termination["termination_path"] = "process_exited_before_killpg"
-        try:
-            stdout, stderr = proc.communicate(timeout=10)
-        except subprocess.TimeoutExpired:  # pragma: no cover - defensive fallback
-            termination["fallback_proc_kill_used"] = True
-            termination["termination_path"] = "killpg_sigkill_then_proc_kill"
-            proc.kill()
-            stdout, stderr = proc.communicate()
-        stdout_text = _as_text(exc.stdout) + _as_text(stdout)
-        stderr_text = _as_text(exc.stderr) + _as_text(stderr)
-        return (
-            "timeout",
-            None,
-            stdout_text,
-            stderr_text,
-            time.perf_counter() - started,
-            termination,
-        )
+            stdout, stderr = proc.communicate(timeout=timeout_s)
+            return (
+                "executed",
+                proc.returncode,
+                _as_text(stdout),
+                _as_text(stderr),
+                time.perf_counter() - started,
+                None,
+            )
+        except _SupervisorSignal as exc:
+            for signum in previous_handlers:
+                signal.signal(signum, signal.SIG_IGN)
+            termination = {
+                "timeout_reached": False,
+                "timeout_s": timeout_s,
+                "supervisor_signal_received": True,
+                "supervisor_signal": _signal_name(exc.signum),
+                "supervisor_signal_number": int(exc.signum),
+                "process_group_started": True,
+                "termination_method": "os.killpg",
+                "termination_signal": "SIGKILL",
+                "termination_signal_number": int(signal.SIGKILL),
+                "termination_path": "supervisor_signal_killpg_then_communicate",
+                "communicate_after_signal_timeout_s": 10.0,
+                "process_exited_before_signal": False,
+                "fallback_proc_kill_used": False,
+            }
+            stdout_text, stderr_text, termination = _terminate_process_group(proc, termination)
+            return (
+                "timeout",
+                None,
+                stdout_text,
+                stderr_text,
+                time.perf_counter() - started,
+                termination,
+            )
+        except subprocess.TimeoutExpired as exc:
+            termination = {
+                "timeout_reached": True,
+                "timeout_s": timeout_s,
+                "process_group_started": True,
+                "termination_method": "os.killpg",
+                "termination_signal": "SIGKILL",
+                "termination_signal_number": int(signal.SIGKILL),
+                "termination_path": "killpg_sigkill_then_communicate",
+                "communicate_after_signal_timeout_s": 10.0,
+                "process_exited_before_signal": False,
+                "fallback_proc_kill_used": False,
+            }
+            stdout_text, stderr_text, termination = _terminate_process_group(proc, termination)
+            return (
+                "timeout",
+                None,
+                _as_text(exc.stdout) + stdout_text,
+                _as_text(exc.stderr) + stderr_text,
+                time.perf_counter() - started,
+                termination,
+            )
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 from pathlib import Path
 
 from scripts import stepfun_llamacpp_oracle
@@ -431,6 +432,78 @@ def test_stepfun_llamacpp_oracle_timeout_is_structured(capsys, tmp_path: Path) -
     assert payload["oracle_blocker_kind"] == "llama_cpp_oracle_timeout"
     assert payload["step35_supported"] is None
     assert payload["text_matches_expected_exact"] is False
+
+
+def test_stepfun_llamacpp_oracle_supervisor_signal_overwrites_partial_output(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    _write_artifact(artifact)
+    output_path = tmp_path / "oracle-supervisor-timeout-output.json"
+    llama_cli = tmp_path / "llama-cli"
+    helper_pid = os.getpid()
+    llama_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"$1\" = \"--version\" ]; then\n"
+        "  echo 'version: test (deadbeef)'\n"
+        "else\n"
+        "  python3 - <<'PY'\n"
+        "import os, signal, time\n"
+        "time.sleep(0.1)\n"
+        f"os.kill({helper_pid}, signal.SIGTERM)\n"
+        "time.sleep(5)\n"
+        "PY\n"
+        "fi\n"
+    )
+    llama_cli.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fake")
+    sigterm_handler_before = signal.getsignal(signal.SIGTERM)
+
+    rc = main(
+        [
+            "--artifact",
+            str(artifact),
+            "--llama-cli",
+            str(llama_cli),
+            "--model",
+            str(model),
+            "--execute",
+            "--timeout-s",
+            "5",
+            "--output",
+            str(output_path),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    assert signal.getsignal(signal.SIGTERM) == sigterm_handler_before
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == ""
+    payload = json.loads(output_path.read_text())
+    assert payload["status"] == "timeout"
+    assert payload["timeout_s"] == 5.0
+    assert payload["elapsed_s"] < 5.0
+    assert payload["partial_output_written_before_launch"] is True
+    assert payload["partial_output_path"] == str(output_path)
+    assert payload["oracle_blocker_kind"] == "llama_cpp_oracle_timeout"
+    assert payload["oracle_blocker_detail"] == (
+        "llama.cpp oracle timed out before producing a comparable token"
+    )
+    assert payload["generated_text"] == ""
+    termination = payload["timeout_termination"]
+    assert termination["timeout_reached"] is False
+    assert termination["supervisor_signal_received"] is True
+    assert termination["supervisor_signal"] == "SIGTERM"
+    assert termination["supervisor_signal_number"] == int(signal.SIGTERM)
+    assert termination["termination_method"] == "os.killpg"
+    assert termination["termination_signal"] == "SIGKILL"
+    assert termination["termination_path"] == "supervisor_signal_killpg_then_communicate"
+    assert termination["fallback_proc_kill_used"] is False
+
 
 
 def test_stepfun_llamacpp_oracle_diagnostic_logs_omit_log_disable(
