@@ -481,7 +481,17 @@ What is still not green:
   `batched_lm_head` + `serial_per_row` argmax controls stayed green (`[137,137]`)
   and recorded a sampler blocker, narrowing the explicit c2 batched-sampler
   flake toward `batch_argmax_f32` rather than batched projection/norm logits
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-serial-argmax-after-c9-control228/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-serial-argmax-after-c9-control228/summary.json`). A follow-up `--batch-sample-argmax-audit` now runs `batch_argmax_f32`,
+  then serial per-row argmax over the same batched logits, and accumulates
+  same-logits parity stats while recording a sampler blocker. Across five more
+  red c9 grouped-stress cycles, explicit c2 `batched_lm_head` with audited
+  `batch_argmax_f32` stayed green (`[137,137]`) and checked 680 decode steps /
+  1360 row argmaxes with zero batch-vs-serial token mismatches. This does not
+  reproduce the historical `[103,137]` flake and rules out a deterministic
+  batch-argmax reduction disagreement on those audited logits; the explicit c2
+  batched sampler remains blocked until the historical flake is reproduced under
+  audit or otherwise fixed
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-batch-argmax-audit-after-c9-229/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

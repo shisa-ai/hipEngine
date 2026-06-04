@@ -1774,7 +1774,7 @@ class Qwen35ParoResidentSession:
             native_caware_decode=native_caware_decode,
             throughput_claim_eligible=eligible,
             blockers=tuple(dict.fromkeys(blockers)),
-            decode_execution=decode_execution if isinstance(decode_execution, dict) else None,
+            decode_execution=self._batch_decode_execution_with_sampler_audit(decode_execution) if isinstance(decode_execution, dict) else None,
             projection_dispatch=projection_dispatch,
         )
 
@@ -5993,6 +5993,92 @@ class Qwen35ParoResidentSession:
         if position < 0 or position >= self.max_sequence_length:
             raise ValueError(f"position {position} outside session capacity {self.max_sequence_length}")
 
+    def _batch_decode_execution_with_sampler_audit(self, decode_execution: dict[str, Any]) -> dict[str, Any]:
+        audit = getattr(self, "_batch_argmax_audit", None)
+        if not isinstance(audit, dict):
+            return decode_execution
+        execution = dict(decode_execution)
+        sampler_execution = dict(execution.get("sampler_execution") or {})
+        sampler_execution["argmax_audit"] = dict(audit)
+        execution["sampler_execution"] = sampler_execution
+        return execution
+
+    def _publish_batch_sampler_execution(self, sampler_execution: dict[str, Any]) -> None:
+        self.last_batch_sampler_execution = sampler_execution
+        decode_execution = getattr(self, "last_batch_decode_execution", None)
+        if isinstance(decode_execution, dict):
+            decode_execution["sampler_execution"] = dict(sampler_execution)
+
+    def _record_batch_argmax_audit(
+        self,
+        *,
+        batch_indices: np.ndarray,
+        batch_values: np.ndarray,
+        rows: int,
+        stream: int,
+    ) -> dict[str, Any]:
+        audit = getattr(self, "_batch_argmax_audit", None)
+        if not isinstance(audit, dict):
+            audit = {
+                "enabled": True,
+                "checked_steps": 0,
+                "checked_rows": 0,
+                "mismatch_steps": 0,
+                "mismatch_rows": 0,
+                "mismatches": [],
+            }
+            self._batch_argmax_audit = audit
+        step_index = int(audit["checked_steps"])
+        serial_indices = np.empty((rows,), dtype=np.int64)
+        serial_values = np.empty((rows,), dtype=np.float32)
+        for row in range(rows):
+            argmax_f32(
+                self.batch_lm_logits.ptr + row * self.vocab_size * DType.FP32.itemsize,
+                self.lm_block_values.ptr,
+                self.lm_block_indices.ptr,
+                self.lm_out_index.ptr,
+                self.lm_out_value.ptr,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["lm_head"],
+                runtime=self.runtime,
+            )
+            self.runtime.device_synchronize()
+            serial_index = np.empty((1,), dtype=np.int64)
+            serial_value = np.empty((1,), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(serial_index), self.lm_out_index, runtime=self.runtime)
+            copy_device_to_host(host_array_ptr(serial_value), self.lm_out_value, runtime=self.runtime)
+            serial_indices[row] = serial_index[0]
+            serial_values[row] = serial_value[0]
+        mismatches: list[dict[str, Any]] = []
+        for row in range(rows):
+            if int(batch_indices[row]) != int(serial_indices[row]):
+                mismatches.append(
+                    {
+                        "step_index": step_index,
+                        "row": row,
+                        "batch_index": int(batch_indices[row]),
+                        "serial_index": int(serial_indices[row]),
+                        "batch_value": float(batch_values[row]),
+                        "serial_value": float(serial_values[row]),
+                    }
+                )
+        audit["checked_steps"] = step_index + 1
+        audit["checked_rows"] = int(audit["checked_rows"]) + int(rows)
+        if mismatches:
+            audit["mismatch_steps"] = int(audit["mismatch_steps"]) + 1
+            audit["mismatch_rows"] = int(audit["mismatch_rows"]) + len(mismatches)
+            retained = list(audit.get("mismatches") or [])
+            retained.extend(mismatches)
+            audit["mismatches"] = retained[:16]
+        audit["last_step"] = {
+            "step_index": step_index,
+            "rows": int(rows),
+            "mismatch_rows": len(mismatches),
+        }
+        return dict(audit)
+
     def _sample_batch_from_hidden(self, hidden: Tensor, *, rows: int, stream: int = 0) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
         if rows <= 0:
             raise ValueError("rows must be positive")
@@ -6012,15 +6098,17 @@ class Qwen35ParoResidentSession:
         sampler_argmax_mode = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE", "batch").strip() or "batch"
         if sampler_argmax_mode not in {"batch", "serial_per_row"}:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE must be batch or serial_per_row")
+        sampler_argmax_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_AUDIT")
         sampler_execution = sampler_decision.to_json_dict()
         sampler_execution["argmax_mode"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else sampler_argmax_mode
+        sampler_execution["argmax_audit_enabled"] = bool(sampler_argmax_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         if sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "serial_per_row":
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head argmax forced to serial_per_row diagnostic")
-        self.last_batch_sampler_execution = sampler_execution
-        decode_execution = getattr(self, "last_batch_decode_execution", None)
-        if isinstance(decode_execution, dict):
-            decode_execution["sampler_execution"] = dict(sampler_execution)
+        if sampler_execution["argmax_audit_enabled"]:
+            sampler_execution["native_row_aware_lm_head"] = False
+            sampler_execution["blockers"].append("batched LM-head argmax audit enabled")
+        self._publish_batch_sampler_execution(sampler_execution)
         if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD:
             results: list[Qwen35ParoAutoregressiveStepResult] = []
             for row in range(rows):
@@ -6108,6 +6196,14 @@ class Qwen35ParoResidentSession:
             DeviceBuffer(self.batch_lm_out_value.ptr, rows * DType.FP32.itemsize),
             runtime=self.runtime,
         )
+        if sampler_execution["argmax_audit_enabled"]:
+            sampler_execution["argmax_audit"] = self._record_batch_argmax_audit(
+                batch_indices=index_host,
+                batch_values=value_host,
+                rows=rows,
+                stream=stream,
+            )
+            self._publish_batch_sampler_execution(sampler_execution)
         return tuple(
             Qwen35ParoAutoregressiveStepResult(
                 token_id=int(index_host[row]),
