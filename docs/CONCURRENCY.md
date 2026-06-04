@@ -511,7 +511,12 @@ What is still not green:
   selected-c1 fallback layers. This refreshes the more-native MoE correctness
   checkpoint; the remaining c4/c8 blocker stays rowchunked/full-native full
   attention rather than MoE or sampler instrumentation
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-moe-post-audit-matrix231/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-moe-post-audit-matrix231/summary.json`). A later required active c2 verify during the c4 context-producer
+  refresh reproduced the intermittent serial-sampler/default c2 flake once at
+  `[103,137]` with `selected_c1_batch` MoE and `native_caware_decode=true`; an
+  immediate repeat returned `[137,137]`. Treat c2 equality stability as still open
+  even when the latest repeat is green
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-context-producer-refresh236/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
@@ -646,7 +651,13 @@ What is still not green:
   batch-GEMV O (`[82,137,137,137,45,11,137,137]` and
   `[137,104,137,137,45,11,83,137]`). The remaining retained blocker is native
   grouped full-attention context/pre-QKV/no-rowchunk behavior, not the rowchunk O
-  path (`benchmarks/results/2026-06-03-hipengine-qwen35-native-fullnative-context-output-refresh235/summary.json`). This is
+  path (`benchmarks/results/2026-06-03-hipengine-qwen35-native-fullnative-context-output-refresh235/summary.json`). A c4
+  context-producer refresh keeps the native batch context signature red
+  (`[137,137,137,118]`) even through temp-output and compact-cache diagnostics,
+  while per-row context+gate and per-row context-only replay are both green
+  (`[137]*4`). That eliminates KV cache addressing and context output-buffer
+  aliasing for c4; target the native grouped context producer / pre-QKV setup
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-context-producer-refresh236/summary.json`). This is
   correctness-only evidence: rowchunk full attention remains
   `native_caware_decode=false`, and full-native no-chunk grouped>=3 attention is
   still the retained blocker
