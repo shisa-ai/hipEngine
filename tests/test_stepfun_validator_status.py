@@ -728,6 +728,7 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     next_producer_command_sha_output = tmp_path / "next-producer-command-sha.json"
     next_action_output = tmp_path / "next-action.json"
     next_action_sha_output = tmp_path / "next-action-sha.json"
+    next_action_artifact_name_output = tmp_path / "next-action-artifact-name.json"
     sha_output = tmp_path / "sha.json"
     status_output = tmp_path / "status.json"
     _write_prompt(prompt)
@@ -1521,6 +1522,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert next_action_payload["validator_command"] == next_command_payload
     assert next_action_payload["producer_command"] == (
         "python3 scripts/refresh_stepfun_kv_artifacts.py"
+    )
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-action-artifact-name-only",
+            "--output",
+            str(next_action_artifact_name_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(next_action_artifact_name_output.read_text()) == (
+        "kv_kernel_trace_artifact"
     )
 
     rc = main(

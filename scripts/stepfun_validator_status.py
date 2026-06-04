@@ -267,6 +267,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the next action bundle.",
     )
     parser.add_argument(
+        "--next-action-artifact-name-only",
+        action="store_true",
+        help="Emit only the artifact name from the next-action payload, or null.",
+    )
+    parser.add_argument(
         "--next-action-validator-summary-only",
         action="store_true",
         help=(
@@ -1089,6 +1094,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = next_action_missing_evidence
     elif args.next_action_sha_only:
         payload = report["next_action_sha256"]
+    elif args.next_action_artifact_name_only:
+        payload = (
+            next_action.get("artifact_name") if isinstance(next_action, dict) else None
+        )
     elif args.next_action_only:
         payload = report["next_action"]
     elif args.next_producer_command_sha_only:
