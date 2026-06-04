@@ -854,6 +854,13 @@ What is still not green:
   stays red (`[45,11,83,137]`); the hard c4 boundary therefore remains
   rowchunk/full-attention grouping, not selected dense context or metadata drift
   (`benchmarks/results/2026-06-04-hipengine-qwen35-hard-c4-post-profiler-refresh-284/summary.json`).
+  A required-runtime baseline refresh then captured compact reusable c1 and c2
+  scheduler-serial-bridge scaling references on GPU1/XTX and attached the raw
+  references to a current c2 retained run. The c2 run stayed generated-token
+  green (`[137,137]`) and `scaling.complete=true`, but the aggregate native/c1
+  ratio was only `0.822` while native/serial-bridge was `1.049`, so this is
+  baseline evidence only and still not a retained throughput/scaling claim
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
