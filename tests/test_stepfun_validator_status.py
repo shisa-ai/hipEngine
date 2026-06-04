@@ -703,8 +703,10 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     selected_blocked_gate_status_counts_sha_output = tmp_path / "selected-blocked-gate-status-counts-sha.json"
     selected_blocked_gate_producer_commands_output = tmp_path / "selected-blocked-gate-producer-commands.json"
     selected_blocked_gate_producer_commands_sha_output = tmp_path / "selected-blocked-gate-producer-commands-sha.json"
+    selected_blocked_gate_producer_command_count_output = tmp_path / "selected-blocked-gate-producer-command-count.json"
     selected_blocked_gate_validator_commands_output = tmp_path / "selected-blocked-gate-validator-commands.json"
     selected_blocked_gate_validator_commands_sha_output = tmp_path / "selected-blocked-gate-validator-commands-sha.json"
+    selected_blocked_gate_validator_command_count_output = tmp_path / "selected-blocked-gate-validator-command-count.json"
     selected_blocked_gate_missing_output = tmp_path / "selected-blocked-gate-missing.json"
     selected_blocked_gate_missing_sha_output = tmp_path / "selected-blocked-gate-missing-sha.json"
     next_blocked_gate_output = tmp_path / "next-blocked-gate.json"
@@ -1170,6 +1172,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
             str(resource),
             "--blocked-evidence-gate",
             "kv_backed_decode",
+            "--blocked-evidence-gate-producer-command-count-only",
+            "--output",
+            str(selected_blocked_gate_producer_command_count_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_producer_command_count_output.read_text()) == 1
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
             "--blocked-evidence-gate-validator-commands-only",
             "--output",
             str(selected_blocked_gate_validator_commands_output),
@@ -1199,6 +1220,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert len(json.loads(selected_blocked_gate_validator_commands_sha_output.read_text())) == 64
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-validator-command-count-only",
+            "--output",
+            str(selected_blocked_gate_validator_command_count_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_validator_command_count_output.read_text()) == 1
 
     rc = main(
         [

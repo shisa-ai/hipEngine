@@ -670,8 +670,10 @@ reporting.
   `--blocked-evidence-gate-status-counts-sha-only`,
   `--blocked-evidence-gate-producer-commands-only` /
   `--blocked-evidence-gate-producer-commands-sha-only`,
+  `--blocked-evidence-gate-producer-command-count-only`,
   `--blocked-evidence-gate-validator-commands-only` /
-  `--blocked-evidence-gate-validator-commands-sha-only`, and
+  `--blocked-evidence-gate-validator-commands-sha-only`,
+  `--blocked-evidence-gate-validator-command-count-only`, and
   `--blocked-evidence-gate-missing-evidence-only` /
   `--blocked-evidence-gate-missing-evidence-sha-only`,
   `--next-blocked-gate-only` /
