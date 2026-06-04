@@ -884,6 +884,13 @@ What is still not green:
   isolated BF16 paged full-attention context/KV primitives alone; it likely sits
   in E2E full-attention composition/state/ordering
   (`benchmarks/results/2026-06-05-hipengine-qwen35-long-context-primitive-parity-288/summary.json`).
+  A hard rows4..7 c4 no-rowchunk output frontier then ruled out a simple O-path
+  swap as the rowchunk replacement: rowchunk2 remains green (`[137]*4`), native
+  no-rowchunk O stays red (`[45,31,68,137]`), and forcing row-aware batch-GEMV O
+  or per-row O both stay red (`[45,11,137,137]`). This keeps the hard-c4 target
+  on coupled E2E full-attention composition/state/ordering rather than the O
+  projection alone
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-output-frontier-289/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
