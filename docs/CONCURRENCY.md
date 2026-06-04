@@ -906,6 +906,14 @@ What is still not green:
   correctness-first c4/c8 auto path now uses that narrower layer scope, while it
   remains diagnostic/non-retained because `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-c8-auto-layer-scope-291/summary.json`).
+  A current c4 profiler refresh for that narrowed no-flag default is green
+  (`[137]*4`) and shows the expected native batch full-attention context and KV
+  append kernels, grouped-compact MoE, accepted c-aware projection, row-aware
+  output GEMV, segmented-state, and batched sampler kernels. Native batch
+  context/KV append calls drop from the older all-layer-rowchunk profiler count
+  of 8160 to 7344 under the selected-layer scope, but this remains profiler
+  evidence only and not a throughput/scaling claim
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c4-layer-scope-profiler-292/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
