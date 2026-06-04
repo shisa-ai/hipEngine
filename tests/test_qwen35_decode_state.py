@@ -492,7 +492,7 @@ def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_conte
             ),
         ),
     )
-    calls: list[tuple[str, int | None, int | None] | tuple[str, int | None, int | None, bool]] = []
+    calls: list[tuple] = []
 
     monkeypatch.setattr(state, "input_rmsnorm_fp16", lambda *args, **kwargs: calls.append(("input_norm", None, None)) or scratch.attn_input)
     monkeypatch.setattr(
@@ -507,18 +507,20 @@ def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_conte
         lambda *args, **kwargs: pytest.fail("unexpected batch context path"),
     )
 
-    def fake_row_context(row_scratch, **kwargs):
-        calls.append(
-            (
-                "row_context",
-                int(row_scratch.attn_out.ptr),
-                int(kwargs["spans"].max_live_count),
-                bool(kwargs.get("force_paged_context")),
-            )
-        )
-        return row_scratch.gated_attn
+    monkeypatch.setattr(
+        state,
+        "decode_full_attention_context_gate_fp16",
+        lambda *args, **kwargs: pytest.fail("unexpected fused per-row context+gate path"),
+    )
 
-    monkeypatch.setattr(state, "decode_full_attention_context_gate_fp16", fake_row_context)
+    def fake_row_context(query_ptr, key_ptr, value_ptr, out_ptr, spans, max_live_count, *args, **kwargs):
+        calls.append(("row_context", int(out_ptr), int(spans.max_live_count), int(max_live_count), int(key_ptr), int(value_ptr)))
+
+    def fake_batch_gate(context_ptr, gate_ptr, gated_ptr, elements, **kwargs):
+        calls.append(("batch_gate", int(context_ptr), int(gate_ptr), int(gated_ptr), int(elements)))
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_context_bf16_spans", fake_row_context)
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", fake_batch_gate)
     monkeypatch.setattr(state, "project_full_attention_o_fp16", lambda *args, **kwargs: calls.append(("o_proj", None, None)) or scratch.o_proj)
     monkeypatch.setattr(
         state,
@@ -550,8 +552,9 @@ def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_conte
         ("input_norm", None, None),
         ("prepare", None, None),
         ("append", None, None),
-        ("row_context", scratch.attn_out.ptr, 5, True),
-        ("row_context", scratch.attn_out.ptr, 8, True),
+        ("row_context", scratch.attn_out.ptr, 5, 5, 0xE100, 0xF100),
+        ("row_context", scratch.attn_out.ptr, 8, 8, 0xE200, 0xF200),
+        ("batch_gate", scratch.query_raw.ptr, scratch.gate.ptr, scratch.gated_attn.ptr, 2 * state.config.num_attention_heads * state.config.head_dim),
         ("o_proj", None, None),
         ("post_norm", None, None),
         ("grouped_moe", None, None),
