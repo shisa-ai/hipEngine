@@ -923,12 +923,14 @@ What is still not green:
   correctness-only, not retained/scaling rows
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-layer-scope-refresh-294/summary.json`).
   Follow-up c3/c5/c6/c7 coverage promoted that same selected-layer scope for
-  c3 and c6 as well: final no-flag c3/c5/c6/c7 all pass (`[137]*rows`), with
-  c3/c6 using selected layers `[3,7,11,15]` and c5/c7 conservatively staying on
-  all-layer rowchunk2 after a selected-layer c5/c7 trial produced mismatches
-  before repeat controls recovered. The required c2/c4/c8 gate stayed green in
-  the same iteration, and this remains a correctness-only diagnostic path
-  (`benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/summary.json`).
+  c3 and c6, then for c5 after six selected-layer repeats stayed green: final
+  no-flag c3/c5/c6/c7 all pass (`[137]*rows`), with c3/c5/c6 using selected
+  layers `[3,7,11,15]` and c7 conservatively staying on all-layer rowchunk2
+  after a selected-layer c7 repeat produced a mismatch. The required c2/c4/c8
+  gate stayed green on the latest repeats, and this remains a correctness-only
+  diagnostic path
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/summary.json`).
   A later active-loop c2 512/128 audit confirms there is no current c2 generated-
   token mismatch to chase: both rows match independent c1 for all 137 generated
   tokens. The artifact remains `status=blocked` only for retained/performance

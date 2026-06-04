@@ -4112,12 +4112,12 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Hard rows4..7 c=4 plus original c3/c4/c6/c8 evidence shows rowchunking
-    # only the first four full-attention producer layers preserves generated-
-    # token equality for those correctness-first auto row counts while smaller
-    # tested c4/c8 subsets remain red. Keep c5/c7 on all-layer rowchunk2 until
-    # their selected-layer path is repeat-stable.
-    return "3,7,11,15" if int(batch_size) in {3, 4, 6, 8} else ""
+    # Hard rows4..7 c=4 plus original c3/c4/c5/c6/c8 evidence shows
+    # rowchunking only the first four full-attention producer layers preserves
+    # generated-token equality for those correctness-first auto row counts while
+    # smaller tested c4/c8 subsets remain red. Keep c7 on all-layer rowchunk2
+    # until its selected-layer path is repeat-stable.
+    return "3,7,11,15" if int(batch_size) in {3, 4, 5, 6, 8} else ""
 
 
 def _resolved_batch_decode_full_attn_output_path(args: argparse.Namespace) -> str:

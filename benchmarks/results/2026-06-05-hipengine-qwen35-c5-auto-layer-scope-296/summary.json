@@ -1,0 +1,949 @@
+{
+  "artifacts": {
+    "final_default_c5": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/final-default-c5-compact.json"
+    },
+    "final_default_c7": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/final-default-c7-compact.json"
+    },
+    "final_gate_c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/final-gate-c2-compact.json"
+    },
+    "final_gate_c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/final-gate-c4-compact.json"
+    },
+    "final_gate_c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/final-gate-c8-compact.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/summary.json"
+    }
+  },
+  "conclusion": "Promote c5 auto full-attention rowchunk from all-layer rowchunk2 to selected layers [3,7,11,15] after six selected-layer repeats and the final no-flag c5 default all passed [137]*5. Keep c7 on all-layer rowchunk2 because selected-layer repeat r3 was red. The final required c2/c4/c8 gate is green using the latest c8 repeat; a transient c8 red observation is recorded and not used for a throughput/scaling claim.",
+  "created_at": "2026-06-04T19:32:13.851689+00:00",
+  "git_commit_before_commit": "0ab21a5026db09983598c59863ee0e9211d2b7e9",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 296,
+  "kind": "c5_auto_layer_scope_promotion_c7_hold",
+  "performance_claim": false,
+  "red_observations_not_promoted": [
+    {
+      "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r3.json",
+      "artifact_sha256": "e6cd4db91d22cac9056e92b47c3114b1b550dc9f65359b12061a5e4b1db9fe46",
+      "artifact_size_bytes": 354718,
+      "batch_size": 7,
+      "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 7 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r3.json",
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_output_decode_path": "batch_gemv",
+        "full_attention_row_chunk_layers": [
+          3,
+          7,
+          11,
+          15
+        ],
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15
+        ],
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          45,
+          null,
+          null
+        ],
+        "passed": false,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          45,
+          137,
+          137
+        ]
+      },
+      "label": "selected_layer_repeat",
+      "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r3.log",
+      "log_sha256": "e6cd4db91d22cac9056e92b47c3114b1b550dc9f65359b12061a5e4b1db9fe46",
+      "log_size_bytes": 354718,
+      "performance_claim": false,
+      "repeat_index": 3,
+      "sampler_execution": {
+        "blockers": [],
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "native_caware_decode": false,
+        "shape": "c=7 prompt=512 decode=128"
+      }
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter296-c248-post-c5-scope/current-c8.json",
+      "artifact_sha256": "3a0673aee6359fe42ffeabffcfd61fbb72e2397141acb160b240b64bb1342caa",
+      "artifact_size_bytes": 394126,
+      "batch_size": 8,
+      "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json --json /tmp/hipengine-iter296-c248-post-c5-scope/current-c8.json",
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_output_decode_path": "batch_gemv",
+        "full_attention_row_chunk_layers": [
+          3,
+          7,
+          11,
+          15
+        ],
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15
+        ],
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          40,
+          null
+        ],
+        "passed": false,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          40,
+          137
+        ]
+      },
+      "label": "required_c8_transient_red",
+      "log_path": "/tmp/hipengine-iter296-c248-post-c5-scope/current-c8.log",
+      "log_sha256": "3a0673aee6359fe42ffeabffcfd61fbb72e2397141acb160b240b64bb1342caa",
+      "log_size_bytes": 394126,
+      "performance_claim": false,
+      "repeat_index": null,
+      "sampler_execution": {
+        "blockers": [],
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true
+      },
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "batched_lm_head",
+        "native_caware_decode": false,
+        "shape": "c=8 prompt=512 decode=128"
+      }
+    }
+  ],
+  "result": {
+    "decode_blockers": {
+      "final_default_c5": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "final_default_c7": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "required_c248_final_gate_c2": [],
+      "required_c248_final_gate_c4": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "required_c248_final_gate_c8": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ]
+    },
+    "full_attention_output_paths": {
+      "final_default_c5": "batch_gemv",
+      "final_default_c7": "batch",
+      "required_c248_final_gate_c2": "batch",
+      "required_c248_final_gate_c4": "batch_gemv",
+      "required_c248_final_gate_c8": "batch_gemv"
+    },
+    "generated_equality_passed_final": true,
+    "prefix_lengths": {
+      "final_default_c5": [
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "final_default_c7": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "required_c248_final_gate_c2": [
+        137,
+        137
+      ],
+      "required_c248_final_gate_c4": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "required_c248_final_gate_c8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "requested_rowchunk_layers": {
+      "final_default_c5": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_default_c7": null,
+      "required_c248_final_gate_c2": null,
+      "required_c248_final_gate_c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "required_c248_final_gate_c8": [
+        3,
+        7,
+        11,
+        15
+      ]
+    },
+    "rowchunk_layers": {
+      "final_default_c5": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_default_c7": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "required_c248_final_gate_c2": null,
+      "required_c248_final_gate_c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "required_c248_final_gate_c8": [
+        3,
+        7,
+        11,
+        15
+      ]
+    }
+  },
+  "schema": 1,
+  "selected_layer_repeat_summary": {
+    "c5": [
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r1.json",
+        "artifact_sha256": "c7454129f7e10eccd73e7071f06511859b3cb58dc8357615478cfdcc10216720",
+        "artifact_size_bytes": 266496,
+        "batch_size": 5,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 5 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r1.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r1.log",
+        "log_sha256": "c7454129f7e10eccd73e7071f06511859b3cb58dc8357615478cfdcc10216720",
+        "log_size_bytes": 266496,
+        "performance_claim": false,
+        "repeat_index": 1,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=5 prompt=512 decode=128"
+        }
+      },
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r2.json",
+        "artifact_sha256": "2e4498a53232b62e5da8173dedb93279689528944437234bfa3816cd9f7e229b",
+        "artifact_size_bytes": 266523,
+        "batch_size": 5,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 5 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r2.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r2.log",
+        "log_sha256": "2e4498a53232b62e5da8173dedb93279689528944437234bfa3816cd9f7e229b",
+        "log_size_bytes": 266523,
+        "performance_claim": false,
+        "repeat_index": 2,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=5 prompt=512 decode=128"
+        }
+      },
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r3.json",
+        "artifact_sha256": "ba5022a3c333b21407afdadf62908b8413dfdf75daabeb88c98d9cfe397784a7",
+        "artifact_size_bytes": 266519,
+        "batch_size": 5,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 5 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r3.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r3.log",
+        "log_sha256": "ba5022a3c333b21407afdadf62908b8413dfdf75daabeb88c98d9cfe397784a7",
+        "log_size_bytes": 266519,
+        "performance_claim": false,
+        "repeat_index": 3,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=5 prompt=512 decode=128"
+        }
+      },
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r4.json",
+        "artifact_sha256": "9f15df5a1a8af8c69cb3b6770f5232739b61157eb1a146ed42e894e7c6293264",
+        "artifact_size_bytes": 266502,
+        "batch_size": 5,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 5 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r4.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r4.log",
+        "log_sha256": "9f15df5a1a8af8c69cb3b6770f5232739b61157eb1a146ed42e894e7c6293264",
+        "log_size_bytes": 266502,
+        "performance_claim": false,
+        "repeat_index": 4,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=5 prompt=512 decode=128"
+        }
+      },
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r5.json",
+        "artifact_sha256": "ba62a98e9852995ff21ac873ce1ca79507700b2093ca27cee97ecd9775f8d1eb",
+        "artifact_size_bytes": 266518,
+        "batch_size": 5,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 5 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r5.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r5.log",
+        "log_sha256": "ba62a98e9852995ff21ac873ce1ca79507700b2093ca27cee97ecd9775f8d1eb",
+        "log_size_bytes": 266518,
+        "performance_claim": false,
+        "repeat_index": 5,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=5 prompt=512 decode=128"
+        }
+      },
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r6.json",
+        "artifact_sha256": "d49bd173f6bf186eda4de733bcd590291747801a73da7ebc8fbfdf847b2071a4",
+        "artifact_size_bytes": 266534,
+        "batch_size": 5,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 5 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r6.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c5-r6.log",
+        "log_sha256": "d49bd173f6bf186eda4de733bcd590291747801a73da7ebc8fbfdf847b2071a4",
+        "log_size_bytes": 266534,
+        "performance_claim": false,
+        "repeat_index": 6,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=5 prompt=512 decode=128"
+        }
+      }
+    ],
+    "c7": [
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r1.json",
+        "artifact_sha256": "f4a3236d03aab90328402c5a25c2e098ca5b7111df751b7a21a72206eef9b91f",
+        "artifact_size_bytes": 348044,
+        "batch_size": 7,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 7 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r1.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r1.log",
+        "log_sha256": "f4a3236d03aab90328402c5a25c2e098ca5b7111df751b7a21a72206eef9b91f",
+        "log_size_bytes": 348044,
+        "performance_claim": false,
+        "repeat_index": 1,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=7 prompt=512 decode=128"
+        }
+      },
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r2.json",
+        "artifact_sha256": "a276b81d38c8baf6798138c30c73e97d42982fc2c387ced82d0d7b28dadf8f0b",
+        "artifact_size_bytes": 348072,
+        "batch_size": 7,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 7 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r2.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r2.log",
+        "log_sha256": "a276b81d38c8baf6798138c30c73e97d42982fc2c387ced82d0d7b28dadf8f0b",
+        "log_size_bytes": 348072,
+        "performance_claim": false,
+        "repeat_index": 2,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=7 prompt=512 decode=128"
+        }
+      },
+      {
+        "artifact_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r3.json",
+        "artifact_sha256": "e6cd4db91d22cac9056e92b47c3114b1b550dc9f65359b12061a5e4b1db9fe46",
+        "artifact_size_bytes": 354718,
+        "batch_size": 7,
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 7 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15 --batch-decode-full-attn-output-path batch_gemv --json /tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r3.json",
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+          ],
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_decode_path": "batch_gemv",
+          "full_attention_row_chunk_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunked_layers": [
+            3,
+            7,
+            11,
+            15
+          ],
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            45,
+            null,
+            null
+          ],
+          "passed": false,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            45,
+            137,
+            137
+          ]
+        },
+        "label": "selected_layer_repeat",
+        "log_path": "/tmp/hipengine-iter296-c57-selected-scope-repeat/selected-c7-r3.log",
+        "log_sha256": "e6cd4db91d22cac9056e92b47c3114b1b550dc9f65359b12061a5e4b1db9fe46",
+        "log_size_bytes": 354718,
+        "performance_claim": false,
+        "repeat_index": 3,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false
+        },
+        "status": "rejected_correctness",
+        "workload": {
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+          "batch_decode_full_attention_row_chunk_size": 2,
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head",
+          "native_caware_decode": false,
+          "shape": "c=7 prompt=512 decode=128"
+        }
+      }
+    ]
+  },
+  "source_tmp_dirs": {
+    "final_default": "/tmp/hipengine-iter296-c57-final-default",
+    "required_c248_gate": "/tmp/hipengine-iter296-c248-post-c5-scope",
+    "selected_layer_repeats": "/tmp/hipengine-iter296-c57-selected-scope-repeat"
+  },
+  "status": "passed",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "selected_layers": [
+      3,
+      7,
+      11,
+      15
+    ],
+    "warmup_decode_tokens": 8
+  }
+}
