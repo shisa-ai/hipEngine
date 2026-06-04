@@ -588,6 +588,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     blocked_evidence_sha_output = tmp_path / "blocked-evidence-sha.json"
     blocked_evidence_by_gate_output = tmp_path / "blocked-evidence-by-gate.json"
     blocked_evidence_by_gate_sha_output = tmp_path / "blocked-evidence-by-gate-sha.json"
+    selected_blocked_gate_output = tmp_path / "selected-blocked-gate.json"
+    selected_blocked_gate_sha_output = tmp_path / "selected-blocked-gate-sha.json"
     next_blocked_gate_output = tmp_path / "next-blocked-gate.json"
     next_blocked_gate_sha_output = tmp_path / "next-blocked-gate-sha.json"
     next_blocker_output = tmp_path / "next-blocker.json"
@@ -816,6 +818,55 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert len(json.loads(blocked_evidence_by_gate_sha_output.read_text())) == 64
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-only",
+            "--output",
+            str(selected_blocked_gate_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_output.read_text()) == {
+        "readiness_gate": "kv_backed_decode",
+        "artifact_names": ["kv_kernel_trace_artifact"],
+        "blocked_count": 1,
+        "status_counts": {"missing": 1},
+        "missing_evidence": ["artifact_file_present"],
+        "producer_command_kinds": ["resource_plan_refresh_command"],
+        "producer_command_sha256s": ["kv-producer-sha"],
+        "validator_command_kinds": ["kv_trace_check_command"],
+        "validator_command_sha256s": ["trace-command-sha"],
+        "missing_evidence_count": 1,
+    }
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-sha-only",
+            "--output",
+            str(selected_blocked_gate_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(selected_blocked_gate_sha_output.read_text())) == 64
 
     rc = main(
         [

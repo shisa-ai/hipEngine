@@ -123,6 +123,20 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the first blocked gate summary.",
     )
     parser.add_argument(
+        "--blocked-evidence-gate",
+        help="Readiness gate name used by the selected blocked-evidence gate modes.",
+    )
+    parser.add_argument(
+        "--blocked-evidence-gate-only",
+        action="store_true",
+        help="Emit only the blocked evidence summary for --blocked-evidence-gate, or null.",
+    )
+    parser.add_argument(
+        "--blocked-evidence-gate-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest for --blocked-evidence-gate.",
+    )
+    parser.add_argument(
         "--next-blocker-only",
         action="store_true",
         help="Emit only the first failed or missing validator record, or null.",
@@ -545,11 +559,24 @@ def _blocked_evidence_by_gate(
     return gate_summary
 
 
+def _blocked_gate_by_name(
+    blocked_evidence_by_gate: Sequence[dict[str, object]],
+    readiness_gate: object,
+) -> dict[str, object] | None:
+    if readiness_gate in (None, ""):
+        return None
+    for record in blocked_evidence_by_gate:
+        if record.get("readiness_gate") == readiness_gate:
+            return record
+    return None
+
+
 def build_validator_status_report(
     manifest: dict[str, object],
     *,
     prompt_artifact: Path = status_mod.DEFAULT_PROMPT_ARTIFACT,
     resource_artifact: Path = status_mod.DEFAULT_RESOURCE_ARTIFACT,
+    selected_blocked_gate_name: str | None = None,
 ) -> dict[str, object]:
     """Return aggregate status for concrete final-blocker validators."""
 
@@ -642,6 +669,10 @@ def build_validator_status_report(
         if isinstance(next_action_missing_evidence, list)
         else None
     )
+    selected_blocked_gate = _blocked_gate_by_name(
+        blocked_evidence_by_gate,
+        selected_blocked_gate_name,
+    )
     passed = sum(1 for record in results if record.get("status") == "passed")
     missing = sum(1 for record in results if record.get("status") == "missing")
     failed = sum(1 for record in results if record.get("status") == "failed")
@@ -678,6 +709,11 @@ def build_validator_status_report(
         else None,
         "next_blocked_gate_sha256": status_mod._stable_json_sha256(
             next_blocked_gate
+        ),
+        "selected_blocked_gate_readiness_gate": selected_blocked_gate_name,
+        "selected_blocked_gate": selected_blocked_gate,
+        "selected_blocked_gate_sha256": status_mod._stable_json_sha256(
+            selected_blocked_gate
         ),
         "next_blocker_artifact_name": next_blocker.get("artifact_name")
         if isinstance(next_blocker, dict)
@@ -748,6 +784,11 @@ def build_validator_status_report(
         "next_blocked_gate_sha256": status_mod._stable_json_sha256(
             next_blocked_gate
         ),
+        "selected_blocked_gate_readiness_gate": selected_blocked_gate_name,
+        "selected_blocked_gate": selected_blocked_gate,
+        "selected_blocked_gate_sha256": status_mod._stable_json_sha256(
+            selected_blocked_gate
+        ),
         "next_blocker": next_blocker,
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
         "next_blocker_command": next_blocker_command,
@@ -788,6 +829,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         manifest,
         prompt_artifact=args.prompt_artifact,
         resource_artifact=args.resource_artifact,
+        selected_blocked_gate_name=args.blocked_evidence_gate,
     )
     next_action = report.get("next_action")
     next_action_validator_summary = (
@@ -832,6 +874,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_blocked_gate_sha256"]
     elif args.next_blocked_gate_only:
         payload = report["next_blocked_gate"]
+    elif args.blocked_evidence_gate_sha_only:
+        payload = report["selected_blocked_gate_sha256"]
+    elif args.blocked_evidence_gate_only:
+        payload = report["selected_blocked_gate"]
     elif args.blocked_evidence_by_gate_sha_only:
         payload = report["blocked_evidence_by_gate_sha256"]
     elif args.blocked_evidence_by_gate_only:
