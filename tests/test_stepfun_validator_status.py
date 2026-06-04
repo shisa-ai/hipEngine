@@ -263,6 +263,11 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["blocked_validator_results_sha256"] == report[
         "blocked_validator_results_sha256"
     ]
+    assert summary["blocked_evidence_summary"] == []
+    assert summary["blocked_evidence_summary_sha256"] == report[
+        "blocked_evidence_summary_sha256"
+    ]
+    assert report["blocked_evidence_summary"] == []
     assert summary["next_blocker_artifact_name"] is None
     assert summary["next_blocker_status"] is None
     assert summary["next_blocker_reason"] is None
@@ -345,6 +350,27 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     }
     assert results["kv_kernel_trace_artifact"] == expected_missing_trace
     assert report["blocked_validator_results"] == [expected_missing_trace]
+    expected_blocked_summary = [
+        {
+            "artifact_name": "kv_kernel_trace_artifact",
+            "readiness_gate": "kv_backed_decode",
+            "status": "missing",
+            "reason": "artifact_file_missing",
+            "validator_artifact_path": str(trace),
+            "validator_command_kind": "kv_trace_check_command",
+            "validator_command_sha256": "trace-command-sha",
+            "producer_command_kind": "resource_plan_refresh_command",
+            "producer_command_sha256": "kv-producer-sha",
+            "missing_evidence": [],
+            "missing_evidence_count": 0,
+            "validator_summary_sha256": None,
+        }
+    ]
+    assert report["blocked_evidence_summary"] == expected_blocked_summary
+    assert summary["blocked_evidence_summary"] == expected_blocked_summary
+    assert summary["blocked_evidence_summary_sha256"] == report[
+        "blocked_evidence_summary_sha256"
+    ]
     assert report["next_blocker"] == expected_missing_trace
     assert summary["next_blocker_artifact_name"] == "kv_kernel_trace_artifact"
     assert summary["next_blocker_status"] == "missing"
@@ -415,6 +441,12 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     )
 
     assert report["status"] == "blocked"
+    assert len(report["blocked_evidence_summary"]) == 1
+    assert report["blocked_evidence_summary"][0]["artifact_name"] == (
+        "llama_cpp_oracle_success_artifact"
+    )
+    assert report["blocked_evidence_summary"][0]["status"] == "failed"
+    assert report["blocked_evidence_summary"][0]["missing_evidence_count"] == 5
     assert report["next_blocker"]["artifact_name"] == (
         "llama_cpp_oracle_success_artifact"
     )
@@ -505,6 +537,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     results_sha_output = tmp_path / "results-sha.json"
     blocked_output = tmp_path / "blocked.json"
     blocked_sha_output = tmp_path / "blocked-sha.json"
+    blocked_evidence_output = tmp_path / "blocked-evidence.json"
+    blocked_evidence_sha_output = tmp_path / "blocked-evidence-sha.json"
     next_blocker_output = tmp_path / "next-blocker.json"
     next_blocker_sha_output = tmp_path / "next-blocker-sha.json"
     next_command_output = tmp_path / "next-command.json"
@@ -634,6 +668,56 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert len(json.loads(blocked_sha_output.read_text())) == 64
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-summary-only",
+            "--output",
+            str(blocked_evidence_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    blocked_evidence_payload = json.loads(blocked_evidence_output.read_text())
+    assert blocked_evidence_payload == [
+        {
+            "artifact_name": "kv_kernel_trace_artifact",
+            "readiness_gate": "kv_backed_decode",
+            "status": "missing",
+            "reason": "artifact_file_missing",
+            "validator_artifact_path": str(trace),
+            "validator_command_kind": "kv_trace_check_command",
+            "validator_command_sha256": "trace-command-sha",
+            "producer_command_kind": "resource_plan_refresh_command",
+            "producer_command_sha256": "kv-producer-sha",
+            "missing_evidence": [],
+            "missing_evidence_count": 0,
+            "validator_summary_sha256": None,
+        }
+    ]
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-summary-sha-only",
+            "--output",
+            str(blocked_evidence_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(blocked_evidence_sha_output.read_text())) == 64
 
     rc = main(
         [

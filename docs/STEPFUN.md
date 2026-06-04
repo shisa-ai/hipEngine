@@ -658,9 +658,10 @@ reporting.
   `--results-sha-only`, `--blocked-only` / `--blocked-sha-only`,
   `--next-blocker-only` / `--next-blocker-sha-only`,
   `--next-command-only` / `--next-command-sha-only`,
-  `--next-producer-command-only` / `--next-producer-command-sha-only`, and
+  `--next-producer-command-only` / `--next-producer-command-sha-only`,
+  `--blocked-evidence-summary-only` / `--blocked-evidence-summary-sha-only`, and
   `--next-action-only` / `--next-action-sha-only` expose compact pollable
-  validator records/commands, `--next-action-validator-summary-only` /
+  validator records/commands/evidence gaps, `--next-action-validator-summary-only` /
   `--next-action-validator-summary-sha-only` expose just the embedded validator
   summary/digest, and `--next-action-missing-evidence-only` /
   `--next-action-missing-evidence-sha-only` expose just its missing-evidence

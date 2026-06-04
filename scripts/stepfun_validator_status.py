@@ -93,6 +93,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of failed/missing validator records.",
     )
     parser.add_argument(
+        "--blocked-evidence-summary-only",
+        action="store_true",
+        help="Emit only the compact evidence summary for all failed/missing validators.",
+    )
+    parser.add_argument(
+        "--blocked-evidence-summary-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the blocked evidence summary.",
+    )
+    parser.add_argument(
         "--next-blocker-only",
         action="store_true",
         help="Emit only the first failed or missing validator record, or null.",
@@ -385,6 +395,48 @@ def _attach_producer_command(
     return attached
 
 
+def _result_missing_evidence(record: dict[str, object]) -> list[object]:
+    missing = record.get("validator_missing_evidence")
+    summary = record.get("validator_summary")
+    if missing is None and isinstance(summary, dict):
+        missing = summary.get("missing_evidence")
+    return list(missing) if isinstance(missing, list) else []
+
+
+def _blocked_evidence_summary(
+    blocked_results: Sequence[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Return compact blocker evidence gaps without full checker payloads."""
+
+    summary: list[dict[str, object]] = []
+    for record in blocked_results:
+        missing = _result_missing_evidence(record)
+        validator_summary = record.get("validator_summary")
+        summary.append(
+            {
+                "artifact_name": record.get("artifact_name"),
+                "readiness_gate": record.get("readiness_gate"),
+                "status": record.get("status"),
+                "reason": record.get("reason"),
+                "validator_artifact_path": record.get("validator_artifact_path"),
+                "validator_command_kind": record.get("validator_command_kind"),
+                "validator_command_sha256": record.get(
+                    "validator_command_concrete_sha256"
+                ),
+                "producer_command_kind": record.get("producer_command_kind"),
+                "producer_command_sha256": record.get("producer_command_sha256"),
+                "missing_evidence": missing,
+                "missing_evidence_count": len(missing),
+                "validator_summary_sha256": status_mod._stable_json_sha256(
+                    validator_summary
+                )
+                if isinstance(validator_summary, dict)
+                else None,
+            }
+        )
+    return summary
+
+
 def build_validator_status_report(
     manifest: dict[str, object],
     *,
@@ -413,6 +465,7 @@ def build_validator_status_report(
     blocked_results = [
         record for record in results if record.get("status") in {"missing", "failed"}
     ]
+    blocked_evidence_summary = _blocked_evidence_summary(blocked_results)
     next_blocker = blocked_results[0] if blocked_results else None
     next_blocker_command = (
         next_blocker.get("validator_command_concrete")
@@ -501,6 +554,10 @@ def build_validator_status_report(
         "blocked_validator_results_sha256": status_mod._stable_json_sha256(
             blocked_results
         ),
+        "blocked_evidence_summary": blocked_evidence_summary,
+        "blocked_evidence_summary_sha256": status_mod._stable_json_sha256(
+            blocked_evidence_summary
+        ),
         "next_blocker_artifact_name": next_blocker.get("artifact_name")
         if isinstance(next_blocker, dict)
         else None,
@@ -557,6 +614,10 @@ def build_validator_status_report(
         "blocked_validator_results": blocked_results,
         "blocked_validator_results_sha256": status_mod._stable_json_sha256(
             blocked_results
+        ),
+        "blocked_evidence_summary": blocked_evidence_summary,
+        "blocked_evidence_summary_sha256": status_mod._stable_json_sha256(
+            blocked_evidence_summary
         ),
         "next_blocker": next_blocker,
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
@@ -638,6 +699,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_blocker_sha256"]
     elif args.next_blocker_only:
         payload = report["next_blocker"]
+    elif args.blocked_evidence_summary_sha_only:
+        payload = report["blocked_evidence_summary_sha256"]
+    elif args.blocked_evidence_summary_only:
+        payload = report["blocked_evidence_summary"]
     elif args.blocked_sha_only:
         payload = report["blocked_validator_results_sha256"]
     elif args.blocked_only:
