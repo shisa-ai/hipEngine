@@ -462,6 +462,23 @@ def build_validator_status_report(
         ):
             if key in next_blocker:
                 next_action[key] = next_blocker.get(key)
+    next_action_validator_summary = (
+        next_action.get("validator_summary") if isinstance(next_action, dict) else None
+    )
+    next_action_missing_evidence = None
+    if isinstance(next_action, dict):
+        next_action_missing_evidence = next_action.get("validator_missing_evidence")
+        if next_action_missing_evidence is None and isinstance(
+            next_action_validator_summary, dict
+        ):
+            next_action_missing_evidence = next_action_validator_summary.get(
+                "missing_evidence"
+            )
+    next_action_missing_evidence_count = (
+        len(next_action_missing_evidence)
+        if isinstance(next_action_missing_evidence, list)
+        else None
+    )
     passed = sum(1 for record in results if record.get("status") == "passed")
     missing = sum(1 for record in results if record.get("status") == "missing")
     failed = sum(1 for record in results if record.get("status") == "failed")
@@ -508,6 +525,14 @@ def build_validator_status_report(
         if isinstance(next_action, dict)
         else None,
         "next_action_sha256": status_mod._stable_json_sha256(next_action),
+        "next_action_validator_summary_sha256": status_mod._stable_json_sha256(
+            next_action_validator_summary
+        ),
+        "next_action_missing_evidence": next_action_missing_evidence,
+        "next_action_missing_evidence_count": next_action_missing_evidence_count,
+        "next_action_missing_evidence_sha256": status_mod._stable_json_sha256(
+            next_action_missing_evidence
+        ),
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
         "manifest_sha256": status_mod._stable_json_sha256(manifest),
         "no_claim_policy": {

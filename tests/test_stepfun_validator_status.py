@@ -395,6 +395,8 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
 def test_stepfun_validator_status_next_action_includes_oracle_partial_output_handoff(
     tmp_path: Path,
 ) -> None:
+    from scripts import stepfun_correctness_status as status_mod
+
     prompt = tmp_path / "prompt.json"
     resource = tmp_path / "resource.json"
     oracle = tmp_path / "oracle-timeout.json"
@@ -447,6 +449,19 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     )
     assert supervisor_contract["partial_output_overwrite_policy"] == (
         "overwrite_on_execute_or_timeout"
+    )
+    summary = report["validator_status_summary"]
+    assert summary["next_action_validator_summary_sha256"] == (
+        status_mod._stable_json_sha256(report["next_blocker"]["validator_summary"])
+    )
+    assert summary["next_action_missing_evidence"] == report["next_blocker"][
+        "validator_missing_evidence"
+    ]
+    assert summary["next_action_missing_evidence_count"] == 5
+    assert summary["next_action_missing_evidence_sha256"] == (
+        status_mod._stable_json_sha256(
+            report["next_blocker"]["validator_missing_evidence"]
+        )
     )
     next_action = report["next_action"]
     assert next_action["artifact_name"] == "llama_cpp_oracle_success_artifact"
