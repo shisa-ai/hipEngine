@@ -934,15 +934,14 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first6-layer-scope-298/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-profiler-299/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-post-c8-profiler-300/summary.json`).
-  A later active-loop c2 512/128 audit confirms there is no current c2 generated-
-  token mismatch to chase: both rows match independent c1 for all 137 generated
-  tokens. The artifact remains `status=blocked` only for retained/performance
-  eligibility (row-GEMV projection dispatch without rows=2 c-aware evidence,
-  selected-c1 batch MoE in the current gate, and missing profiler/baseline/
-  primitive repo artifacts), so the next correctness work should target current
-  c4/c8 equality or retained-dispatch evidence rather than another c2 mismatch
-  hunt
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-equality-green/summary.json`).
+  A later active-loop c2 512/128 stability audit confirms the active verify
+  invocation itself is currently repeat-green: five no-flag c2 runs all match
+  independent c1 for all 137 generated tokens (`[137,137]` each), with full
+  native/c-aware decode, `batched_lm_head`, and no decode blockers. The artifact
+  remains correctness-only (not a retained throughput/scaling claim), so current
+  correctness work should target c4/c8/full-attention evidence rather than
+  another c2 mismatch hunt
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/summary.json`).
   The follow-up current c=2/c=4/c=8 equality matrix is green for every row at
   prefix 137 with empty mismatch summaries, satisfying the correctness-extension
   milestone after c2. It remains correctness-only: c4/c8 use rowchunked native

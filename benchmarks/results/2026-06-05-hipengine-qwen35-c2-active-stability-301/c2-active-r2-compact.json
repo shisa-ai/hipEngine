@@ -1,0 +1,49 @@
+{
+  "artifact_path": "/tmp/hipengine-iter301-c2-active-stability/c2-active-r2.json",
+  "artifact_sha256": "57ce77d2a790396d015522b9d6fa30d7c4aa9da7792654707758e6075c6ac3b4",
+  "artifact_size_bytes": 135308,
+  "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter301-c2-active-stability/c2-active-r2.json",
+  "decode_execution": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "full_attention_output_decode_path": "batch",
+    "full_attention_row_chunk_layers": null,
+    "full_attention_row_chunk_size": null,
+    "full_attention_row_chunked_layers": null,
+    "linear_attention_projection_path": "native_batch",
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "log_path": "/tmp/hipengine-iter301-c2-active-stability/c2-active-r2.log",
+  "log_sha256": "57ce77d2a790396d015522b9d6fa30d7c4aa9da7792654707758e6075c6ac3b4",
+  "log_size_bytes": 135308,
+  "performance_claim": false,
+  "repeat_index": 2,
+  "sampler_execution": {
+    "blockers": [],
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true
+  },
+  "status": "blocked",
+  "workload": {
+    "batch_decode_full_attention_output_path": "batch",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_layers": "",
+    "batch_decode_full_attention_row_chunk_size": 0,
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_sample_mode": "batched_lm_head",
+    "native_caware_decode": true,
+    "shape": "c=2 prompt=512 decode=128"
+  }
+}
