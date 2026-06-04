@@ -761,6 +761,13 @@ What is still not green:
   the downstream recovery boundary around layers 15→19/23 rather than the
   earliest hidden drift alone
   (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-dense-recovery-trace-269/summary.json`).
+  The retained-bench c4 auto default now uses this selected-layer override
+  instead of the prior all-full-attention-layer dense-context fallback: a no-flag
+  c4 512/128 run with accepted c-aware projection, primitive correctness, and
+  row-aware `batched_lm_head` evidence is green (`[137]*4`), records
+  `batch_decode_attention_dense_context_batch_gate_layers="3,7,11"`, and leaves
+  only the selected-layer dense-context blocker
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-selected-layer-default-270/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

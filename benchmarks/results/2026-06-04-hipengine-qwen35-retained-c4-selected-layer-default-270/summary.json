@@ -1,0 +1,193 @@
+{
+  "child_artifacts_not_committed": "/tmp/hipengine-iter270-c4-selected-layer-default",
+  "code_change": {
+    "default": "c4 auto full-attention context stays batch and sets selected dense-context batch-gate layers 3,7,11",
+    "helper": "_resolved_batch_decode_attn_dense_context_batch_gate_layers",
+    "script": "scripts/qwen35_batch_retained_bench.py"
+  },
+  "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --json /tmp/hipengine-iter270-c4-selected-layer-default/c4-default-selected-layers.json",
+  "created_utc": "2026-06-04T13:40:46Z",
+  "finding": "The c4 retained-bench auto default now preserves generated-token equality with the selected dense-context+batch-gate producer set 3,7,11 instead of the prior all-full-attention-layer dense-context fallback. The no-flag c4 run is green [137]*4 with accepted c-aware projection and row-aware batched_lm_head sampler evidence; the remaining blocker is explicitly selected-layer dense context, not all full-attention layers. No throughput claim is made.",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 270,
+  "key_result": {
+    "decode_blockers": [
+      "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+    ],
+    "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+    "full_attention_dense_context_batch_gate_layers": [
+      3,
+      7,
+      11
+    ],
+    "generated_token_equality_passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "projection_blockers": [],
+    "sampler_blockers": [],
+    "workload_dense_context_batch_gate_layers": "3,7,11"
+  },
+  "kind": "c4_selected_layer_default_promotion",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: this iteration made a focused full-attention blocker greener by promoting the c4 auto default from all-layer dense context to the selected 3,7,11 dense-context batch-gate fallback and proved generated-token equality vs independent c1 on GPU1/XTX with artifact evidence. No throughput claim is made.",
+    "passed": true
+  },
+  "result": {
+    "artifact_path": "/tmp/hipengine-iter270-c4-selected-layer-default/c4-default-selected-layers.json",
+    "batch_blockers": [
+      "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+    ],
+    "decode_blockers": [
+      "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+    ],
+    "decode_execution": {
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11
+      ],
+      "full_attention_output_decode_path": null,
+      "full_attention_row_chunk_size": null,
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": false
+    },
+    "duration_seconds": 56.393990200944245,
+    "first_mismatch_indices": [
+      null,
+      null,
+      null,
+      null
+    ],
+    "generated_token_equality_passed": true,
+    "log_path": "/tmp/hipengine-iter270-c4-selected-layer-default/c4-default-selected-layers.log",
+    "min_equal_prefix_tokens": 137,
+    "name": "c4-default-selected-layers",
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "projection_dispatch": {
+      "blockers": [],
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.214849947729695,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+        "per_request_vs_row_gemv": 1.214849947729695
+      },
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+      "throughput_claim_eligible": true
+    },
+    "returncode": 0,
+    "sampler_execution": {
+      "argmax_mode": "batch",
+      "blockers": [],
+      "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+      "equality_rows": 4,
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true
+    },
+    "status": "blocked",
+    "workload": {
+      "batch_decode_attention_append_context_order": "phased",
+      "batch_decode_attention_context_path": "batch",
+      "batch_decode_attention_dense_context_batch_gate_layers": "3,7,11",
+      "batch_decode_attention_gate_path": "batch",
+      "batch_decode_attention_input_path": "batch",
+      "batch_decode_attention_qkv_path": "batch",
+      "batch_decode_attention_scratch_path": "batch",
+      "batch_decode_attention_suffix_order": "phased",
+      "batch_decode_full_attention_kv_append_path": "batch",
+      "batch_decode_full_attention_layer_copy": "batch",
+      "batch_decode_full_attention_moe_path": "grouped_compact",
+      "batch_decode_full_attention_output_path": "batch",
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_full_attention_row_chunk_size": 0,
+      "batch_decode_linear_moe_path": "grouped_compact",
+      "batch_decode_linear_output_path": "batch_gemv",
+      "batch_decode_linear_path": "batch_segments",
+      "batch_decode_linear_projection_path": "batch",
+      "batch_decode_linear_state_path": "batch_segments",
+      "batch_decode_moe_path": "grouped_compact",
+      "batch_decode_post_attention_path": "batch",
+      "batch_prefill_linear_path": "packed_segments",
+      "batch_sample_argmax_audit": false,
+      "batch_sample_argmax_mode": "batch",
+      "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+      "batch_sample_eq_ok": true,
+      "batch_sample_eq_rows": 4,
+      "batch_sample_mode": "batched_lm_head",
+      "concurrency": 4,
+      "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "gen_tokens_aggregate": 512,
+      "gen_tokens_per_request": 128,
+      "kv_policy": {
+        "block_size": 256,
+        "int8_admission_gated": false,
+        "int8_explicit": false,
+        "policy_class": "FixedPagedKVPolicy",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "requested_storage": "auto",
+        "resolved_storage_dtype": "bf16",
+        "scale_metadata_format": {
+          "granularity": null,
+          "k_scale": null,
+          "present": false,
+          "scale_dtype": null,
+          "v_scale": null
+        },
+        "selection_reason": "default_bf16",
+        "spans_mode": "uniform",
+        "storage_dtype": "bf16"
+      },
+      "kv_storage_dtype": "bf16",
+      "max_layers": 40,
+      "model": "Qwen3.5/3.6-35B-A3B-PARO",
+      "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "native_caware_decode": false,
+      "native_compact_prefill": true,
+      "prompt_lengths": [
+        512,
+        512,
+        512,
+        512
+      ],
+      "prompt_tokens_aggregate": 2048,
+      "prompt_tokens_per_request": 512,
+      "quant": "w4_paro",
+      "scheduler_path": "scheduler_native_compact_batch",
+      "shape": "c=4 prompt=512 decode=128",
+      "warmup_decode_tokens": 8
+    }
+  },
+  "schema": 1,
+  "workload": {
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_size": 4,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "primitive_correctness_json": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json",
+    "projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "prompt_length": 512,
+    "sampler_equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+    "sampler_mode": "batched_lm_head",
+    "warmup_decode_tokens": 8
+  }
+}

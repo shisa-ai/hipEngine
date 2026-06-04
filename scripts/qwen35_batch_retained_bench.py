@@ -4104,19 +4104,32 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     return 2 if int(batch_size) in {3, 5, 6, 7, 8} else 0
 
 
+_C4_AUTO_DENSE_CONTEXT_BATCH_GATE_LAYERS = "3,7,11"
+
+
 def _resolved_batch_decode_attn_context_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_attn_context_path", "batch"))
     if path != "batch":
         return path
+    # c=4 no-rowchunk native paged context is prompt/window-sensitive, while a
+    # selected row-local dense-context + batch-gate producer set is generated-
+    # token green. Keep the top-level context path as "batch" and install the
+    # selected layer override separately so the fallback scope is explicit.
+    return path
+
+
+def _resolved_batch_decode_attn_dense_context_batch_gate_layers(args: argparse.Namespace) -> str:
+    explicit = str(getattr(args, "batch_decode_attn_dense_context_batch_gate_layers", "") or "").strip()
+    if explicit:
+        return explicit
     if str(getattr(args, "batch_decode_full_attn_path", "native_batch")) != "auto":
-        return path
+        return ""
+    if str(getattr(args, "batch_decode_attn_context_path", "batch")) != "batch":
+        return ""
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # c=4 no-rowchunk native paged context is prompt/window-sensitive, while
-    # row-local dense context with the batch gate is generated-token green and
-    # removes the rowchunk/O repair blockers from the c=4 default path.
-    return "per_row_dense_context_batch_gate" if int(batch_size) == 4 else path
+    return _C4_AUTO_DENSE_CONTEXT_BATCH_GATE_LAYERS if int(batch_size) == 4 else ""
 
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
@@ -4195,9 +4208,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] = (
         "1" if batch_decode_attn_context_path == "per_row_dense_context_batch_gate" else "0"
     )
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] = str(
-        getattr(args, "batch_decode_attn_dense_context_batch_gate_layers", "") or ""
-    ).strip()
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] = (
+        _resolved_batch_decode_attn_dense_context_batch_gate_layers(args)
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PAGED_CONTEXT_ONLY"] = (
         "1" if batch_decode_attn_context_path == "per_row_paged_context_only" else "0"
     )
@@ -4720,9 +4733,7 @@ def _build_payload(
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
             "batch_decode_attention_context_path": _resolved_batch_decode_attn_context_path(args),
-            "batch_decode_attention_dense_context_batch_gate_layers": str(
-                getattr(args, "batch_decode_attn_dense_context_batch_gate_layers", "") or ""
-            ).strip(),
+            "batch_decode_attention_dense_context_batch_gate_layers": _resolved_batch_decode_attn_dense_context_batch_gate_layers(args),
             "batch_decode_attention_gate_path": str(getattr(args, "batch_decode_attn_gate_path", "batch")),
             "batch_decode_full_attention_kv_append_path": str(getattr(args, "batch_decode_full_attn_kv_append_path", "batch")),
             "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
@@ -4914,7 +4925,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-attn-dense-context-batch-gate-layers",
         default="",
-        help="Optional comma/range list of full-attention layer ids that should use the row-local dense context diagnostic while keeping the normal batch gate; used to narrow the c=4 dense-context fallback.",
+        help="Optional comma/range list of full-attention layer ids that should use the row-local dense context diagnostic while keeping the normal batch gate; auto defaults c=4 to layers 3,7,11 to narrow the dense-context fallback.",
     )
     parser.add_argument(
         "--batch-decode-attn-gate-path",
