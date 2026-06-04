@@ -906,31 +906,27 @@ What is still not green:
   correctness-first c4/c8 auto path now uses that narrower layer scope, while it
   remains diagnostic/non-retained because `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-c8-auto-layer-scope-291/summary.json`).
-  Current c4/c8 profiler refreshes for that narrowed no-flag default are green
-  (`c4 [137]*4`, `c8 [137]*8`) and show the expected native batch
-  full-attention context and KV append kernels, grouped-compact MoE, accepted
+  C4 selected-layer profiler evidence is green and shows the expected native
+  batch full-attention context/KV append kernels, grouped-compact MoE, accepted
   c-aware projection, row-aware output GEMV, segmented-state, and batched sampler
-  kernels. Native batch context/KV append calls drop from the older
-  all-layer-rowchunk profiler counts of 8160/16320 to 7344/13872 under the
-  selected-layer scope, but this remains profiler evidence only and not a
-  throughput/scaling claim
+  kernels. A c8 selected-layer profiler was also captured, but later repeat
+  stress reproduced a selected-layer c8 mismatch, so c8 was demoted back to the
+  older all-layer rowchunk2 correctness-first default. This remains
+  profiler/correctness evidence only and not a throughput/scaling claim
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c4-layer-scope-profiler-292/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-current-c8-layer-scope-profiler-293/summary.json`).
-  The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
-  independent c1 for every row (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`);
-  c2 is full-native/c-aware, while c4/c8 use the selected rowchunk layers
-  `[3,7,11,15]` plus row-aware batch-GEMV full-attention O and remain
-  correctness-only, not retained/scaling rows
-  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-layer-scope-refresh-294/summary.json`).
-  Follow-up c3/c5/c6/c7 coverage promoted that same selected-layer scope for
-  c3 and c6, then for c5 after six selected-layer repeats stayed green: final
-  no-flag c3/c5/c6/c7 all pass (`[137]*rows`), with c3/c5/c6 using selected
-  layers `[3,7,11,15]` and c7 conservatively staying on all-layer rowchunk2
-  after a selected-layer c7 repeat produced a mismatch. The required c2/c4/c8
-  gate stayed green on the latest repeats, and this remains a correctness-only
-  diagnostic path
+  `benchmarks/results/2026-06-05-hipengine-qwen35-current-c8-layer-scope-profiler-293/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/summary.json`).
+  Current c=2/c=4/c=8 no-flag generated-token equality is green vs independent
+  c1 for every row (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`); c2 is
+  full-native/c-aware, c4 uses selected rowchunk layers `[3,7,11,15]` plus
+  row-aware batch-GEMV full-attention O, and c8 uses all-layer rowchunk2 after
+  selected-layer stress ran 4/5 with one row-6 prefix-40 mismatch. Follow-up
+  c3/c5/c6/c7 coverage has c3/c5/c6 using the selected layers `[3,7,11,15]`,
+  while c7 also stays on all-layer rowchunk2 after a selected-layer c7 repeat
+  produced a mismatch. This remains a correctness-only diagnostic path
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/summary.json`).
   A later active-loop c2 512/128 audit confirms there is no current c2 generated-
   token mismatch to chase: both rows match independent c1 for all 137 generated
   tokens. The artifact remains `status=blocked` only for retained/performance
