@@ -657,7 +657,7 @@ reporting.
   concrete artifact paths without shelling out (`--results-only` /
   `--results-sha-only`, `--blocked-only` / `--blocked-sha-only`,
   `--next-blocker-only` / `--next-blocker-status-only` /
-  `--next-blocker-sha-only`,
+  `--next-blocker-reason-only` / `--next-blocker-sha-only`,
   `--next-command-only` / `--next-command-kind-only` /
   `--next-command-sha-only`,
   `--next-producer-command-only` / `--next-producer-command-kind-only` /
