@@ -1,0 +1,105 @@
+{
+  "batch_execution": {
+    "blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "native c>N decode is experimental and blocked until generated-token equality passes"
+    ],
+    "native_caware_decode": true,
+    "projection_dispatch": {
+      "blockers": [],
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4"
+    },
+    "throughput_claim_eligible": false
+  },
+  "commands": {
+    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4567_4x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --json /tmp/hipengine-iter305-hard-c4-current-default/hard-c4-no-rowchunk-native.json",
+    "correctness_reference": "inline generated-token equality vs independent c=1 plus env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --seed 1234 --json '<primitive-correctness-json>'",
+    "environment": [
+      "rocminfo | grep -E 'Name:|gfx' | head -4",
+      "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "hipcc --version",
+      "git rev-parse HEAD",
+      "git diff --quiet"
+    ],
+    "profiler": null
+  },
+  "decode_execution": {
+    "blockers": [],
+    "first_full_attention_layer": {
+      "chunk_count": 0,
+      "chunk_rows": [],
+      "full_attention_context_decode_path": null,
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_decode_path": null,
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "layer_index": 3
+    },
+    "full_attention_context_decode_path": "native_batch",
+    "full_attention_decode_path": "native_batch",
+    "full_attention_output_path": null,
+    "full_attention_row_chunk_layers": null,
+    "full_attention_row_chunk_size": null,
+    "full_attention_row_chunk_source": null,
+    "full_attention_row_chunked_layers": null,
+    "moe_decode_path": "grouped_compact",
+    "moe_grouped_compact_layers": 40,
+    "native_caware_decode": true,
+    "sampler_execution": {
+      "argmax_audit_enabled": false,
+      "argmax_mode": "batch",
+      "blockers": [],
+      "c2_equality_green": true,
+      "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+      "equality_rows": 4,
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "rows": 4
+    }
+  },
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4567_4x512_prompt_ids.json",
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      45,
+      31,
+      68,
+      null
+    ],
+    "min_equal_prefix_tokens": 31,
+    "mismatch_summary": [
+      {
+        "row": 0
+      },
+      {
+        "row": 1
+      },
+      {
+        "row": 2
+      }
+    ],
+    "passed": false,
+    "prefix_lengths": [
+      45,
+      31,
+      68,
+      137
+    ]
+  },
+  "label": "hard-c4-no-rowchunk-native",
+  "performance_claim": false,
+  "raw_artifact": {
+    "path": "/tmp/hipengine-iter305-hard-c4-current-default/hard-c4-no-rowchunk-native.json",
+    "sha256": "0c4b5be9dac696708ff4460fcec7c9bd90af4149a7237433da356a401f0e75c5",
+    "size_bytes": 231481
+  },
+  "raw_log": {
+    "path": "/tmp/hipengine-iter305-hard-c4-current-default/hard-c4-no-rowchunk-native.log",
+    "sha256": "0c4b5be9dac696708ff4460fcec7c9bd90af4149a7237433da356a401f0e75c5",
+    "size_bytes": 231481
+  },
+  "role": "hard_tail_no_rowchunk_native_red_control",
+  "rows": 4,
+  "status": "rejected_correctness"
+}
