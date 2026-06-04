@@ -1,0 +1,160 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "native c>N decode is experimental and blocked until generated-token equality passes",
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path"
+  ],
+  "first_mismatch_indices": [
+    11,
+    105,
+    null
+  ],
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_output_layer_paths": [],
+  "full_attention_row_chunk_size": 2,
+  "full_attention_row_chunk_source": "env",
+  "full_attention_segment_output_paths": [],
+  "generated_token_equality_passed": false,
+  "label": "c3_rows456_rowchunk2_selected",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "log_path": "/tmp/hipengine-iter233-c3-rows456-rowchunk2-selected.log",
+  "min_equal_prefix_tokens": 11,
+  "mismatch_count": 2,
+  "mismatch_summaries": [
+    {
+      "batch_matches_c1_rows": [],
+      "batch_matches_other_batch_rows": [],
+      "batch_prefixes_by_c1_row": [
+        {
+          "equal_prefix_tokens": 11,
+          "row": 0
+        },
+        {
+          "equal_prefix_tokens": 0,
+          "row": 1
+        },
+        {
+          "equal_prefix_tokens": 0,
+          "row": 2
+        }
+      ],
+      "batch_token_at_mismatch": 61369,
+      "batch_window": [
+        10597,
+        58655,
+        883,
+        68022,
+        11,
+        61369,
+        11,
+        4779,
+        32288,
+        11,
+        321
+      ],
+      "c1_token_at_mismatch": 81726,
+      "c1_window": [
+        10597,
+        58655,
+        883,
+        68022,
+        11,
+        81726,
+        35464,
+        11,
+        321,
+        81347,
+        13
+      ],
+      "first_mismatch_index": 11,
+      "row": 0
+    },
+    {
+      "batch_matches_c1_rows": [],
+      "batch_matches_other_batch_rows": [],
+      "batch_prefixes_by_c1_row": [
+        {
+          "equal_prefix_tokens": 105,
+          "row": 1
+        },
+        {
+          "equal_prefix_tokens": 0,
+          "row": 0
+        },
+        {
+          "equal_prefix_tokens": 0,
+          "row": 2
+        }
+      ],
+      "batch_token_at_mismatch": 10725,
+      "batch_window": [
+        5471,
+        4779,
+        84338,
+        321,
+        5790,
+        10725,
+        54476,
+        2261,
+        45543,
+        13,
+        3113
+      ],
+      "c1_token_at_mismatch": 4778,
+      "c1_window": [
+        5471,
+        4779,
+        84338,
+        321,
+        5790,
+        4778,
+        54476,
+        2261,
+        45543,
+        13,
+        3113
+      ],
+      "first_mismatch_index": 105,
+      "row": 1
+    }
+  ],
+  "moe_decode_path": "selected_c1_batch",
+  "moe_grouped_compact_layers": 0,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    11,
+    105,
+    137
+  ],
+  "prompt_subset": "derived rows4..6 c3",
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "ca94079915f40301d8e20d0f2a527df2f67325ad74e33ce6a953fb192ffd6d37",
+  "raw_size_bytes": 211479,
+  "raw_source_path": "/tmp/hipengine-iter233-c3-rows456-rowchunk2-selected.json",
+  "sampler_execution": {
+    "argmax_audit_enabled": false,
+    "argmax_mode": "serial_per_row",
+    "blockers": [],
+    "c2_equality_green": false,
+    "equality_artifact": null,
+    "equality_rows": null,
+    "mode": "serial_lm_head",
+    "native_row_aware_lm_head": false,
+    "requested_mode": "serial_lm_head",
+    "rows": 3
+  },
+  "status": "rejected_correctness",
+  "variant": "selected_c1 rowchunk2",
+  "workload_batch_decode_moe_path": "selected_c1",
+  "workload_batch_sample_argmax_audit": false,
+  "workload_batch_sample_argmax_mode": "batch",
+  "workload_batch_sample_mode": "serial_lm_head",
+  "workload_batch_size": 3,
+  "workload_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json"
+}

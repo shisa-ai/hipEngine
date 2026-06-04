@@ -688,7 +688,16 @@ What is still not green:
   grouped-compact MoE is green for c5/c6/c7/c8 and first fails at the derived c9
   row count; selected-c1 MoE restores c9 equality, so the post-c8 boundary is a
   grouped-compact MoE row-count issue layered on top of the rowchunk2 diagnostic
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`). A current post-sampler-audit rerun corrects/supersedes the earlier
+  derived-row rowchunk2-green assumption: original c4/c8 rowchunk2 with
+  grouped-compact MoE still passes (`[137]*4`, `[137]*8`), but compact derived
+  rows4..6/rows4..7 are red under rowchunk2 (`[45,137,137]` and
+  `[45,137,137,137]`), and selected-c1 MoE does not repair that compact
+  derived-row case (`[11,105,137]` / `[11,105,137,137]`). The blocker is now
+  more precisely prompt/slot-sensitive compact-row behavior in the grouped
+  full-attention trajectory; do not cite the older derived-row rowchunk2 green
+  evidence without this correction
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk2-derived-rows-post-audit233/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
