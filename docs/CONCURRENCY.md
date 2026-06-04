@@ -544,6 +544,12 @@ What is still not green:
   to `[137]*4`; native c4 still remains red, narrowing the retained blocker to
   native batch context/gate coupling rather than row-local context math
   (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c4-contextonly-row-gate-fix241/summary.json`).
+  A follow-up split added explicit dense-vs-paged context-only diagnostics: c4
+  grouped/no-rowchunk row-local dense context is green at
+  `[137]*4`, while row-local paged context reproduces the native red
+  `[137,137,137,118]`; c2 keeps the current split because dense-only c2 is red
+  `[103,137]` while the existing c2 context-only path remains `[137,137]`
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c4-dense-vs-paged-context-fix242/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
