@@ -5774,6 +5774,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional comma/range list of full-attention layer ids that should use the row-local dense context-only diagnostic even when the surrounding context path is paged/native.",
     )
     parser.add_argument(
+        "--batch-decode-attn-dense-context-batch-gate-layers",
+        default="",
+        help="Optional comma/range list of full-attention layer ids that should use the row-local dense context diagnostic while keeping the normal batch gate.",
+    )
+    parser.add_argument(
         "--batch-decode-attn-gate-path",
         choices=("batch", "per_row"),
         default="batch",
@@ -5915,6 +5920,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_attention_scratch_path": str(args.batch_decode_attn_scratch_path),
             "batch_decode_attention_context_path": str(args.batch_decode_attn_context_path),
             "batch_decode_attention_dense_context_layers": str(args.batch_decode_attn_dense_context_layers),
+            "batch_decode_attention_dense_context_batch_gate_layers": str(
+                getattr(args, "batch_decode_attn_dense_context_batch_gate_layers", "") or ""
+            ).strip(),
             "batch_decode_attention_gate_path": str(args.batch_decode_attn_gate_path),
             "batch_decode_full_attention_kv_append_path": str(args.batch_decode_full_attn_kv_append_path),
             "batch_decode_attention_append_context_order": str(args.batch_decode_attn_append_context_order),
@@ -5938,6 +5946,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_attn_scratch_path == "batch"
                 and args.batch_decode_attn_context_path == "batch"
                 and str(args.batch_decode_attn_dense_context_layers).strip() == ""
+                and str(getattr(args, "batch_decode_attn_dense_context_batch_gate_layers", "") or "").strip() == ""
                 and args.batch_decode_attn_gate_path == "batch"
                 and args.batch_decode_full_attn_kv_append_path == "batch"
                 and args.batch_decode_attn_append_context_order == "phased"
@@ -6066,6 +6075,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_LAYERS"] = str(
         args.batch_decode_attn_dense_context_layers
+    ).strip()
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] = str(
+        getattr(args, "batch_decode_attn_dense_context_batch_gate_layers", "") or ""
     ).strip()
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_BATCH_TEMP_FULL_ATTN_CONTEXT"] = (
         "1" if args.batch_decode_attn_context_path == "batch_temp_output" else "0"

@@ -750,6 +750,17 @@ What is still not green:
   (`19` or `23`) to recover row3 token-118 drift; later full-attention layers are
   too late
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-dense-layer-pair-matrix-268/summary.json`).
+  Hidden tracing now exposes the same selected-layer batch-gate override. A red
+  `3,7,11,15` trace reproduces row3 token index 118, while green
+  `3,7,11,15,19` is token-clean. Both traces still show hidden drift from
+  decode step 0 and the same decode-step117 context/KV signatures (first
+  full-context KV-prefix failure layer 7 row0 at positions 512..629,
+  `attn_context` bit-drift green, full-attention stage rollup first failing at
+  layer 3 `mlp_input`). Layer 19 therefore recovers the token trajectory without
+  eliminating the earlier hidden/context-KV drift, keeping the next target on
+  the downstream recovery boundary around layers 15→19/23 rather than the
+  earliest hidden drift alone
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-dense-recovery-trace-269/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
