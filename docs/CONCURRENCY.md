@@ -452,7 +452,12 @@ What is still not green:
   `[137,137]`, `[103,137]`, `[137,137]`. The flake is therefore reproducible
   under post-c9/high-row grouped stress, but still nondeterministic and not yet
   isolated to MoE vs rowchunk/high-row stress
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-stress222/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-stress222/summary.json`). Replacing only that preceding c9 MoE path with selected-c1 while
+  keeping the same c9 fixture and rowchunk2 full-attention ran five green c9
+  controls (`[137]*9`) followed by five green active c2 runs (`[137,137]` each),
+  narrowing the suspect toward c9 grouped-compact/red-path stress rather than
+  high-row rowchunk2 alone, though not proving causality
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-selectedc1-control223/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
