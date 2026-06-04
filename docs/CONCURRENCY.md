@@ -742,6 +742,14 @@ What is still not green:
   the c4 blocker from an all-full-attention-layer dense fallback to a small
   producer-layer frontier, still correctness-only and not retained
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-dense-context-layer-sweep-267/summary.json`).
+  A pair matrix around that frontier shows the transition is recovery-window
+  sensitive rather than simply monotonic: base `3,7,11` stays green; `+15` is red
+  (`[137,137,137,118]`); `+19`, `+15+19`, and `+15+23` are green (`+15+23` in
+  `2/2` runs); but `+15+27`, `+15+31`, `+15+35`, and `+15+39` remain red. Thus
+  the layer-15 dense-context transition needs an early downstream producer
+  (`19` or `23`) to recover row3 token-118 drift; later full-attention layers are
+  too late
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-dense-layer-pair-matrix-268/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
