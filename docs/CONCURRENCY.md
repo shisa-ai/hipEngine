@@ -832,6 +832,13 @@ What is still not green:
   `[45,31,40,137,137,137,137,118]`. This pins rowchunk2 as the correctness
   boundary rather than a row-position artifact
   (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-tailfront-rowchunk2-280/summary.json`).
+  A current c8 no-flag rowchunk2 profiler refresh also stays generated-token
+  green (`[137]*8`) with grouped-compact MoE, accepted c-aware projection, and
+  row-aware `batched_lm_head`; the trace contains native batch full-attention
+  context, native batch KV append, grouped-MoE, c-aware projection, and batched
+  sampler argmax kernels. This is runtime/profiler evidence only because
+  rowchunk2 still reports `native_caware_decode=false`
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-current-c8-rowchunk2-profiler-281/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
