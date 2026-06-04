@@ -4997,7 +4997,7 @@ class Qwen35ParoResidentSession:
             if force_per_row_full_attention_context:
                 decode_blockers.append("full-attention context/gate forced to per-row diagnostic path")
             if force_per_row_full_attention_context_only:
-                decode_blockers.append("full-attention context forced to per-row diagnostic path with batch gate")
+                decode_blockers.append("full-attention context forced to per-row diagnostic path with diagnostic gate")
             if force_batch_temp_full_attention_context:
                 decode_blockers.append("full-attention context forced through temp-output batch diagnostic path")
             if force_batch_compact_full_attention_context:

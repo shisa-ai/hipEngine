@@ -1,0 +1,43 @@
+{
+  "batch_blockers": [
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "native_batch",
+  "full_attention_decode_path": "native_batch",
+  "full_attention_gate_decode_path": null,
+  "full_attention_row_chunk_size": null,
+  "generated_token_equality_passed": true,
+  "label": "active_verify_final",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "selected_c1_batch",
+  "native_caware_decode": true,
+  "phase": "post",
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "44149272d671e4943b3d01f0b088b66aad1c23e323ba5134fa2a1c3939b0c081",
+  "raw_size_bytes": 139264,
+  "raw_source_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+  "repeat": 1,
+  "sampler_mode": "serial_lm_head",
+  "status": "blocked",
+  "variant": "active_verify",
+  "workload_batch_decode_attention_context_path": "batch",
+  "workload_batch_decode_attention_gate_path": "batch",
+  "workload_batch_decode_full_attention_path": "native_batch",
+  "workload_batch_decode_full_attention_row_chunk_size": 0,
+  "workload_batch_decode_moe_path": "selected_c1",
+  "workload_batch_sample_mode": "serial_lm_head",
+  "workload_batch_size": null
+}

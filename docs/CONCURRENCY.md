@@ -535,9 +535,15 @@ What is still not green:
   (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c2-contextgate-batch-gate-fix239/summary.json`). For rows>2 the per-row context diagnostic must keep row-local
   context+gate rather than c2's batch-gate replay: after this row-aware split,
   c2 per-row context stays `[137,137]` and c4 grouped/no-rowchunk per-row
-  context returns to `[137]*4`, while native c4 and c4 context-only+batch-gate
-  remain red at `[137,137,137,118]`
+  context returns to `[137]*4`, while native c4 remains red at
+  `[137,137,137,118]`
   (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c4-contextgate-row-aware-fix240/summary.json`).
+  The context-only diagnostic now mirrors the row-count split: c2 keeps paged
+  context plus batch gate, but rows>2 use row-local dense context plus row-local
+  gate. That moves c4 grouped/no-rowchunk context-only from `[137,137,137,118]`
+  to `[137]*4`; native c4 still remains red, narrowing the retained blocker to
+  native batch context/gate coupling rather than row-local context math
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c4-contextonly-row-gate-fix241/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
