@@ -917,11 +917,11 @@ What is still not green:
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c4-layer-scope-profiler-292/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-current-c8-layer-scope-profiler-293/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
-  independent c1 for every row (`[137]` prefixes throughout) with empty
-  `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
-  rowchunk2 full attention and remain correctness-only, not retained/scaling
-  rows
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-mismatch-summary-matrix/summary.json`).
+  independent c1 for every row (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`);
+  c2 is full-native/c-aware, while c4/c8 use the selected rowchunk layers
+  `[3,7,11,15]` plus row-aware batch-GEMV full-attention O and remain
+  correctness-only, not retained/scaling rows
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-layer-scope-refresh-294/summary.json`).
   A later active-loop c2 512/128 audit confirms there is no current c2 generated-
   token mismatch to chase: both rows match independent c1 for all 137 generated
   tokens. The artifact remains `status=blocked` only for retained/performance
