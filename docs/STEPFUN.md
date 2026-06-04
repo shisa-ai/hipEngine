@@ -681,8 +681,9 @@ reporting.
   `--blocked-evidence-gate-missing-evidence-count-only`,
   `--next-blocked-gate-only` /
   `--next-blocked-gate-sha-only`, and `--next-action-only` /
-  `--next-action-sha-only` / `--next-action-artifact-name-only` expose compact
-  pollable validator records/commands/evidence gaps by artifact, all gates,
+  `--next-action-sha-only` / `--next-action-artifact-name-only` /
+  `--next-action-readiness-gate-only` expose compact pollable validator
+  records/commands/evidence gaps by artifact, all gates,
   blocked gate names,
   selected gate (with a `selected_blocked_gate_found` flag in the aggregate
   summary), and first blocked gate,

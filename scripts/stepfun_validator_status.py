@@ -272,6 +272,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the artifact name from the next-action payload, or null.",
     )
     parser.add_argument(
+        "--next-action-readiness-gate-only",
+        action="store_true",
+        help="Emit only the readiness gate from the next-action payload, or null.",
+    )
+    parser.add_argument(
         "--next-action-validator-summary-only",
         action="store_true",
         help=(
@@ -939,6 +944,9 @@ def build_validator_status_report(
         "next_action_artifact_name": next_action.get("artifact_name")
         if isinstance(next_action, dict)
         else None,
+        "next_action_readiness_gate": next_action.get("readiness_gate")
+        if isinstance(next_action, dict)
+        else None,
         "next_action_sha256": status_mod._stable_json_sha256(next_action),
         "next_action_validator_summary_sha256": status_mod._stable_json_sha256(
             next_action_validator_summary
@@ -1097,6 +1105,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.next_action_artifact_name_only:
         payload = (
             next_action.get("artifact_name") if isinstance(next_action, dict) else None
+        )
+    elif args.next_action_readiness_gate_only:
+        payload = (
+            next_action.get("readiness_gate") if isinstance(next_action, dict) else None
         )
     elif args.next_action_only:
         payload = report["next_action"]

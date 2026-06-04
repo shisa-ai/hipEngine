@@ -35401,3 +35401,33 @@ git diff --check
 ```
 
 Results: persisted handoff/status/manifest verification commands returned `"match"`; targeted validator-status tests passed (`5` tests); P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Refreshed artifact hashes include correctness-status file SHA `643e28f5b08042f8089f97ba13b1d3f2c93c3d03e7a12b3b50fb99c05ba25876`, `source_artifacts_sha256=fd2b11400cf3d4e9158e0ecb2d4a938c607783d73dafdb5ba8a1eb7ca218f06e`, final-blocker file SHA `34726db2e6dac1bb766af86624f4eaeb1dbdbc6c61bd00f1725b23486913f497`, `status_provenance_sha256=ea8b7293268f0d25cd00b0d365fb3e4e9154e0bca82b7b193158c9618101a469`, handoff file SHA `07d5ffea97cfcc60beb723ba1c5a9d27a1a6980fe820d1131b71f56989a77bb4`, and handoff `digest_summary_sha256=873913e0f8d4beed6722082ca6b341960433edb951288983fb7e37cb0f93d57a`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
+
+## 2026-06-04 — StepFun next-action readiness-gate compact output
+
+Added a next-action readiness-gate compact output to `scripts/stepfun_validator_status.py`: `--next-action-readiness-gate-only`. The aggregate validator summary now carries `next_action_readiness_gate`; this CLI mode lets pollers query only which readiness gate the next recommended action blocks without parsing the full next-action bundle. Against the retained final-blocker manifest, `--next-action-readiness-gate-only` emits `"oracle_parity"`, matching the readiness gate inside `--next-action-only`.
+
+Updated `tests/test_stepfun_validator_status.py` to cover the compact readiness-gate mode, updated `docs/STEPFUN.md` P11 to document the flag, and regenerated correctness-status, final-blocker, and handoff artifacts for updated docs/source hashes. This is blocker observability only: `oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`, and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_validator_status.py
+python3 scripts/stepfun_validator_status.py --next-action-readiness-gate-only --pretty
+python3 scripts/stepfun_validator_status.py --next-action-only --pretty | python3 -c 'import json,sys; p=json.load(sys.stdin); print(p.get("readiness_gate") if isinstance(p, dict) else None)'
+python3 scripts/stepfun_validator_status.py --summary-only --pretty | grep -n "next_action_readiness_gate"
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_validator_status.py scripts/stepfun_correctness_status.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_llamacpp_oracle.py scripts/stepfun_handoff_check.py scripts/stepfun_oracle_artifact_check.py scripts/stepfun_kv_trace_check.py scripts/stepfun_kv_next_token_check.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_validator_status.py tests/test_stepfun_validator_status.py benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|performance claims|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|making token or performance claims\|without making.*performance claims\|claims separate\|throughput/performance claim\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+git diff --check
+```
+
+Results: persisted handoff/status/manifest verification commands returned `"match"`; targeted validator-status tests passed (`5` tests); P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Refreshed artifact hashes include correctness-status file SHA `cecf248d8115b2b77ac67ac1863d9587959c9cb1307aa8d7fa13519cc7920c4a`, `source_artifacts_sha256=9490cfbcf9fea94e160257e5cf95026139df18041703cc94a5d8d2310cb9c0f0`, final-blocker file SHA `45d12a5fe26502c635e91057e649255b1d8c172c1ead63638d2ba5605f47ee6d`, `status_provenance_sha256=6c971915101dbd794ee468c15760273a421887a90d126dc78a56f4c42783eebb`, handoff file SHA `440e79adaa6e6472cbd90ac68bbc90c65295bf8bf4901ec3e237231b0b0666d6`, and handoff `digest_summary_sha256=36c66ef40006c2e5ad2b1894f45a7b9ca55bdbca0b8cb97d77282e297d1adad4`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.

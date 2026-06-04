@@ -729,6 +729,7 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     next_action_output = tmp_path / "next-action.json"
     next_action_sha_output = tmp_path / "next-action-sha.json"
     next_action_artifact_name_output = tmp_path / "next-action-artifact-name.json"
+    next_action_readiness_gate_output = tmp_path / "next-action-readiness-gate.json"
     sha_output = tmp_path / "sha.json"
     status_output = tmp_path / "status.json"
     _write_prompt(prompt)
@@ -1541,6 +1542,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert rc == 0
     assert json.loads(next_action_artifact_name_output.read_text()) == (
         "kv_kernel_trace_artifact"
+    )
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-action-readiness-gate-only",
+            "--output",
+            str(next_action_readiness_gate_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(next_action_readiness_gate_output.read_text()) == (
+        "kv_backed_decode"
     )
 
     rc = main(
