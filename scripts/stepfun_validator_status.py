@@ -103,6 +103,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the blocked evidence summary.",
     )
     parser.add_argument(
+        "--blocked-evidence-by-gate-only",
+        action="store_true",
+        help="Emit only the blocked evidence summary grouped by readiness gate.",
+    )
+    parser.add_argument(
+        "--blocked-evidence-by-gate-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the gate-level blocked evidence summary.",
+    )
+    parser.add_argument(
         "--next-blocker-only",
         action="store_true",
         help="Emit only the first failed or missing validator record, or null.",
@@ -409,6 +419,18 @@ def _result_missing_evidence(record: dict[str, object]) -> list[object]:
     return list(missing) if isinstance(missing, list) else []
 
 
+def _unique_preserving_order(values: Sequence[object]) -> list[object]:
+    seen: set[str] = set()
+    result: list[object] = []
+    for value in values:
+        marker = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        if marker in seen:
+            continue
+        seen.add(marker)
+        result.append(value)
+    return result
+
+
 def _blocked_evidence_summary(
     blocked_results: Sequence[dict[str, object]],
 ) -> list[dict[str, object]]:
@@ -443,6 +465,76 @@ def _blocked_evidence_summary(
     return summary
 
 
+def _blocked_evidence_by_gate(
+    blocked_evidence_summary: Sequence[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Group compact blocked evidence by readiness gate."""
+
+    grouped: dict[str, dict[str, object]] = {}
+    for record in blocked_evidence_summary:
+        gate = str(record.get("readiness_gate") or "unknown")
+        gate_record = grouped.setdefault(
+            gate,
+            {
+                "readiness_gate": gate,
+                "artifact_names": [],
+                "blocked_count": 0,
+                "status_counts": {},
+                "missing_evidence": [],
+                "producer_command_kinds": [],
+                "producer_command_sha256s": [],
+                "validator_command_kinds": [],
+                "validator_command_sha256s": [],
+            },
+        )
+        gate_record["blocked_count"] = int(gate_record["blocked_count"]) + 1
+        status = str(record.get("status") or "unknown")
+        status_counts = gate_record["status_counts"]
+        assert isinstance(status_counts, dict)
+        status_counts[status] = int(status_counts.get(status, 0)) + 1
+        for record_key, gate_key in (
+            ("artifact_name", "artifact_names"),
+            ("producer_command_kind", "producer_command_kinds"),
+            ("producer_command_sha256", "producer_command_sha256s"),
+            ("validator_command_kind", "validator_command_kinds"),
+            ("validator_command_sha256", "validator_command_sha256s"),
+        ):
+            value = record.get(record_key)
+            if value in (None, ""):
+                continue
+            values = gate_record[gate_key]
+            assert isinstance(values, list)
+            values.append(value)
+        missing = record.get("missing_evidence")
+        if isinstance(missing, list):
+            evidence_values = gate_record["missing_evidence"]
+            assert isinstance(evidence_values, list)
+            evidence_values.extend(missing)
+
+    gate_summary: list[dict[str, object]] = []
+    for gate_record in grouped.values():
+        missing = _unique_preserving_order(gate_record["missing_evidence"])
+        gate_record["artifact_names"] = _unique_preserving_order(
+            gate_record["artifact_names"]
+        )
+        gate_record["producer_command_kinds"] = _unique_preserving_order(
+            gate_record["producer_command_kinds"]
+        )
+        gate_record["producer_command_sha256s"] = _unique_preserving_order(
+            gate_record["producer_command_sha256s"]
+        )
+        gate_record["validator_command_kinds"] = _unique_preserving_order(
+            gate_record["validator_command_kinds"]
+        )
+        gate_record["validator_command_sha256s"] = _unique_preserving_order(
+            gate_record["validator_command_sha256s"]
+        )
+        gate_record["missing_evidence"] = missing
+        gate_record["missing_evidence_count"] = len(missing)
+        gate_summary.append(gate_record)
+    return gate_summary
+
+
 def build_validator_status_report(
     manifest: dict[str, object],
     *,
@@ -472,6 +564,7 @@ def build_validator_status_report(
         record for record in results if record.get("status") in {"missing", "failed"}
     ]
     blocked_evidence_summary = _blocked_evidence_summary(blocked_results)
+    blocked_evidence_by_gate = _blocked_evidence_by_gate(blocked_evidence_summary)
     next_blocker = blocked_results[0] if blocked_results else None
     next_blocker_command = (
         next_blocker.get("validator_command_concrete")
@@ -564,6 +657,10 @@ def build_validator_status_report(
         "blocked_evidence_summary_sha256": status_mod._stable_json_sha256(
             blocked_evidence_summary
         ),
+        "blocked_evidence_by_gate": blocked_evidence_by_gate,
+        "blocked_evidence_by_gate_sha256": status_mod._stable_json_sha256(
+            blocked_evidence_by_gate
+        ),
         "next_blocker_artifact_name": next_blocker.get("artifact_name")
         if isinstance(next_blocker, dict)
         else None,
@@ -624,6 +721,10 @@ def build_validator_status_report(
         "blocked_evidence_summary": blocked_evidence_summary,
         "blocked_evidence_summary_sha256": status_mod._stable_json_sha256(
             blocked_evidence_summary
+        ),
+        "blocked_evidence_by_gate": blocked_evidence_by_gate,
+        "blocked_evidence_by_gate_sha256": status_mod._stable_json_sha256(
+            blocked_evidence_by_gate
         ),
         "next_blocker": next_blocker,
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
@@ -705,6 +806,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_blocker_sha256"]
     elif args.next_blocker_only:
         payload = report["next_blocker"]
+    elif args.blocked_evidence_by_gate_sha_only:
+        payload = report["blocked_evidence_by_gate_sha256"]
+    elif args.blocked_evidence_by_gate_only:
+        payload = report["blocked_evidence_by_gate"]
     elif args.blocked_evidence_summary_sha_only:
         payload = report["blocked_evidence_summary_sha256"]
     elif args.blocked_evidence_summary_only:
