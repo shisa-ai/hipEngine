@@ -711,6 +711,7 @@ def build_validator_status_report(
             next_blocked_gate
         ),
         "selected_blocked_gate_readiness_gate": selected_blocked_gate_name,
+        "selected_blocked_gate_found": selected_blocked_gate is not None,
         "selected_blocked_gate": selected_blocked_gate,
         "selected_blocked_gate_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate
@@ -785,6 +786,7 @@ def build_validator_status_report(
             next_blocked_gate
         ),
         "selected_blocked_gate_readiness_gate": selected_blocked_gate_name,
+        "selected_blocked_gate_found": selected_blocked_gate is not None,
         "selected_blocked_gate": selected_blocked_gate,
         "selected_blocked_gate_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate

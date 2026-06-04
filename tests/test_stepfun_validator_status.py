@@ -274,6 +274,13 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_blocked_gate"] is None
     assert summary["next_blocked_gate_readiness_gate"] is None
     assert summary["next_blocked_gate_sha256"] == report["next_blocked_gate_sha256"]
+    assert summary["selected_blocked_gate_readiness_gate"] is None
+    assert summary["selected_blocked_gate_found"] is False
+    assert summary["selected_blocked_gate"] is None
+    assert summary["selected_blocked_gate_sha256"] == report[
+        "selected_blocked_gate_sha256"
+    ]
+    assert report["selected_blocked_gate"] is None
     assert report["blocked_evidence_summary"] == []
     assert report["blocked_evidence_by_gate"] == []
     assert report["next_blocked_gate"] is None
@@ -332,6 +339,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
         _manifest(oracle, trace, token),
         prompt_artifact=prompt,
         resource_artifact=resource,
+        selected_blocked_gate_name="kv_backed_decode",
     )
 
     assert report["status"] == "blocked"
@@ -405,6 +413,13 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_blocked_gate"] == expected_by_gate[0]
     assert summary["next_blocked_gate_readiness_gate"] == "kv_backed_decode"
     assert summary["next_blocked_gate_sha256"] == report["next_blocked_gate_sha256"]
+    assert summary["selected_blocked_gate_readiness_gate"] == "kv_backed_decode"
+    assert summary["selected_blocked_gate_found"] is True
+    assert summary["selected_blocked_gate"] == expected_by_gate[0]
+    assert summary["selected_blocked_gate_sha256"] == report[
+        "selected_blocked_gate_sha256"
+    ]
+    assert report["selected_blocked_gate"] == expected_by_gate[0]
     assert report["next_blocker"] == expected_missing_trace
     assert summary["next_blocker_artifact_name"] == "kv_kernel_trace_artifact"
     assert summary["next_blocker_status"] == "missing"
@@ -494,6 +509,10 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert report["validator_status_summary"][
         "next_blocked_gate_readiness_gate"
     ] == "oracle_parity"
+    assert report["validator_status_summary"][
+        "selected_blocked_gate_found"
+    ] is False
+    assert report["validator_status_summary"]["selected_blocked_gate"] is None
     assert report["next_blocker"]["artifact_name"] == (
         "llama_cpp_oracle_success_artifact"
     )
