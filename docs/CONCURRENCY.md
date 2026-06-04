@@ -695,6 +695,14 @@ What is still not green:
   checks with `attn_batch_vs_c1_max_abs=0.0` and `attn_batch_aa_max_abs=0.0`.
   This is correctness/runtime evidence only and still makes no throughput claim
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/summary.json`).
+  Fresh c2 scaling references are now captured under `benchmarks/results/` for
+  the same GPU1/XTX 512/128 shape: c1 native baseline `134.05` tok/s and c2
+  serial bridge `110.35` aggregate tok/s / `55.18` per-request tok/s. A retained
+  c2 attach audit loads both references plus the repo-relative primitive c2 gate
+  with `scaling.complete=true` and equality still `[137,137]`; ratios are
+  `aggregate_vs_c1=0.8617` and `aggregate_vs_serial_bridge=1.0467`, so this is
+  baseline evidence only and not a retained throughput claim
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

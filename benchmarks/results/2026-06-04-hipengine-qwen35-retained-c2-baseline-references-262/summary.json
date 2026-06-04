@@ -1,0 +1,151 @@
+{
+  "active_verify": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "result_metric": 137
+  },
+  "baseline_references": {
+    "c1_native": {
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json",
+      "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json",
+      "concurrency": 1,
+      "decode_tok_s_aggregate": 134.05097732239722,
+      "decode_tok_s_per_request": 134.05097732239722,
+      "gen_tokens_per_request": 128,
+      "hardware_gpu": "AMD Radeon RX 7900 XTX",
+      "max_layers": 40,
+      "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "performance_claim": false,
+      "prompt_tokens_per_request": 512,
+      "reason": null,
+      "run_tag": null,
+      "status": "loaded",
+      "visible_device": "AMD Radeon RX 7900 XTX",
+      "visible_env": {
+        "HIP_VISIBLE_DEVICES": "1"
+      },
+      "warmup_decode_tokens": 8
+    },
+    "c2_serial_bridge": {
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/serial-bridge-c2.json",
+      "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/serial-bridge-c2.json",
+      "concurrency": 2,
+      "decision_reason": "batch_execution.throughput_claim_eligible=false: current c>N path is scheduler_serial_slot_bridge",
+      "decode_tok_s_aggregate": 110.3531899819161,
+      "decode_tok_s_per_request": 55.17659499095805,
+      "gen_tokens_per_request": 128,
+      "hardware_gpu": "AMD Radeon RX 7900 XTX",
+      "max_layers": 40,
+      "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "performance_claim": false,
+      "prompt_tokens_per_request": 512,
+      "reason": null,
+      "run_tag": "qwen35-paro-c2-scheduler-serial-bridge",
+      "status": "blocked",
+      "visible_device": "AMD Radeon RX 7900 XTX",
+      "visible_env": {
+        "HIP_VISIBLE_DEVICES": "1"
+      },
+      "warmup_decode_tokens": 8
+    }
+  },
+  "findings": [
+    "Fresh c=1 native and c=2 serial-bridge baseline artifacts were captured on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX for the 512/128, max_layers=40 workload.",
+    "The retained c2 attach audit loaded both baseline references and the repo-relative primitive c2 artifact with scaling.complete=true while generated-token equality remained [137,137] and decode blockers were empty.",
+    "The measured attach-audit native c2 aggregate rate is below the c1 baseline (aggregate_vs_c1=0.8617) and above the serial bridge (aggregate_vs_serial_bridge=1.0467). This is not a retained throughput/scaling claim."
+  ],
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 262,
+  "mode": "qwen35_retained_c2_scaling_baseline_references",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: required c1 and serial-bridge baseline references are now captured under benchmarks/results on HIP_VISIBLE_DEVICES=1, and a retained c2 attach audit shows scaling.complete=true with equality still [137,137]. No retained throughput/scaling claim.",
+    "passed": true
+  },
+  "purpose": "Repo-relative c=1 native and c=2 serial-bridge baseline references for the active native c2 512/128 retained path.",
+  "retained_attach_audit": {
+    "artifact_path": "/tmp/hipengine-iter262-c2-with-baselines.json",
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json",
+      "decode_tok_s_aggregate": 134.05097732239722,
+      "decode_tok_s_per_request": 134.05097732239722,
+      "gen_tokens_per_request": 128,
+      "prompt_tokens_per_request": 512,
+      "reason": null,
+      "reference_artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json",
+      "run_tag": null,
+      "status": "loaded",
+      "workload_concurrency": 1
+    },
+    "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --c1-baseline-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/serial-bridge-c2.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json --json /tmp/hipengine-iter262-c2-with-baselines.json",
+    "decode_blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "generated_token_equality_passed": true,
+    "min_equal_prefix_tokens": 137,
+    "moe_decode_path": "grouped_compact",
+    "native": {
+      "decode_tok_s_aggregate": 115.50793457775202,
+      "decode_tok_s_per_request": 57.75396728887601
+    },
+    "native_caware_decode": true,
+    "note": "This retained attach audit is intentionally not committed as the primary artifact because it remains blocked and large; the committed summary records the loaded baseline refs and ratios.",
+    "performance_claim": false,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "primitive_passed": true,
+    "primitive_status": "loaded",
+    "ratios": {
+      "aggregate_vs_c1": 0.8616717079201255,
+      "aggregate_vs_serial_bridge": 1.0467113329182478,
+      "per_request_vs_c1": 0.43083585396006274,
+      "per_request_vs_serial_bridge": 1.0467113329182478
+    },
+    "scaling_complete": true,
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/serial-bridge-c2.json",
+      "decode_tok_s_aggregate": 110.3531899819161,
+      "decode_tok_s_per_request": 55.17659499095805,
+      "gen_tokens_per_request": 128,
+      "prompt_tokens_per_request": 512,
+      "reason": null,
+      "reference_artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/serial-bridge-c2.json",
+      "run_tag": "qwen35-paro-c2-scheduler-serial-bridge",
+      "status": "blocked",
+      "workload_concurrency": 2
+    },
+    "status": "blocked"
+  },
+  "schema": 1,
+  "status": "diagnostic_scaling_references_complete",
+  "timestamp": "2026-06-04T11:40:01.955620+00:00"
+}
