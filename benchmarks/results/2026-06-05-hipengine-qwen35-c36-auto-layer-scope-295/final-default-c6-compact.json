@@ -1,0 +1,69 @@
+{
+  "artifact_path": "/tmp/hipengine-iter295-c357-auto-scope-final/final-default-c6.json",
+  "artifact_sha256": "a5a1ac33f9abfc5d346152660d20fc695f3c823287f5310afa25b70bb157a249",
+  "artifact_size_bytes": 305333,
+  "batch_size": 6,
+  "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 6 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --json /tmp/hipengine-iter295-c357-auto-scope-final/final-default-c6.json",
+  "decode_execution": {
+    "blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+    ],
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_output_decode_path": "batch_gemv",
+    "full_attention_row_chunk_layers": [
+      3,
+      7,
+      11,
+      15
+    ],
+    "full_attention_row_chunk_size": 2,
+    "full_attention_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15
+    ],
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": false
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ]
+  },
+  "label": "final_default_c357",
+  "log_path": "/tmp/hipengine-iter295-c357-auto-scope-final/final-default-c6.log",
+  "log_sha256": "a5a1ac33f9abfc5d346152660d20fc695f3c823287f5310afa25b70bb157a249",
+  "log_size_bytes": 305333,
+  "performance_claim": false,
+  "sampler_execution": {
+    "blockers": [],
+    "mode": "serial_lm_head",
+    "native_row_aware_lm_head": false
+  },
+  "status": "blocked",
+  "workload": {
+    "batch_decode_full_attention_output_path": "batch_gemv",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_layers": "3,7,11,15",
+    "batch_decode_full_attention_row_chunk_size": 2,
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_sample_mode": "serial_lm_head",
+    "native_caware_decode": false,
+    "shape": "c=6 prompt=512 decode=128"
+  }
+}

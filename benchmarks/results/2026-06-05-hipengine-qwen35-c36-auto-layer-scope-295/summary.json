@@ -1,0 +1,272 @@
+{
+  "artifacts": {
+    "final_default_c357_c3": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/final-default-c3-compact.json"
+    },
+    "final_default_c357_c5": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/final-default-c5-compact.json"
+    },
+    "final_default_c357_c6": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/final-default-c6-compact.json"
+    },
+    "final_default_c357_c7": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/final-default-c7-compact.json"
+    },
+    "required_c248_gate_c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/current-c2-compact.json"
+    },
+    "required_c248_gate_c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/current-c4-compact.json"
+    },
+    "required_c248_gate_c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/current-c8-compact.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c36-auto-layer-scope-295/summary.json"
+    }
+  },
+  "conclusion": "Promote the correctness-first selected rowchunk layer scope [3,7,11,15] from c4/c8 to c3/c6 as well. Final no-flag c3/c5/c6/c7 and required c2/c4/c8 gates all pass generated-token equality; c5/c7 intentionally remain all-layer rowchunk2 because a selected-layer trial was not repeat-stable. This is correctness evidence only and makes no throughput/scaling claim.",
+  "created_at": "2026-06-04T19:08:12.668760+00:00",
+  "git_commit_before_commit": "0701ba42f2abdd69a80231ccbe5fa040243e5799",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 295,
+  "kind": "c36_auto_layer_scope_promotion",
+  "not_promoted": {
+    "c5_c7_selected_layer_red_trials": {
+      "c5": {
+        "artifact_path": "/tmp/hipengine-iter295-c357-layer-scope-default/default-c5.json",
+        "artifact_sha256": "c68d5b9158c4f423ad371f721a2e722caae6ab306f09e030fa698bc3ccc25466",
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          118,
+          null
+        ],
+        "passed": false,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          118,
+          137
+        ]
+      },
+      "c7": {
+        "artifact_path": "/tmp/hipengine-iter295-c357-layer-scope-default/default-c7.json",
+        "artifact_sha256": "5928f61c86e5f0734a3eec0fdf2ef2d5502a81978b2c9b70d71a6c85173c0cd9",
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          68
+        ],
+        "passed": false,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          68
+        ]
+      }
+    },
+    "reason": "An all-row selected-layer default trial produced c5/c7 mismatches before repeat controls recovered; leave c5/c7 on all-layer rowchunk2 until repeat-stable evidence exists."
+  },
+  "performance_claim": false,
+  "result": {
+    "decode_blockers": {
+      "final_default_c357_c3": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "final_default_c357_c5": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "final_default_c357_c6": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "final_default_c357_c7": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "required_c248_gate_c2": [],
+      "required_c248_gate_c4": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "required_c248_gate_c8": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ]
+    },
+    "full_attention_output_paths": {
+      "final_default_c357_c3": "batch_gemv",
+      "final_default_c357_c5": "batch",
+      "final_default_c357_c6": "batch_gemv",
+      "final_default_c357_c7": "batch",
+      "required_c248_gate_c2": "batch",
+      "required_c248_gate_c4": "batch_gemv",
+      "required_c248_gate_c8": "batch_gemv"
+    },
+    "generated_equality_passed": true,
+    "native_caware_decode": {
+      "final_default_c357_c3": false,
+      "final_default_c357_c5": false,
+      "final_default_c357_c6": false,
+      "final_default_c357_c7": false,
+      "required_c248_gate_c2": true,
+      "required_c248_gate_c4": false,
+      "required_c248_gate_c8": false
+    },
+    "prefix_lengths": {
+      "final_default_c357_c3": [
+        137,
+        137,
+        137
+      ],
+      "final_default_c357_c5": [
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "final_default_c357_c6": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "final_default_c357_c7": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "required_c248_gate_c2": [
+        137,
+        137
+      ],
+      "required_c248_gate_c4": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "required_c248_gate_c8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "requested_rowchunk_layers": {
+      "final_default_c357_c3": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_default_c357_c5": null,
+      "final_default_c357_c6": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_default_c357_c7": null,
+      "required_c248_gate_c2": null,
+      "required_c248_gate_c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "required_c248_gate_c8": [
+        3,
+        7,
+        11,
+        15
+      ]
+    },
+    "rowchunk_layers": {
+      "final_default_c357_c3": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_default_c357_c5": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "final_default_c357_c6": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_default_c357_c7": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "required_c248_gate_c2": null,
+      "required_c248_gate_c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "required_c248_gate_c8": [
+        3,
+        7,
+        11,
+        15
+      ]
+    }
+  },
+  "schema": 1,
+  "source_tmp_dirs": {
+    "final_default": "/tmp/hipengine-iter295-c357-auto-scope-final",
+    "required_c248": "/tmp/hipengine-iter295-c248-post-auto-scope"
+  },
+  "status": "passed",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}
