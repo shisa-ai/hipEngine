@@ -806,6 +806,14 @@ What is still not green:
   current c=2/c=4/c=8 matrix remains green with c4/c8 carrying only the rowchunk
   full-attention blocker
   (`benchmarks/results/2026-06-04-hipengine-qwen35-c4-auto-rowchunk2-default-276/summary.json`).
+  A c8 no-rowchunk output-path frontier then rejected simple O-path swaps as a
+  rowchunk2 replacement: native paged context plus forced batch-GEMV O is red at
+  `[82,137,137,137,45,11,137,137]`, while dense-context+batch-gate with either
+  forced batch-GEMV O or per-row O is red at `[137,104,137,137,45,11,83,137]`.
+  The same iteration's no-flag c=2/c=4/c=8 defaults remain green, so the current
+  c8 blocker stays rowchunk/full-attention grouping rather than a standalone
+  full-attention O projection choice
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-no-rowchunk-output-frontier-277/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
