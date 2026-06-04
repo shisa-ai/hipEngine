@@ -252,6 +252,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the recommended producer/rerun command for the first failed/missing record, or null.",
     )
     parser.add_argument(
+        "--next-producer-command-kind-only",
+        action="store_true",
+        help="Emit only the recommended producer/rerun command kind for the first failed/missing record, or null.",
+    )
+    parser.add_argument(
         "--next-producer-command-sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the next producer/rerun command.",
@@ -1034,6 +1039,9 @@ def build_validator_status_report(
         "next_blocker_command_sha256": status_mod._stable_json_sha256(
             next_blocker_command
         ),
+        "next_producer_command_kind": next_blocker.get("producer_command_kind")
+        if isinstance(next_blocker, dict)
+        else None,
         "next_producer_command": next_producer_command,
         "next_producer_command_sha256": status_mod._stable_json_sha256(
             next_producer_command
@@ -1112,6 +1120,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.next_action_only:
         payload = report["next_action"]
+    elif args.next_producer_command_kind_only:
+        payload = report["next_producer_command_kind"]
     elif args.next_producer_command_sha_only:
         payload = report["next_producer_command_sha256"]
     elif args.next_producer_command_only:
