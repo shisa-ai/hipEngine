@@ -4462,43 +4462,71 @@ class Qwen35ParoDecodeState:
             if force_per_row_context and tokens > 1:
                 if per_row_contexts is None or len(per_row_contexts) != tokens:
                     raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
-                for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
-                    row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
-                    if row_decode_spans.storage_dtype != DType.BF16:
-                        raise NotImplementedError("per-row full-attention context diagnostic currently requires BF16 KV")
-                    qwen35_paged_full_attn_decode_context_bf16_spans(
-                        row_scratch.query.ptr,
-                        row_key_cache.ptr,
-                        row_value_cache.ptr,
-                        attention_scratch.attn_out.ptr,
-                        row_decode_spans,
-                        row_decode_spans.max_live_count,
-                        block_size,
-                        self.config.num_attention_heads,
-                        self.config.num_key_value_heads,
-                        self.config.head_dim,
-                        self.config.head_dim ** -0.5,
+                # c2 needs paged per-row context plus the batch gate replay to
+                # avoid the historical row0 [103,137] diagnostic signature.
+                # For rows>2, c4 evidence shows row-local context+gate remains
+                # the stable diagnostic while batch-gating replayed contexts can
+                # reproduce the native row3 failure.
+                if tokens == 2:
+                    for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                        row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                        if row_decode_spans.storage_dtype != DType.BF16:
+                            raise NotImplementedError("per-row full-attention context diagnostic currently requires BF16 KV")
+                        qwen35_paged_full_attn_decode_context_bf16_spans(
+                            row_scratch.query.ptr,
+                            row_key_cache.ptr,
+                            row_value_cache.ptr,
+                            attention_scratch.attn_out.ptr,
+                            row_decode_spans,
+                            row_decode_spans.max_live_count,
+                            block_size,
+                            self.config.num_attention_heads,
+                            self.config.num_key_value_heads,
+                            self.config.head_dim,
+                            self.config.head_dim ** -0.5,
+                            stream=stream,
+                            library=_library_for(library, "attention"),
+                            runtime=self.runtime,
+                        )
+                        row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                        self.runtime.memcpy_async(
+                            row_context.ptr,
+                            attention_scratch.attn_out.ptr,
+                            self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    qwen35_full_attn_gate_mul_fp16(
+                        attention_scratch.query_raw.ptr,
+                        gate.ptr,
+                        attention_scratch.gated_attn.ptr,
+                        tokens * self.config.num_attention_heads * self.config.head_dim,
                         stream=stream,
                         library=_library_for(library, "attention"),
                         runtime=self.runtime,
                     )
-                    row_context = self._row_tensor_view(attention_scratch.query_raw, row)
-                    self.runtime.memcpy_async(
-                        row_context.ptr,
-                        attention_scratch.attn_out.ptr,
-                        self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-                qwen35_full_attn_gate_mul_fp16(
-                    attention_scratch.query_raw.ptr,
-                    gate.ptr,
-                    attention_scratch.gated_attn.ptr,
-                    tokens * self.config.num_attention_heads * self.config.head_dim,
-                    stream=stream,
-                    library=_library_for(library, "attention"),
-                    runtime=self.runtime,
-                )
+                else:
+                    for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                        row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                        row_gate = self._row_tensor_view(gate, row)
+                        self.decode_full_attention_context_gate_fp16(
+                            row_scratch,
+                            key_cache=row_key_cache,
+                            value_cache=row_value_cache,
+                            spans=row_decode_spans,
+                            gate=row_gate,
+                            block_size=block_size,
+                            library=library,
+                            stream=stream,
+                        )
+                        row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                        self.runtime.memcpy_async(
+                            row_context.ptr,
+                            attention_scratch.attn_out.ptr,
+                            self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
                 gated = attention_scratch.gated_attn
             elif force_per_row_context_only and tokens > 1:
                 if per_row_contexts is None or len(per_row_contexts) != tokens:

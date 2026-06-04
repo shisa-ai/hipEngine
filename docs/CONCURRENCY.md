@@ -532,7 +532,12 @@ What is still not green:
   iter238 red `[103,137]` to `[137,137]` 3/3 with active verify `137`. Both
   diagnostic paths remain non-retained by metadata, but their c2 parity blockers
   are eliminated
-  (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c2-contextgate-batch-gate-fix239/summary.json`).
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c2-contextgate-batch-gate-fix239/summary.json`). For rows>2 the per-row context diagnostic must keep row-local
+  context+gate rather than c2's batch-gate replay: after this row-aware split,
+  c2 per-row context stays `[137,137]` and c4 grouped/no-rowchunk per-row
+  context returns to `[137]*4`, while native c4 and c4 context-only+batch-gate
+  remain red at `[137,137,137,118]`
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-native-c4-contextgate-row-aware-fix240/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
