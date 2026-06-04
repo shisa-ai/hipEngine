@@ -620,6 +620,12 @@ What is still not green:
   paged/native-O (`[45,31,68,137]`), but green under rowchunk2 and rowchunk1
   native-paged controls (`[137]*4`)
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rows-rowchunk2-isolation-251/summary.json`).
+  A rowchunk3 frontier pass on the same compact tail quartet remains red:
+  native-paged rowchunk3 is `[45,11,137,137]` and dense-context+batch-gate
+  rowchunk3 is `[45,11,83,137]`, while the rowchunk2 control remains `[137]*4`.
+  Thus the tail quartet's safe correctness cap is at most two rows per
+  full-attention group; rowchunk3 is not enough
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

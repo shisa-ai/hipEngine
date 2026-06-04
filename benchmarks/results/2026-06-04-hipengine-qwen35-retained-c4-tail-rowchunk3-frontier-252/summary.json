@@ -1,0 +1,324 @@
+{
+  "active_verify": {
+    "first_command_result_metric": 120,
+    "first_passed": false,
+    "first_prefix_lengths": [
+      120,
+      137
+    ],
+    "first_raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "note": "The required active c2 verify first flaked to 120, then an immediate rerun returned the expected [137,137].",
+    "rerun_passed": true,
+    "rerun_prefix_lengths": [
+      137,
+      137
+    ],
+    "rerun_raw_json": "/tmp/hipengine-e2e-native-c2-512-128-rerun.json",
+    "rerun_result_metric": 137
+  },
+  "change": {
+    "description": "Test rowchunk3 on the compact original-c8 rows4..7 fixture and compare against rowchunk2.",
+    "files": [
+      "docs/CONCURRENCY.md",
+      "WORKLOG.md",
+      "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/summary.json"
+    ]
+  },
+  "finding_table": [
+    {
+      "context_path": "native_batch",
+      "label": "c4_tail_rowchunk3_native_paged",
+      "native_caware_decode": false,
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        11,
+        137,
+        137
+      ],
+      "row_chunk_size": 3
+    },
+    {
+      "context_path": "per_row_dense_context_batch_gate_fallback",
+      "label": "c4_tail_rowchunk3_dense_context_batch_gate",
+      "native_caware_decode": false,
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        11,
+        83,
+        137
+      ],
+      "row_chunk_size": 3
+    },
+    {
+      "context_path": "native_batch",
+      "label": "c4_tail_rowchunk2_native_paged_control",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "row_chunk_size": 2
+    }
+  ],
+  "findings": [
+    "Compact original c8 rows4..7 remain red under rowchunk3 native-paged full-attention: prefixes [45,11,137,137]. The first 3-row group is enough to reproduce rows0/1 failures while the single-row tail is green.",
+    "Adding the dense-context/batch-gate diagnostic to rowchunk3 is still red at [45,11,83,137], so dense context does not repair the leading 3-row tail group and worsens the third row relative to native paged rowchunk3.",
+    "The same compact fixture remains green under rowchunk2 native-paged control at [137]*4. Therefore this tail quartet needs row groups of at most two; rowchunk3 is not a safe cap for the residual c8 rows."
+  ],
+  "fixture": {
+    "batch_size": 4,
+    "path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rows-rowchunk2-isolation-251/qwen36_paro_rows4_7_prompt_ids.json",
+    "prompt_length": 512,
+    "source_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "source_rows": [
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 252,
+  "mode": "qwen35_retained_bench_c4_tail_rowchunk3_frontier",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Materially advances focused full-attention evidence: rowchunk3 is red for compact c8-tail rows while rowchunk2 is generated-token green [137]*4, proving the safe cap for this tail quartet is <=2 rows. No throughput claim.",
+    "passed": true
+  },
+  "runs": {
+    "c4_tail_rowchunk2_native_paged_control": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rows-rowchunk2-isolation-251/qwen36_paro_rows4_7_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-output-path batch --batch-sample-mode serial_lm_head --batch-decode-attn-context-path batch --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk2_native_paged_control.json",
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_decode_path": "batch",
+      "generated_token_equality_passed": true,
+      "label": "c4_tail_rowchunk2_native_paged_control",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "raw_json_uncommitted": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk2_native_paged_control.json",
+      "raw_log_uncommitted": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk2_native_paged_control.log",
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "c4_tail_rowchunk3_dense_context_batch_gate": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention context forced to row-local dense diagnostic path with batch gate",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rows-rowchunk2-isolation-251/qwen36_paro_rows4_7_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 3 --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-output-path batch --batch-sample-mode serial_lm_head --batch-decode-attn-context-path per_row_dense_context_batch_gate --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk3_dense_context_batch_gate.json",
+      "first_mismatches": [
+        {
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 45,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            }
+          ],
+          "batch_token_at_mismatch": 220,
+          "c1_token_at_mismatch": 264,
+          "first_mismatch_index": 45,
+          "row": 0
+        },
+        {
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 11,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            }
+          ],
+          "batch_token_at_mismatch": 81726,
+          "c1_token_at_mismatch": 61369,
+          "first_mismatch_index": 11,
+          "row": 1
+        }
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_decode_path": "batch",
+      "generated_token_equality_passed": false,
+      "label": "c4_tail_rowchunk3_dense_context_batch_gate",
+      "min_equal_prefix_tokens": 11,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        45,
+        11,
+        83,
+        137
+      ],
+      "raw_json_uncommitted": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk3_dense_context_batch_gate.json",
+      "raw_log_uncommitted": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk3_dense_context_batch_gate.log",
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_dense_context_batch_gate",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_row_chunk_size": 3,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "c4_tail_rowchunk3_native_paged": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rows-rowchunk2-isolation-251/qwen36_paro_rows4_7_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 3 --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-output-path batch --batch-sample-mode serial_lm_head --batch-decode-attn-context-path batch --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk3_native_paged.json",
+      "first_mismatches": [
+        {
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 45,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            }
+          ],
+          "batch_token_at_mismatch": 220,
+          "c1_token_at_mismatch": 264,
+          "first_mismatch_index": 45,
+          "row": 0
+        },
+        {
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 11,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            }
+          ],
+          "batch_token_at_mismatch": 81726,
+          "c1_token_at_mismatch": 61369,
+          "first_mismatch_index": 11,
+          "row": 1
+        }
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_decode_path": "batch",
+      "generated_token_equality_passed": false,
+      "label": "c4_tail_rowchunk3_native_paged",
+      "min_equal_prefix_tokens": 11,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        45,
+        11,
+        137,
+        137
+      ],
+      "raw_json_uncommitted": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk3_native_paged.json",
+      "raw_log_uncommitted": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/c4_tail_rowchunk3_native_paged.log",
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_row_chunk_size": 3,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    }
+  },
+  "schema": 1,
+  "timestamp": "2026-06-04T09:25:39.547153+00:00"
+}
