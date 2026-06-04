@@ -821,6 +821,11 @@ What is still not green:
   This eliminates a narrow contiguous-pair-only suspicion while leaving the
   rowchunk2 diagnostic blocker itself in place
   (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-rowchunk2-pairing-permutation-278/summary.json`).
+  A six-run repeat/stress pass over the same original, pair-swapped, and
+  head/tail-cross fixtures stayed green in every run (`[137]*8` each), giving
+  confidence that the current rowchunk2 c8 path is stable across those mixed
+  row orderings even though rowchunk2 remains a diagnostic blocker
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-rowchunk2-stress-repeat-279/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
