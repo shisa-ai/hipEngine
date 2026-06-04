@@ -277,15 +277,50 @@ def _recommended_commands_by_gate(manifest: dict[str, object]) -> dict[str, dict
     return by_gate
 
 
+def _artifacts_by_name(manifest: dict[str, object]) -> dict[str, dict[str, object]]:
+    """Return final-blocker artifact handoff records keyed by artifact name."""
+
+    artifacts = manifest.get("artifacts_to_collect", [])
+    if not isinstance(artifacts, list):
+        return {}
+    by_name: dict[str, dict[str, object]] = {}
+    for item in artifacts:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("artifact_name")
+        if name not in (None, ""):
+            by_name[str(name)] = item
+    return by_name
+
+
+def _maybe_copy(
+    target: dict[str, object],
+    source: dict[str, object] | None,
+    mapping: dict[str, str],
+) -> None:
+    if not source:
+        return
+    for source_key, target_key in mapping.items():
+        if source_key in source:
+            target[target_key] = source.get(source_key)
+
+
 def _attach_producer_command(
     result: dict[str, object],
     recommended_by_gate: dict[str, dict[str, object]],
+    artifacts_by_name: dict[str, dict[str, object]],
 ) -> dict[str, object]:
-    """Attach the producer/rerun command associated with a validator result."""
+    """Attach the producer/rerun command and handoff metadata for a result."""
 
     gate = result.get("readiness_gate")
     command_record = recommended_by_gate.get(str(gate)) if gate not in (None, "") else None
-    return {
+    artifact_name = result.get("artifact_name")
+    artifact_record = (
+        artifacts_by_name.get(str(artifact_name))
+        if artifact_name not in (None, "")
+        else None
+    )
+    attached = {
         **result,
         "producer_command_kind": command_record.get("recommended_command_kind")
         if command_record
@@ -300,6 +335,27 @@ def _attach_producer_command(
         if command_record
         else None,
     }
+    _maybe_copy(
+        attached,
+        command_record,
+        {
+            "writes_partial_output_before_launch": "producer_writes_partial_output_before_launch",
+            "partial_output_path": "producer_partial_output_path",
+            "partial_output_status": "producer_partial_output_status",
+            "partial_output_overwrite_policy": "producer_partial_output_overwrite_policy",
+            "partial_output_supervisor_signal_handoff_safe": "producer_partial_output_supervisor_signal_handoff_safe",
+        },
+    )
+    _maybe_copy(
+        attached,
+        artifact_record,
+        {
+            "partial_output_handoff_safe": "artifact_partial_output_handoff_safe",
+            "partial_output_supervisor_signal_handoff_safe": "artifact_partial_output_supervisor_signal_handoff_safe",
+            "partial_output_supervisor_signal_contract": "artifact_partial_output_supervisor_signal_contract",
+        },
+    )
+    return attached
 
 
 def build_validator_status_report(
@@ -314,6 +370,7 @@ def build_validator_status_report(
     if not isinstance(validator_commands, list):
         validator_commands = []
     recommended_by_gate = _recommended_commands_by_gate(manifest)
+    artifacts_by_name = _artifacts_by_name(manifest)
     results = [
         _attach_producer_command(
             _run_validator(
@@ -322,6 +379,7 @@ def build_validator_status_report(
                 resource_artifact=resource_artifact,
             ),
             recommended_by_gate,
+            artifacts_by_name,
         )
         for record in validator_commands
     ]
@@ -364,6 +422,18 @@ def build_validator_status_report(
                 "validator_missing_evidence_count"
             ),
         }
+        for key in (
+            "producer_writes_partial_output_before_launch",
+            "producer_partial_output_path",
+            "producer_partial_output_status",
+            "producer_partial_output_overwrite_policy",
+            "producer_partial_output_supervisor_signal_handoff_safe",
+            "artifact_partial_output_handoff_safe",
+            "artifact_partial_output_supervisor_signal_handoff_safe",
+            "artifact_partial_output_supervisor_signal_contract",
+        ):
+            if key in next_blocker:
+                next_action[key] = next_blocker.get(key)
     passed = sum(1 for record in results if record.get("status") == "passed")
     missing = sum(1 for record in results if record.get("status") == "missing")
     failed = sum(1 for record in results if record.get("status") == "failed")

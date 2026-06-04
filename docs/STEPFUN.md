@@ -660,7 +660,8 @@ reporting.
   `--next-command-only` / `--next-command-sha-only`,
   `--next-producer-command-only` / `--next-producer-command-sha-only`, and
   `--next-action-only` / `--next-action-sha-only` expose compact pollable
-  validator records/commands),
+  validator records/commands, with the oracle next-action bundle mirroring the
+  partial-output and supervisor-signal timeout handoff when it is the first blocker),
   `--exit-code-policy-only` / `--exit-code-policy-sha-only`,
   `--digest-summary-only` / `--digest-summary-sha-only`, and
   `--failures-only` / `--failures-sha-only` outputs support verifier drift

@@ -77,6 +77,46 @@ def _write_oracle(path: Path) -> None:
     )
 
 
+def _write_timeout_oracle(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "status": "timeout",
+                "returncode": None,
+                "llama_cli": "/tmp/llama-cli",
+                "llama_cpp_version": "version: test (deadbeef)",
+                "model": "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+                "command_shell": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+                "prompt_length": 23,
+                "n_predict": 1,
+                "expected_next_token_id": 369,
+                "expected_next_token_text": " |",
+                "expected_next_token_logit": 19.158626556396484,
+                "expected_top_tokens": [
+                    {
+                        "rank": 1,
+                        "token_id": 369,
+                        "token_text": " |",
+                        "logit": 19.158626556396484,
+                    }
+                ],
+                "stdout": "",
+                "stderr": "",
+                "generated_text": "",
+                "text_matches_expected_exact": False,
+                "text_matches_expected_stripped": False,
+                "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+                "oracle_blocker_detail": (
+                    "llama.cpp oracle timed out before producing a comparable token"
+                ),
+                "step35_supported": True,
+                "timeout_termination": {"timeout_reached": True},
+            },
+            sort_keys=True,
+        )
+    )
+
+
 def _write_trace(path: Path) -> None:
     path.write_text(
         json.dumps(
@@ -123,6 +163,11 @@ def _manifest(oracle: Path, trace: Path, token: Path) -> dict[str, object]:
                 "recommended_command": "python3 scripts/run_stepfun_oracle.py --long-timeout",
                 "recommended_command_sha256": "oracle-producer-sha",
                 "recommended_command_reason": "rerun llama.cpp oracle with long timeout",
+                "writes_partial_output_before_launch": True,
+                "partial_output_path": str(oracle),
+                "partial_output_status": "running",
+                "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+                "partial_output_supervisor_signal_handoff_safe": True,
             },
             {
                 "readiness_gate": "kv_backed_decode",
@@ -131,6 +176,26 @@ def _manifest(oracle: Path, trace: Path, token: Path) -> dict[str, object]:
                 "recommended_command_sha256": "kv-producer-sha",
                 "recommended_command_reason": "refresh KV trace and token artifacts",
             },
+        ],
+        "artifacts_to_collect": [
+            {
+                "name": "llama_cpp_oracle_success_artifact",
+                "readiness_gate": "oracle_parity",
+                "path": str(oracle),
+                "partial_output_handoff_safe": True,
+                "partial_output_supervisor_signal_handoff_safe": True,
+                "partial_output_supervisor_signal_contract": {
+                    "handled_signals": ["SIGTERM", "SIGINT"],
+                    "handler_scope": "while_llama_cli_subprocess_is_running",
+                    "cleanup_method": "os.killpg",
+                    "cleanup_signal": "SIGKILL",
+                    "cleanup_path": "supervisor_signal_killpg_then_communicate",
+                    "timeout_status": "timeout",
+                    "timeout_blocker_kind": "llama_cpp_oracle_timeout",
+                    "timeout_termination_supervisor_signal_received": True,
+                    "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+                },
+            }
         ],
         "validator_commands_handoff": [
             {
@@ -325,6 +390,76 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["blocked_validator_results_sha256"] == report[
         "blocked_validator_results_sha256"
     ]
+
+
+def test_stepfun_validator_status_next_action_includes_oracle_partial_output_handoff(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    resource = tmp_path / "resource.json"
+    oracle = tmp_path / "oracle-timeout.json"
+    trace = tmp_path / "trace.json"
+    token = tmp_path / "token.json"
+    _write_prompt(prompt)
+    _write_resource(resource)
+    _write_timeout_oracle(oracle)
+    _write_trace(trace)
+    _write_token(token)
+
+    report = build_validator_status_report(
+        _manifest(oracle, trace, token),
+        prompt_artifact=prompt,
+        resource_artifact=resource,
+    )
+
+    assert report["status"] == "blocked"
+    assert report["next_blocker"]["artifact_name"] == (
+        "llama_cpp_oracle_success_artifact"
+    )
+    assert report["next_blocker"][
+        "producer_writes_partial_output_before_launch"
+    ] is True
+    assert report["next_blocker"]["producer_partial_output_path"] == str(oracle)
+    assert report["next_blocker"]["producer_partial_output_status"] == "running"
+    assert report["next_blocker"]["producer_partial_output_overwrite_policy"] == (
+        "overwrite_on_execute_or_timeout"
+    )
+    assert report["next_blocker"][
+        "producer_partial_output_supervisor_signal_handoff_safe"
+    ] is True
+    assert report["next_blocker"]["artifact_partial_output_handoff_safe"] is True
+    assert report["next_blocker"][
+        "artifact_partial_output_supervisor_signal_handoff_safe"
+    ] is True
+    supervisor_contract = report["next_blocker"][
+        "artifact_partial_output_supervisor_signal_contract"
+    ]
+    assert supervisor_contract["handled_signals"] == ["SIGTERM", "SIGINT"]
+    assert supervisor_contract["cleanup_method"] == "os.killpg"
+    assert supervisor_contract["timeout_blocker_kind"] == (
+        "llama_cpp_oracle_timeout"
+    )
+    assert supervisor_contract["partial_output_overwrite_policy"] == (
+        "overwrite_on_execute_or_timeout"
+    )
+    next_action = report["next_action"]
+    assert next_action["artifact_name"] == "llama_cpp_oracle_success_artifact"
+    assert next_action["producer_writes_partial_output_before_launch"] is True
+    assert next_action["producer_partial_output_path"] == str(oracle)
+    assert next_action["producer_partial_output_status"] == "running"
+    assert next_action["producer_partial_output_overwrite_policy"] == (
+        "overwrite_on_execute_or_timeout"
+    )
+    assert next_action[
+        "producer_partial_output_supervisor_signal_handoff_safe"
+    ] is True
+    assert next_action["artifact_partial_output_handoff_safe"] is True
+    assert next_action[
+        "artifact_partial_output_supervisor_signal_handoff_safe"
+    ] is True
+    assert next_action["artifact_partial_output_supervisor_signal_contract"] == (
+        supervisor_contract
+    )
 
 
 def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
