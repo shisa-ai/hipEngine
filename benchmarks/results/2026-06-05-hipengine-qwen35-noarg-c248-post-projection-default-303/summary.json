@@ -1,0 +1,177 @@
+{
+  "artifacts": {
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "initial-noarg-c2-flake": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/initial-noarg-c2-flake-compact.json"
+    },
+    "noarg-c2-repeat-r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/noarg-c2-repeat-r1-compact.json"
+    },
+    "noarg-c2-repeat-r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/noarg-c2-repeat-r2-compact.json"
+    },
+    "noarg-c2-repeat-r3": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/noarg-c2-repeat-r3-compact.json"
+    },
+    "noarg-c2-repeat-r4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/noarg-c2-repeat-r4-compact.json"
+    },
+    "noarg-c2-repeat-r5": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/noarg-c2-repeat-r5-compact.json"
+    },
+    "noarg-c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/noarg-c4-compact.json"
+    },
+    "noarg-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/noarg-c8-compact.json"
+    },
+    "previous_baseline_attachment": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json"
+    }
+  },
+  "conclusion": "Post-default-projection no-arg validation selected accepted c-aware projection candidates for c2/c4/c8 without explicit projection artifact/env override. The first c2 no-arg run exposed one transient equality flake at [61,137], so this artifact does not claim c2 stability; five immediate c2 repeats then passed [137,137], and the accepted final c2/c4/c8 matrix is green at c2 [137,137], c4 [137]*4, c8 [137]*8. C4/c8 remain diagnostic rowchunked full-attention paths and no retained throughput/scaling claim is made.",
+  "created_at": "2026-06-04T21:23:06.920064+00:00",
+  "git_commit_before_commit": "6bb4e5679ee95ce30bc693341fe7d4e305aa42b9",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 303,
+  "kind": "noarg_c248_post_projection_default_matrix",
+  "performance_claim": false,
+  "result": {
+    "accepted_final_matrix": {
+      "c2": {
+        "decode_blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "native_caware_decode": true,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+      },
+      "c4": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15
+        ]
+      },
+      "c8": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ]
+      }
+    },
+    "c2_repeats_after_initial_flake": {
+      "all_passed": true,
+      "prefix_lengths": [
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "projection_candidates": [
+        "gemv_awq_selected_dual_pack8_strided_c2",
+        "gemv_awq_selected_dual_pack8_strided_c2",
+        "gemv_awq_selected_dual_pack8_strided_c2",
+        "gemv_awq_selected_dual_pack8_strided_c2",
+        "gemv_awq_selected_dual_pack8_strided_c2"
+      ],
+      "repeat_runs": 5
+    },
+    "initial_c2_noarg": {
+      "first_mismatch_indices": [
+        61,
+        null
+      ],
+      "passed": false,
+      "prefix_lengths": [
+        61,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+    }
+  },
+  "schema": 1,
+  "source_tmp_dirs": [
+    "/tmp/hipengine-iter303-noarg-c248-post-projection-default",
+    "/tmp/hipengine-iter303-c2-accepted-projection-repeat"
+  ],
+  "status": "passed_with_initial_c2_flake",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "expected_auto_projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "explicit_projection_dispatch_artifact": null,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

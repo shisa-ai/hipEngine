@@ -950,12 +950,17 @@ What is still not green:
   supplied, so the active no-flag c2 verify uses the same accepted c-aware
   projection path instead of intermittently falling back to row-GEMV. C2 is full
   native/c-aware with grouped MoE and accepted projection but remains below c1
-  on aggregate scaling; c4/c8 beat
-  their serial bridges in this evidence run but remain diagnostic because
+  on aggregate scaling; c4/c8 beat their serial bridges in this evidence run
+  but remain diagnostic because
   rowchunked full attention keeps `native_caware_decode=false` (c4 selected
-  layers `[3,7,11,15]`, c8 all rowchunk layers). No retained throughput/scaling
-  claim is made
-  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`).
+  layers `[3,7,11,15]`, c8 all rowchunk layers). A follow-up no-arg validation
+  proves the default catalog path selects accepted projection candidates for
+  c2/c4/c8 and keeps the accepted final c2/c4/c8 equality matrix green; it also
+  records one transient initial c2 flake (`[61,137]`) before five immediate c2
+  repeats returned `[137,137]`, so c2 equality is currently green but not claimed
+  repeat-stability-closed. No retained throughput/scaling claim is made
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

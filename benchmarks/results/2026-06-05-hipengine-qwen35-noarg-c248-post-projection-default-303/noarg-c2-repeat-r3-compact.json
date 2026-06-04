@@ -1,0 +1,72 @@
+{
+  "batch_execution": {
+    "blockers": [],
+    "native_caware_decode": true,
+    "projection_dispatch": {
+      "blockers": [],
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+    },
+    "throughput_claim_eligible": true
+  },
+  "commands": {
+    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter303-c2-accepted-projection-repeat/c2-r3.json",
+    "correctness_reference": "inline generated-token equality vs independent c=1 plus env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --seed 1234 --json '<primitive-correctness-json>'",
+    "environment": [
+      "rocminfo | grep -E 'Name:|gfx' | head -4",
+      "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "hipcc --version",
+      "git rev-parse HEAD",
+      "git diff --quiet"
+    ],
+    "profiler": null
+  },
+  "decode_execution": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "full_attention_row_chunk_size": null,
+    "full_attention_row_chunked_layers": null,
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "sampler_execution": {
+      "argmax_audit_enabled": false,
+      "argmax_mode": "batch",
+      "blockers": [],
+      "c2_equality_green": true,
+      "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+      "equality_rows": 2,
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "rows": 2
+    }
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "mismatch_summary": [],
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "label": "noarg-c2-repeat-r3",
+  "performance_claim": false,
+  "raw_artifact": {
+    "path": "/tmp/hipengine-iter303-c2-accepted-projection-repeat/c2-r3.json",
+    "sha256": "4b8020185845b25726ad1058f0db8b4a183b631d51de681e681f4c06712d099f",
+    "size_bytes": 136583
+  },
+  "raw_log": {
+    "path": "/tmp/hipengine-iter303-c2-accepted-projection-repeat/c2-r3.log",
+    "sha256": "4b8020185845b25726ad1058f0db8b4a183b631d51de681e681f4c06712d099f",
+    "size_bytes": 136583
+  },
+  "rows": 2,
+  "status": "blocked",
+  "workload_projection_dispatch_artifact": null
+}
