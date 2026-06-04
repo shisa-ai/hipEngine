@@ -462,7 +462,12 @@ What is still not green:
   each), so grouped-compact MoE at the covered c8 boundary is not enough to
   reproduce the c2 flake; the suspect narrows further toward the c9
   grouped-compact boundary/red path
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c8-grouped-control224/summary.json`). Repeating the red c9 grouped stress but making the following c2 run use
+  explicit `serial_lm_head` sampling kept all five c2 controls green
+  (`[137,137]`), narrowing the observed post-c9 trigger toward interaction with
+  the default batched LM-head sampler path rather than upstream c2 hidden/decode
+  state alone
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-serial-after-c9-grouped-control225/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
