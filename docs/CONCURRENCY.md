@@ -446,7 +446,13 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-grouped-repeat220/summary.json`). A sampler split likewise ran five default batched-LM-head
   sampler repeats and five explicit serial-LM-head repeats, all green at
   `[137,137]`; sampler mode alone is not an immediate trigger
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/summary.json`). A post-c9 stress sequence then reproduced the exact
+  c2 `[103,137]` flake shape: three cycles of red c9 grouped-compact rowchunk2
+  followed by the active c2 default command produced c2 prefixes
+  `[137,137]`, `[103,137]`, `[137,137]`. The flake is therefore reproducible
+  under post-c9/high-row grouped stress, but still nondeterministic and not yet
+  isolated to MoE vs rowchunk/high-row stress
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-stress222/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

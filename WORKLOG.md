@@ -65799,3 +65799,7 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 ## 2026-06-03 — concurrency-e2e/native-c2-e2e iter221 c2 sampler split
 - Ran five exact c2 512/128 default repeats using the retained batched-LM-head sampler artifact and five explicit `--batch-sample-mode serial_lm_head` repeats on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-sampler-repeat221/summary.json`.
 - All ten runs are generated-token equality green at `[137,137]` with empty mismatch summaries. This does not prove the intermittent c2 flake fixed (iter219 captured `[103,137]`), but sampler mode alone is not an immediate trigger. No throughput claim.
+
+## 2026-06-03 — concurrency-e2e/native-c2-e2e iter222 post-c9 c2 flake stress
+- Ran three cycles on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX where each cycle runs the known-red c9 grouped-compact rowchunk2 diagnostic, then immediately runs the active c2 512/128 default equality command in a fresh Python process. Artifact: `benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-after-c9-stress222/summary.json`.
+- All three c9 runs reproduced the known red boundary (`[137,137,137,118,137,31,81,137,137]`). The following c2 runs were `[137,137]`, `[103,137]`, `[137,137]`; cycle 2 exactly reproduces the iter219 c2 flake shape. The flake is now reproducible under post-c9/high-row grouped stress, but remains nondeterministic and not yet isolated to MoE vs rowchunk/high-row stress. No throughput claim.
