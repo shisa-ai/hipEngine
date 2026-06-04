@@ -491,7 +491,14 @@ What is still not green:
   batch-argmax reduction disagreement on those audited logits; the explicit c2
   batched sampler remains blocked until the historical flake is reproduced under
   audit or otherwise fixed
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-batch-argmax-audit-after-c9-229/summary.json`). A post-diagnostic no-flag c2/c4/c8 equality matrix confirms the active
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-batch-argmax-audit-after-c9-229/summary.json`). A current no-audit rerun of the actual explicit c2 batched sampler also did
+  not reproduce the historical flake: five red c9 grouped-stress cycles were
+  each followed by c2 `batched_lm_head`/batch-argmax runs that stayed green
+  (`[137,137]`) with `native_row_aware_lm_head=true` and empty sampler blockers.
+  This strengthens the timing/transient diagnosis but does not by itself restore
+  c2 `batched_lm_head` as the default because the iter222 `[103,137]` flake
+  artifact remains contrary evidence
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-batched-noaudit-after-c9-repeat232/summary.json`). A post-diagnostic no-flag c2/c4/c8 equality matrix confirms the active
   default gate is still generated-token green: c2 `[137,137]` uses
   `serial_lm_head` with full-native `native_caware_decode=true`, while c4/c8 use
   retained `batched_lm_head` sampler evidence and rowchunk2 full-attention
