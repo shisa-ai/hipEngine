@@ -788,6 +788,12 @@ What is still not green:
   `batch_decode_attention_dense_context_batch_gate_layers="3,11"`. c8 rowchunk4
   plus selected dense-context probes remained red, so c8 stays rowchunk2
   (`benchmarks/results/2026-06-04-hipengine-qwen35-c4-selected-layer-minimum-273/summary.json`).
+  A final current-default refresh after both the c2 sampler and c4 layer-minimum
+  changes is green for c=2/c=4/c=8 (`[137]*rows`) with row-aware
+  `batched_lm_head` on all three row counts, c2 full-native/c-aware with empty
+  decode/sampler/projection blockers, c4 selected dense-context layers `3,11`,
+  and c8 rowchunk2
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-current-default-c248-final-274/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
