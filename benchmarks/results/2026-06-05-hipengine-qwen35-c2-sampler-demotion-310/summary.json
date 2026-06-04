@@ -1,0 +1,188 @@
+{
+  "artifacts": {
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "postfix_c2_serial_repeat_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/postfix-c2-serial-repeat-compact.json"
+    },
+    "postfix_c4_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/postfix-c4-compact.json"
+    },
+    "postfix_c8_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/postfix-c8-compact.json"
+    },
+    "pre_fix_c2_batched_repeat_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/pre-fix-c2-batched-repeat-compact.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/summary.json"
+    }
+  },
+  "code_change": {
+    "scripts/qwen35_batch_retained_bench.py": "_DEFAULT_BATCH_SAMPLE_EQ_ROWS changed from (2,4,8) to (4,8), keeping c2 serial_lm_head unless explicitly requested.",
+    "tests/test_generation_batch_scheduler.py": "Default sampler evidence unit test now asserts c2 remains serial even when a c2 sampler artifact exists."
+  },
+  "conclusion": "The current no-flag c2 batched_lm_head default is not repeat-stable: pre-fix audit produced two failures in eight runs ([137,104] and [82,137]) with accepted c2 projection and full native decode. Demoting only the c2 no-flag sampler default back to serial_lm_head yields eight consecutive active c2 passes [137,137], while c4 and c8 no-flag controls remain green with batched_lm_head plus all-layer rowchunk2. This is correctness-first runtime evidence only and makes no retained throughput/scaling claim.",
+  "created_at": "2026-06-04T23:25:02.672580+00:00",
+  "git_commit_before_commit": "b894557627c8c98783f35cd9b8a14386c447e290",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 310,
+  "kind": "c2_default_sampler_demotion_stability_audit",
+  "performance_claim": false,
+  "post_fix": {
+    "c2_failed_count": 0,
+    "c2_min_prefix": 137,
+    "c2_passed_count": 8,
+    "c2_prefix_lengths": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "c2_sampler_modes": [
+      "serial_lm_head"
+    ],
+    "c4": {
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "rowchunk_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "sampler_mode": "batched_lm_head"
+    },
+    "c8": {
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "rowchunk_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "sampler_mode": "batched_lm_head"
+    },
+    "sampler_default": "serial_lm_head_for_c2_only"
+  },
+  "pre_fix": {
+    "failed_count": 2,
+    "failed_runs": [
+      "pre-fix-active-c2-repeat-r2",
+      "pre-fix-active-c2-repeat-r8"
+    ],
+    "min_prefix": 82,
+    "passed_count": 6,
+    "prefix_lengths": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        104
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        82,
+        137
+      ]
+    ],
+    "sampler_default": "batched_lm_head"
+  },
+  "schema": 1,
+  "source_tmp_dirs": {
+    "post_fix": "/tmp/hipengine-iter310-c2-sampler-demotion",
+    "pre_fix": "/tmp/hipengine-iter310-c2-repeat-stability"
+  },
+  "status": "passed",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

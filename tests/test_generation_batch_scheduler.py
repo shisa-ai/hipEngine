@@ -3678,10 +3678,10 @@ def test_retained_bench_defaults_to_valid_batched_sampler_artifact(tmp_path: Pat
         batch_sample_eq_rows=None,
     )
     retained_bench._apply_default_batch_sample_evidence(c2_default, [])
-    assert c2_default.batch_sample_mode == "batched_lm_head"
-    assert c2_default.batch_sample_eq_ok is True
-    assert c2_default.batch_sample_eq_artifact == Path(c2_artifact_path)
-    assert c2_default.batch_sample_eq_rows == 2
+    assert c2_default.batch_sample_mode == "serial_lm_head"
+    assert c2_default.batch_sample_eq_ok is False
+    assert c2_default.batch_sample_eq_artifact is None
+    assert c2_default.batch_sample_eq_rows is None
 
     explicit_serial = SimpleNamespace(
         batch_size=4,

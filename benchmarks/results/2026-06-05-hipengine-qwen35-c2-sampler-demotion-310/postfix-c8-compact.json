@@ -1,0 +1,64 @@
+{
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path"
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_row_chunked_layers": [
+    3,
+    7,
+    11,
+    15,
+    19,
+    23,
+    27,
+    31,
+    35,
+    39
+  ],
+  "label": "postfix-current-c8",
+  "mismatch_summary": [],
+  "native_caware_decode": false,
+  "passed": true,
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137
+  ],
+  "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+  "projection_path": "benchmark_accepted_caware_projection",
+  "raw_artifact": {
+    "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-current-c8.json",
+    "sha256": "06ca70d3c94e7c6de281d7859b3660513b7145d17aef4302ab47d18dc50c3e24",
+    "size_bytes": 414789
+  },
+  "raw_log": {
+    "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-current-c8.log",
+    "sha256": "06ca70d3c94e7c6de281d7859b3660513b7145d17aef4302ab47d18dc50c3e24",
+    "size_bytes": 414789
+  },
+  "sampler_execution": {
+    "argmax_mode": "batch",
+    "blockers": [],
+    "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+    "equality_rows": 8,
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true,
+    "requested_mode": "batched_lm_head"
+  },
+  "status": "blocked"
+}

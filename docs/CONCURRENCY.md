@@ -79,9 +79,12 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 it still must not claim true retained c>N throughput.** Qwen/PARO BF16 c=2/c=4/c=8
 generated-token equality vs independent c=1 is green, and c=2/c=4/c=8 projection
 dispatch evidence selects the row-bounded native projection candidate from one
-combined catalog. The remaining hard gates are accepted retained scaling/graph
-replay evidence, full-native c4/c8 attention without rowchunk diagnostics, and
-any residual fallback labels.
+combined catalog. C2 now deliberately keeps the no-flag sampler on
+`serial_lm_head` after an eight-run batched-sampler audit reproduced intermittent
+`[137,104]` / `[82,137]` flakes; c4/c8 keep row-aware `batched_lm_head`. The
+remaining hard gates are accepted retained scaling/graph replay evidence,
+full-native c4/c8 attention without rowchunk diagnostics, and any residual
+fallback labels.
 
 What is in place:
 
@@ -980,10 +983,14 @@ What is still not green:
   batched sampler kernels. A post-demotion baseline attachment refresh keeps
   c2/c4/c8 green with primitive correctness and c1/serial scaling references
   loaded; the immediately following active c2 verify flaked once at `[82,137]`
-  before three active c2 repeats recovered to `[137,137]`, so c2 repeat-stability
-  remains open. C2 remains below aggregate-vs-c1, while c4/c8 remain diagnostic
-  despite serial-bridge speedups because all-layer rowchunk keeps
-  `native_caware_decode=false`. No retained throughput/scaling claim is made
+  before three active c2 repeats recovered to `[137,137]`. A focused repeat audit
+  then reproduced the batched-sampler instability in two of eight c2 runs
+  (`[137,104]`, `[82,137]`), so the correctness-first no-flag c2 sampler is
+  demoted back to `serial_lm_head`; eight post-demotion c2 repeats are green at
+  `[137,137]`, while c4/c8 still use `batched_lm_head` and stay green. C2 remains
+  below aggregate-vs-c1, while c4/c8 remain diagnostic despite serial-bridge
+  speedups because all-layer rowchunk keeps `native_caware_decode=false`. No
+  retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`,
@@ -991,7 +998,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-308/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-post-demotion-baseline-attach-309/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-post-demotion-baseline-attach-309/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
