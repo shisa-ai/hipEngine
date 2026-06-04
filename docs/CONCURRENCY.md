@@ -642,6 +642,14 @@ What is still not green:
   green at `[137,137]`, so row-aware batch-GEMV O is the focused correctness
   repair for these prompt pairs, not just a rowchunk copy workaround
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-rowchunk2-pair-native-o-isolation-254/summary.json`).
+  The rows=2 default now auto-selects row-aware batch-GEMV full-attention O
+  (`batch_gemv_auto`) unless a native/per-row/GEMV diagnostic is explicitly
+  forced. Under the default `--batch-decode-full-attn-output-path batch`, every
+  compact c2 prompt pair is green at `[137,137]`; the explicit native diagnostic
+  preserves the red native-O signal for rows 2..7 (`[137,118]`, `[45,0]`,
+  `[68,137]`). Active c2 512/128 still reports `[137,137]` with first full layer
+  output path `batch_gemv_auto`
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-auto-gemv-o-default-255/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

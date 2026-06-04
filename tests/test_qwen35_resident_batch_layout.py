@@ -1507,6 +1507,7 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
     assert kwargs["tokens"] == 2
     assert kwargs["key_cache"].ptr == 0x5000
     assert kwargs["value_cache"].ptr == 0x6000
+    assert kwargs["force_batch_gemv_output"] is True
     assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
     assert session.last_batch_decode_execution == {
         "rows": 2,
@@ -1537,6 +1538,7 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
                 "slots": [0, 2],
                 "max_context": 8,
                 "full_attention_decode_path": "native_batch",
+                "full_attention_output_decode_path": "batch_gemv_auto",
                 "native_caware_decode": True,
                 "moe_decode_path": "grouped_compact",
             }
@@ -2263,6 +2265,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
     assert out.ptr == 0x2000
     assert force_flags == [True]
     assert state.calls[0][1]["force_selected_c1_moe"] is True
+    assert state.calls[0][1]["force_batch_gemv_output"] is True
     assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
     assert session.last_batch_decode_execution == {
         "rows": 2,
@@ -2293,6 +2296,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
                 "slots": [0, 2],
                 "max_context": 8,
                 "full_attention_decode_path": "native_batch",
+                "full_attention_output_decode_path": "batch_gemv_auto",
                 "native_caware_decode": True,
                 "moe_decode_path": "selected_c1_batch",
             }
@@ -2424,6 +2428,22 @@ def test_qwen35_resident_full_attention_batch_decode_can_force_per_row_output_an
     assert execution["blockers"] == []
     assert execution["layer_executions"][0]["native_caware_decode"] is True
     assert execution["layer_executions"][0]["full_attention_output_decode_path"] == "batch_gemv"
+
+    monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_FULL_ATTN_OUTPUT", "1")
+    state.calls.clear()
+    force_flags.clear()
+    copies.clear()
+
+    out = session._run_layers_batch_decode(rows=2, positions=(4, 7), slots=(0, 2), stream=5)
+
+    assert out.ptr == 0x2000
+    assert len(state.calls) == 1
+    _hidden, kwargs = state.calls[0]
+    assert kwargs["force_batch_gemv_output"] is False
+    execution = session.last_batch_decode_execution
+    assert execution["native_caware_decode"] is True
+    assert execution["layer_executions"][0]["full_attention_output_decode_path"] == "native_batch_forced"
 
 
 def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context(monkeypatch) -> None:

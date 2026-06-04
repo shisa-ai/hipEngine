@@ -4131,15 +4131,30 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_output = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"
         )
+        force_native_full_attention_output = (
+            rows > 1
+            and not force_per_row_full_attention_output
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_FULL_ATTN_OUTPUT")
+        )
         force_batch_gemv_full_attention_output = (
             rows > 1
             and not force_per_row_full_attention_output
+            and not force_native_full_attention_output
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT")
+        )
+        auto_batch_gemv_full_attention_output = (
+            rows == 2
+            and not force_per_row_full_attention_output
+            and not force_native_full_attention_output
+            and not force_batch_gemv_full_attention_output
+        )
+        use_batch_gemv_full_attention_output = (
+            force_batch_gemv_full_attention_output or auto_batch_gemv_full_attention_output
         )
         force_native_row_chunk_full_attention_output = (
             rows > 1
             and not force_per_row_full_attention_output
-            and not force_batch_gemv_full_attention_output
+            and not use_batch_gemv_full_attention_output
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_ROW_CHUNK_FULL_ATTN_OUTPUT")
         )
         force_per_row_full_attention_layer_copy = rows > 1 and _env_flag(
@@ -4209,7 +4224,13 @@ class Qwen35ParoResidentSession:
         full_attention_output_decode_path = (
             "per_row_o_projection_fallback"
             if force_per_row_full_attention_output
-            else "batch_gemv" if force_batch_gemv_full_attention_output else "native_batch"
+            else "batch_gemv"
+            if force_batch_gemv_full_attention_output
+            else "batch_gemv_auto"
+            if auto_batch_gemv_full_attention_output
+            else "native_batch_forced"
+            if force_native_full_attention_output
+            else "native_batch"
         )
         row_chunk_batch_gemv_full_attention_output = False
         row_chunk_native_full_attention_output = False
@@ -4643,7 +4664,7 @@ class Qwen35ParoResidentSession:
                                     if per_row_append_contexts is not None
                                     else None
                                 )
-                                chunk_force_batch_gemv_output = force_batch_gemv_full_attention_output
+                                chunk_force_batch_gemv_output = use_batch_gemv_full_attention_output
                                 if (
                                     force_native_row_chunk_full_attention_output
                                     and not chunk_force_batch_gemv_output
@@ -4848,7 +4869,7 @@ class Qwen35ParoResidentSession:
                                 force_per_row_append_context=force_per_row_full_attention_append_context,
                                 force_per_row_suffix=force_per_row_full_attention_suffix,
                                 force_per_row_output=force_per_row_full_attention_output,
-                                force_batch_gemv_output=force_batch_gemv_full_attention_output,
+                                force_batch_gemv_output=use_batch_gemv_full_attention_output,
                                 force_per_row_post_attention=force_per_row_post_attention,
                                 force_per_row_moe=force_per_row_full_attention_moe,
                                 post_input_rmsnorm_trace=post_input_rmsnorm_trace,
@@ -4958,7 +4979,11 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_output_decode_path"] = "native_batch_with_row_chunk_batch_gemv"
                         elif layer_row_chunk_native_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = "native_batch_row_chunk_forced"
-                        elif force_per_row_full_attention_output or force_batch_gemv_full_attention_output:
+                        elif (
+                            force_per_row_full_attention_output
+                            or use_batch_gemv_full_attention_output
+                            or force_native_full_attention_output
+                        ):
                             layer_execution["full_attention_output_decode_path"] = full_attention_output_decode_path
                         if force_per_row_full_attention_layer_copy:
                             layer_execution["full_attention_layer_copy_decode_path"] = full_attention_layer_copy_decode_path

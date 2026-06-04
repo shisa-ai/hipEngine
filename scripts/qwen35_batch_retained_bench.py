@@ -4210,6 +4210,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] = (
         "1" if batch_full_attention_output_path == "batch_gemv" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_FULL_ATTN_OUTPUT"] = (
+        "1" if batch_full_attention_output_path == "native" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_ROW_CHUNK_FULL_ATTN_OUTPUT"] = (
         "1" if batch_full_attention_output_path == "native_row_chunk" else "0"
     )
@@ -4915,9 +4918,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--batch-decode-full-attn-output-path",
-        choices=("batch", "batch_gemv", "per_row", "native_row_chunk"),
+        choices=("batch", "batch_gemv", "per_row", "native", "native_row_chunk"),
         default="batch",
-        help="Diagnostic full-attention O projection path for c>N batch decode; batch is the correctness-first default after rowchunked decode gained tail GEMV repair, batch_gemv forces row-aware GEMV for every chunk, native_row_chunk bypasses the automatic rowchunk GEMV repair for native O diagnostics, and per_row remains a token-1 output replay fallback.",
+        help="Diagnostic full-attention O projection path for c>N batch decode; batch is the correctness-first default (rows=2 auto-select row-aware GEMV O; rowchunked rows keep their tail GEMV repair), batch_gemv forces row-aware GEMV for every chunk, native forces native O for rows=2 diagnostics, native_row_chunk bypasses the automatic rowchunk GEMV repair for native O diagnostics, and per_row remains a token-1 output replay fallback.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-layer-copy",
