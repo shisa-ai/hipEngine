@@ -332,6 +332,7 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
     assert report["next_blocker"] is None
+    assert report["next_blocker_artifact_name"] is None
     assert report["next_blocker_status"] is None
     assert report["next_blocker_reason"] is None
     assert report["next_blocker_command"] is None
@@ -511,6 +512,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_producer_command_sha256"] == report[
         "next_producer_command_sha256"
     ]
+    assert report["next_blocker_artifact_name"] == "kv_kernel_trace_artifact"
     assert report["next_blocker_status"] == "missing"
     assert report["next_blocker_reason"] == "artifact_file_missing"
     assert report["next_blocker_command"] == expected_missing_trace[
@@ -731,6 +733,7 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     next_blocked_gate_output = tmp_path / "next-blocked-gate.json"
     next_blocked_gate_sha_output = tmp_path / "next-blocked-gate-sha.json"
     next_blocker_output = tmp_path / "next-blocker.json"
+    next_blocker_artifact_name_output = tmp_path / "next-blocker-artifact-name.json"
     next_blocker_status_output = tmp_path / "next-blocker-status.json"
     next_blocker_reason_output = tmp_path / "next-blocker-reason.json"
     next_blocker_sha_output = tmp_path / "next-blocker-sha.json"
@@ -1445,6 +1448,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert next_blocker_payload["artifact_name"] == "kv_kernel_trace_artifact"
     assert next_blocker_payload["status"] == "missing"
     assert next_blocker_payload["reason"] == "artifact_file_missing"
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-blocker-artifact-name-only",
+            "--output",
+            str(next_blocker_artifact_name_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(next_blocker_artifact_name_output.read_text()) == (
+        "kv_kernel_trace_artifact"
+    )
 
     rc = main(
         [

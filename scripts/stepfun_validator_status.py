@@ -232,6 +232,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the first failed or missing validator record, or null.",
     )
     parser.add_argument(
+        "--next-blocker-artifact-name-only",
+        action="store_true",
+        help="Emit only the artifact name for the first failed/missing validator record, or null.",
+    )
+    parser.add_argument(
         "--next-blocker-sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the first failed/missing validator record.",
@@ -1053,6 +1058,9 @@ def build_validator_status_report(
         ),
         "next_blocker": next_blocker,
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
+        "next_blocker_artifact_name": next_blocker.get("artifact_name")
+        if isinstance(next_blocker, dict)
+        else None,
         "next_blocker_status": next_blocker.get("status")
         if isinstance(next_blocker, dict)
         else None,
@@ -1163,6 +1171,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_blocker_reason"]
     elif args.next_blocker_status_only:
         payload = report["next_blocker_status"]
+    elif args.next_blocker_artifact_name_only:
+        payload = report["next_blocker_artifact_name"]
     elif args.next_blocker_sha_only:
         payload = report["next_blocker_sha256"]
     elif args.next_blocker_only:
