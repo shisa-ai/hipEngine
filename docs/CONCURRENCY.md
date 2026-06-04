@@ -626,6 +626,14 @@ What is still not green:
   Thus the tail quartet's safe correctness cap is at most two rows per
   full-attention group; rowchunk3 is not enough
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-tail-rowchunk3-frontier-252/summary.json`).
+  A c8 rowchunk2 native-O frontier adds
+  `--batch-decode-full-attn-output-path native_row_chunk` to bypass the automatic
+  rowchunk batch-GEMV O repair: the batch/default control stays green at
+  `[137]*8`, but forced native rowchunk O is red at
+  `[137,137,137,118,45,137,68,137]`. Rowchunk2 grouping alone is therefore not
+  sufficient for retained c8; the rowchunk batch-GEMV O repair remains a separate
+  correctness requirement until native rowchunk O is fixed
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-rowchunk2-native-o-frontier-253/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

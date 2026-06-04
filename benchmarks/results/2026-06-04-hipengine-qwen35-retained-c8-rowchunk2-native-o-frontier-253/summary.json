@@ -1,0 +1,310 @@
+{
+  "active_verify": {
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "result_metric": 137
+  },
+  "change": {
+    "description": "Add a retained-bench/native runtime diagnostic that bypasses automatic rowchunk batch-GEMV O repair, then test c8 rowchunk2 native-O vs the batch-GEMV control.",
+    "files": [
+      "hipengine/runtime/qwen35_paro_runner.py",
+      "scripts/qwen35_batch_retained_bench.py",
+      "tests/test_generation_batch_scheduler.py",
+      "tests/test_qwen35_resident_batch_layout.py",
+      "docs/CONCURRENCY.md",
+      "WORKLOG.md",
+      "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-rowchunk2-native-o-frontier-253/summary.json"
+    ],
+    "new_cli": "--batch-decode-full-attn-output-path native_row_chunk",
+    "new_env": "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_ROW_CHUNK_FULL_ATTN_OUTPUT=1"
+  },
+  "finding_table": [
+    {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "first_full_layer_output_decode_path": "native_batch_with_row_chunk_batch_gemv",
+      "label": "c8_rowchunk2_batch_gemv_control",
+      "min_equal_prefix_tokens": 137,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to native row-chunk diagnostic path"
+      ],
+      "first_full_layer_output_decode_path": "native_batch_row_chunk_forced",
+      "label": "c8_rowchunk2_native_o",
+      "min_equal_prefix_tokens": 45,
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118,
+        45,
+        137,
+        68,
+        137
+      ]
+    }
+  ],
+  "findings": [
+    "The c8 rowchunk2 batch/default control remains generated-token green at [137]*8 and records first full-attention layer output path native_batch_with_row_chunk_batch_gemv.",
+    "Forcing native rowchunk O projection under the same c8 rowchunk2 schedule is red: prefixes [137,137,137,118,45,137,68,137].",
+    "Therefore rowchunk2 grouping alone is not sufficient for retained c8 correctness; the automatic batch-GEMV O projection repair remains an independent required c8 correctness component until native rowchunk O is fixed."
+  ],
+  "fixture": {
+    "batch_size": 8,
+    "path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512
+  },
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 253,
+  "mode": "qwen35_retained_bench_c8_rowchunk2_native_o_frontier",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: the iteration adds and exercises a targeted native rowchunk-O diagnostic. The batch-GEMV O path is green while native rowchunk O is red under identical c8 rowchunk2 grouping, eliminating row grouping as sufficient and narrowing retained c8 correctness to the O projection repair. No throughput claim.",
+    "passed": true
+  },
+  "runs": {
+    "c8_rowchunk2_batch_gemv_control": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-sample-mode serial_lm_head --batch-decode-full-attn-output-path batch --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-rowchunk2-native-o-frontier-253/c8_rowchunk2_batch_gemv_control.json",
+      "first_full_layer_output_decode_path": "native_batch_with_row_chunk_batch_gemv",
+      "first_full_layer_row_chunk_size": 2,
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "generated_token_equality_passed": true,
+      "label": "c8_rowchunk2_batch_gemv_control",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "status": "blocked",
+      "workload": {
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 8,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "c8_rowchunk2_native_o": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to native row-chunk diagnostic path"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-sample-mode serial_lm_head --batch-decode-full-attn-output-path native_row_chunk --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-rowchunk2-native-o-frontier-253/c8_rowchunk2_native_o.json",
+      "first_full_layer_output_decode_path": "native_batch_row_chunk_forced",
+      "first_full_layer_row_chunk_size": 2,
+      "first_mismatches": [
+        {
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 118,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 11,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            }
+          ],
+          "batch_token_at_mismatch": 4203,
+          "c1_token_at_mismatch": 9781,
+          "first_mismatch_index": 118,
+          "row": 3
+        },
+        {
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 45,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            }
+          ],
+          "batch_token_at_mismatch": 220,
+          "c1_token_at_mismatch": 264,
+          "first_mismatch_index": 45,
+          "row": 4
+        },
+        {
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 68,
+              "row": 6
+            },
+            {
+              "equal_prefix_tokens": 29,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 4
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 5
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 7
+            }
+          ],
+          "batch_token_at_mismatch": 271,
+          "c1_token_at_mismatch": 32288,
+          "first_mismatch_index": 68,
+          "row": 6
+        }
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "generated_token_equality_passed": false,
+      "label": "c8_rowchunk2_native_o",
+      "min_equal_prefix_tokens": 45,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118,
+        45,
+        137,
+        68,
+        137
+      ],
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_full_attention_output_path": "native_row_chunk",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 8,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    }
+  },
+  "schema": 1,
+  "timestamp": "2026-06-04T09:40:59.190070+00:00"
+}

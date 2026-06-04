@@ -4136,6 +4136,12 @@ class Qwen35ParoResidentSession:
             and not force_per_row_full_attention_output
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT")
         )
+        force_native_row_chunk_full_attention_output = (
+            rows > 1
+            and not force_per_row_full_attention_output
+            and not force_batch_gemv_full_attention_output
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_ROW_CHUNK_FULL_ATTN_OUTPUT")
+        )
         force_per_row_full_attention_layer_copy = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_LAYER_COPY"
         )
@@ -4206,6 +4212,7 @@ class Qwen35ParoResidentSession:
             else "batch_gemv" if force_batch_gemv_full_attention_output else "native_batch"
         )
         row_chunk_batch_gemv_full_attention_output = False
+        row_chunk_native_full_attention_output = False
         full_attention_layer_copy_decode_path = (
             "per_row_layer_copy_fallback" if force_per_row_full_attention_layer_copy else "batch_copy"
         )
@@ -4534,6 +4541,7 @@ class Qwen35ParoResidentSession:
 
                         copied_full_attention_output = False
                         layer_row_chunk_batch_gemv_full_attention_output = False
+                        layer_row_chunk_native_full_attention_output = False
                         if force_full_attention_row_chunks:
                             chunk_records: list[dict[str, Any]] = []
                             chunk_size = int(full_attention_row_chunk_size)
@@ -4637,6 +4645,15 @@ class Qwen35ParoResidentSession:
                                 )
                                 chunk_force_batch_gemv_output = force_batch_gemv_full_attention_output
                                 if (
+                                    force_native_row_chunk_full_attention_output
+                                    and not chunk_force_batch_gemv_output
+                                    and not force_per_row_full_attention_output
+                                    and chunk_rows > 1
+                                ):
+                                    layer_row_chunk_native_full_attention_output = True
+                                    row_chunk_native_full_attention_output = True
+                                    chunk_records[-1]["full_attention_output_decode_path"] = "native_batch_row_chunk_forced"
+                                elif (
                                     not chunk_force_batch_gemv_output
                                     and not force_per_row_full_attention_output
                                     and chunk_rows > 1
@@ -4646,7 +4663,10 @@ class Qwen35ParoResidentSession:
                                     # in the leading row chunk.  Keep the native
                                     # context/MoE work, but use the row-aware GEMV
                                     # O projection that matches c=1 numerics for
-                                    # every multi-row chunk.
+                                    # every multi-row chunk.  A dedicated diagnostic
+                                    # env may temporarily bypass this to re-test the
+                                    # native row-chunk O projection with artifact
+                                    # evidence.
                                     chunk_force_batch_gemv_output = True
                                     layer_row_chunk_batch_gemv_full_attention_output = True
                                     row_chunk_batch_gemv_full_attention_output = True
@@ -4936,6 +4956,8 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_suffix_decode_path"] = full_attention_suffix_decode_path
                         if layer_row_chunk_batch_gemv_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = "native_batch_with_row_chunk_batch_gemv"
+                        elif layer_row_chunk_native_full_attention_output:
+                            layer_execution["full_attention_output_decode_path"] = "native_batch_row_chunk_forced"
                         elif force_per_row_full_attention_output or force_batch_gemv_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = full_attention_output_decode_path
                         if force_per_row_full_attention_layer_copy:
@@ -5112,6 +5134,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention O projection forced to per-row diagnostic path")
             if row_chunk_batch_gemv_full_attention_output:
                 decode_blockers.append("full-attention O projection forced to batch GEMV for multi-row chunks")
+            if row_chunk_native_full_attention_output:
+                decode_blockers.append("full-attention O projection forced to native row-chunk diagnostic path")
             if force_per_row_full_attention_layer_copy:
                 decode_blockers.append("full-attention layer output forced to per-row copy diagnostic path")
             if force_per_row_post_attention:

@@ -2597,10 +2597,11 @@ def test_qwen35_resident_run_layers_batch_decode_reports_selected_c1_with_per_ro
 
 
 @pytest.mark.parametrize(
-    ("row_chunk_env", "expected_source", "expected_blocker"),
+    ("row_chunk_env", "expected_source", "expected_blocker", "force_native_row_chunk_output"),
     [
-        ("2", "env", "full-attention decode forced to native row-chunk diagnostic path"),
-        (None, "auto", "full-attention decode auto-selected native row-chunk diagnostic path"),
+        ("2", "env", "full-attention decode forced to native row-chunk diagnostic path", False),
+        (None, "auto", "full-attention decode auto-selected native row-chunk diagnostic path", False),
+        ("2", "env", "full-attention decode forced to native row-chunk diagnostic path", True),
     ],
 )
 def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
@@ -2608,6 +2609,7 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
     row_chunk_env: str | None,
     expected_source: str,
     expected_blocker: str,
+    force_native_row_chunk_output: bool,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
@@ -2615,6 +2617,8 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
         monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE", raising=False)
     else:
         monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE", row_chunk_env)
+    if force_native_row_chunk_output:
+        monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_NATIVE_ROW_CHUNK_FULL_ATTN_OUTPUT", "1")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
@@ -2701,7 +2705,10 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
     assert [call[0].shape for call in state.calls] == [(2, 8), (2, 8)]
     assert [call[1]["tokens"] for call in state.calls] == [2, 2]
     assert [call[1]["force_selected_c1_moe"] for call in state.calls] == [True, True]
-    assert [call[1]["force_batch_gemv_output"] for call in state.calls] == [True, True]
+    assert [call[1]["force_batch_gemv_output"] for call in state.calls] == [
+        not force_native_row_chunk_output,
+        not force_native_row_chunk_output,
+    ]
     assert all(call[1]["post_input_rmsnorm_trace"] is not None for call in state.calls)
     assert all(call[1]["input_scratch_trace"] is not None for call in state.calls)
     assert all(call[1]["qkv_tensor_trace"] is not None for call in state.calls)
@@ -2726,15 +2733,25 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
     assert session.last_batch_decode_execution["full_attention_row_chunk_size"] == 2
     assert session.last_batch_decode_execution["full_attention_row_chunk_source"] == expected_source
     assert not session.last_batch_decode_execution["native_caware_decode"]
+    expected_output_blocker = (
+        "full-attention O projection forced to native row-chunk diagnostic path"
+        if force_native_row_chunk_output
+        else "full-attention O projection forced to batch GEMV for multi-row chunks"
+    )
     assert session.last_batch_decode_execution["blockers"] == [
         expected_blocker,
-        "full-attention O projection forced to batch GEMV for multi-row chunks",
+        expected_output_blocker,
     ]
     assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_size"] == 2
     assert session.last_batch_decode_execution["layer_executions"][0]["full_attention_row_chunk_source"] == expected_source
+    expected_output_path = (
+        "native_batch_row_chunk_forced"
+        if force_native_row_chunk_output
+        else "native_batch_with_row_chunk_batch_gemv"
+    )
     assert (
         session.last_batch_decode_execution["layer_executions"][0]["full_attention_output_decode_path"]
-        == "native_batch_with_row_chunk_batch_gemv"
+        == expected_output_path
     )
 
 
