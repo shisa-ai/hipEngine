@@ -701,6 +701,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     blocked_readiness_gates_sha_output = tmp_path / "blocked-readiness-gates-sha.json"
     selected_blocked_gate_output = tmp_path / "selected-blocked-gate.json"
     selected_blocked_gate_sha_output = tmp_path / "selected-blocked-gate-sha.json"
+    selected_blocked_gate_found_output = tmp_path / "selected-blocked-gate-found.json"
+    selected_blocked_gate_missing_found_output = tmp_path / "selected-blocked-gate-missing-found.json"
     selected_blocked_gate_artifacts_output = tmp_path / "selected-blocked-gate-artifacts.json"
     selected_blocked_gate_artifacts_sha_output = tmp_path / "selected-blocked-gate-artifacts-sha.json"
     selected_blocked_gate_artifact_count_output = tmp_path / "selected-blocked-gate-artifact-count.json"
@@ -1029,6 +1031,44 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert len(json.loads(selected_blocked_gate_sha_output.read_text())) == 64
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-found-only",
+            "--output",
+            str(selected_blocked_gate_found_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_found_output.read_text()) is True
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "not_a_gate",
+            "--blocked-evidence-gate-found-only",
+            "--output",
+            str(selected_blocked_gate_missing_found_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_missing_found_output.read_text()) is False
 
     rc = main(
         [

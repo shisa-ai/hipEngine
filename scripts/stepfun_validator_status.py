@@ -147,6 +147,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest for --blocked-evidence-gate.",
     )
     parser.add_argument(
+        "--blocked-evidence-gate-found-only",
+        action="store_true",
+        help="Emit only whether --blocked-evidence-gate matched a blocked readiness gate.",
+    )
+    parser.add_argument(
         "--blocked-evidence-gate-artifacts-only",
         action="store_true",
         help="Emit only the artifact-name list for --blocked-evidence-gate.",
@@ -1094,6 +1099,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["blocked_readiness_gates_sha256"]
     elif args.blocked_readiness_gates_only:
         payload = report["blocked_readiness_gates"]
+    elif args.blocked_evidence_gate_found_only:
+        payload = report["selected_blocked_gate_found"]
     elif args.blocked_evidence_gate_artifact_count_only:
         payload = report["selected_blocked_gate_artifact_count"]
     elif args.blocked_evidence_gate_blocked_count_only:
