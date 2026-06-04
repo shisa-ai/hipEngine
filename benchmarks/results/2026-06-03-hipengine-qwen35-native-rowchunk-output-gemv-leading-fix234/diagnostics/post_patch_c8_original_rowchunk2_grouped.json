@@ -1,0 +1,127 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for multi-row chunks",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for multi-row chunks"
+  ],
+  "first_full_attention_chunk_shapes": [
+    {
+      "full_attention_output_decode_path": "batch_gemv_row_chunk",
+      "positions": [
+        647,
+        647
+      ],
+      "row_start": 0,
+      "rows": 2,
+      "slots": [
+        0,
+        1
+      ]
+    },
+    {
+      "full_attention_output_decode_path": "batch_gemv_row_chunk",
+      "positions": [
+        647,
+        647
+      ],
+      "row_start": 2,
+      "rows": 2,
+      "slots": [
+        2,
+        3
+      ]
+    },
+    {
+      "full_attention_output_decode_path": "batch_gemv_row_chunk",
+      "positions": [
+        647,
+        647
+      ],
+      "row_start": 4,
+      "rows": 2,
+      "slots": [
+        4,
+        5
+      ]
+    },
+    {
+      "full_attention_output_decode_path": "batch_gemv_row_chunk",
+      "positions": [
+        647,
+        647
+      ],
+      "row_start": 6,
+      "rows": 2,
+      "slots": [
+        6,
+        7
+      ]
+    }
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_chunk_output_paths": [
+    "batch_gemv_row_chunk"
+  ],
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_output_layer_paths": [
+    "native_batch_with_row_chunk_batch_gemv"
+  ],
+  "full_attention_row_chunk_size": 2,
+  "full_attention_row_chunk_source": "env",
+  "generated_token_equality_passed": true,
+  "label": "post_patch_c8_original_rowchunk2_grouped",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "grouped_compact",
+  "moe_grouped_compact_layers": 40,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "251550a261c32291a9dd4c550c46a981cafef1b85e143176cf20a3ee39087fd6",
+  "raw_size_bytes": 413091,
+  "raw_source_path": "/tmp/hipengine-iter234-postfix-c8-original-rowchunk2-grouped.json",
+  "sampler_execution": {
+    "argmax_audit_enabled": false,
+    "argmax_mode": "batch",
+    "blockers": [],
+    "c2_equality_green": true,
+    "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+    "equality_rows": 8,
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true,
+    "requested_mode": "batched_lm_head",
+    "rows": 8
+  },
+  "status": "blocked",
+  "variant": "post-patch default: original rows0..7, rowchunk2 grouped",
+  "workload_batch_decode_full_attention_output_path": "batch",
+  "workload_batch_decode_moe_path": "grouped_compact",
+  "workload_batch_sample_mode": "batched_lm_head",
+  "workload_batch_size": 8,
+  "workload_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json"
+}

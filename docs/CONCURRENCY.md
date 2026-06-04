@@ -628,13 +628,14 @@ What is still not green:
   was still red (`[137,137,137,118]`), c4 rowchunk3 plus `batch_gemv` output was
   red (`[82,137,137,137]`), and c8 rowchunk3 remained red for both output modes
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-c8-rowchunk3-output-contrast/summary.json`). The current
-  runtime therefore keeps native batch O projection on the leading row chunk but
-  forces row-aware `batch_gemv` for nonzero multi-row chunks; with CLI output path
-  `batch`, c4/c8 rowchunk2 now preserve equality (`[137]*4`, `[137]*8`) while
-  recording `native_batch_with_tail_batch_gemv`. Retained-bench now uses `batch`
-  as the default full-attention output path so the default c4/c8 diagnostic keeps
-  those green rowchunk2 results (`[137]*4`, `[137]*8`) without forcing GEMV on the
-  leading chunk. A no-chunk full-native contrast with output `batch_gemv` is still
+  runtime first kept native batch O projection on the leading row chunk while
+  forcing row-aware `batch_gemv` only for nonzero multi-row chunks; later compact
+  derived-row evidence showed the leading multi-row chunk can also be red. Runtime
+  now forces row-aware `batch_gemv` for every multi-row rowchunk, records
+  `native_batch_with_row_chunk_batch_gemv`, and preserves c4/c8 rowchunk2 equality
+  (`[137]*4`, `[137]*8`). Retained-bench still uses `batch` as the default
+  full-attention output path, but rowchunk diagnostics repair multi-row chunks
+  internally. A no-chunk full-native contrast with output `batch_gemv` is still
   red (`c4=[82,137,137,137]`, `c8=[82,137,137,137,45,11,137,137]`), so forcing
   GEMV O projection alone is not the retained full-native fix. This is
   correctness-only evidence: rowchunk full attention remains
@@ -658,7 +659,7 @@ What is still not green:
   per-row MoE, post-attention, O projection, KV append, input, QKV, scratch, and
   input+QKV on top of context-only replay; all stay red on row 4. Explicit
   rowchunk2, however, restores c5/c6/c7 equality (`[137]*5`, `[137]*6`,
-  `[137]*7`) with the tail-GEMV metadata. The rows>=5 residual is therefore a
+  `[137]*7`) with the rowchunk-GEMV metadata. The rows>=5 residual is therefore a
   coupled full-attention row-group/no-rowchunk interaction that rowchunk2 avoids,
   not a simple single-stage suffix or pre-QKV fallback
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5-c7-rowchunk2-rescue/summary.json`). A current default-output
@@ -670,7 +671,7 @@ What is still not green:
   leading group <=3 and later groups <=2, which is exactly why runtime auto stays
   at rowchunk2 (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk-boundary-c4c8/summary.json`). Runtime/retained-bench auto now promotes rowchunk2 to the
   contiguous c3..c8 range; with no explicit rowchunk flag, c5 and c7 are green
-  and c6 is green across three repeats (`[137]*rows`) with tail-GEMV metadata
+  and c6 is green across three repeats (`[137]*rows`) with rowchunk-GEMV metadata
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c567-auto-rowchunk2/summary.json`). A follow-up current-default
   gate keeps c2/c4/c8 green, but a derived c9 fixture is red for default/no-rowchunk
   and explicit rowchunk2/rowchunk1 controls, so c9 stays outside the auto cap
@@ -691,13 +692,17 @@ What is still not green:
   (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c5c9-rowchunk2-moe-boundary/summary.json`). A current post-sampler-audit rerun corrects/supersedes the earlier
   derived-row rowchunk2-green assumption: original c4/c8 rowchunk2 with
   grouped-compact MoE still passes (`[137]*4`, `[137]*8`), but compact derived
-  rows4..6/rows4..7 are red under rowchunk2 (`[45,137,137]` and
-  `[45,137,137,137]`), and selected-c1 MoE does not repair that compact
-  derived-row case (`[11,105,137]` / `[11,105,137,137]`). The blocker is now
-  more precisely prompt/slot-sensitive compact-row behavior in the grouped
-  full-attention trajectory; do not cite the older derived-row rowchunk2 green
-  evidence without this correction
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk2-derived-rows-post-audit233/summary.json`).
+  rows4..6/rows4..7 were red under rowchunk2 (`[45,137,137]` and
+  `[45,137,137,137]`), and selected-c1 MoE did not repair that compact
+  derived-row case (`[11,105,137]` / `[11,105,137,137]`)
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk2-derived-rows-post-audit233/summary.json`). The
+  follow-up output-projection fix shows the issue was the leading multi-row
+  rowchunk's native O projection, not prompt content, slot compaction, or MoE:
+  compact rows4..7 rowchunk1 was green, explicit rowchunk2 `batch_gemv` O-output
+  was green, and after forcing `batch_gemv` for every multi-row rowchunk the
+  compact c3/c4 derived-row gates are green (`[137]*3`, `[137]*4`) while original
+  c4/c8 stay green (`[137]*4`, `[137]*8`)
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-rowchunk-output-gemv-leading-fix234/summary.json`).
   A focused c8 rowchunk4 full-attention audit keeps the accepted projection
   metadata but raises the native chunk size from 2 to 4; it is correctness-red
   (`[137,137,137,137,11,60,117,137]`), and per-row input/QKV/context/gate/output
