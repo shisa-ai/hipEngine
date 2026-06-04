@@ -656,6 +656,13 @@ What is still not green:
   `[137]*8`. c4/c8 still use rowchunk2 full attention plus rowchunk batch-GEMV O
   and remain correctness-only/blocked for retained performance eligibility
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-default-equality-after-c2-gemv-256/summary.json`).
+  The c4 auto path now avoids rowchunk/O blockers by choosing no rowchunk,
+  row-local dense context with the batch gate, and grouped-compact MoE. The
+  refreshed default matrix remains green: c2 `[137,137]`, c4 `[137]*4` with only
+  the dense-context batch-gate blocker, and c8 `[137]*8` still on rowchunk2 plus
+  rowchunk batch-GEMV O. This is still correctness-only, with no retained/scaling
+  claim
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-c4-no-rowchunk-default-257/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
