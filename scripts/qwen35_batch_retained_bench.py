@@ -4067,14 +4067,11 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     path = str(getattr(args, "batch_decode_moe_path", "grouped_compact"))
     if path != "auto":
         return path
-    batch_size = getattr(args, "batch_size", 0)
-    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
-        batch_size = 0
-    # c=2/c=8 profiling shows native selected-c1 batch MoE is generated-token
-    # green and materially faster than grouped-compact. The c=4 correctness-first
-    # auto path uses a dense-context full-attention fallback where grouped-compact
-    # is the green pairing; selected-c1 is kept as an explicit diagnostic there.
-    return "selected_c1" if int(batch_size) in {2, 8} else "grouped_compact"
+    # The retained-claim gate requires grouped-compact MoE, and the current
+    # correctness frontier is generated-token green for c=2/c=4/c=8 with grouped-
+    # compact. Keep selected-c1 as an explicit speed/diagnostic override rather
+    # than the correctness-first auto default.
+    return "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4831,7 +4828,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-moe-path",
         choices=("auto", "grouped_compact", "selected_c1"),
         default="auto",
-        help="Global MoE path for c>N batch decode; auto selects selected_c1 for c=2 and grouped_compact otherwise, while explicit values force a diagnostic path.",
+        help="Global MoE path for c>N batch decode; auto selects grouped_compact for the retained-claim correctness frontier, while selected_c1 remains an explicit speed/diagnostic path.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",

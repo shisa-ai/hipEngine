@@ -670,6 +670,15 @@ What is still not green:
   `native_batch_row_chunks_with_batch_gemv_auto` and only the rowchunk blocker
   remains
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-rowchunk-auto-gemv-output-258/summary.json`).
+  The auto MoE path now uses grouped-compact for the retained-claim correctness
+  frontier instead of selected-c1 speed diagnostics. The default matrix remains
+  green (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`), with
+  `moe_grouped_compact_layers=40` and `moe_selected_c1_fallback_layers=0` for
+  every row count. c2 now has no decode blockers; c4 still has the dense-context
+  batch-gate blocker and c8 still has the rowchunk full-attention blocker. A
+  no-rowchunk c8 dense-context trial stayed red (`min=11`), so rowchunk removal
+  remains unresolved
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-grouped-moe-default-259/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
