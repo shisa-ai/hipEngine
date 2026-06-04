@@ -327,6 +327,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the producer command kind from the next-action payload, or null.",
     )
     parser.add_argument(
+        "--next-action-producer-command-only",
+        action="store_true",
+        help="Emit only the producer command from the next-action payload, or null.",
+    )
+    parser.add_argument(
         "--next-action-validator-summary-only",
         action="store_true",
         help=(
@@ -1015,6 +1020,9 @@ def build_validator_status_report(
         "next_action_producer_command_kind": next_action.get("producer_command_kind")
         if isinstance(next_action, dict)
         else None,
+        "next_action_producer_command": next_action.get("producer_command")
+        if isinstance(next_action, dict)
+        else None,
         "next_action_sha256": status_mod._stable_json_sha256(next_action),
         "next_action_validator_summary_sha256": status_mod._stable_json_sha256(
             next_action_validator_summary
@@ -1211,6 +1219,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             next_action.get("producer_command_kind")
             if isinstance(next_action, dict)
             else None
+        )
+    elif args.next_action_producer_command_only:
+        payload = (
+            next_action.get("producer_command") if isinstance(next_action, dict) else None
         )
     elif args.next_action_only:
         payload = report["next_action"]
