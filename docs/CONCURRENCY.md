@@ -932,7 +932,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c5-auto-layer-scope-296/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first6-layer-scope-298/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-profiler-299/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-profiler-299/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-post-c8-profiler-300/summary.json`).
   A later active-loop c2 512/128 audit confirms there is no current c2 generated-
   token mismatch to chase: both rows match independent c1 for all 137 generated
   tokens. The artifact remains `status=blocked` only for retained/performance

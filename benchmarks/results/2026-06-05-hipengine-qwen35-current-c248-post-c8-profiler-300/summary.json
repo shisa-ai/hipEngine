@@ -1,0 +1,125 @@
+{
+  "artifacts": {
+    "c8_profiler_refresh": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-profiler-299/summary.json"
+    },
+    "current_c2_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-post-c8-profiler-300/current-c2-compact.json"
+    },
+    "current_c4_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-post-c8-profiler-300/current-c4-compact.json"
+    },
+    "current_c8_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-post-c8-profiler-300/current-c8-compact.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-post-c8-profiler-300/summary.json"
+    }
+  },
+  "conclusion": "Fresh current no-flag c2/c4/c8 generated-token equality remains green after the profiler-backed c8 demotion to all-layer rowchunk2: c2 [137,137], c4 [137]*4 with selected layers [3,7,11,15], and c8 [137]*8 with all-layer rowchunk2. This is correctness evidence only and makes no retained throughput/scaling claim.",
+  "created_at": "2026-06-04T20:38:06.771735+00:00",
+  "git_commit_before_commit": "f839dbd3f161f82cd646fbad85cfa12b224754a7",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 300,
+  "kind": "current_c248_post_c8_profiler_refresh",
+  "performance_claim": false,
+  "result": {
+    "decode_blockers": {
+      "c2": [],
+      "c4": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "c8": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ]
+    },
+    "full_attention_output_paths": {
+      "c2": "batch",
+      "c4": "batch_gemv",
+      "c8": "batch"
+    },
+    "generated_equality_passed": true,
+    "native_caware_decode": {
+      "c2": true,
+      "c4": false,
+      "c8": false
+    },
+    "prefix_lengths": {
+      "c2": [
+        137,
+        137
+      ],
+      "c4": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "c8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "requested_rowchunk_layers": {
+      "c2": null,
+      "c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "c8": null
+    },
+    "rowchunk_layers": {
+      "c2": null,
+      "c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "c8": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ]
+    },
+    "sampler_modes": {
+      "c2": "batched_lm_head",
+      "c4": "batched_lm_head",
+      "c8": "batched_lm_head"
+    }
+  },
+  "schema": 1,
+  "source_tmp_dir": "/tmp/hipengine-iter300-current-c248-post-c8-profiler",
+  "status": "passed",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "primitive_correctness_artifacts": {
+      "c2": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json",
+      "c4": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json",
+      "c8": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json"
+    },
+    "projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}
