@@ -113,6 +113,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the gate-level blocked evidence summary.",
     )
     parser.add_argument(
+        "--blocked-readiness-gates-only",
+        action="store_true",
+        help="Emit only the ordered readiness-gate names with blocked validators.",
+    )
+    parser.add_argument(
+        "--blocked-readiness-gates-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of the blocked readiness-gate name list.",
+    )
+    parser.add_argument(
         "--next-blocked-gate-only",
         action="store_true",
         help="Emit only the first blocked readiness-gate evidence summary, or null.",
@@ -612,6 +622,9 @@ def build_validator_status_report(
     ]
     blocked_evidence_summary = _blocked_evidence_summary(blocked_results)
     blocked_evidence_by_gate = _blocked_evidence_by_gate(blocked_evidence_summary)
+    blocked_readiness_gates = [
+        str(record.get("readiness_gate")) for record in blocked_evidence_by_gate
+    ]
     next_blocked_gate = blocked_evidence_by_gate[0] if blocked_evidence_by_gate else None
     next_blocker = blocked_results[0] if blocked_results else None
     next_blocker_command = (
@@ -723,6 +736,10 @@ def build_validator_status_report(
         "blocked_evidence_by_gate_sha256": status_mod._stable_json_sha256(
             blocked_evidence_by_gate
         ),
+        "blocked_readiness_gates": blocked_readiness_gates,
+        "blocked_readiness_gates_sha256": status_mod._stable_json_sha256(
+            blocked_readiness_gates
+        ),
         "next_blocked_gate": next_blocked_gate,
         "next_blocked_gate_readiness_gate": next_blocked_gate.get("readiness_gate")
         if isinstance(next_blocked_gate, dict)
@@ -805,6 +822,10 @@ def build_validator_status_report(
         "blocked_evidence_by_gate": blocked_evidence_by_gate,
         "blocked_evidence_by_gate_sha256": status_mod._stable_json_sha256(
             blocked_evidence_by_gate
+        ),
+        "blocked_readiness_gates": blocked_readiness_gates,
+        "blocked_readiness_gates_sha256": status_mod._stable_json_sha256(
+            blocked_readiness_gates
         ),
         "next_blocked_gate": next_blocked_gate,
         "next_blocked_gate_sha256": status_mod._stable_json_sha256(
@@ -906,6 +927,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_blocked_gate_sha256"]
     elif args.next_blocked_gate_only:
         payload = report["next_blocked_gate"]
+    elif args.blocked_readiness_gates_sha_only:
+        payload = report["blocked_readiness_gates_sha256"]
+    elif args.blocked_readiness_gates_only:
+        payload = report["blocked_readiness_gates"]
     elif args.blocked_evidence_gate_missing_evidence_sha_only:
         payload = report["selected_blocked_gate_missing_evidence_sha256"]
     elif args.blocked_evidence_gate_missing_evidence_only:

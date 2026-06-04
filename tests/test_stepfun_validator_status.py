@@ -271,6 +271,11 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["blocked_evidence_by_gate_sha256"] == report[
         "blocked_evidence_by_gate_sha256"
     ]
+    assert summary["blocked_readiness_gates"] == []
+    assert summary["blocked_readiness_gates_sha256"] == report[
+        "blocked_readiness_gates_sha256"
+    ]
+    assert report["blocked_readiness_gates"] == []
     assert summary["next_blocked_gate"] is None
     assert summary["next_blocked_gate_readiness_gate"] is None
     assert summary["next_blocked_gate_sha256"] == report["next_blocked_gate_sha256"]
@@ -414,6 +419,11 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["blocked_evidence_by_gate_sha256"] == report[
         "blocked_evidence_by_gate_sha256"
     ]
+    assert summary["blocked_readiness_gates"] == ["kv_backed_decode"]
+    assert summary["blocked_readiness_gates_sha256"] == report[
+        "blocked_readiness_gates_sha256"
+    ]
+    assert report["blocked_readiness_gates"] == ["kv_backed_decode"]
     assert report["next_blocked_gate"] == expected_by_gate[0]
     assert summary["next_blocked_gate"] == expected_by_gate[0]
     assert summary["next_blocked_gate_readiness_gate"] == "kv_backed_decode"
@@ -514,6 +524,10 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     ]
     assert report["blocked_evidence_by_gate"][0]["status_counts"] == {"failed": 1}
     assert report["blocked_evidence_by_gate"][0]["missing_evidence_count"] == 5
+    assert report["blocked_readiness_gates"] == ["oracle_parity"]
+    assert report["validator_status_summary"]["blocked_readiness_gates"] == [
+        "oracle_parity"
+    ]
     assert report["next_blocked_gate"] == report["blocked_evidence_by_gate"][0]
     assert report["validator_status_summary"]["next_blocked_gate"] == (
         report["blocked_evidence_by_gate"][0]
@@ -622,6 +636,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     blocked_evidence_sha_output = tmp_path / "blocked-evidence-sha.json"
     blocked_evidence_by_gate_output = tmp_path / "blocked-evidence-by-gate.json"
     blocked_evidence_by_gate_sha_output = tmp_path / "blocked-evidence-by-gate-sha.json"
+    blocked_readiness_gates_output = tmp_path / "blocked-readiness-gates.json"
+    blocked_readiness_gates_sha_output = tmp_path / "blocked-readiness-gates-sha.json"
     selected_blocked_gate_output = tmp_path / "selected-blocked-gate.json"
     selected_blocked_gate_sha_output = tmp_path / "selected-blocked-gate-sha.json"
     selected_blocked_gate_missing_output = tmp_path / "selected-blocked-gate-missing.json"
@@ -854,6 +870,42 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert len(json.loads(blocked_evidence_by_gate_sha_output.read_text())) == 64
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-readiness-gates-only",
+            "--output",
+            str(blocked_readiness_gates_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(blocked_readiness_gates_output.read_text()) == [
+        "kv_backed_decode"
+    ]
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-readiness-gates-sha-only",
+            "--output",
+            str(blocked_readiness_gates_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(blocked_readiness_gates_sha_output.read_text())) == 64
 
     rc = main(
         [

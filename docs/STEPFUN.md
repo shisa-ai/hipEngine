@@ -661,6 +661,7 @@ reporting.
   `--next-producer-command-only` / `--next-producer-command-sha-only`,
   `--blocked-evidence-summary-only` / `--blocked-evidence-summary-sha-only`,
   `--blocked-evidence-by-gate-only` / `--blocked-evidence-by-gate-sha-only`,
+  `--blocked-readiness-gates-only` / `--blocked-readiness-gates-sha-only`,
   `--blocked-evidence-gate <gate>` with `--blocked-evidence-gate-only` /
   `--blocked-evidence-gate-sha-only` and
   `--blocked-evidence-gate-missing-evidence-only` /
@@ -668,8 +669,9 @@ reporting.
   `--next-blocked-gate-only` /
   `--next-blocked-gate-sha-only`, and `--next-action-only` /
   `--next-action-sha-only` expose compact pollable validator
-  records/commands/evidence gaps by artifact, all gates, selected gate (with a
-  `selected_blocked_gate_found` flag in the aggregate summary), and first blocked gate,
+  records/commands/evidence gaps by artifact, all gates, blocked gate names,
+  selected gate (with a `selected_blocked_gate_found` flag in the aggregate
+  summary), and first blocked gate,
   `--next-action-validator-summary-only` /
   `--next-action-validator-summary-sha-only` expose just the embedded validator
   summary/digest, and `--next-action-missing-evidence-only` /
