@@ -966,12 +966,16 @@ What is still not green:
   A hard rows4..7 c4 refresh under the same no-explicit-projection defaults keeps
   the selected rowchunk layers `[3,7,11,15]` green at `[137]*4`, while an explicit
   no-rowchunk native control remains red at `[45,31,68,137]`; the required
-  current c2/c4/c8 matrix is still green (`[137]*rows`). No retained
+  current c2/c4/c8 matrix is still green (`[137]*rows`). A c8 first-seven
+  rowchunk-scope probe (`[3,7,11,15,19,23,27]`) passed two normal controls at
+  `[137]*8` but failed under `rocprofv3` at `[137,0,137,137,137,137,137,137]`,
+  so the profiler-backed c8 default stays all-layer rowchunk2. No retained
   throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

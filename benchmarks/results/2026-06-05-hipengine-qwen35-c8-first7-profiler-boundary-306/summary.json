@@ -1,0 +1,319 @@
+{
+  "artifacts": {
+    "current-c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/current-c2-compact.json"
+    },
+    "current-c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/current-c4-compact.json"
+    },
+    "current-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/current-c8-compact.json"
+    },
+    "first7-normal-r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/first7-normal-r1-compact.json"
+    },
+    "first7-normal-r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/first7-normal-r2-compact.json"
+    },
+    "first7-profiled": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/first7-profiled-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_current_default_matrix": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json"
+    },
+    "previous_first6_profiler_rejection": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-profiler-299/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json"
+    }
+  },
+  "conclusion": "C8 first-seven selected rowchunk scope [3,7,11,15,19,23,27] is not profiler-stable: two normal controls were generated-token green at [137]*8, but the rocprofv3 run failed immediately on row1 with prefixes [137,0,137,137,137,137,137,137]. The trace still contains expected native batch full-attention context/KV, grouped-MoE, c-aware projection, row-aware output GEMV, segmented-state, and batched sampler kernels, so this is a correctness rejection rather than missing-kernel evidence. Keep the current all-layer c8 rowchunk2 default; the required current c2/c4/c8 matrix remains green at [137]*rows. No throughput/scaling claim is made.",
+  "created_at": "2026-06-04T22:09:38.831156+00:00",
+  "git_commit_before_commit": "23e15a3ca51e43709160c8196c970d1721387852",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 306,
+  "kind": "c8_first7_profiler_boundary",
+  "performance_claim": false,
+  "profiler": {
+    "dispatches": 1373481,
+    "fragments": {
+      "batched_sampler_argmax": {
+        "calls": 2448,
+        "duration_ns": 10448790,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 1224,
+            "duration_ns": 6834398,
+            "kernel_name": "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)"
+          },
+          {
+            "calls": 1224,
+            "duration_ns": 3614392,
+            "kernel_name": "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+          }
+        ]
+      },
+      "caware_projection": {
+        "calls": 103632,
+        "duration_ns": 2241021857,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 51816,
+            "duration_ns": 1149312501,
+            "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+          },
+          {
+            "calls": 51816,
+            "duration_ns": 1091709356,
+            "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+          }
+        ]
+      },
+      "full_attention_context": {
+        "calls": 15096,
+        "duration_ns": 1780342053,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 15096,
+            "duration_ns": 1780342053,
+            "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+          }
+        ]
+      },
+      "grouped_moe": {
+        "calls": 25968,
+        "duration_ns": 83706602,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 8656,
+            "duration_ns": 13496243,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)"
+          },
+          {
+            "calls": 8656,
+            "duration_ns": 23159059,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)"
+          },
+          {
+            "calls": 8656,
+            "duration_ns": 47051300,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)"
+          }
+        ]
+      },
+      "kv_append": {
+        "calls": 15186,
+        "duration_ns": 72956225,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 15096,
+            "duration_ns": 72265215,
+            "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+          },
+          {
+            "calls": 90,
+            "duration_ns": 691010,
+            "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+          }
+        ]
+      },
+      "linear_attention_segment_decode": {
+        "calls": 32640,
+        "duration_ns": 112155012,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 32640,
+            "duration_ns": 112155012,
+            "kernel_name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)"
+          }
+        ]
+      },
+      "row_aware_output_gemv": {
+        "calls": 32640,
+        "duration_ns": 117766313,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 32640,
+            "duration_ns": 117766313,
+            "kernel_name": "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)"
+          }
+        ]
+      }
+    },
+    "present": true,
+    "sha256": "b49ce2923e501b491ca2b7eca641f59bed0fd8f197e5aac98c78119e51aab14c",
+    "size_bytes": 384863999,
+    "trace_file": "/tmp/hipengine-iter306-c8-first7-scope/rocprof-first7/epyc/1084424_kernel_trace.csv"
+  },
+  "result": {
+    "first7_normal_controls": {
+      "all_passed": true,
+      "prefix_lengths": [
+        [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      ],
+      "rowchunk_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27
+      ],
+      "runs": 2
+    },
+    "first7_profiled": {
+      "first_mismatch_indices": [
+        null,
+        0,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        0,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "profiler_trace_file": "/tmp/hipengine-iter306-c8-first7-scope/rocprof-first7/epyc/1084424_kernel_trace.csv",
+      "profiler_trace_sha256": "b49ce2923e501b491ca2b7eca641f59bed0fd8f197e5aac98c78119e51aab14c",
+      "rowchunk_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27
+      ]
+    },
+    "required_current_matrix": {
+      "c2": {
+        "decode_blockers": [],
+        "native_caware_decode": true,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+      },
+      "c4": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15
+        ]
+      },
+      "c8": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ]
+      }
+    }
+  },
+  "schema": 1,
+  "source_tmp_dir": "/tmp/hipengine-iter306-c8-first7-scope",
+  "status": "passed_with_first7_profiler_rejected",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "expected_auto_projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "explicit_projection_dispatch_artifact": null,
+    "first7_rowchunk_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27
+    ],
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}
