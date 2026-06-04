@@ -713,21 +713,25 @@ reporting.
   `/home/lhl/ai/llama.cpp-cpu/llama-cli` does not support GGUF architecture
   `step35` (`unknown model architecture: 'step35'`). A newer local Vulkan
   llama.cpp build (`/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli`,
-  version `9197 (fcae601e4)`) accepts `step35` but the bounded CPU/no-GPU oracle
-  attempt in
+  version `9197 (fcae601e4)`) accepts `step35` but bounded CPU/no-GPU oracle
+  attempts in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
-  timed out after a bounded 60 s attempt (refreshed 2026-06-02 with
-  `elapsed_s=61.75`) before producing a comparable token
-  (`oracle_blocker_kind=llama_cpp_oracle_timeout`), and now records
-  `timeout_termination` for the `os.killpg` / `SIGKILL` process-group cleanup
-  path.
-  A 2026-06-01 bounded 180 s rerun attempt is recorded in
+  still have not produced a comparable token. The canonical artifact first
+  recorded a 60 s internal timeout (refreshed 2026-06-02 with
+  `elapsed_s=61.75`) and was refreshed on 2026-06-04 after the recommended
+  900 s rerun hit the outer pi supervision window before the helper rewrote its
+  pre-launch partial artifact. It now records `status=timeout`,
+  `timeout_s=900.0`, `outer_tool_timeout_s=1000.0`,
+  `partial_artifact_reconciled_after_outer_timeout=true`,
+  `oracle_blocker_kind=llama_cpp_oracle_timeout`, no leftover `llama-cli`
+  process after the supervisor timeout, and `timeout_termination` provenance for
+  the timeout blocker. A 2026-06-01 bounded 180 s rerun attempt is recorded in
   `benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json`;
   the outer pi wrapper timed out at 240 s before the helper rewrote the canonical
-  oracle JSON, so the 60 s artifact remains the canonical machine-readable
-  oracle blocker. The correctness status `source_artifacts` now tracks this
-  wrapper-timeout artifact as `oracle_wrapper_timeout`, and
-  Compact `--oracle-wrapper-timeout-source-only` /
+  oracle JSON, so that wrapper artifact remains historical source evidence for
+  the same canonical oracle blocker. The correctness status `source_artifacts`
+  now tracks this wrapper-timeout artifact as `oracle_wrapper_timeout`, and
+  compact `--oracle-wrapper-timeout-source-only` /
   `--oracle-wrapper-timeout-source-sha-only` outputs expose that provenance
   record/digest directly, while `--oracle-timeout-termination-only` /
   `--oracle-timeout-termination-sha-only` expose the canonical timeout cleanup
@@ -746,8 +750,9 @@ reporting.
   current-attempt payload/digest directly for oracle blocker polling. It also surfaces an `oracle_gap_report`
   that separates recorded deterministic-target prerequisites from missing run/match evidence
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
-  text ` |`, top-5 expected tokens, timeout 60 s, elapsed 61.75 s, generated text
-  length 0, `timeout_termination` recorded, and the llama.cpp command shell).
+  text ` |`, top-5 expected tokens, current timeout 900 s, no comparable
+  generated text, `timeout_termination` recorded, and the llama.cpp command
+  shell).
   `scripts/stepfun_oracle_artifact_check.py` validates a future retained
   llama.cpp oracle-success artifact against that target: it requires successful
   status/return code, recorded llama.cpp binary/model metadata, no Step35
@@ -934,11 +939,11 @@ reporting.
   now checks that the persisted integrity payload/SHA still match the recomputed
   checks. Compact `--persisted-status-integrity-only` /
   `--persisted-status-integrity-failures-only` outputs expose those persisted
-  payload/SHA verification checks directly. The remaining oracle next
-  action is therefore a concrete longer-timeout rerun instead of only the prior
-  60 s replay. Remaining
-  implementation task: run a longer/faster StepFun-capable llama.cpp oracle and
-  review/record the parsed result; KV-backed decode parity remains open too.
+  payload/SHA verification checks directly. The 2026-06-04 900 s rerun is now
+  recorded as timeout evidence rather than oracle parity, so the remaining
+  oracle next action is to run a faster or otherwise completing StepFun-capable
+  llama.cpp oracle and review/record the parsed result; KV-backed decode parity
+  remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.
