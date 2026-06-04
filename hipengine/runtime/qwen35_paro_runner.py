@@ -4102,6 +4102,11 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_dense_context_batch_gate = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"
         )
+        force_per_row_full_attention_dense_context_batch_gate_layers = (
+            _env_int_set("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS")
+            if rows > 1
+            else set()
+        )
         force_per_row_full_attention_paged_context_only = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PAGED_CONTEXT_ONLY"
         )
@@ -4205,6 +4210,8 @@ class Qwen35ParoResidentSession:
             if force_per_row_full_attention_paged_context_only
             else "per_row_dense_context_layer_override"
             if force_per_row_full_attention_dense_context_layers
+            else "per_row_dense_context_batch_gate_layer_override"
+            if force_per_row_full_attention_dense_context_batch_gate_layers
             else "batch_temp_output_diagnostic"
             if force_batch_temp_full_attention_context
             else "batch_compact_cache_diagnostic" if force_batch_compact_full_attention_context else "native_batch"
@@ -4429,9 +4436,15 @@ class Qwen35ParoResidentSession:
                             force_per_row_full_attention_dense_context_only
                             or layer_id in force_per_row_full_attention_dense_context_layers
                         )
-                        layer_force_per_row_dense_context_batch_gate = force_per_row_full_attention_dense_context_batch_gate
+                        layer_force_per_row_dense_context_batch_gate = (
+                            force_per_row_full_attention_dense_context_batch_gate
+                            or layer_id in force_per_row_full_attention_dense_context_batch_gate_layers
+                        )
                         layer_force_per_row_paged_context_only = force_per_row_full_attention_paged_context_only
-                        if layer_id in force_per_row_full_attention_dense_context_layers:
+                        if (
+                            layer_id in force_per_row_full_attention_dense_context_layers
+                            or layer_id in force_per_row_full_attention_dense_context_batch_gate_layers
+                        ):
                             layer_force_per_row_paged_context_only = False
                         layer_full_attention_context_decode_path = (
                             "per_row_context_gate_fallback"
@@ -5152,6 +5165,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention context forced to row-local dense diagnostic path with batch gate")
             if force_per_row_full_attention_dense_context_layers:
                 decode_blockers.append("full-attention context forced to row-local dense diagnostic path on selected layers")
+            if force_per_row_full_attention_dense_context_batch_gate_layers:
+                decode_blockers.append("full-attention context forced to row-local dense diagnostic path with batch gate on selected layers")
             if force_per_row_full_attention_paged_context_only:
                 decode_blockers.append("full-attention context forced to row-local paged diagnostic path with diagnostic gate")
             if force_batch_temp_full_attention_context:
@@ -5220,6 +5235,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_dense_context_only
                 and not force_per_row_full_attention_dense_context_batch_gate
                 and not force_per_row_full_attention_dense_context_layers
+                and not force_per_row_full_attention_dense_context_batch_gate_layers
                 and not force_per_row_full_attention_paged_context_only
                 and not force_batch_temp_full_attention_context
                 and not force_batch_compact_full_attention_context
@@ -5248,6 +5264,10 @@ class Qwen35ParoResidentSession:
             if force_per_row_full_attention_dense_context_layers:
                 self.last_batch_decode_execution["full_attention_dense_context_layers"] = sorted(
                     int(layer) for layer in force_per_row_full_attention_dense_context_layers
+                )
+            if force_per_row_full_attention_dense_context_batch_gate_layers:
+                self.last_batch_decode_execution["full_attention_dense_context_batch_gate_layers"] = sorted(
+                    int(layer) for layer in force_per_row_full_attention_dense_context_batch_gate_layers
                 )
             if force_per_row_full_attention_gate:
                 self.last_batch_decode_execution["full_attention_gate_decode_path"] = full_attention_gate_decode_path

@@ -733,6 +733,15 @@ What is still not green:
   (`c4 [137,104,137,137]`, `c8 [82,137,137,137,45,11,137,137]`), with no
   throughput claim
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-full-attn-frontier-266/summary.json`).
+  A selected-layer dense-context+batch-gate override now narrows the c4
+  no-rowchunk fallback: native paged context is red at `[137,137,137,118]`,
+  layers `3` and `3,7` remain red, but layers `3,7,11` are generated-token
+  green in three runs (`[137]*4` each) with accepted c-aware projection and
+  row-aware sampler evidence. Adding layer `15` without `19` is reproducibly red
+  (`0/2`, `[137,137,137,118]`), while `3,7,11,15,19+` stays green. This moves
+  the c4 blocker from an all-full-attention-layer dense fallback to a small
+  producer-layer frontier, still correctness-only and not retained
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-dense-context-layer-sweep-267/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
