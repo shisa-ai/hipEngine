@@ -703,6 +703,12 @@ What is still not green:
   `aggregate_vs_c1=0.8617` and `aggregate_vs_serial_bridge=1.0467`, so this is
   baseline evidence only and not a retained throughput claim
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/summary.json`).
+  A current GPU1/XTX c=2/c=4/c=8 matrix with explicit row-aware
+  `batched_lm_head` sampler evidence now passes generated-token equality vs
+  independent c1 for every row (`[137]` prefixes throughout), with c2 fully
+  native/c-aware, c4 still dense-context batch-gated, and c8 still rowchunked;
+  this is correctness-only and not retained throughput/scaling evidence
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-batched-sampler-equality-263/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
