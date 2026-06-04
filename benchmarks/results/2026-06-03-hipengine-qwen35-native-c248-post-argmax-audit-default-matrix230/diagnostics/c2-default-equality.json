@@ -1,0 +1,55 @@
+{
+  "batch_blockers": [
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch",
+  "full_attention_output_layer_paths": [],
+  "full_attention_row_chunk_size": null,
+  "full_attention_row_chunk_source": null,
+  "full_attention_segment_output_paths": [],
+  "generated_token_equality_passed": true,
+  "label": "c2-default-equality-post-argmax-audit",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "log_path": "/tmp/hipengine-iter230-c2-default-equality.log",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "selected_c1_batch",
+  "native_caware_decode": true,
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "d5b9f5eab2bdad05eaaed0aa6a16f8a4ed7f45e816de3b5dde5a0921a4eb41c3",
+  "raw_size_bytes": 139300,
+  "raw_source_path": "/tmp/hipengine-iter230-c2-default-equality.json",
+  "rows": 2,
+  "sampler_execution": {
+    "argmax_audit_enabled": false,
+    "argmax_mode": "serial_per_row",
+    "blockers": [],
+    "c2_equality_green": false,
+    "equality_artifact": null,
+    "equality_rows": null,
+    "mode": "serial_lm_head",
+    "native_row_aware_lm_head": false,
+    "requested_mode": "serial_lm_head",
+    "rows": 2
+  },
+  "status": "blocked",
+  "workload_batch_sample_argmax_audit": false,
+  "workload_batch_sample_argmax_mode": "batch",
+  "workload_batch_sample_eq_artifact": "",
+  "workload_batch_sample_eq_ok": false,
+  "workload_batch_sample_eq_rows": null,
+  "workload_batch_sample_mode": "serial_lm_head",
+  "workload_batch_size": 2,
+  "workload_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json"
+}

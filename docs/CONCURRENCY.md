@@ -491,7 +491,14 @@ What is still not green:
   batch-argmax reduction disagreement on those audited logits; the explicit c2
   batched sampler remains blocked until the historical flake is reproduced under
   audit or otherwise fixed
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-batch-argmax-audit-after-c9-229/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-batch-argmax-audit-after-c9-229/summary.json`). A post-diagnostic no-flag c2/c4/c8 equality matrix confirms the active
+  default gate is still generated-token green: c2 `[137,137]` uses
+  `serial_lm_head` with full-native `native_caware_decode=true`, while c4/c8 use
+  retained `batched_lm_head` sampler evidence and rowchunk2 full-attention
+  diagnostics with prefixes `[137]*4` and `[137]*8`. The new argmax audit fields
+  are inactive by default; c4/c8 remain correctness-only because rowchunk2 still
+  reports `native_caware_decode=false`
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
