@@ -688,7 +688,8 @@ reporting.
   `--next-action-sha-only` / `--next-action-artifact-name-only` /
   `--next-action-readiness-gate-only` / `--next-action-status-only` /
   `--next-action-reason-only` /
-  `--next-action-validator-command-kind-only` expose compact pollable validator
+  `--next-action-validator-command-kind-only` /
+  `--next-action-producer-command-kind-only` expose compact pollable validator
   records/commands/evidence gaps by artifact, all gates,
   blocked gate names,
   selected gate (with a `selected_blocked_gate_found` flag in the aggregate

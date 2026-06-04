@@ -332,6 +332,7 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_status"] is None
     assert summary["next_action_reason"] is None
     assert summary["next_action_validator_command_kind"] is None
+    assert summary["next_action_producer_command_kind"] is None
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
@@ -550,6 +551,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_status"] == "missing"
     assert summary["next_action_reason"] == "artifact_file_missing"
     assert summary["next_action_validator_command_kind"] == "kv_trace_check_command"
+    assert summary["next_action_producer_command_kind"] == "resource_plan_refresh_command"
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert summary["blocked_validator_results_sha256"] == report[
@@ -762,6 +764,9 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     next_action_reason_output = tmp_path / "next-action-reason.json"
     next_action_validator_command_kind_output = tmp_path / (
         "next-action-validator-command-kind.json"
+    )
+    next_action_producer_command_kind_output = tmp_path / (
+        "next-action-producer-command-kind.json"
     )
     sha_output = tmp_path / "sha.json"
     status_output = tmp_path / "status.json"
@@ -1755,6 +1760,25 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert rc == 0
     assert json.loads(next_action_validator_command_kind_output.read_text()) == (
         "kv_trace_check_command"
+    )
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-action-producer-command-kind-only",
+            "--output",
+            str(next_action_producer_command_kind_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(next_action_producer_command_kind_output.read_text()) == (
+        "resource_plan_refresh_command"
     )
 
     rc = main(
