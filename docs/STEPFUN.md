@@ -660,9 +660,11 @@ reporting.
   `--next-command-only` / `--next-command-sha-only`,
   `--next-producer-command-only` / `--next-producer-command-sha-only`, and
   `--next-action-only` / `--next-action-sha-only` expose compact pollable
-  validator records/commands, and `--next-action-validator-summary-only` /
+  validator records/commands, `--next-action-validator-summary-only` /
   `--next-action-validator-summary-sha-only` expose just the embedded validator
-  summary/digest; with the oracle next-action bundle mirroring the current
+  summary/digest, and `--next-action-missing-evidence-only` /
+  `--next-action-missing-evidence-sha-only` expose just its missing-evidence
+  list/digest; with the oracle next-action bundle mirroring the current
   validator summary plus partial-output and supervisor-signal timeout handoff
   when it is the first blocker),
   `--exit-code-policy-only` / `--exit-code-policy-sha-only`,

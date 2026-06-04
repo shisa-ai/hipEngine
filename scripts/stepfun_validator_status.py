@@ -147,6 +147,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "in the next-action payload."
         ),
     )
+    parser.add_argument(
+        "--next-action-missing-evidence-only",
+        action="store_true",
+        help="Print only the next-action validator missing-evidence list.",
+    )
+    parser.add_argument(
+        "--next-action-missing-evidence-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the next-action missing-evidence list.",
+    )
 
     parser.add_argument(
         "--sha-only",
@@ -568,12 +578,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     next_action_validator_summary = (
         next_action.get("validator_summary") if isinstance(next_action, dict) else None
     )
+    next_action_missing_evidence = None
+    if isinstance(next_action, dict):
+        next_action_missing_evidence = next_action.get("validator_missing_evidence")
+        if next_action_missing_evidence is None and isinstance(
+            next_action_validator_summary, dict
+        ):
+            next_action_missing_evidence = next_action_validator_summary.get(
+                "missing_evidence"
+            )
     if args.status_only:
         payload: object = report["status"]
     elif args.next_action_validator_summary_sha_only:
         payload = status_mod._stable_json_sha256(next_action_validator_summary)
     elif args.next_action_validator_summary_only:
         payload = next_action_validator_summary
+    elif args.next_action_missing_evidence_sha_only:
+        payload = status_mod._stable_json_sha256(next_action_missing_evidence)
+    elif args.next_action_missing_evidence_only:
+        payload = next_action_missing_evidence
     elif args.next_action_sha_only:
         payload = report["next_action_sha256"]
     elif args.next_action_only:
