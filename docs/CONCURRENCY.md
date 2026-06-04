@@ -634,6 +634,14 @@ What is still not green:
   sufficient for retained c8; the rowchunk batch-GEMV O repair remains a separate
   correctness requirement until native rowchunk O is fixed
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-rowchunk2-native-o-frontier-253/summary.json`).
+  Compacting each original c8 rowchunk2 pair into standalone c2 fixtures shows
+  the native-O issue is prompt-pair sensitive even without rowchunk slicing: rows
+  0..1 are green (`[137,137]`), but rows 2..3, 4..5, and 6..7 are red at
+  `[137,118]`, `[45,137]`, and `[68,137]` with `native_caware_decode=true` and
+  no blockers. Forcing batch-GEMV full-attention O makes every compact c2 pair
+  green at `[137,137]`, so row-aware batch-GEMV O is the focused correctness
+  repair for these prompt pairs, not just a rowchunk copy workaround
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-rowchunk2-pair-native-o-isolation-254/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
