@@ -1,0 +1,235 @@
+{
+  "active_verify": {
+    "first_full_layer_output_decode_path": "batch_gemv_auto",
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "result_metric": 137
+  },
+  "change": {
+    "description": "Refresh the default c2/c4/c8 generated-token equality matrix after rows=2 batch_gemv_auto O became default.",
+    "files": [
+      "docs/CONCURRENCY.md",
+      "WORKLOG.md",
+      "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-default-equality-after-c2-gemv-256/summary.json"
+    ]
+  },
+  "finding_table": [
+    {
+      "batch_size": 2,
+      "blockers": [],
+      "first_full_layer_output_decode_path": "batch_gemv_auto",
+      "full_attention_decode_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "row_chunk_size": null
+    },
+    {
+      "batch_size": 4,
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "first_full_layer_output_decode_path": "native_batch_with_row_chunk_batch_gemv",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "row_chunk_size": 2
+    },
+    {
+      "batch_size": 8,
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "first_full_layer_output_decode_path": "native_batch_with_row_chunk_batch_gemv",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "row_chunk_size": 2
+    }
+  ],
+  "findings": [
+    "Default c=2, c=4, and c=8 retained-bench 512/128 generated-token equality all pass vs independent c1 with prefix 137 for every row and empty mismatch summaries.",
+    "c2 now records first full-attention output path batch_gemv_auto and native_caware_decode=true.",
+    "c4/c8 still use rowchunk2 full attention with native_batch_with_row_chunk_batch_gemv and remain correctness-only/blocked for retained performance eligibility; no throughput claim is made."
+  ],
+  "fixture": {
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  },
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 256,
+  "mode": "qwen35_retained_bench_default_c248_equality_after_c2_gemv",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: current default c=2/c=4/c=8 generated-token equality passes vs independent c1 at prefix 137 for every row after rows=2 batch_gemv_auto O default. No throughput claim.",
+    "passed": true
+  },
+  "runs": [
+    {
+      "batch_size": 2,
+      "blockers": [],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-default-equality-after-c2-gemv-256/c2_default.json",
+      "first_full_layer_output_decode_path": "batch_gemv_auto",
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "generated_token_equality_passed": true,
+      "label": "c2_default",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "status": "blocked",
+      "workload": {
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "selected_c1",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 2,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    {
+      "batch_size": 4,
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-default-equality-after-c2-gemv-256/c4_default.json",
+      "first_full_layer_output_decode_path": "native_batch_with_row_chunk_batch_gemv",
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "generated_token_equality_passed": true,
+      "label": "c4_default",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "status": "blocked",
+      "workload": {
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "selected_c1",
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    {
+      "batch_size": 8,
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for multi-row chunks"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-default-equality-after-c2-gemv-256/c8_default.json",
+      "first_full_layer_output_decode_path": "native_batch_with_row_chunk_batch_gemv",
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "generated_token_equality_passed": true,
+      "label": "c8_default",
+      "min_equal_prefix_tokens": 137,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "status": "blocked",
+      "workload": {
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "selected_c1",
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 8,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    }
+  ],
+  "schema": 1,
+  "timestamp": "2026-06-04T10:23:59.982257+00:00"
+}

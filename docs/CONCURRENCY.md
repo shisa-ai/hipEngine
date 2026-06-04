@@ -650,6 +650,12 @@ What is still not green:
   `[68,137]`). Active c2 512/128 still reports `[137,137]` with first full layer
   output path `batch_gemv_auto`
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-auto-gemv-o-default-255/summary.json`).
+  A refreshed default c=2/c=4/c=8 equality matrix after the c2 GEMV-O default is
+  green vs independent c1 for every row: c2 `[137,137]` with
+  `batch_gemv_auto` and `native_caware_decode=true`, c4 `[137]*4`, and c8
+  `[137]*8`. c4/c8 still use rowchunk2 full attention plus rowchunk batch-GEMV O
+  and remain correctness-only/blocked for retained performance eligibility
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-default-equality-after-c2-gemv-256/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
