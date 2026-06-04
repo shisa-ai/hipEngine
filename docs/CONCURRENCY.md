@@ -679,6 +679,16 @@ What is still not green:
   no-rowchunk c8 dense-context trial stayed red (`min=11`), so rowchunk removal
   remains unresolved
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-grouped-moe-default-259/summary.json`).
+  A focused `rocprofv3 --kernel-trace` capture on the active c2 512/128 default
+  now provides required runtime evidence, still without a throughput/scaling
+  claim. The profiled run stayed generated-token green (`[137,137]`) with
+  grouped-compact MoE, `batch_gemv_auto` full-attention O, `native_caware_decode=true`,
+  and no decode blockers. The trace ran on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX
+  and includes positive-duration native c2 kernels for batched paged full-attn
+  context, batched KV append, grouped-compact MoE group kernels, linear-attention
+  segment decode, and GEMV/Marlin projections. Raw CSV remains under `/tmp`; the
+  compact evidence artifact is committed
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-evidence-260/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
