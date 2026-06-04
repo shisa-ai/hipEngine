@@ -595,6 +595,15 @@ What is still not green:
   traced decode-step117 layer-3 KV/context divergence. This keeps the long-run
   blocker on paged context production rather than batch-gate feedback
   (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-long-dense-context-batch-gate-248/summary.json`).
+  Retained-bench now exposes the same dense-context+batch-gate diagnostic. On
+  c4 no-rowchunk 512/128 with grouped-compact MoE and native full-attention O
+  output, dense context plus batch gate is generated-token green at
+  `[137]*4`; the native paged-context control remains red at
+  `[137,137,137,118]`. The output path is still coupled: forcing batch-GEMV O
+  with the same dense-context diagnostic is red at `[137,104,137,137]`, so the
+  green correctness-only no-rowchunk fallback is dense context plus native O,
+  not dense context alone
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-dense-context-batch-gate-equality-249/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
