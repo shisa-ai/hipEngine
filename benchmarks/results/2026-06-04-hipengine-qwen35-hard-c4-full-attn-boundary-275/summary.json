@@ -1,0 +1,436 @@
+{
+  "child_artifacts_not_committed": "/tmp/hipengine-iter275-hard-c4-selected",
+  "commands": {
+    "hard_c4_default": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model ... --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4567_4x512_prompt_ids.json --batch-size 4 --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json --json /tmp/hipengine-iter275-hard-c4-selected/hard-c4-default.json",
+    "hard_c4_native_full_no_selected": "same with --batch-decode-full-attn-path native_batch --batch-decode-attn-dense-context-batch-gate-layers \"\"",
+    "hard_c4_rowchunk2": "same with --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-attn-dense-context-batch-gate-layers \"\"",
+    "hard_c4_selected_sweep": "same with selected dense-context layers 3,7,11; 3,11,15,19; 3,7,11,15,19; and all full-attention layers"
+  },
+  "created_utc": "2026-06-04T14:55:32Z",
+  "finding": "The c4 selected dense-context fallback is prompt/window-sensitive. On the derived rows4..7 c4 fixture, the current no-flag c4 default (selected layers 3,11) is red at [45,59,137,137], native full attention without selected layers is red at [45,31,68,137], and all tested no-rowchunk selected-layer expansions remain red. The rowchunk2 native full-attention control is generated-token green at [137]*4. Therefore the selected-layer default remains valid only for the primary first-four c4 gate; the hard rows4..7 c4 boundary still requires rowchunk2. No default was weakened and no throughput/scaling claim is made.",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4567_4x512_prompt_ids.json",
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 275,
+  "key_result": {
+    "hard_c4_default_3_11_passed": false,
+    "hard_c4_default_3_11_prefixes": [
+      45,
+      59,
+      137,
+      137
+    ],
+    "native_full_no_selected_prefixes": [
+      45,
+      31,
+      68,
+      137
+    ],
+    "rowchunk2_passed": true,
+    "rowchunk2_prefixes": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "selected_layer_probe_mismatches": {
+      "hard-c4-selected-3-11-15-19": [
+        45,
+        11,
+        null,
+        null
+      ],
+      "hard-c4-selected-3-7-11": [
+        45,
+        11,
+        null,
+        null
+      ],
+      "hard-c4-selected-3-7-11-15-19": [
+        45,
+        11,
+        83,
+        null
+      ],
+      "hard-c4-selected-all": [
+        45,
+        11,
+        83,
+        null
+      ]
+    },
+    "selected_layer_probe_prefixes": {
+      "hard-c4-selected-3-11-15-19": [
+        45,
+        11,
+        137,
+        137
+      ],
+      "hard-c4-selected-3-7-11": [
+        45,
+        11,
+        137,
+        137
+      ],
+      "hard-c4-selected-3-7-11-15-19": [
+        45,
+        11,
+        83,
+        137
+      ],
+      "hard-c4-selected-all": [
+        45,
+        11,
+        83,
+        137
+      ]
+    }
+  },
+  "kind": "hard_c4_full_attention_boundary",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: this is focused c4 full-attention runtime evidence with a green rowchunk2 control on the hard rows4..7 fixture and red no-rowchunk selected-layer probes, concretely mapping the remaining prompt/window-sensitive blocker on GPU1/XTX. No performance/scaling claim.",
+    "passed": true
+  },
+  "results": [
+    {
+      "artifact_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-default.json",
+      "decode": {
+        "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_dense_context_batch_gate_layers": [
+          3,
+          11
+        ],
+        "full_attention_row_chunk_size": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "first_mismatch_indices": [
+        45,
+        59,
+        null,
+        null
+      ],
+      "log_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-default.log",
+      "name": "hard-c4-default",
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        59,
+        137,
+        137
+      ],
+      "sampler": {
+        "blockers": [],
+        "mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness",
+      "workload_paths": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_dense_context_batch_gate_layers": "3,11",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_mode": "batched_lm_head"
+      }
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-native-full-no-selected.json",
+      "decode": {
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_dense_context_batch_gate_layers": null,
+        "full_attention_row_chunk_size": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      },
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        45,
+        31,
+        68,
+        null
+      ],
+      "log_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-native-full-no-selected.log",
+      "name": "hard-c4-native-full-no-selected",
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        31,
+        68,
+        137
+      ],
+      "sampler": {
+        "blockers": [],
+        "mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness",
+      "workload_paths": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_dense_context_batch_gate_layers": "",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_mode": "batched_lm_head"
+      }
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-rowchunk2.json",
+      "decode": {
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_dense_context_batch_gate_layers": null,
+        "full_attention_row_chunk_size": 2,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "log_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-rowchunk2.log",
+      "name": "hard-c4-rowchunk2",
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "sampler": {
+        "blockers": [],
+        "mode": "batched_lm_head"
+      },
+      "status": "blocked",
+      "workload_paths": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_dense_context_batch_gate_layers": "",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_mode": "batched_lm_head"
+      }
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-3-7-11.json",
+      "decode": {
+        "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_dense_context_batch_gate_layers": [
+          3,
+          7,
+          11
+        ],
+        "full_attention_row_chunk_size": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "first_mismatch_indices": [
+        45,
+        11,
+        null,
+        null
+      ],
+      "log_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-3-7-11.log",
+      "name": "hard-c4-selected-3-7-11",
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        11,
+        137,
+        137
+      ],
+      "sampler": {
+        "blockers": [],
+        "mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness",
+      "workload_paths": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_dense_context_batch_gate_layers": "3,7,11",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_mode": "batched_lm_head"
+      }
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-3-11-15-19.json",
+      "decode": {
+        "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_dense_context_batch_gate_layers": [
+          3,
+          11,
+          15,
+          19
+        ],
+        "full_attention_row_chunk_size": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "first_mismatch_indices": [
+        45,
+        11,
+        null,
+        null
+      ],
+      "log_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-3-11-15-19.log",
+      "name": "hard-c4-selected-3-11-15-19",
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        11,
+        137,
+        137
+      ],
+      "sampler": {
+        "blockers": [],
+        "mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness",
+      "workload_paths": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_dense_context_batch_gate_layers": "3,11,15,19",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_mode": "batched_lm_head"
+      }
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-3-7-11-15-19.json",
+      "decode": {
+        "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_dense_context_batch_gate_layers": [
+          3,
+          7,
+          11,
+          15,
+          19
+        ],
+        "full_attention_row_chunk_size": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "first_mismatch_indices": [
+        45,
+        11,
+        83,
+        null
+      ],
+      "log_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-3-7-11-15-19.log",
+      "name": "hard-c4-selected-3-7-11-15-19",
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        11,
+        83,
+        137
+      ],
+      "sampler": {
+        "blockers": [],
+        "mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness",
+      "workload_paths": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_dense_context_batch_gate_layers": "3,7,11,15,19",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_mode": "batched_lm_head"
+      }
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-all.json",
+      "decode": {
+        "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_dense_context_batch_gate_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "full_attention_row_chunk_size": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "first_mismatch_indices": [
+        45,
+        11,
+        83,
+        null
+      ],
+      "log_path": "/tmp/hipengine-iter275-hard-c4-selected/hard-c4-selected-all.log",
+      "name": "hard-c4-selected-all",
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        11,
+        83,
+        137
+      ],
+      "sampler": {
+        "blockers": [],
+        "mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness",
+      "workload_paths": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_dense_context_batch_gate_layers": "3,7,11,15,19,23,27,31,35,39",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_mode": "batched_lm_head"
+      }
+    }
+  ],
+  "schema": 1
+}

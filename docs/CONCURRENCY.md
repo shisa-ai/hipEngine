@@ -794,6 +794,13 @@ What is still not green:
   decode/sampler/projection blockers, c4 selected dense-context layers `3,11`,
   and c8 rowchunk2
   (`benchmarks/results/2026-06-04-hipengine-qwen35-current-default-c248-final-274/summary.json`).
+  A hard-window c4 fixture built from original rows4..7 shows the selected-layer
+  c4 default is prompt/window-sensitive rather than a universal c4 fix: current
+  `3,11` default is red (`[45,59,137,137]`), all tested no-rowchunk selected-
+  layer expansions remain red, and native rowchunk2 is the only green control
+  (`[137]*4`). The default is therefore retained for the primary first-four c4
+  gate, while the rows4..7/c8 boundary stays on rowchunk2
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-hard-c4-full-attn-boundary-275/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
