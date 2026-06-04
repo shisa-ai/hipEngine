@@ -318,6 +318,7 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_blocker_status"] is None
     assert summary["next_blocker_reason"] is None
     assert summary["next_blocker_command"] is None
+    assert summary["next_blocker_command_kind"] is None
     assert summary["next_blocker_command_sha256"] == report[
         "next_blocker_command_sha256"
     ]
@@ -332,6 +333,7 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert report["blocked_validator_results"] == []
     assert report["next_blocker"] is None
     assert report["next_blocker_command"] is None
+    assert report["next_blocker_command_kind"] is None
     assert report["next_producer_command_kind"] is None
     assert report["next_producer_command"] is None
     assert report["next_action"] is None
@@ -496,6 +498,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_blocker_command"] == expected_missing_trace[
         "validator_command_concrete"
     ]
+    assert summary["next_blocker_command_kind"] == "kv_trace_check_command"
     assert summary["next_blocker_command_sha256"] == report[
         "next_blocker_command_sha256"
     ]
@@ -509,6 +512,7 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert report["next_blocker_command"] == expected_missing_trace[
         "validator_command_concrete"
     ]
+    assert report["next_blocker_command_kind"] == "kv_trace_check_command"
     assert report["next_producer_command_kind"] == "resource_plan_refresh_command"
     assert report["next_producer_command"] == (
         "python3 scripts/refresh_stepfun_kv_artifacts.py"
@@ -725,6 +729,7 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     next_blocker_output = tmp_path / "next-blocker.json"
     next_blocker_sha_output = tmp_path / "next-blocker-sha.json"
     next_command_output = tmp_path / "next-command.json"
+    next_command_kind_output = tmp_path / "next-command-kind.json"
     next_command_sha_output = tmp_path / "next-command-sha.json"
     next_producer_command_output = tmp_path / "next-producer-command.json"
     next_producer_command_kind_output = tmp_path / "next-producer-command-kind.json"
@@ -1452,6 +1457,23 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert rc == 0
     next_command_payload = json.loads(next_command_output.read_text())
     assert next_command_payload == f"python3 scripts/stepfun_kv_trace_check.py --trace {trace}"
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-command-kind-only",
+            "--output",
+            str(next_command_kind_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(next_command_kind_output.read_text()) == "kv_trace_check_command"
 
     rc = main(
         [

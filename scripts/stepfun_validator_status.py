@@ -242,6 +242,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the concrete validator command for the first failed/missing record, or null.",
     )
     parser.add_argument(
+        "--next-command-kind-only",
+        action="store_true",
+        help="Emit only the validator command kind for the first failed/missing record, or null.",
+    )
+    parser.add_argument(
         "--next-command-sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the next concrete validator command.",
@@ -935,6 +940,9 @@ def build_validator_status_report(
         "next_blocker_reason": next_blocker.get("reason")
         if isinstance(next_blocker, dict)
         else None,
+        "next_blocker_command_kind": next_blocker.get("validator_command_kind")
+        if isinstance(next_blocker, dict)
+        else None,
         "next_blocker_command": next_blocker_command,
         "next_blocker_command_sha256": status_mod._stable_json_sha256(
             next_blocker_command
@@ -1036,6 +1044,9 @@ def build_validator_status_report(
         "next_blocker": next_blocker,
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
         "next_blocker_command": next_blocker_command,
+        "next_blocker_command_kind": next_blocker.get("validator_command_kind")
+        if isinstance(next_blocker, dict)
+        else None,
         "next_blocker_command_sha256": status_mod._stable_json_sha256(
             next_blocker_command
         ),
@@ -1126,6 +1137,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_producer_command_sha256"]
     elif args.next_producer_command_only:
         payload = report["next_producer_command"]
+    elif args.next_command_kind_only:
+        payload = report["next_blocker_command_kind"]
     elif args.next_command_sha_only:
         payload = report["next_blocker_command_sha256"]
     elif args.next_command_only:
