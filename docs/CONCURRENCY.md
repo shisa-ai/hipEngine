@@ -604,6 +604,15 @@ What is still not green:
   green correctness-only no-rowchunk fallback is dense context plus native O,
   not dense context alone
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c4-dense-context-batch-gate-equality-249/summary.json`).
+  The c4 no-rowchunk fallback is not yet a c8 fallback: c8 no-rowchunk dense
+  context plus batch gate plus native O is red at
+  `[137,137,137,137,45,11,83,137]`, and dense context plus row-local gate has
+  the same prefixes. Native paged no-rowchunk/native-O remains red at
+  `[137,137,137,118,45,31,68,137]`; rowchunk4 and selected-c1 MoE contrasts
+  remain red. The current rowchunk2 control stays generated-token green at
+  `[137]*8`, so c8 still needs the rowchunk2 cap while the dense-context/native-O
+  no-rowchunk fallback is c4-only
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c8-dense-context-batch-gate-frontier-250/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
