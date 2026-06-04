@@ -709,6 +709,14 @@ What is still not green:
   native/c-aware, c4 still dense-context batch-gated, and c8 still rowchunked;
   this is correctness-only and not retained throughput/scaling evidence
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-batched-sampler-equality-263/summary.json`).
+  The current c2 path also reloads the combined projection-dispatch catalog with
+  all current c2 references attached: it selects
+  `benchmark_accepted_caware_projection` /
+  `gemv_awq_selected_dual_pack8_strided_c2`, has empty projection/batch/decode
+  blockers, keeps equality `[137,137]`, and loads primitive/profiler/scaling
+  evidence; it remains non-retained because aggregate-vs-c1 scaling is still
+  below 1.0 and profiler promotion fields are not yet complete
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-projection-dispatch-264/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
