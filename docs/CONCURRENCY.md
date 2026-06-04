@@ -472,7 +472,10 @@ What is still not green:
   explicit batched path is fixed; three post-c9 grouped-stress cycles kept the
   active no-flag c2 default green (`[137,137]`) with sampler metadata confirming
   `serial_lm_head`, while c4/c8 auto sampler evidence remains enabled
-  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/summary.json`).
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-default-serial-after-c9-fix226/summary.json`). A post-demotion no-flag c2/c4/c8 matrix confirms the default gate is still
+  generated-token green throughout: c2 uses `serial_lm_head` and c4/c8 use
+  retained `batched_lm_head` evidence plus rowchunk2 full-attention diagnostics
+  (`benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-default-sampler-demotion-matrix227/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
