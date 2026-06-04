@@ -255,6 +255,7 @@ def _run_validator(
         "ready": ready,
         "reason": None if ready else "validator_report_failed",
         "validator_report_sha256": report.get("report_sha256"),
+        "validator_summary": summary,
         "validator_summary_sha256": status_mod._stable_json_sha256(summary),
         "validator_missing_evidence": summary.get("missing_evidence"),
         "validator_missing_evidence_count": summary.get("missing_evidence_count"),
@@ -423,6 +424,7 @@ def build_validator_status_report(
             ),
         }
         for key in (
+            "validator_summary",
             "producer_writes_partial_output_before_launch",
             "producer_partial_output_path",
             "producer_partial_output_status",

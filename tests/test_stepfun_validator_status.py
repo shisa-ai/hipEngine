@@ -416,6 +416,12 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert report["next_blocker"]["artifact_name"] == (
         "llama_cpp_oracle_success_artifact"
     )
+    assert report["next_blocker"]["validator_summary"]["oracle_status"] == "timeout"
+    assert report["next_blocker"]["validator_summary"]["oracle_returncode"] is None
+    assert report["next_blocker"]["validator_summary"]["oracle_blocker_kind"] == (
+        "llama_cpp_oracle_timeout"
+    )
+    assert report["next_blocker"]["validator_summary"]["generated_text_len"] == 0
     assert report["next_blocker"][
         "producer_writes_partial_output_before_launch"
     ] is True
@@ -444,6 +450,16 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     )
     next_action = report["next_action"]
     assert next_action["artifact_name"] == "llama_cpp_oracle_success_artifact"
+    assert next_action["validator_summary"] == report["next_blocker"][
+        "validator_summary"
+    ]
+    assert next_action["validator_summary"]["missing_evidence"] == [
+        "oracle_success_status",
+        "oracle_returncode_zero",
+        "no_timeout_or_oracle_blocker",
+        "generated_text_nonempty",
+        "generated_text_matches_target",
+    ]
     assert next_action["producer_writes_partial_output_before_launch"] is True
     assert next_action["producer_partial_output_path"] == str(oracle)
     assert next_action["producer_partial_output_status"] == "running"
