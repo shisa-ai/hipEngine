@@ -1,0 +1,290 @@
+{
+  "artifacts": {
+    "c4-alllayer-r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/c4-alllayer-r1-compact.json"
+    },
+    "c4-alllayer-r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/c4-alllayer-r2-compact.json"
+    },
+    "current-c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/current-c2-compact.json"
+    },
+    "current-c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/current-c4-compact.json"
+    },
+    "current-c4-repeat-r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/current-c4-repeat-r1-compact.json"
+    },
+    "current-c4-repeat-r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/current-c4-repeat-r2-compact.json"
+    },
+    "current-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/current-c8-compact.json"
+    },
+    "final-current-c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/final-current-c2-compact.json"
+    },
+    "final-current-c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/final-current-c4-compact.json"
+    },
+    "final-current-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/final-current-c8-compact.json"
+    },
+    "first8-normal-r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/first8-normal-r1-compact.json"
+    },
+    "first8-normal-r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/first8-normal-r2-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_first7_profiler_boundary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json"
+    },
+    "previous_hard_c4_current_default": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/summary.json"
+    }
+  },
+  "code_change": {
+    "scripts/qwen35_batch_retained_bench.py": "correctness-first auto rowchunk layer scope now keeps c4 on all-layer rowchunk2; selected first-four layers remain only for c3/c5/c6",
+    "tests/test_generation_batch_scheduler.py": "updated runtime-env default coverage so c4 joins c7/c8 all-layer rowchunk2 defaults"
+  },
+  "conclusion": "The c8 first-eight selected rowchunk scope [3,7,11,15,19,23,27,31] is not repeat-stable even in normal execution: one control passed [137]*8, but the next failed row3 at prefix 19. During the same required current-matrix check, the c4 selected first-four default reproduced the row3 prefix-118 failure once before two immediate selected-layer repeats recovered. Explicit c4 all-layer rowchunk2 controls were green in 2/2 runs, so the correctness-first auto default now demotes c4 to all-layer rowchunk2 like c7/c8. The post-demotion no-arg c2/c4/c8 matrix is green at c2 [137,137], c4 [137]*4, c8 [137]*8 with accepted projection candidates selected automatically. This is correctness/runtime evidence only; c4/c8 remain rowchunk diagnostic and no throughput/scaling claim is made.",
+  "created_at": "2026-06-04T22:30:02.406913+00:00",
+  "git_commit_before_commit": "836ad8ca96d7968fa988fc8ab054800441e3ae86",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 307,
+  "kind": "c8_first8_boundary_and_c4_all_layer_demotion",
+  "performance_claim": false,
+  "result": {
+    "c4_recovery_and_all_layer_controls": {
+      "all_layer_controls": [
+        [
+          137,
+          137,
+          137,
+          137
+        ],
+        [
+          137,
+          137,
+          137,
+          137
+        ]
+      ],
+      "all_layer_rowchunk_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "selected_layer_repeats": [
+        [
+          137,
+          137,
+          137,
+          137
+        ],
+        [
+          137,
+          137,
+          137,
+          137
+        ]
+      ]
+    },
+    "c8_first8_probe": {
+      "r1_passed": true,
+      "r1_prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "r2_first_mismatch_indices": [
+        null,
+        null,
+        null,
+        19,
+        null,
+        null,
+        null,
+        null
+      ],
+      "r2_passed": false,
+      "r2_prefix_lengths": [
+        137,
+        137,
+        137,
+        19,
+        137,
+        137,
+        137,
+        137
+      ],
+      "rowchunk_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31
+      ]
+    },
+    "post_demotion_required_matrix": {
+      "c2": {
+        "decode_blockers": [],
+        "native_caware_decode": true,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+      },
+      "c4": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "rowchunk_config": null,
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ]
+      },
+      "c8": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "rowchunk_config": null,
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ]
+      }
+    },
+    "pre_demotion_current_matrix": {
+      "c2": [
+        137,
+        137
+      ],
+      "c4": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "c4_passed": false,
+      "c4_rowchunk_layers": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "c8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    }
+  },
+  "schema": 1,
+  "source_tmp_dir": "/tmp/hipengine-iter307-c8-first8-scope",
+  "status": "passed_with_c8_first8_and_c4_selected_rejected",
+  "workload": {
+    "all_full_attention_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31,
+      35,
+      39
+    ],
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "expected_auto_projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "explicit_projection_dispatch_artifact": null,
+    "first8_rowchunk_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31
+    ],
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

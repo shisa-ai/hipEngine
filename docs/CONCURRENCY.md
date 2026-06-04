@@ -963,19 +963,24 @@ What is still not green:
   all c8 controls stayed `[137]*8` and all post-c8 c2 runs stayed `[137,137]`,
   with a final c4 spot check `[137]*4`. This does not close the intermittent c2
   flake, but it narrows the latest risk away from the current c8 default itself.
-  A hard rows4..7 c4 refresh under the same no-explicit-projection defaults keeps
+  A hard rows4..7 c4 refresh under the same no-explicit-projection defaults kept
   the selected rowchunk layers `[3,7,11,15]` green at `[137]*4`, while an explicit
-  no-rowchunk native control remains red at `[45,31,68,137]`; the required
-  current c2/c4/c8 matrix is still green (`[137]*rows`). A c8 first-seven
+  no-rowchunk native control remained red at `[45,31,68,137]`. A c8 first-seven
   rowchunk-scope probe (`[3,7,11,15,19,23,27]`) passed two normal controls at
   `[137]*8` but failed under `rocprofv3` at `[137,0,137,137,137,137,137,137]`,
-  so the profiler-backed c8 default stays all-layer rowchunk2. No retained
-  throughput/scaling claim is made
+  so the profiler-backed c8 default stayed all-layer rowchunk2. A follow-up c8
+  first-eight probe (`[3,7,11,15,19,23,27,31]`) then failed normal repeat at
+  `[137,137,137,19,137,137,137,137]`; during the same required matrix, c4's
+  selected first-four default flaked at `[137,137,137,118]`, while two explicit
+  all-layer c4 controls were green. The correctness-first auto default therefore
+  demotes c4 to all-layer rowchunk2 as well; the post-demotion c2/c4/c8 matrix is
+  green (`[137]*rows`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
