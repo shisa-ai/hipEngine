@@ -974,13 +974,17 @@ What is still not green:
   selected first-four default flaked at `[137,137,137,118]`, while two explicit
   all-layer c4 controls were green. The correctness-first auto default therefore
   demotes c4 to all-layer rowchunk2 as well; the post-demotion c2/c4/c8 matrix is
-  green (`[137]*rows`). No retained throughput/scaling claim is made
+  green (`[137]*rows`). A fresh post-demotion c4 all-layer `rocprofv3` run also
+  stays green at `[137]*4` with expected native batch full-attention context/KV,
+  grouped-MoE, c-aware projection, row-aware output GEMV, segmented-state, and
+  batched sampler kernels. No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-308/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
