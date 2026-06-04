@@ -665,10 +665,11 @@ reporting.
   `--next-action-validator-summary-sha-only` expose just the embedded validator
   summary/digest, and `--next-action-missing-evidence-only` /
   `--next-action-missing-evidence-sha-only` expose just its missing-evidence
-  list/digest, while the aggregate validator summary carries the next-action
-  validator-summary digest plus missing-evidence list/count/digest for drift
-  polling; with the oracle next-action bundle mirroring the current validator
-  summary plus partial-output and supervisor-signal timeout handoff when it is
+  list/digest (including `artifact_file_present` for missing retained files),
+  while the aggregate validator summary carries the next-action validator-summary
+  digest plus missing-evidence list/count/digest for drift polling; with the
+  oracle next-action bundle mirroring the current validator summary plus
+  partial-output and supervisor-signal timeout handoff when it is
   the first blocker),
   `--exit-code-policy-only` / `--exit-code-policy-sha-only`,
   `--digest-summary-only` / `--digest-summary-sha-only`, and

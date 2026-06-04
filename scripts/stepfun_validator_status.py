@@ -237,18 +237,24 @@ def _run_validator(
         "validator_command_concrete_sha256": record.get("validator_command_concrete_sha256"),
     }
     if artifact_path is None:
+        missing_evidence = ["validator_artifact_path_present"]
         return {
             **base,
             "status": "missing",
             "ready": False,
             "reason": "validator_artifact_path_missing",
+            "validator_missing_evidence": missing_evidence,
+            "validator_missing_evidence_count": len(missing_evidence),
         }
     if not artifact_path.exists():
+        missing_evidence = ["artifact_file_present"]
         return {
             **base,
             "status": "missing",
             "ready": False,
             "reason": "artifact_file_missing",
+            "validator_missing_evidence": missing_evidence,
+            "validator_missing_evidence_count": len(missing_evidence),
         }
     try:
         if kind == "oracle_artifact_check_command":

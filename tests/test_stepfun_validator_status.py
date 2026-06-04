@@ -343,6 +343,8 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
         "status": "missing",
         "ready": False,
         "reason": "artifact_file_missing",
+        "validator_missing_evidence": ["artifact_file_present"],
+        "validator_missing_evidence_count": 1,
         "producer_command_kind": "resource_plan_refresh_command",
         "producer_command": "python3 scripts/refresh_stepfun_kv_artifacts.py",
         "producer_command_sha256": "kv-producer-sha",
@@ -361,8 +363,8 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
             "validator_command_sha256": "trace-command-sha",
             "producer_command_kind": "resource_plan_refresh_command",
             "producer_command_sha256": "kv-producer-sha",
-            "missing_evidence": [],
-            "missing_evidence_count": 0,
+            "missing_evidence": ["artifact_file_present"],
+            "missing_evidence_count": 1,
             "validator_summary_sha256": None,
         }
     ]
@@ -406,8 +408,8 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
         "producer_command": "python3 scripts/refresh_stepfun_kv_artifacts.py",
         "producer_command_sha256": report["next_producer_command_sha256"],
         "validator_artifact_path": str(trace),
-        "validator_missing_evidence": None,
-        "validator_missing_evidence_count": None,
+        "validator_missing_evidence": ["artifact_file_present"],
+        "validator_missing_evidence_count": 1,
     }
     assert report["next_action"] == expected_next_action
     assert summary["next_action_artifact_name"] == "kv_kernel_trace_artifact"
@@ -696,8 +698,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
             "validator_command_sha256": "trace-command-sha",
             "producer_command_kind": "resource_plan_refresh_command",
             "producer_command_sha256": "kv-producer-sha",
-            "missing_evidence": [],
-            "missing_evidence_count": 0,
+            "missing_evidence": ["artifact_file_present"],
+            "missing_evidence_count": 1,
             "validator_summary_sha256": None,
         }
     ]
