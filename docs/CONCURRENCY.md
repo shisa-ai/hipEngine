@@ -715,8 +715,15 @@ What is still not green:
   `gemv_awq_selected_dual_pack8_strided_c2`, has empty projection/batch/decode
   blockers, keeps equality `[137,137]`, and loads primitive/profiler/scaling
   evidence; it remains non-retained because aggregate-vs-c1 scaling is still
-  below 1.0 and profiler promotion fields are not yet complete
+  below 1.0
   (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-projection-dispatch-264/summary.json`).
+  A follow-up current c2 `rocprofv3 --kernel-trace` retained audit closes the
+  profiler-promotion evidence fields too: profiler source/command provenance,
+  expected/trace/duration kernel names, graph histogram, selected projection
+  kernel evidence, and native `batch_argmax` sampler durations all validate;
+  the retained decision is now blocked only by
+  `scaling.ratios.aggregate_vs_c1 <= 1.0`, so no throughput claim is made
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
