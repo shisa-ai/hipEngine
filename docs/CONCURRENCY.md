@@ -826,6 +826,12 @@ What is still not green:
   confidence that the current rowchunk2 c8 path is stable across those mixed
   row orderings even though rowchunk2 remains a diagnostic blocker
   (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-rowchunk2-stress-repeat-279/summary.json`).
+  Moving the hard tail rows to the front and fully reversing row order keeps
+  rowchunk2 green (`[137]*8` for `[4,5,6,7,0,1,2,3]` and `[7,6,5,4,3,2,1,0]`),
+  while the same tail-front fixture without rowchunk is red at
+  `[45,31,40,137,137,137,137,118]`. This pins rowchunk2 as the correctness
+  boundary rather than a row-position artifact
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-c8-tailfront-rowchunk2-280/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
