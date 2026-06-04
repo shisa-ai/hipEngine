@@ -291,6 +291,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print only the stable SHA-256 digest of the next-action missing-evidence list.",
     )
+    parser.add_argument(
+        "--next-action-missing-evidence-count-only",
+        action="store_true",
+        help="Print only the next-action missing-evidence item count.",
+    )
 
     parser.add_argument(
         "--sha-only",
@@ -1065,12 +1070,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             next_action_missing_evidence = next_action_validator_summary.get(
                 "missing_evidence"
             )
+    next_action_missing_evidence_count = (
+        len(next_action_missing_evidence)
+        if isinstance(next_action_missing_evidence, list)
+        else None
+    )
     if args.status_only:
         payload: object = report["status"]
     elif args.next_action_validator_summary_sha_only:
         payload = status_mod._stable_json_sha256(next_action_validator_summary)
     elif args.next_action_validator_summary_only:
         payload = next_action_validator_summary
+    elif args.next_action_missing_evidence_count_only:
+        payload = next_action_missing_evidence_count
     elif args.next_action_missing_evidence_sha_only:
         payload = status_mod._stable_json_sha256(next_action_missing_evidence)
     elif args.next_action_missing_evidence_only:

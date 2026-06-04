@@ -1633,6 +1633,11 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
     missing_evidence = json.loads(capsys.readouterr().out)
     assert missing_evidence == summary["missing_evidence"]
 
+    rc = main([*args, "--next-action-missing-evidence-count-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == len(missing_evidence)
+
     rc = main([*args, "--next-action-missing-evidence-sha-only"])
 
     assert rc == 0
