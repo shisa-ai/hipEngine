@@ -844,6 +844,10 @@ What is still not green:
   grouped-MoE, c-aware projection, segmented-state, and batched sampler kernels;
   it is also runtime/profiler evidence only because rowchunk2 remains diagnostic
   (`benchmarks/results/2026-06-04-hipengine-qwen35-current-c4-rowchunk2-profiler-282/summary.json`).
+  A post-profiler current no-flag c2/c4/c8 refresh stays generated-token green
+  (`c2 [137,137]`, `c4 [137]*4`, `c8 [137]*8`), confirming the current profiler
+  evidence work did not perturb the primary equality gates
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-current-c248-post-profiler-refresh-283/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
