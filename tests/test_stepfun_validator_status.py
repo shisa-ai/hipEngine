@@ -290,6 +290,11 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["selected_blocked_gate_artifact_names_sha256"] == report[
         "selected_blocked_gate_artifact_names_sha256"
     ]
+    assert summary["selected_blocked_gate_producer_commands"] is None
+    assert summary["selected_blocked_gate_producer_command_count"] is None
+    assert summary["selected_blocked_gate_producer_commands_sha256"] == report[
+        "selected_blocked_gate_producer_commands_sha256"
+    ]
     assert summary["selected_blocked_gate_missing_evidence"] is None
     assert summary["selected_blocked_gate_missing_evidence_count"] is None
     assert summary["selected_blocked_gate_missing_evidence_sha256"] == report[
@@ -446,6 +451,13 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["selected_blocked_gate_artifact_names_sha256"] == report[
         "selected_blocked_gate_artifact_names_sha256"
     ]
+    assert summary["selected_blocked_gate_producer_commands"] == [
+        "python3 scripts/refresh_stepfun_kv_artifacts.py"
+    ]
+    assert summary["selected_blocked_gate_producer_command_count"] == 1
+    assert summary["selected_blocked_gate_producer_commands_sha256"] == report[
+        "selected_blocked_gate_producer_commands_sha256"
+    ]
     assert summary["selected_blocked_gate_missing_evidence"] == [
         "artifact_file_present"
     ]
@@ -555,6 +567,9 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
         "selected_blocked_gate_artifact_names"
     ] is None
     assert report["validator_status_summary"][
+        "selected_blocked_gate_producer_commands"
+    ] is None
+    assert report["validator_status_summary"][
         "selected_blocked_gate_missing_evidence"
     ] is None
     assert report["next_blocker"]["artifact_name"] == (
@@ -658,6 +673,8 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     selected_blocked_gate_artifacts_output = tmp_path / "selected-blocked-gate-artifacts.json"
     selected_blocked_gate_artifacts_sha_output = tmp_path / "selected-blocked-gate-artifacts-sha.json"
     selected_blocked_gate_artifact_count_output = tmp_path / "selected-blocked-gate-artifact-count.json"
+    selected_blocked_gate_producer_commands_output = tmp_path / "selected-blocked-gate-producer-commands.json"
+    selected_blocked_gate_producer_commands_sha_output = tmp_path / "selected-blocked-gate-producer-commands-sha.json"
     selected_blocked_gate_missing_output = tmp_path / "selected-blocked-gate-missing.json"
     selected_blocked_gate_missing_sha_output = tmp_path / "selected-blocked-gate-missing-sha.json"
     next_blocked_gate_output = tmp_path / "next-blocked-gate.json"
@@ -1032,6 +1049,46 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     )
     assert rc == 0
     assert json.loads(selected_blocked_gate_artifact_count_output.read_text()) == 1
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-producer-commands-only",
+            "--output",
+            str(selected_blocked_gate_producer_commands_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(selected_blocked_gate_producer_commands_output.read_text()) == [
+        "python3 scripts/refresh_stepfun_kv_artifacts.py"
+    ]
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--blocked-evidence-gate",
+            "kv_backed_decode",
+            "--blocked-evidence-gate-producer-commands-sha-only",
+            "--output",
+            str(selected_blocked_gate_producer_commands_sha_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert len(json.loads(selected_blocked_gate_producer_commands_sha_output.read_text())) == 64
 
     rc = main(
         [
