@@ -574,6 +574,13 @@ What is still not green:
   context output feeding downstream current-token KV, and each subsequent paged
   full-attention layer can repeat the same pattern
   (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-paged-layer-override-245/summary.json`).
+  A c4 step0 prefix sweep confirmed that the first failure monotonically advances
+  to the next still-paged full-attention layer (none→7, 3→11, 3+7→15,
+  3+7+11→19, 3+7+11+15→23), while making all full-attention producers dense
+  (`3,7,11,15,19,23,27,31,35,39`) closes the hidden/context/KV-prefix blocker
+  at step0. This keeps the c4 no-rowchunk target on the paged-context producer
+  mode across full-attention layers, not sampler or later token feedback
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-hidden-c4-paged-prefix-dense-sweep-246/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use
