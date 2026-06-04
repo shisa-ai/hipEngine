@@ -337,6 +337,9 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_validator_command_sha256"] == status_mod._stable_json_sha256(
         None
     )
+    assert summary["next_action_validator_command_sha256"] == report[
+        "next_action_validator_command_sha256"
+    ]
     assert summary["next_action_producer_command_kind"] is None
     assert summary["next_action_producer_command"] is None
     assert summary["next_action_producer_command_sha256"] == status_mod._stable_json_sha256(
@@ -569,6 +572,9 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_validator_command_sha256"] == status_mod._stable_json_sha256(
         expected_missing_trace["validator_command_concrete"]
     )
+    assert summary["next_action_validator_command_sha256"] == report[
+        "next_action_validator_command_sha256"
+    ]
     assert summary["next_action_producer_command_kind"] == "resource_plan_refresh_command"
     assert summary["next_action_producer_command"] == (
         "python3 scripts/refresh_stepfun_kv_artifacts.py"
