@@ -782,6 +782,12 @@ What is still not green:
   correctness-only due to selected dense-context and rowchunk attention labels,
   respectively
   (`benchmarks/results/2026-06-04-hipengine-qwen35-c2-batched-sampler-default-272/summary.json`).
+  The c4 selected dense-context fallback is now narrower again: subset sweep
+  showed `11` and `7,11` are red, `3,11` is green in `3/3` runs, and the
+  no-flag c4 default is green at `[137]*4` with
+  `batch_decode_attention_dense_context_batch_gate_layers="3,11"`. c8 rowchunk4
+  plus selected dense-context probes remained red, so c8 stays rowchunk2
+  (`benchmarks/results/2026-06-04-hipengine-qwen35-c4-selected-layer-minimum-273/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

@@ -4102,7 +4102,7 @@ def _resolved_batch_decode_full_attn_row_chunk_size(args: argparse.Namespace) ->
     return 2 if int(batch_size) in {3, 5, 6, 7, 8} else 0
 
 
-_C4_AUTO_DENSE_CONTEXT_BATCH_GATE_LAYERS = "3,7,11"
+_C4_AUTO_DENSE_CONTEXT_BATCH_GATE_LAYERS = "3,11"
 
 
 def _resolved_batch_decode_attn_context_path(args: argparse.Namespace) -> str:
@@ -4923,7 +4923,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-decode-attn-dense-context-batch-gate-layers",
         default="",
-        help="Optional comma/range list of full-attention layer ids that should use the row-local dense context diagnostic while keeping the normal batch gate; auto defaults c=4 to layers 3,7,11 to narrow the dense-context fallback.",
+        help="Optional comma/range list of full-attention layer ids that should use the row-local dense context diagnostic while keeping the normal batch gate; auto defaults c=4 to layers 3,11 to narrow the dense-context fallback.",
     )
     parser.add_argument(
         "--batch-decode-attn-gate-path",
