@@ -662,7 +662,10 @@ reporting.
   `--blocked-evidence-summary-only` / `--blocked-evidence-summary-sha-only`,
   `--blocked-evidence-by-gate-only` / `--blocked-evidence-by-gate-sha-only`,
   `--blocked-evidence-gate <gate>` with `--blocked-evidence-gate-only` /
-  `--blocked-evidence-gate-sha-only`, `--next-blocked-gate-only` /
+  `--blocked-evidence-gate-sha-only` and
+  `--blocked-evidence-gate-missing-evidence-only` /
+  `--blocked-evidence-gate-missing-evidence-sha-only`,
+  `--next-blocked-gate-only` /
   `--next-blocked-gate-sha-only`, and `--next-action-only` /
   `--next-action-sha-only` expose compact pollable validator
   records/commands/evidence gaps by artifact, all gates, selected gate (with a

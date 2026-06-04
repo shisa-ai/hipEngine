@@ -137,6 +137,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest for --blocked-evidence-gate.",
     )
     parser.add_argument(
+        "--blocked-evidence-gate-missing-evidence-only",
+        action="store_true",
+        help="Emit only the missing-evidence list for --blocked-evidence-gate.",
+    )
+    parser.add_argument(
+        "--blocked-evidence-gate-missing-evidence-sha-only",
+        action="store_true",
+        help="Emit only the stable SHA-256 digest of --blocked-evidence-gate missing evidence.",
+    )
+    parser.add_argument(
         "--next-blocker-only",
         action="store_true",
         help="Emit only the first failed or missing validator record, or null.",
@@ -673,6 +683,16 @@ def build_validator_status_report(
         blocked_evidence_by_gate,
         selected_blocked_gate_name,
     )
+    selected_blocked_gate_missing_evidence = (
+        selected_blocked_gate.get("missing_evidence")
+        if isinstance(selected_blocked_gate, dict)
+        else None
+    )
+    selected_blocked_gate_missing_evidence_count = (
+        len(selected_blocked_gate_missing_evidence)
+        if isinstance(selected_blocked_gate_missing_evidence, list)
+        else None
+    )
     passed = sum(1 for record in results if record.get("status") == "passed")
     missing = sum(1 for record in results if record.get("status") == "missing")
     failed = sum(1 for record in results if record.get("status") == "failed")
@@ -715,6 +735,11 @@ def build_validator_status_report(
         "selected_blocked_gate": selected_blocked_gate,
         "selected_blocked_gate_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate
+        ),
+        "selected_blocked_gate_missing_evidence": selected_blocked_gate_missing_evidence,
+        "selected_blocked_gate_missing_evidence_count": selected_blocked_gate_missing_evidence_count,
+        "selected_blocked_gate_missing_evidence_sha256": status_mod._stable_json_sha256(
+            selected_blocked_gate_missing_evidence
         ),
         "next_blocker_artifact_name": next_blocker.get("artifact_name")
         if isinstance(next_blocker, dict)
@@ -790,6 +815,11 @@ def build_validator_status_report(
         "selected_blocked_gate": selected_blocked_gate,
         "selected_blocked_gate_sha256": status_mod._stable_json_sha256(
             selected_blocked_gate
+        ),
+        "selected_blocked_gate_missing_evidence": selected_blocked_gate_missing_evidence,
+        "selected_blocked_gate_missing_evidence_count": selected_blocked_gate_missing_evidence_count,
+        "selected_blocked_gate_missing_evidence_sha256": status_mod._stable_json_sha256(
+            selected_blocked_gate_missing_evidence
         ),
         "next_blocker": next_blocker,
         "next_blocker_sha256": status_mod._stable_json_sha256(next_blocker),
@@ -876,6 +906,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_blocked_gate_sha256"]
     elif args.next_blocked_gate_only:
         payload = report["next_blocked_gate"]
+    elif args.blocked_evidence_gate_missing_evidence_sha_only:
+        payload = report["selected_blocked_gate_missing_evidence_sha256"]
+    elif args.blocked_evidence_gate_missing_evidence_only:
+        payload = report["selected_blocked_gate_missing_evidence"]
     elif args.blocked_evidence_gate_sha_only:
         payload = report["selected_blocked_gate_sha256"]
     elif args.blocked_evidence_gate_only:
