@@ -958,9 +958,15 @@ What is still not green:
   c2/c4/c8 and keeps the accepted final c2/c4/c8 equality matrix green; it also
   records one transient initial c2 flake (`[61,137]`) before five immediate c2
   repeats returned `[137,137]`, so c2 equality is currently green but not claimed
-  repeat-stability-closed. No retained throughput/scaling claim is made
+  repeat-stability-closed. A focused current-c8 stress audit then ran three
+  c8-all-layer-rowchunk2 no-arg cycles, each immediately followed by c2 no-arg;
+  all c8 controls stayed `[137]*8` and all post-c8 c2 runs stayed `[137,137]`,
+  with a final c4 spot check `[137]*4`. This does not close the intermittent c2
+  flake, but it narrows the latest risk away from the current c8 default itself.
+  No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
