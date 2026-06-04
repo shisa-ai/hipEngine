@@ -1,0 +1,669 @@
+{
+  "active_verify": {
+    "command": "bash -lc 'set -euo pipefail; OUT=/tmp/hipengine-e2e-native-c2-512-128.json; LOG=/tmp/hipengine-e2e-native-c2-512-128.log; HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json \"$OUT\" >\"$LOG\" 2>&1 || true; compute min_equal_prefix_tokens'",
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+    "result_metric": 137
+  },
+  "change": {
+    "description": "Add a selected-layer dense-context override for hidden-bisect paged context-only traces, allowing c4 no-rowchunk producer isolation one full-attention layer at a time.",
+    "files": [
+      "hipengine/runtime/qwen35_paro_runner.py",
+      "scripts/qwen35_batch_hidden_bisect.py",
+      "tests/test_generation_batch_scheduler.py"
+    ],
+    "new_cli": "--batch-decode-attn-dense-context-layers",
+    "new_env": "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_LAYERS"
+  },
+  "findings": [
+    "All-paged row-local context-only reproduces iter244: first model-layer context/KV-prefix failure at layer 7, current-token position 512, while token 1 still matches.",
+    "Forcing only layer 3 to dense row-local context eliminates the layer-7 context/KV-prefix failure and moves the first failure to layer 11, proving layer 3 paged context is the first producer of downstream current-token KV drift.",
+    "Forcing only layer 7 to dense row-local context does not move the first layer-7 failure, because the incoming layer-7 current-token KV is already changed by the earlier layer-3 paged producer.",
+    "Forcing layers 3 and 7 to dense moves the first failure to layer 15, showing the pattern repeats at the next paged full-attention producer rather than being a one-off layer-7 local context arithmetic issue."
+  ],
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "416 targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 245,
+  "mode": "qwen35_hidden_bisect_c4_paged_context_layer_override",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Materially advances focused full-attention parity evidence: selected-layer dense overrides make the layer-7 failure green by switching layer3, but not by switching layer7 alone; switching 3+7 moves failure to layer15. This isolates the first paged producer chain with concrete GPU1 artifacts and no performance claim.",
+    "passed": true
+  },
+  "schema": 1,
+  "timestamp": "2026-06-04T07:24:04.415410+00:00",
+  "variants": {
+    "all_paged": {
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --warmup-decode-tokens 0 --decode-tokens 1 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-full-attn-path native_batch --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-output-path batch_gemv --batch-decode-attn-context-path per_row_paged_context_only --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter245-hidden-c4-step0-paged-densenone.json",
+      "context_oracle": {
+        "comparison_pass_matrix": {
+          "batch_context_vs_numpy": true,
+          "batch_numpy_vs_c1_numpy": false,
+          "c1_context_vs_numpy": true,
+          "context_len_match": true
+        },
+        "failed_comparisons": [
+          "batch_numpy_vs_c1_numpy"
+        ],
+        "first_context_failure": {
+          "comparison": "batch_numpy_vs_c1_numpy",
+          "context_len": 513,
+          "context_len_match": true,
+          "decode_step": 0,
+          "elements_over_atol": 2896,
+          "generated_index": 1,
+          "layer_index": 7,
+          "max_abs": 0.0037117600440979004,
+          "max_abs_flat_index": 2442,
+          "max_abs_index": [
+            0,
+            2442
+          ],
+          "row": 0
+        },
+        "first_kv_prefix_failure": {
+          "batch_hash": 1185991942,
+          "batch_token_sample_u16": [
+            16162,
+            16142,
+            49072,
+            49095,
+            16430,
+            16236,
+            49050,
+            49073
+          ],
+          "c1_hash": 2039853635,
+          "c1_token_sample_u16": [
+            16162,
+            16142,
+            49072,
+            49095,
+            16430,
+            16236,
+            49050,
+            49073
+          ],
+          "context_len": 513,
+          "decode_step": 0,
+          "first_mismatch_position": 512,
+          "generated_index": 1,
+          "kind": "key",
+          "last_mismatch_position": 512,
+          "layer_index": 7,
+          "mismatch_count": 1,
+          "mismatch_positions_first": [
+            512
+          ],
+          "mismatch_positions_last": [
+            512
+          ],
+          "row": 0,
+          "tail_mismatch_count": 1,
+          "token_sample_word_count": 8
+        },
+        "kv_failed_kinds": [
+          "key",
+          "value"
+        ],
+        "kv_prefix_passed": false,
+        "passed": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local paged diagnostic path with diagnostic gate"
+      ],
+      "first_hidden_mismatch": {
+        "bit_mismatch": 1775,
+        "decode_step": 0,
+        "elements_over_atol": 28,
+        "generated_index": 1,
+        "last_layer_index": 39,
+        "last_layer_type": "full_attention",
+        "layer_limit": 40,
+        "max_abs": 0.0029296875,
+        "max_abs_flat_index": 390,
+        "row": 0
+      },
+      "full_attention_context_paths_first_five": [
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 3
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 7
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 11
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 15
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 19
+        }
+      ],
+      "hidden_passed": false,
+      "label": "all_paged",
+      "passed": false,
+      "raw_json": "/tmp/hipengine-iter245-hidden-c4-step0-paged-densenone.json",
+      "raw_log": "/tmp/hipengine-iter245-hidden-c4-step0-paged-densenone.log",
+      "status": "mismatch_found",
+      "token_passed": true,
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_paged_context_only",
+        "batch_decode_attention_dense_context_layers": "",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_size": 4,
+        "decode_tokens": 1,
+        "full_attention_decode_path": "batch_context",
+        "layer_limits": [
+          40
+        ],
+        "max_layers": 40,
+        "native_caware_decode": false,
+        "prompt_length": 512,
+        "total_decode_tokens": 1,
+        "trace_decode_window": [
+          0,
+          1
+        ],
+        "warmup_decode_tokens": 0
+      }
+    },
+    "dense_layer3_else_paged": {
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --warmup-decode-tokens 0 --decode-tokens 1 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-full-attn-path native_batch --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-output-path batch_gemv --batch-decode-attn-context-path per_row_paged_context_only --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-attn-dense-context-layers 3 --json /tmp/hipengine-iter245-hidden-c4-step0-paged-dense3.json",
+      "context_oracle": {
+        "comparison_pass_matrix": {
+          "batch_context_vs_numpy": true,
+          "batch_numpy_vs_c1_numpy": false,
+          "c1_context_vs_numpy": true,
+          "context_len_match": true
+        },
+        "failed_comparisons": [
+          "batch_numpy_vs_c1_numpy"
+        ],
+        "first_context_failure": {
+          "comparison": "batch_numpy_vs_c1_numpy",
+          "context_len": 513,
+          "context_len_match": true,
+          "decode_step": 0,
+          "elements_over_atol": 2922,
+          "generated_index": 1,
+          "layer_index": 11,
+          "max_abs": 0.00681304931640625,
+          "max_abs_flat_index": 275,
+          "max_abs_index": [
+            0,
+            275
+          ],
+          "row": 0
+        },
+        "first_kv_prefix_failure": {
+          "batch_hash": 3922108698,
+          "batch_token_sample_u16": [
+            49164,
+            49030,
+            48974,
+            49169,
+            16310,
+            16402,
+            49099,
+            16393
+          ],
+          "c1_hash": 2400114528,
+          "c1_token_sample_u16": [
+            49164,
+            49030,
+            48974,
+            49169,
+            16310,
+            16402,
+            49099,
+            16392
+          ],
+          "context_len": 513,
+          "decode_step": 0,
+          "first_mismatch_position": 512,
+          "generated_index": 1,
+          "kind": "key",
+          "last_mismatch_position": 512,
+          "layer_index": 11,
+          "mismatch_count": 1,
+          "mismatch_positions_first": [
+            512
+          ],
+          "mismatch_positions_last": [
+            512
+          ],
+          "row": 0,
+          "tail_mismatch_count": 1,
+          "token_sample_word_count": 8
+        },
+        "kv_failed_kinds": [
+          "key",
+          "value"
+        ],
+        "kv_prefix_passed": false,
+        "passed": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path on selected layers",
+        "full-attention context forced to row-local paged diagnostic path with diagnostic gate"
+      ],
+      "first_hidden_mismatch": {
+        "bit_mismatch": 1790,
+        "decode_step": 0,
+        "elements_over_atol": 24,
+        "generated_index": 1,
+        "last_layer_index": 39,
+        "last_layer_type": "full_attention",
+        "layer_limit": 40,
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 1269,
+        "row": 0
+      },
+      "full_attention_context_paths_first_five": [
+        {
+          "context_path": "per_row_dense_context_only_fallback",
+          "layer_index": 3
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 7
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 11
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 15
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 19
+        }
+      ],
+      "hidden_passed": false,
+      "label": "dense_layer3_else_paged",
+      "passed": false,
+      "raw_json": "/tmp/hipengine-iter245-hidden-c4-step0-paged-dense3.json",
+      "raw_log": "/tmp/hipengine-iter245-hidden-c4-step0-paged-dense3.log",
+      "status": "mismatch_found",
+      "token_passed": true,
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_paged_context_only",
+        "batch_decode_attention_dense_context_layers": "3",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_size": 4,
+        "decode_tokens": 1,
+        "full_attention_decode_path": "batch_context",
+        "layer_limits": [
+          40
+        ],
+        "max_layers": 40,
+        "native_caware_decode": false,
+        "prompt_length": 512,
+        "total_decode_tokens": 1,
+        "trace_decode_window": [
+          0,
+          1
+        ],
+        "warmup_decode_tokens": 0
+      }
+    },
+    "dense_layer7_else_paged": {
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --warmup-decode-tokens 0 --decode-tokens 1 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-full-attn-path native_batch --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-output-path batch_gemv --batch-decode-attn-context-path per_row_paged_context_only --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-attn-dense-context-layers 7 --json /tmp/hipengine-iter245-hidden-c4-step0-paged-dense7.json",
+      "context_oracle": {
+        "comparison_pass_matrix": {
+          "batch_context_vs_numpy": true,
+          "batch_numpy_vs_c1_numpy": false,
+          "c1_context_vs_numpy": true,
+          "context_len_match": true
+        },
+        "failed_comparisons": [
+          "batch_numpy_vs_c1_numpy"
+        ],
+        "first_context_failure": {
+          "comparison": "batch_numpy_vs_c1_numpy",
+          "context_len": 513,
+          "context_len_match": true,
+          "decode_step": 0,
+          "elements_over_atol": 2896,
+          "generated_index": 1,
+          "layer_index": 7,
+          "max_abs": 0.0037117600440979004,
+          "max_abs_flat_index": 2442,
+          "max_abs_index": [
+            0,
+            2442
+          ],
+          "row": 0
+        },
+        "first_kv_prefix_failure": {
+          "batch_hash": 1185991942,
+          "batch_token_sample_u16": [
+            16162,
+            16142,
+            49072,
+            49095,
+            16430,
+            16236,
+            49050,
+            49073
+          ],
+          "c1_hash": 2039853635,
+          "c1_token_sample_u16": [
+            16162,
+            16142,
+            49072,
+            49095,
+            16430,
+            16236,
+            49050,
+            49073
+          ],
+          "context_len": 513,
+          "decode_step": 0,
+          "first_mismatch_position": 512,
+          "generated_index": 1,
+          "kind": "key",
+          "last_mismatch_position": 512,
+          "layer_index": 7,
+          "mismatch_count": 1,
+          "mismatch_positions_first": [
+            512
+          ],
+          "mismatch_positions_last": [
+            512
+          ],
+          "row": 0,
+          "tail_mismatch_count": 1,
+          "token_sample_word_count": 8
+        },
+        "kv_failed_kinds": [
+          "key",
+          "value"
+        ],
+        "kv_prefix_passed": false,
+        "passed": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path on selected layers",
+        "full-attention context forced to row-local paged diagnostic path with diagnostic gate"
+      ],
+      "first_hidden_mismatch": {
+        "bit_mismatch": 1719,
+        "decode_step": 0,
+        "elements_over_atol": 18,
+        "generated_index": 1,
+        "last_layer_index": 39,
+        "last_layer_type": "full_attention",
+        "layer_limit": 40,
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 1269,
+        "row": 0
+      },
+      "full_attention_context_paths_first_five": [
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 3
+        },
+        {
+          "context_path": "per_row_dense_context_only_fallback",
+          "layer_index": 7
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 11
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 15
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 19
+        }
+      ],
+      "hidden_passed": false,
+      "label": "dense_layer7_else_paged",
+      "passed": false,
+      "raw_json": "/tmp/hipengine-iter245-hidden-c4-step0-paged-dense7.json",
+      "raw_log": "/tmp/hipengine-iter245-hidden-c4-step0-paged-dense7.log",
+      "status": "mismatch_found",
+      "token_passed": true,
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_paged_context_only",
+        "batch_decode_attention_dense_context_layers": "7",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_size": 4,
+        "decode_tokens": 1,
+        "full_attention_decode_path": "batch_context",
+        "layer_limits": [
+          40
+        ],
+        "max_layers": 40,
+        "native_caware_decode": false,
+        "prompt_length": 512,
+        "total_decode_tokens": 1,
+        "trace_decode_window": [
+          0,
+          1
+        ],
+        "warmup_decode_tokens": 0
+      }
+    },
+    "dense_layers3_7_else_paged": {
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --warmup-decode-tokens 0 --decode-tokens 1 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-full-attn-path native_batch --batch-decode-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-output-path batch_gemv --batch-decode-attn-context-path per_row_paged_context_only --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-attn-dense-context-layers 3,7 --json /tmp/hipengine-iter245-hidden-c4-step0-paged-dense3_7.json",
+      "context_oracle": {
+        "comparison_pass_matrix": {
+          "batch_context_vs_numpy": true,
+          "batch_numpy_vs_c1_numpy": false,
+          "c1_context_vs_numpy": true,
+          "context_len_match": true
+        },
+        "failed_comparisons": [
+          "batch_numpy_vs_c1_numpy"
+        ],
+        "first_context_failure": {
+          "comparison": "batch_numpy_vs_c1_numpy",
+          "context_len": 513,
+          "context_len_match": true,
+          "decode_step": 0,
+          "elements_over_atol": 2932,
+          "generated_index": 1,
+          "layer_index": 15,
+          "max_abs": 0.0038924217224121094,
+          "max_abs_flat_index": 1009,
+          "max_abs_index": [
+            0,
+            1009
+          ],
+          "row": 0
+        },
+        "first_kv_prefix_failure": {
+          "batch_hash": 2947699539,
+          "batch_token_sample_u16": [
+            49125,
+            16020,
+            49143,
+            48037,
+            49014,
+            49029,
+            16244,
+            49099
+          ],
+          "c1_hash": 169925308,
+          "c1_token_sample_u16": [
+            49125,
+            16020,
+            49143,
+            48048,
+            49013,
+            49029,
+            16244,
+            49099
+          ],
+          "context_len": 513,
+          "decode_step": 0,
+          "first_mismatch_position": 512,
+          "generated_index": 1,
+          "kind": "key",
+          "last_mismatch_position": 512,
+          "layer_index": 15,
+          "mismatch_count": 1,
+          "mismatch_positions_first": [
+            512
+          ],
+          "mismatch_positions_last": [
+            512
+          ],
+          "row": 0,
+          "tail_mismatch_count": 1,
+          "token_sample_word_count": 8
+        },
+        "kv_failed_kinds": [
+          "key",
+          "value"
+        ],
+        "kv_prefix_passed": false,
+        "passed": false
+      },
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path on selected layers",
+        "full-attention context forced to row-local paged diagnostic path with diagnostic gate"
+      ],
+      "first_hidden_mismatch": {
+        "bit_mismatch": 2037,
+        "decode_step": 0,
+        "elements_over_atol": 1865,
+        "generated_index": 1,
+        "last_layer_index": 39,
+        "last_layer_type": "full_attention",
+        "layer_limit": 40,
+        "max_abs": 0.0625,
+        "max_abs_flat_index": 1269,
+        "row": 0
+      },
+      "full_attention_context_paths_first_five": [
+        {
+          "context_path": "per_row_dense_context_only_fallback",
+          "layer_index": 3
+        },
+        {
+          "context_path": "per_row_dense_context_only_fallback",
+          "layer_index": 7
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 11
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 15
+        },
+        {
+          "context_path": "per_row_paged_context_only_fallback",
+          "layer_index": 19
+        }
+      ],
+      "hidden_passed": false,
+      "label": "dense_layers3_7_else_paged",
+      "passed": false,
+      "raw_json": "/tmp/hipengine-iter245-hidden-c4-step0-paged-dense3_7.json",
+      "raw_log": "/tmp/hipengine-iter245-hidden-c4-step0-paged-dense3_7.log",
+      "status": "mismatch_found",
+      "token_passed": true,
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_paged_context_only",
+        "batch_decode_attention_dense_context_layers": "3,7",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_size": 4,
+        "decode_tokens": 1,
+        "full_attention_decode_path": "batch_context",
+        "layer_limits": [
+          40
+        ],
+        "max_layers": 40,
+        "native_caware_decode": false,
+        "prompt_length": 512,
+        "total_decode_tokens": 1,
+        "trace_decode_window": [
+          0,
+          1
+        ],
+        "warmup_decode_tokens": 0
+      }
+    }
+  },
+  "workload": {
+    "base_context_path": "per_row_paged_context_only",
+    "batch_size": 4,
+    "decode_tokens": 1,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "full_attention_output_path": "batch_gemv",
+    "full_attention_row_chunk_size": 0,
+    "layer_limits": [
+      40
+    ],
+    "linear_output_path": "batch_gemv",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "moe_path": "grouped_compact",
+    "prompt_length": 512,
+    "trace_decode_window": [
+      0,
+      1
+    ],
+    "warmup_decode_tokens": 0
+  }
+}

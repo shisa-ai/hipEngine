@@ -115,6 +115,29 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() not in {"0", "false", "off", "no"}
 
 
+def _env_int_set(name: str) -> set[int]:
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return set()
+    parsed: set[int] = set()
+    for item in value.split(","):
+        text = item.strip()
+        if not text:
+            continue
+        if "-" in text:
+            start_text, end_text = text.split("-", 1)
+            start = int(start_text)
+            end = int(end_text)
+            if start > end:
+                raise ValueError(f"{name} has descending range {text!r}")
+            parsed.update(range(start, end + 1))
+        else:
+            parsed.add(int(text))
+    if any(layer < 0 for layer in parsed):
+        raise ValueError(f"{name} layer ids must be non-negative")
+    return parsed
+
+
 _PROJECTION_DISPATCH_ARTIFACT_ENV = "HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT"
 
 
@@ -4079,6 +4102,11 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_paged_context_only = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PAGED_CONTEXT_ONLY"
         )
+        force_per_row_full_attention_dense_context_layers = (
+            _env_int_set("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_LAYERS")
+            if rows > 1
+            else set()
+        )
         force_batch_temp_full_attention_context = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_BATCH_TEMP_FULL_ATTN_CONTEXT"
         )
@@ -4149,6 +4177,8 @@ class Qwen35ParoResidentSession:
             if force_per_row_full_attention_dense_context_only
             else "per_row_paged_context_only_fallback"
             if force_per_row_full_attention_paged_context_only
+            else "per_row_dense_context_layer_override"
+            if force_per_row_full_attention_dense_context_layers
             else "batch_temp_output_diagnostic"
             if force_batch_temp_full_attention_context
             else "batch_compact_cache_diagnostic" if force_batch_compact_full_attention_context else "native_batch"
@@ -4361,6 +4391,28 @@ class Qwen35ParoResidentSession:
                     max_full_attention_context = max(max_full_attention_context, max_context)
                     native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True) and max_context < 1024
                     if native_full:
+                        layer_force_per_row_dense_context_only = (
+                            force_per_row_full_attention_dense_context_only
+                            or layer_id in force_per_row_full_attention_dense_context_layers
+                        )
+                        layer_force_per_row_paged_context_only = force_per_row_full_attention_paged_context_only
+                        if layer_id in force_per_row_full_attention_dense_context_layers:
+                            layer_force_per_row_paged_context_only = False
+                        layer_full_attention_context_decode_path = (
+                            "per_row_context_gate_fallback"
+                            if force_per_row_full_attention_context
+                            else "per_row_context_only_fallback"
+                            if force_per_row_full_attention_context_only
+                            else "per_row_dense_context_only_fallback"
+                            if layer_force_per_row_dense_context_only
+                            else "per_row_paged_context_only_fallback"
+                            if layer_force_per_row_paged_context_only
+                            else "batch_temp_output_diagnostic"
+                            if force_batch_temp_full_attention_context
+                            else "batch_compact_cache_diagnostic"
+                            if force_batch_compact_full_attention_context
+                            else "native_batch"
+                        )
                         full_attention_decode_path = "native_batch_row_chunks" if force_full_attention_row_chunks else "native_batch"
                         native_full_attention_layers += 1
                         persistent_attention_scratch = self.full_scratch[layer_id] if force_per_row_full_attention_persistent_scratch else None
@@ -4405,8 +4457,8 @@ class Qwen35ParoResidentSession:
                             and (
                                 force_per_row_full_attention_context
                                 or force_per_row_full_attention_context_only
-                                or force_per_row_full_attention_dense_context_only
-                                or force_per_row_full_attention_paged_context_only
+                                or layer_force_per_row_dense_context_only
+                                or layer_force_per_row_paged_context_only
                                 or force_batch_compact_full_attention_context
                                 or force_per_row_full_attention_kv_append
                                 or force_per_row_full_attention_suffix
@@ -4414,7 +4466,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_persistent_scratch
                             )
                         ):
-                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or force_per_row_full_attention_dense_context_only or force_per_row_full_attention_paged_context_only or force_batch_compact_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
+                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or layer_force_per_row_dense_context_only or layer_force_per_row_paged_context_only or force_batch_compact_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
                             per_row_append_contexts = [] if force_per_row_full_attention_kv_append or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_persistent_scratch else None
                             for slot in slots:
                                 row_key_cache, row_value_cache = self._slot_full_cache(layer_id, slot)
@@ -4609,8 +4661,8 @@ class Qwen35ParoResidentSession:
                                     force_per_row_layer_scratch=force_per_row_full_attention_scratch,
                                     force_per_row_context=force_per_row_full_attention_context,
                                     force_per_row_context_only=force_per_row_full_attention_context_only,
-                                    force_per_row_dense_context_only=force_per_row_full_attention_dense_context_only,
-                                    force_per_row_paged_context_only=force_per_row_full_attention_paged_context_only,
+                                    force_per_row_dense_context_only=layer_force_per_row_dense_context_only,
+                                    force_per_row_paged_context_only=layer_force_per_row_paged_context_only,
                                     force_batch_temp_context=force_batch_temp_full_attention_context,
                                     force_batch_compact_context=force_batch_compact_full_attention_context,
                                     force_per_row_gate=force_per_row_full_attention_gate,
@@ -4754,8 +4806,8 @@ class Qwen35ParoResidentSession:
                                 force_per_row_layer_scratch=force_per_row_full_attention_scratch,
                                 force_per_row_context=force_per_row_full_attention_context,
                                 force_per_row_context_only=force_per_row_full_attention_context_only,
-                                force_per_row_dense_context_only=force_per_row_full_attention_dense_context_only,
-                                force_per_row_paged_context_only=force_per_row_full_attention_paged_context_only,
+                                force_per_row_dense_context_only=layer_force_per_row_dense_context_only,
+                                force_per_row_paged_context_only=layer_force_per_row_paged_context_only,
                                 force_batch_temp_context=force_batch_temp_full_attention_context,
                                 force_batch_compact_context=force_batch_compact_full_attention_context,
                                 force_per_row_gate=force_per_row_full_attention_gate,
@@ -4829,8 +4881,8 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_layer_copy
                                 or force_per_row_full_attention_context
                                 or force_per_row_full_attention_context_only
-                                or force_per_row_full_attention_dense_context_only
-                                or force_per_row_full_attention_paged_context_only
+                                or layer_force_per_row_dense_context_only
+                                or layer_force_per_row_paged_context_only
                                 or force_batch_temp_full_attention_context
                                 or force_batch_compact_full_attention_context
                                 or force_per_row_full_attention_gate
@@ -4855,12 +4907,12 @@ class Qwen35ParoResidentSession:
                         if (
                             force_per_row_full_attention_context
                             or force_per_row_full_attention_context_only
-                            or force_per_row_full_attention_dense_context_only
-                            or force_per_row_full_attention_paged_context_only
+                            or layer_force_per_row_dense_context_only
+                            or layer_force_per_row_paged_context_only
                             or force_batch_temp_full_attention_context
                             or force_batch_compact_full_attention_context
                         ):
-                            layer_execution["full_attention_context_decode_path"] = full_attention_context_decode_path
+                            layer_execution["full_attention_context_decode_path"] = layer_full_attention_context_decode_path
                         if force_per_row_full_attention_gate:
                             layer_execution["full_attention_gate_decode_path"] = full_attention_gate_decode_path
                         if force_per_row_full_attention_kv_append:
@@ -5025,6 +5077,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention context forced to per-row diagnostic path with diagnostic gate")
             if force_per_row_full_attention_dense_context_only:
                 decode_blockers.append("full-attention context forced to row-local dense diagnostic path with diagnostic gate")
+            if force_per_row_full_attention_dense_context_layers:
+                decode_blockers.append("full-attention context forced to row-local dense diagnostic path on selected layers")
             if force_per_row_full_attention_paged_context_only:
                 decode_blockers.append("full-attention context forced to row-local paged diagnostic path with diagnostic gate")
             if force_batch_temp_full_attention_context:
@@ -5089,6 +5143,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_context
                 and not force_per_row_full_attention_context_only
                 and not force_per_row_full_attention_dense_context_only
+                and not force_per_row_full_attention_dense_context_layers
                 and not force_per_row_full_attention_paged_context_only
                 and not force_batch_temp_full_attention_context
                 and not force_batch_compact_full_attention_context
@@ -5114,6 +5169,10 @@ class Qwen35ParoResidentSession:
             if force_full_attention_row_chunks:
                 self.last_batch_decode_execution["full_attention_row_chunk_size"] = int(full_attention_row_chunk_size)
                 self.last_batch_decode_execution["full_attention_row_chunk_source"] = full_attention_row_chunk_source
+            if force_per_row_full_attention_dense_context_layers:
+                self.last_batch_decode_execution["full_attention_dense_context_layers"] = sorted(
+                    int(layer) for layer in force_per_row_full_attention_dense_context_layers
+                )
             if force_per_row_full_attention_gate:
                 self.last_batch_decode_execution["full_attention_gate_decode_path"] = full_attention_gate_decode_path
             return hidden
