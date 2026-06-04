@@ -977,14 +977,21 @@ What is still not green:
   green (`[137]*rows`). A fresh post-demotion c4 all-layer `rocprofv3` run also
   stays green at `[137]*4` with expected native batch full-attention context/KV,
   grouped-MoE, c-aware projection, row-aware output GEMV, segmented-state, and
-  batched sampler kernels. No retained throughput/scaling claim is made
+  batched sampler kernels. A post-demotion baseline attachment refresh keeps
+  c2/c4/c8 green with primitive correctness and c1/serial scaling references
+  loaded; the immediately following active c2 verify flaked once at `[82,137]`
+  before three active c2 repeats recovered to `[137,137]`, so c2 repeat-stability
+  remains open. C2 remains below aggregate-vs-c1, while c4/c8 remain diagnostic
+  despite serial-bridge speedups because all-layer rowchunk keeps
+  `native_caware_decode=false`. No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first7-profiler-boundary-306/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-308/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-308/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-post-demotion-baseline-attach-309/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
