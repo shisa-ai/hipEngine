@@ -987,7 +987,11 @@ What is still not green:
   then reproduced the batched-sampler instability in two of eight c2 runs
   (`[137,104]`, `[82,137]`), so the correctness-first no-flag c2 sampler is
   demoted back to `serial_lm_head`; eight post-demotion c2 repeats are green at
-  `[137,137]`, while c4/c8 still use `batched_lm_head` and stay green. C2 remains
+  `[137,137]`, while c4/c8 still use `batched_lm_head` and stay green. A fresh
+  post-demotion baseline attachment now records the same current defaults with
+  c1/serial references and primitive correctness loaded: c2 `[137,137]` uses
+  `serial_lm_head`, c4 `[137]*4` and c8 `[137]*8` keep `batched_lm_head`, and all
+  rows select the accepted c-aware projection candidates automatically. C2 remains
   below aggregate-vs-c1, while c4/c8 remain diagnostic despite serial-bridge
   speedups because all-layer rowchunk keeps `native_caware_decode=false`. No
   retained throughput/scaling claim is made
@@ -999,7 +1003,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-first8-c4-demotion-307/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-308/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-post-demotion-baseline-attach-309/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-post-c2-sampler-baseline-attach-311/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
