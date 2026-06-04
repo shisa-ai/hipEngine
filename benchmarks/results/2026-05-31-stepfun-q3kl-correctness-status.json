@@ -13195,9 +13195,24 @@
       }
     ],
     "schema_version": 1,
-    "status": "safe"
+    "status": "safe",
+    "supervisor_signal_contract_safe": true,
+    "supervisor_signal_timeout_contract": {
+      "cleanup_method": "os.killpg",
+      "cleanup_path": "supervisor_signal_killpg_then_communicate",
+      "cleanup_signal": "SIGKILL",
+      "handled_signals": [
+        "SIGTERM",
+        "SIGINT"
+      ],
+      "handler_scope": "while_llama_cli_subprocess_is_running",
+      "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+      "timeout_blocker_kind": "llama_cpp_oracle_timeout",
+      "timeout_status": "timeout",
+      "timeout_termination_supervisor_signal_received": true
+    }
   },
-  "oracle_partial_output_handoff_sha256": "c977a9c382d54d1ead82804d24970210826ae7d7dac2b1d0879c70806135a769",
+  "oracle_partial_output_handoff_sha256": "bd0628cadd439eee98a671e02d58b8508e634ff94adbe9e633db10edb1072477",
   "oracle_progress": {
     "command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
     "comparison_policy": {
@@ -17321,10 +17336,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "8ac1ceea7c249ba1c72d39f233847c4f92c2384f7467933c6a57dc7209904fa4",
     "schema_version": 1,
-    "source_artifacts_sha256": "ff05da6dd63f6fd5f45bd90b120aefcc3ecb5c43f2aa60b0e725b7fca5232262",
+    "source_artifacts_sha256": "f13c978d6ccc163b4112ba3801ec8b0d7deca18a2fd6666c2a921e229a775978",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "f884bb56c87edd67d401ee44a96b3c77aef99b2d0bfa8b8c044a4f808409a146",
+  "readiness_summary_sha256": "305d2f917ef83017f660f7195e5c5f14f0bc7d4d589226679936796682a90588",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -17443,8 +17458,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "a23e30138ecd3bca56febc202a21d75ce60fc3728b49060bfac51439f16e7356",
-      "size_bytes": 74940
+      "sha256": "3d6b30b1f843275f4e160f4add47118c3a061c09fbdfb26eb623aac1f8a00882",
+      "size_bytes": 75180
     },
     "oracle": {
       "exists": true,
@@ -17471,7 +17486,7 @@
       "size_bytes": 176642
     }
   },
-  "source_artifacts_sha256": "ff05da6dd63f6fd5f45bd90b120aefcc3ecb5c43f2aa60b0e725b7fca5232262",
+  "source_artifacts_sha256": "f13c978d6ccc163b4112ba3801ec8b0d7deca18a2fd6666c2a921e229a775978",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

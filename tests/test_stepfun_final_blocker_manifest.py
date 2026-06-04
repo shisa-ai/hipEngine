@@ -58,9 +58,15 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert manifest["recommended_commands_handoff"][0]["partial_output_status"] == (
         "running"
     )
+    assert manifest["recommended_commands_handoff"][0][
+        "partial_output_supervisor_signal_handoff_safe"
+    ] is True
     assert manifest["recommended_commands_handoff"][1]["resource_artifact"] == str(
         resource
     )
+    assert manifest["recommended_commands_handoff"][1][
+        "partial_output_supervisor_signal_handoff_safe"
+    ] is None
     assert manifest["open_or_partial_items_p0_p12"] == 2
     assert manifest["remaining_blocker_count"] == 2
     assert manifest["remaining_blocker_kinds"] == [
@@ -358,6 +364,13 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     assert oracle_artifact["validator_success_status"] == "passed"
     assert oracle_artifact["validator_failure_exit_code"] == 2
     assert oracle_artifact["partial_output_handoff_safe"] is True
+    assert oracle_artifact["partial_output_supervisor_signal_handoff_safe"] is True
+    assert oracle_artifact["partial_output_supervisor_signal_contract"][
+        "handled_signals"
+    ] == ["SIGTERM", "SIGINT"]
+    assert oracle_artifact["partial_output_supervisor_signal_contract"][
+        "timeout_blocker_kind"
+    ] == "llama_cpp_oracle_timeout"
 
     kv_entry = entries["kv_backed_decode_not_wired"]
     assert kv_entry["readiness_gate"] == "kv_backed_decode"

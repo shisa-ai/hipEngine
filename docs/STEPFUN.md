@@ -728,7 +728,10 @@ reporting.
   the timeout blocker. The oracle helper now also traps `SIGTERM`/`SIGINT` from
   an outer supervisor, kills the `llama-cli` process group, and rewrites the
   pre-launch partial artifact with structured timeout provenance when it gets a
-  graceful interruption window. A 2026-06-01 bounded 180 s rerun attempt is recorded in
+  graceful interruption window. `oracle_partial_output_handoff` and the
+  final-blocker handoff now expose this supervisor-signal timeout contract so a
+  future oracle rerun can verify that graceful wrapper interruption should still
+  produce structured timeout evidence. A 2026-06-01 bounded 180 s rerun attempt is recorded in
   `benchmarks/results/2026-06-01-stepfun-q3kl-llamacpp-step35-180s-wrapper-timeout.json`;
   the outer pi wrapper timed out at 240 s before the helper rewrote the canonical
   oracle JSON, so that wrapper artifact remains historical source evidence for

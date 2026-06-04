@@ -3369,6 +3369,33 @@ def _oracle_partial_output_handoff(
         and command_record.get("command_has_output_path") is True
     )
     mirror_records_safe = all(_record_is_safe(record) for record in mirror_records)
+    supervisor_signal_timeout_contract = {
+        "handled_signals": ["SIGTERM", "SIGINT"],
+        "handler_scope": "while_llama_cli_subprocess_is_running",
+        "cleanup_method": "os.killpg",
+        "cleanup_signal": "SIGKILL",
+        "cleanup_path": "supervisor_signal_killpg_then_communicate",
+        "timeout_status": "timeout",
+        "timeout_blocker_kind": "llama_cpp_oracle_timeout",
+        "timeout_termination_supervisor_signal_received": True,
+        "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+    }
+    supervisor_signal_contract_safe = (
+        command_record_safe
+        and supervisor_signal_timeout_contract["handled_signals"]
+        == ["SIGTERM", "SIGINT"]
+        and supervisor_signal_timeout_contract["cleanup_method"] == "os.killpg"
+        and supervisor_signal_timeout_contract["cleanup_signal"] == "SIGKILL"
+        and supervisor_signal_timeout_contract["timeout_status"] == "timeout"
+        and supervisor_signal_timeout_contract["timeout_blocker_kind"]
+        == "llama_cpp_oracle_timeout"
+        and supervisor_signal_timeout_contract[
+            "timeout_termination_supervisor_signal_received"
+        ]
+        is True
+        and supervisor_signal_timeout_contract["partial_output_overwrite_policy"]
+        == command_record.get("partial_output_overwrite_policy")
+    )
     return {
         "schema_version": 1,
         "status": "safe" if command_record_safe and mirror_records_safe else "drift",
@@ -3379,6 +3406,8 @@ def _oracle_partial_output_handoff(
         "all_partial_output_contracts_safe": (
             command_record_safe and mirror_records_safe
         ),
+        "supervisor_signal_timeout_contract": supervisor_signal_timeout_contract,
+        "supervisor_signal_contract_safe": supervisor_signal_contract_safe,
         "integrity_checks": [
             "oracle_partial_output_command_metadata",
             "oracle_partial_output_handoff_mirrors",

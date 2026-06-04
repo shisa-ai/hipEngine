@@ -559,6 +559,13 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                     "all_partial_output_contracts_safe"
                 )
                 is True,
+                "partial_output_supervisor_signal_contract": oracle_partial_handoff.get(
+                    "supervisor_signal_timeout_contract"
+                ),
+                "partial_output_supervisor_signal_handoff_safe": oracle_partial_handoff.get(
+                    "supervisor_signal_contract_safe"
+                )
+                is True,
             }
             artifact.update(
                 _oracle_validator_handoff(
@@ -651,6 +658,11 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
             "partial_output_status": item.get("partial_output_status"),
             "partial_output_overwrite_policy": item.get(
                 "partial_output_overwrite_policy"
+            ),
+            "partial_output_supervisor_signal_handoff_safe": (
+                oracle_partial_handoff.get("supervisor_signal_contract_safe") is True
+                if item.get("blocker_kind") == "oracle_parity_blocked"
+                else None
             ),
             "resource_artifact": item.get("resource_artifact"),
             "success_criteria": list(item.get("success_criteria", [])),

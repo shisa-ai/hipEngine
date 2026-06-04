@@ -4657,6 +4657,19 @@ def test_stepfun_correctness_status_oracle_partial_output_handoff_outputs(
         "remaining_blockers_report.items.oracle_parity_blocked",
         "first_remaining_blocker_report",
     }
+    supervisor_contract = payload["supervisor_signal_timeout_contract"]
+    assert supervisor_contract == {
+        "handled_signals": ["SIGTERM", "SIGINT"],
+        "handler_scope": "while_llama_cli_subprocess_is_running",
+        "cleanup_method": "os.killpg",
+        "cleanup_signal": "SIGKILL",
+        "cleanup_path": "supervisor_signal_killpg_then_communicate",
+        "timeout_status": "timeout",
+        "timeout_blocker_kind": "llama_cpp_oracle_timeout",
+        "timeout_termination_supervisor_signal_received": True,
+        "partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+    }
+    assert payload["supervisor_signal_contract_safe"] is True
     assert payload["integrity_checks"] == [
         "oracle_partial_output_command_metadata",
         "oracle_partial_output_handoff_mirrors",
