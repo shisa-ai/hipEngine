@@ -891,6 +891,14 @@ What is still not green:
   on coupled E2E full-attention composition/state/ordering rather than the O
   projection alone
   (`benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-output-frontier-289/summary.json`).
+  A layer-scoped rowchunk diagnostic narrows that hard-c4 target: with row-aware
+  batch-GEMV O, no-rowchunk is red (`[45,11,137,137]`), rowchunking only layer 3
+  is red (`[45,58,137,137]`), rowchunking layers 3+7 is red
+  (`[137,109,137,137]`), but rowchunking layers 3+7+11 is green (`[137]*4`).
+  Single/paired controls for 11, 7+11, and 3+11 stay red, so the first three
+  full-attention producer layers together are sufficient while each tested
+  smaller subset is not
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-rowchunk-layer-scope-290/summary.json`).
   The matching current-schema c=2/c=4/c=8 matrix is generated-token green vs
   independent c1 for every row (`[137]` prefixes throughout) with empty
   `mismatch_summaries`; c2 is full-native/c-aware, while c4/c8 still use

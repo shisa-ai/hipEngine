@@ -4171,6 +4171,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] = str(
         _resolved_batch_decode_full_attn_row_chunk_size(args)
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] = str(
+        getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
+    ).strip()
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
     )
@@ -4720,6 +4723,9 @@ def _build_payload(
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "batch_gemv")),
             "batch_decode_full_attention_path": _resolved_batch_decode_full_attn_path(args),
             "batch_decode_full_attention_row_chunk_size": _resolved_batch_decode_full_attn_row_chunk_size(args),
+            "batch_decode_full_attention_row_chunk_layers": str(
+                getattr(args, "batch_decode_full_attn_row_chunk_layers", "") or ""
+            ).strip(),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_scratch_path": str(getattr(args, "batch_decode_attn_scratch_path", "batch")),
@@ -4879,6 +4885,11 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=0,
         help="Diagnostic full-attention native row chunk size for c>N batch decode; a positive value below batch size runs native full-attention in row sub-batches and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-row-chunk-layers",
+        default="",
+        help="Comma-separated full-attention layer ids that should use the row-chunk diagnostic when --batch-decode-full-attn-row-chunk-size is positive; empty applies row chunks to every full-attention layer.",
     )
     parser.add_argument(
         "--batch-decode-attn-input-path",

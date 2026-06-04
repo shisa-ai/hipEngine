@@ -3660,6 +3660,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
         batch_decode_moe_path="grouped_compact",
         batch_decode_full_attn_path="per_row",
         batch_decode_full_attn_row_chunk_size=4,
+        batch_decode_full_attn_row_chunk_layers="3,7",
         batch_decode_attn_input_path="per_row",
         batch_decode_attn_qkv_path="per_row",
         batch_decode_attn_scratch_path="persistent_c1_no_batch_setup",
@@ -3677,6 +3678,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
 
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "4"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,7"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
@@ -3780,6 +3782,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     retained_bench._apply_runtime_env_args(defaults)
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] == "0"
