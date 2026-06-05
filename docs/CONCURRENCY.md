@@ -3307,12 +3307,16 @@ roll-up/status view.
       remains token-green but hidden-red, and fresh true input+QKV-temp+context
       variants without the broad layer-scratch flag also remain hidden-red with
       batch-GEMV O, per-row O, and context-only controls. A fresh broad layer-
-      scratch positive control is still hidden/token green. The blocker therefore
-      remains native full-attention batch scratch/context integration, with the
-      only green repair still a non-retained complete per-row full-attention
-      layer replay
+      scratch positive control is still hidden/token green. The new
+      `per_row_batch_scratch` diagnostic then replayed each row through the c1
+      full-attention layer while using row views of the normal batch scratch and
+      also cleared hidden/token parity. Thus independent scratch allocation is
+      not required for the green path; the blocker remains native full-attention
+      batch scratch/context integration, with the only green repair still a
+      non-retained complete per-row full-attention layer replay/order boundary
       (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-scratch-semantics-397/summary.json`,
-      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-true-preqkv-context-398/summary.json`).
+      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-true-preqkv-context-398/summary.json`,
+      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-batch-view-layer-scratch-399/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or

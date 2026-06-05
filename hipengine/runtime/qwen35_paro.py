@@ -4171,6 +4171,7 @@ class Qwen35ParoDecodeState:
         force_per_row_input_rmsnorm: bool = False,
         force_per_row_qkv_scratch: bool = False,
         force_per_row_layer_scratch: bool = False,
+        force_per_row_layer_batch_scratch: bool = False,
         force_per_row_context: bool = False,
         force_per_row_context_only: bool = False,
         force_per_row_dense_context_only: bool = False,
@@ -4208,7 +4209,12 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        elif tokens > 1 and not (force_selected_c1_moe or force_per_row_moe or force_per_row_layer_scratch):
+        elif tokens > 1 and not (
+            force_selected_c1_moe
+            or force_per_row_moe
+            or force_per_row_layer_scratch
+            or force_per_row_layer_batch_scratch
+        ):
             if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
                 moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
@@ -4227,7 +4233,7 @@ class Qwen35ParoDecodeState:
         )
         if post_input_rmsnorm_trace is not None:
             post_input_rmsnorm_trace(attention_scratch)
-        if force_per_row_layer_scratch and tokens > 1:
+        if (force_per_row_layer_scratch or force_per_row_layer_batch_scratch) and tokens > 1:
             if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
                 raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
             if per_row_contexts is None or len(per_row_contexts) != tokens:
@@ -4249,7 +4255,11 @@ class Qwen35ParoDecodeState:
                 if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
                     raise ValueError("per-row full-attention scratch diagnostics must use matching row cache views")
                 row_hidden = self._row_tensor_view(hidden, row)
-                row_scratch = self._decode_row_full_attention_temp_scratch(attention_scratch)
+                row_scratch = (
+                    self._decode_row_full_attention_scratch(attention_scratch, row)
+                    if force_per_row_layer_batch_scratch
+                    else self._decode_row_full_attention_temp_scratch(attention_scratch)
+                )
                 row_position = Tensor.from_handle(
                     positions.ptr + row * DType.INT64.itemsize,
                     (1,),
