@@ -1302,10 +1302,16 @@ What is still not green:
   A follow-up c4 first-eight probe narrowed the c4 default again to
   `[3,7,11,15,19,23,27,31]`: explicit first-eight and post-change no-flag runs
   are green at `[137]*4` for both the primary first-four fixture and the hard
-  rows4..7 fixture, and the post-change c=2/c=4/c=8 matrix is green. This keeps
-  the c4 rowchunk blocker (`native_caware_decode=false`) but leaves final layers
+  rows4..7 fixture, and the post-change c=2/c=4/c=8 matrix is green. This kept
+  the c4 rowchunk blocker (`native_caware_decode=false`) but left final layers
   35 and 39 native
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first8-default-371/summary.json`).
+  A next c4 first-seven probe narrowed the c4 default to
+  `[3,7,11,15,19,23,27]`: explicit first-seven and post-change no-flag runs are
+  green at `[137]*4` for both primary and hard rows4..7, and the post-change
+  c=2/c=4/c=8 matrix is green. This keeps the c4 rowchunk blocker but leaves
+  layers 31, 35, and 39 native
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first7-default-372/summary.json`).
   The matching current c8 first-nine baseline/profiler attachment also stayed
   green at `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the
   first-nine profiler summary loaded. Scaling references are complete
