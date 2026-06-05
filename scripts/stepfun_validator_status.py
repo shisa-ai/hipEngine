@@ -1164,6 +1164,9 @@ def build_validator_status_report(
         "next_action_missing_evidence_count": summary[
             "next_action_missing_evidence_count"
         ],
+        "next_action_missing_evidence_sha256": summary[
+            "next_action_missing_evidence_sha256"
+        ],
         "next_action_validator_command_kind": summary[
             "next_action_validator_command_kind"
         ],
@@ -1236,7 +1239,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.next_action_missing_evidence_count_only:
         payload = report["next_action_missing_evidence_count"]
     elif args.next_action_missing_evidence_sha_only:
-        payload = status_mod._stable_json_sha256(next_action_missing_evidence)
+        payload = report["next_action_missing_evidence_sha256"]
     elif args.next_action_missing_evidence_only:
         payload = next_action_missing_evidence
     elif args.next_action_sha_only:
