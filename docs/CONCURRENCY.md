@@ -3305,6 +3305,13 @@ roll-up/status view.
       MoE. Context+gate+O alone remains hidden-only red, so the blocker is the
       coupled pre-QKV plus context/gate setup rather than O/MoE/post-attention
       (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-preqkv-context-split-395/summary.json`).
+      Splitting the pre-QKV group further pins the repair to attention scratch:
+      context+input+QKV without per-row scratch remains hidden-only red, while
+      context+QKV+scratch, context+input+scratch, context+scratch, and scratch-
+      only are all hidden/token green. Thus the controlled L8 c2 native-full
+      gate clears with `--batch-decode-attn-scratch-path per_row` alone, and
+      native context can remain batch in that scratch-only probe
+      (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-attn-scratch-split-396/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
