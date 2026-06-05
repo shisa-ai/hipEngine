@@ -110,6 +110,7 @@ _BATCH_SAMPLE_COMMAND_FLAGS = (
     "--batch-sample-cast-path",
     "--batch-sample-argmax-mode",
     "--batch-sample-argmax-audit",
+    "--batch-sample-lm-head-audit",
     "--batch-sample-eq-ok",
     "--batch-sample-eq-artifact",
     "--batch-sample-eq-rows",
@@ -4314,6 +4315,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_CAST_PATH"] = str(getattr(args, "batch_sample_cast_path", "auto"))
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE"] = str(getattr(args, "batch_sample_argmax_mode", "batch"))
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_AUDIT"] = "1" if getattr(args, "batch_sample_argmax_audit", False) else "0"
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_AUDIT"] = "1" if getattr(args, "batch_sample_lm_head_audit", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] = (
         "1" if getattr(args, "batch_sample_eq_ok", False) else "0"
     )
@@ -4496,6 +4498,7 @@ def _build_payload(
             "batch_sample_cast_path": str(getattr(args, "batch_sample_cast_path", "auto")),
             "batch_sample_argmax_mode": str(getattr(args, "batch_sample_argmax_mode", "batch")),
             "batch_sample_argmax_audit": bool(getattr(args, "batch_sample_argmax_audit", False)),
+            "batch_sample_lm_head_audit": bool(getattr(args, "batch_sample_lm_head_audit", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
             "batch_sample_eq_artifact": str(getattr(args, "batch_sample_eq_artifact", "") or ""),
             "batch_sample_eq_rows": getattr(args, "batch_sample_eq_rows", None),
@@ -4807,6 +4810,7 @@ def _build_payload(
             "batch_sample_cast_path": str(getattr(args, "batch_sample_cast_path", "auto")),
             "batch_sample_argmax_mode": str(getattr(args, "batch_sample_argmax_mode", "batch")),
             "batch_sample_argmax_audit": bool(getattr(args, "batch_sample_argmax_audit", False)),
+            "batch_sample_lm_head_audit": bool(getattr(args, "batch_sample_lm_head_audit", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
             "batch_sample_eq_artifact": (
                 str(getattr(args, "batch_sample_eq_artifact", "") or "")
@@ -5070,6 +5074,11 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-sample-argmax-audit",
         action="store_true",
         help="Diagnostic-only parity audit for batched_lm_head + batch argmax: runs serial per-row argmax over the same batched logits, records batch-vs-serial mismatches, and blocks retained sampler claims.",
+    )
+    parser.add_argument(
+        "--batch-sample-lm-head-audit",
+        action="store_true",
+        help="Diagnostic-only parity audit for batched_lm_head + batch argmax: reruns each row through the serial c=1 LM-head projection from the same normalized BF16 row, records batch-vs-serial projection+argmax mismatches, and blocks retained sampler claims.",
     )
     parser.add_argument(
         "--batch-sample-eq-ok",

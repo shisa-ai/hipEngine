@@ -1017,9 +1017,16 @@ What is still not green:
   participate in the intermittent c2 batched-sampler instability. A follow-up
   attempted to promote c2's no-flag default to batched LM-head plus per-row norm
   and per-row cast, but rejected it after 7/8 repeats passed and one failed at
-  `[137,104]`; c2 therefore stays `serial_lm_head` by default. The immediately
-  following post-revert no-flag c2/c4/c8 controls recovered green (`[137,137]`,
-  `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
+  `[137,104]`; c2 therefore stays `serial_lm_head` by default. A new
+  LM-head-suffix audit reruns each row through the serial c=1 LM-head projection
+  from the same normalized BF16 row; full-batch c2 final norm/cast plus this
+  audit was 8/8 green at `[137,137]` with 136 audited steps, 272 audited rows,
+  zero projection+argmax mismatches, and max value delta 0.0 per repeat. This
+  clears the LM-head projection plus batch-argmax suffix for observed inputs and
+  moves the remaining intermittent c2 batched-sampler suspicion upstream to
+  final norm/cast input production or earlier hidden-state/state interaction. The
+  immediately following post-audit no-flag c2/c4/c8 controls recovered green
+  (`[137,137]`, `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`,
@@ -1038,7 +1045,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-perrow-norm-317/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-norm-batch-argmax-318/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-norm-cast-split-319/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default-batched-perrow-reject-320/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default-batched-perrow-reject-320/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-lm-head-audit-321/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

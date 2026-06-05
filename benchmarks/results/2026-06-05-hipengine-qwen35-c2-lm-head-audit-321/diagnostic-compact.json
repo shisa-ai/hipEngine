@@ -1,0 +1,1027 @@
+{
+  "c2_full_batch_lm_head_audit_repeats": [
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-1",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-1.json",
+        "sha256": "5a53bf4c29c888d4d671b8dc07cc97d128715ea9e74569c60021720c9ef75ffd",
+        "size_bytes": 137878
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-1.log",
+        "sha256": "5a53bf4c29c888d4d671b8dc07cc97d128715ea9e74569c60021720c9ef75ffd",
+        "size_bytes": 137878
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-2",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-2.json",
+        "sha256": "aa72a6d3a6bcaae280299ef17fdc0669f02c1e2b47e66896e40ebaac738c5a4e",
+        "size_bytes": 137861
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-2.log",
+        "sha256": "aa72a6d3a6bcaae280299ef17fdc0669f02c1e2b47e66896e40ebaac738c5a4e",
+        "size_bytes": 137861
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-3",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-3.json",
+        "sha256": "a533b427961759dee0aca069de76523f5fab138aacbb40dbe3c78834c0687e14",
+        "size_bytes": 137865
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-3.log",
+        "sha256": "a533b427961759dee0aca069de76523f5fab138aacbb40dbe3c78834c0687e14",
+        "size_bytes": 137865
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-4",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-4.json",
+        "sha256": "47f305db4cd7a60513f09af3cd37c0b38399b7c15dfd236ceb842c55c286c503",
+        "size_bytes": 137876
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-4.log",
+        "sha256": "47f305db4cd7a60513f09af3cd37c0b38399b7c15dfd236ceb842c55c286c503",
+        "size_bytes": 137876
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-5",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-5.json",
+        "sha256": "d78e64924ceb49c0409951239cc9d8b18e4bc072231813c71daa4808f4e0e216",
+        "size_bytes": 137879
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-5.log",
+        "sha256": "d78e64924ceb49c0409951239cc9d8b18e4bc072231813c71daa4808f4e0e216",
+        "size_bytes": 137879
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-6",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-6.json",
+        "sha256": "1bd4b366996ef93460e35fb67cb8944f6a3fe770ed1a8587533a9e7a63da88b4",
+        "size_bytes": 137897
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-6.log",
+        "sha256": "1bd4b366996ef93460e35fb67cb8944f6a3fe770ed1a8587533a9e7a63da88b4",
+        "size_bytes": 137897
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-7",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-7.json",
+        "sha256": "589c63648a7a0384f65a533e4a0212017d73aa35c7b371507c573e1333ec8552",
+        "size_bytes": 137886
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-7.log",
+        "sha256": "589c63648a7a0384f65a533e4a0212017d73aa35c7b371507c573e1333ec8552",
+        "size_bytes": 137886
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "last_step": {
+            "max_abs_value_delta": 0.0,
+            "mismatch_rows": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "max_abs_value_delta": 0.0,
+          "mismatch_rows": 0,
+          "mismatch_steps": 0,
+          "mismatches": []
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial projection audit enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": true,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-lm-head-audit-repeat-8",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-8.json",
+        "sha256": "2f353b9e76ceec69235e5215e2ca6eec6c634b16fc3cb54b9b58037eabacc5eb",
+        "size_bytes": 137869
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/c2-batch-norm-cast-lm-head-audit-8.log",
+        "sha256": "2f353b9e76ceec69235e5215e2ca6eec6c634b16fc3cb54b9b58037eabacc5eb",
+        "size_bytes": 137869
+      },
+      "rows": 2,
+      "status": "blocked"
+    }
+  ],
+  "c2_lm_head_audit_summary": {
+    "audit_checked_rows": [
+      272,
+      272,
+      272,
+      272,
+      272,
+      272,
+      272,
+      272
+    ],
+    "audit_checked_steps": [
+      136,
+      136,
+      136,
+      136,
+      136,
+      136,
+      136,
+      136
+    ],
+    "audit_max_abs_value_delta": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "audit_mismatch_rows": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "audit_mismatch_steps": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "failed_count": 0,
+    "final_cast_paths": [
+      "batch"
+    ],
+    "final_norm_paths": [
+      "batch"
+    ],
+    "first_mismatch_indices": [
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ]
+    ],
+    "passed_count": 8,
+    "prefix_lengths": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "sampler_blockers": [
+      [
+        "batched LM-head serial projection audit enabled"
+      ]
+    ],
+    "sampler_modes": [
+      "batched_lm_head"
+    ]
+  },
+  "postdiag_default_controls": [
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "lm_head_audit": {
+          "checked_rows": null,
+          "checked_steps": null,
+          "enabled": null,
+          "last_step": null,
+          "max_abs_value_delta": null,
+          "mismatch_rows": null,
+          "mismatch_steps": null,
+          "mismatches": null
+        },
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "serial_per_row",
+          "blockers": [],
+          "equality_artifact": null,
+          "equality_rows": null,
+          "final_cast_path": "serial_per_row",
+          "final_norm_path": "serial_per_row",
+          "lm_head_audit_enabled": false,
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "serial_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-c2-default-control",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/postdiag-c2-default-control.json",
+        "sha256": "64cb2aca2c6884cccaf5ef911ad002cc2e5397ce586b43fc7098f99f999a9dd0",
+        "size_bytes": 137309
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/postdiag-c2-default-control.log",
+        "sha256": "64cb2aca2c6884cccaf5ef911ad002cc2e5397ce586b43fc7098f99f999a9dd0",
+        "size_bytes": 137309
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "lm_head_audit": {
+          "checked_rows": null,
+          "checked_steps": null,
+          "enabled": null,
+          "last_step": null,
+          "max_abs_value_delta": null,
+          "mismatch_rows": null,
+          "mismatch_steps": null,
+          "mismatches": null
+        },
+        "native_caware_decode": false,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+          "equality_rows": 4,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-c4-default-control",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/postdiag-c4-default-control.json",
+        "sha256": "c7c3e3c2a9f67b092133759fd5788f3dc7ccf84b720a28a817cc077d0b336c08",
+        "size_bytes": 237602
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/postdiag-c4-default-control.log",
+        "sha256": "c7c3e3c2a9f67b092133759fd5788f3dc7ccf84b720a28a817cc077d0b336c08",
+        "size_bytes": 237602
+      },
+      "rows": 4,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "lm_head_audit": {
+          "checked_rows": null,
+          "checked_steps": null,
+          "enabled": null,
+          "last_step": null,
+          "max_abs_value_delta": null,
+          "mismatch_rows": null,
+          "mismatch_steps": null,
+          "mismatches": null
+        },
+        "native_caware_decode": false,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+          "equality_rows": 8,
+          "final_cast_path": "batch",
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-c8-default-control",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/postdiag-c8-default-control.json",
+        "sha256": "6ab5b2d940a37058a7691e3a31fb335a4677236fdbb8ba9a8f1c5e74cddbc7cc",
+        "size_bytes": 415060
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter321-c2-lm-head-audit/postdiag-c8-default-control.log",
+        "sha256": "6ab5b2d940a37058a7691e3a31fb335a4677236fdbb8ba9a8f1c5e74cddbc7cc",
+        "size_bytes": 415060
+      },
+      "rows": 8,
+      "status": "blocked"
+    }
+  ],
+  "postdiag_default_summary": {
+    "c2": {
+      "argmax_mode": "serial_per_row",
+      "final_cast_path": "serial_per_row",
+      "final_norm_path": "serial_per_row",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "sampler_mode": "serial_lm_head"
+    },
+    "c4": {
+      "argmax_mode": "batch",
+      "final_cast_path": "batch",
+      "final_norm_path": "batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+      "sampler_mode": "batched_lm_head"
+    },
+    "c8": {
+      "argmax_mode": "batch",
+      "final_cast_path": "batch",
+      "final_norm_path": "batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+      "sampler_mode": "batched_lm_head"
+    }
+  }
+}
