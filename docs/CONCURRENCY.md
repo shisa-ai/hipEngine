@@ -1324,6 +1324,16 @@ What is still not green:
   stayed green, so first-six is the current c4 boundary and was not narrowed
   further
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first5-red-boundary-374/summary.json`).
+  The current c4 first-six default now also has refreshed profiler/scaling
+  evidence: a no-baseline `rocprofv3` smoke stayed `[137]*4` with expected native
+  batch full-attention context/KV, grouped-MoE, accepted c-aware projection,
+  row-aware output GEMV, and batched sampler kernels; the retained-bench
+  attachment loaded c1, c4 serial-bridge, primitive c4 correctness, and that
+  profiler while preserving `[137]*4`. Scaling references are complete
+  (`aggregate_vs_c1=1.1075`, `aggregate_vs_serial_bridge=1.3711`), but this is
+  still evidence-only because first-six rowchunk keeps `native_caware_decode=false`
+  and the profiler was captured from a no-baseline smoke
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first6-profiler-refresh-375/summary.json`).
   The matching current c8 first-nine baseline/profiler attachment also stayed
   green at `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the
   first-nine profiler summary loaded. Scaling references are complete
