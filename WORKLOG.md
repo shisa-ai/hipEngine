@@ -66818,3 +66818,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - No default/runtime code changed and no retained throughput/scaling claim is made.
 - Compact artifact: `benchmarks/results/2026-06-05-hipengine-qwen35-c2-attn-scratch-split-396/summary.json` plus `compact-runs.json`; raw hidden-bisect JSON/logs remain under `/tmp/hipengine-hidden-bisect-iter396-*` with hashes recorded.
 - Validation: active c2 verify printed `137` and recorded `[137,137]`; guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because this makes a focused full-attention hidden-parity blocker green with a concrete scratch-only artifact.
+
+## 2026-06-05 — concurrency-e2e/native-c2-e2e iter397 c2 scratch semantics correction
+- Deconfounded the iter396 scratch result before acting on it: source audit shows `--batch-decode-attn-scratch-path per_row` maps to `force_per_row_layer_scratch`, which enters a broad per-row full-attention layer replay branch (`run_full_attention_moe_c1_layer_fp16` per row), not a narrow native-context scratch repair.
+- Fresh GPU hidden-bisect confirmed the true QKV temp-scratch diagnostic (`--batch-decode-attn-qkv-path per_row`) is still token-green but hidden-red, matching the native-full baseline on the selected-c1 projection / native segmented state / batch-GEMV output control.
+- Current no-flag c=2/c=4/c=8 generated-token matrix stayed green (`[137,137]`, `[137]*4`, `[137]*8`) and active c2 verify stayed `137`.
+- Correction: the C2.3 blocker remains native full-attention batch scratch/context integration; the only green repair in this branch is still the non-retained per-row-layer fallback. Do not treat iter396 as evidence that native batch context can remain active.
+- Compact artifact: `benchmarks/results/2026-06-05-hipengine-qwen35-c2-scratch-semantics-397/summary.json` plus `compact-runs.json`; raw hidden-bisect JSON/logs remain under `/tmp/hipengine-hidden-bisect-iter397-*` with hashes recorded.
+- Validation: guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because this correction is required to trust the focused full-attention runtime evidence and includes a fresh green c2/c4/c8 generated-token matrix.
