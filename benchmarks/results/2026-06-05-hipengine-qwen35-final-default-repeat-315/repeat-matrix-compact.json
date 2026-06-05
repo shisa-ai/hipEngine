@@ -1,0 +1,640 @@
+{
+  "c2": {
+    "failed_count": 0,
+    "full_attention_paths": [
+      "native_batch"
+    ],
+    "native_caware_decode_values": [
+      "True"
+    ],
+    "passed_count": 3,
+    "prefix_lengths": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "projection_candidates": [
+      "gemv_awq_selected_dual_pack8_strided_c2"
+    ],
+    "sampler_modes": [
+      "serial_lm_head"
+    ]
+  },
+  "c4": {
+    "failed_count": 0,
+    "full_attention_paths": [
+      "native_batch_row_chunks"
+    ],
+    "native_caware_decode_values": [
+      "False"
+    ],
+    "passed_count": 3,
+    "prefix_lengths": [
+      [
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137
+      ]
+    ],
+    "projection_candidates": [
+      "gemv_awq_selected_dual_pack8_strided_c4"
+    ],
+    "sampler_modes": [
+      "batched_lm_head"
+    ]
+  },
+  "c8": {
+    "failed_count": 0,
+    "full_attention_paths": [
+      "native_batch_row_chunks"
+    ],
+    "native_caware_decode_values": [
+      "False"
+    ],
+    "passed_count": 3,
+    "prefix_lengths": [
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    ],
+    "projection_candidates": [
+      "gemv_awq_selected_dual_pack8_strided_c8"
+    ],
+    "sampler_modes": [
+      "batched_lm_head"
+    ]
+  },
+  "runs": [
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 1,
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": false,
+        "sampler_blockers": [],
+        "sampler_mode": "serial_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle1-c2.json",
+        "sha256": "666c8b9df951e68294f3a5b614c5bb612254ed11502492545a678ca6f2db8e82",
+        "size_bytes": 137006
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle1-c2.log",
+        "sha256": "666c8b9df951e68294f3a5b614c5bb612254ed11502492545a678ca6f2db8e82",
+        "size_bytes": 137006
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 1,
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle1-c4.json",
+        "sha256": "b7d6d3cbe5537bc6cc8ffd6ea49901d0d7213fea93b40716422e3500d77e3fe2",
+        "size_bytes": 237305
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle1-c4.log",
+        "sha256": "b7d6d3cbe5537bc6cc8ffd6ea49901d0d7213fea93b40716422e3500d77e3fe2",
+        "size_bytes": 237305
+      },
+      "rows": 4,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 1,
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle1-c8.json",
+        "sha256": "a7a3d912da43d09f01bb2a689b76f527c3d503e604d2eb73c456e47d4e377a2b",
+        "size_bytes": 414745
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle1-c8.log",
+        "sha256": "a7a3d912da43d09f01bb2a689b76f527c3d503e604d2eb73c456e47d4e377a2b",
+        "size_bytes": 414745
+      },
+      "rows": 8,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 2,
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": false,
+        "sampler_blockers": [],
+        "sampler_mode": "serial_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle2-c2.json",
+        "sha256": "0f7f8480f5a15a117da3e99bf8fc3e011b5555e38d948509a4d70352469a3c70",
+        "size_bytes": 136989
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle2-c2.log",
+        "sha256": "0f7f8480f5a15a117da3e99bf8fc3e011b5555e38d948509a4d70352469a3c70",
+        "size_bytes": 136989
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 2,
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle2-c4.json",
+        "sha256": "3aff613f569b6a7be1d409bacab878a963d93115855999e2e66a523f1f65c30c",
+        "size_bytes": 237309
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle2-c4.log",
+        "sha256": "3aff613f569b6a7be1d409bacab878a963d93115855999e2e66a523f1f65c30c",
+        "size_bytes": 237309
+      },
+      "rows": 4,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 2,
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle2-c8.json",
+        "sha256": "634cbdc3bf74c31679a58ffb1a73a87e718e27c440fa45f4f01fd23126037869",
+        "size_bytes": 414775
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle2-c8.log",
+        "sha256": "634cbdc3bf74c31679a58ffb1a73a87e718e27c440fa45f4f01fd23126037869",
+        "size_bytes": 414775
+      },
+      "rows": 8,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 3,
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": false,
+        "sampler_blockers": [],
+        "sampler_mode": "serial_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle3-c2.json",
+        "sha256": "2ca5fc0281462c28ea82076d54a6f1889a73720e8ee09ad0bfabffa2bf53a815",
+        "size_bytes": 137000
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle3-c2.log",
+        "sha256": "2ca5fc0281462c28ea82076d54a6f1889a73720e8ee09ad0bfabffa2bf53a815",
+        "size_bytes": 137000
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 3,
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle3-c4.json",
+        "sha256": "5740c12e3e5605c35830fff4a4871a01560ca5ea75547f8a0a0c3991cbf86874",
+        "size_bytes": 237283
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle3-c4.log",
+        "sha256": "5740c12e3e5605c35830fff4a4871a01560ca5ea75547f8a0a0c3991cbf86874",
+        "size_bytes": 237283
+      },
+      "rows": 4,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "cycle": 3,
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head"
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle3-c8.json",
+        "sha256": "9458410d6b3e188fb4819fee2f75723e08e95a10211a5d964879ea0763d2b104",
+        "size_bytes": 414777
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter315-final-default-repeat/cycle3-c8.log",
+        "sha256": "9458410d6b3e188fb4819fee2f75723e08e95a10211a5d964879ea0763d2b104",
+        "size_bytes": 414777
+      },
+      "rows": 8,
+      "status": "blocked"
+    }
+  ]
+}

@@ -1000,7 +1000,9 @@ What is still not green:
   the expected native context/KV, grouped-MoE, c-aware projection, row-aware
   output GEMV, linear segment decode, and batched argmax kernels. C2 remains
   below aggregate-vs-c1, while c4/c8 remain diagnostic despite serial-bridge
-  speedups because all-layer rowchunk keeps `native_caware_decode=false`. No
+  speedups because all-layer rowchunk keeps `native_caware_decode=false`. A final
+  current-default repeat matrix passed three c2/c4/c8 cycles (`c2 [137,137]`,
+  `c4 [137]*4`, `c8 [137]*8`) with the same sampler/projection defaults. No
   retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
@@ -1014,7 +1016,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-post-c2-sampler-baseline-attach-311/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-serial-profiler-312/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-profiler-313/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-314/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-314/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-final-default-repeat-315/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
