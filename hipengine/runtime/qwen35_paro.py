@@ -4173,6 +4173,7 @@ class Qwen35ParoDecodeState:
         force_per_row_layer_scratch: bool = False,
         force_per_row_layer_batch_scratch: bool = False,
         force_per_row_attention_batch_moe: bool = False,
+        force_per_row_attention_batch_post_moe: bool = False,
         force_per_row_context: bool = False,
         force_per_row_context_only: bool = False,
         force_per_row_dense_context_only: bool = False,
@@ -4234,7 +4235,7 @@ class Qwen35ParoDecodeState:
         )
         if post_input_rmsnorm_trace is not None:
             post_input_rmsnorm_trace(attention_scratch)
-        if force_per_row_attention_batch_moe and tokens > 1:
+        if (force_per_row_attention_batch_moe or force_per_row_attention_batch_post_moe) and tokens > 1:
             if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
                 raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
             if per_row_contexts is None or len(per_row_contexts) != tokens:
@@ -4329,7 +4330,12 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
-            mlp_input, residual = self.post_attention_add_rmsnorm_fp16_per_row(
+            post_attention_fn = (
+                self.post_attention_add_rmsnorm_fp16
+                if force_per_row_attention_batch_post_moe
+                else self.post_attention_add_rmsnorm_fp16_per_row
+            )
+            mlp_input, residual = post_attention_fn(
                 hidden,
                 attention_scratch.o_proj,
                 moe_scratch,

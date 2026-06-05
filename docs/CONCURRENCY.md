@@ -3314,13 +3314,16 @@ roll-up/status view.
       not required for the green path. The follow-up `per_row_attn_batch_moe`
       diagnostic keeps grouped compact MoE in batch but replays full-attention
       attention/post work per row with batch scratch row views; it is also
-      hidden/token green. The blocker therefore narrows to native full-attention
-      attention/post row ordering before grouped batch MoE, not c1 MoE replay or
-      independent scratch allocation
+      hidden/token green. The next `per_row_attn_batch_post_moe` split keeps
+      batch post-attention and grouped compact MoE, replaying only attention/O
+      per row, and is also hidden/token green. The blocker therefore narrows to
+      native full-attention attention/O row ordering before batch post/MoE, not
+      post-attention, c1 MoE replay, or independent scratch allocation
       (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-scratch-semantics-397/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-true-preqkv-context-398/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-batch-view-layer-scratch-399/summary.json`,
-      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-moe-400/summary.json`).
+      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-moe-400/summary.json`,
+      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-post-moe-401/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
