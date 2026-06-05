@@ -66738,3 +66738,12 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - This establishes that layer 11 is currently required for the c8 rowchunk boundary. It is runtime evidence only: no code/default change, c8 keeps selected rowchunked full attention, `native_caware_decode=false`, and no retained throughput/scaling claim is made.
 - Compact artifact: `benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop11-boundary-387/summary.json` plus `compact-runs.json`; raw JSON/logs remain under `/tmp/hipengine-iter387-c8-drop11-probe/` with hashes recorded.
 - Validation: active c2 verify printed `137` and recorded `[137,137]`; guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because this records focused c8 full-attention runtime evidence while preserving current c2/c4/c8 equality.
+
+## 2026-06-05 — concurrency-e2e/native-c2-e2e iter388 c8 drop-layer7 boundary
+- Probed the next c8 narrowed rowchunk scope after iter387: left layer 7 native in addition to layers 27 and 31 while rowchunking `3,11,15,19,23,35,39`.
+- Drop-layer7 was red on the primary 8-row fixture at `[137,137,137,137,45,72,83,137]` (row4/5/6 first mismatches 45/72/83).
+- Kept the c8 auto rowchunk diagnostic default at `3,7,11,15,19,23,35,39`. Current no-flag c8 stayed `[137]*8` with row-aware `batched_lm_head`, accepted c-aware projection, `stabilize_cast_elems=256`, and the selected drop27/drop31 layer list recorded.
+- Current no-flag c=2/c=4/c=8 matrix is green: c2 `[137,137]` with `serial_lm_head`/`native_caware_decode=true`, c4 `[137]*4` with first-six rowchunk, and c8 `[137]*8` with drop27/drop31 rowchunk.
+- This establishes that layer 7 is currently required for the c8 rowchunk boundary. It is runtime evidence only: no code/default change, c8 keeps selected rowchunked full attention, `native_caware_decode=false`, and no retained throughput/scaling claim is made.
+- Compact artifact: `benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop7-boundary-388/summary.json` plus `compact-runs.json`; raw JSON/logs remain under `/tmp/hipengine-iter388-c8-drop7-probe/` with hashes recorded.
+- Validation: active c2 verify printed `137` and recorded `[137,137]`; guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because this records focused c8 full-attention runtime evidence while preserving current c2/c4/c8 equality.
