@@ -1073,11 +1073,14 @@ What is still not green:
   exposed that 128 was still marginal under profiler instrumentation (`[137,23]`),
   so the default c2 stabilizer was raised to 256; forced 256 and no-flag default256
   profiler runs were green at `[137,137]`, and two no-flag default256 c1+serial
-  baseline-attachment checks were also green. The same no-flag default equality
-  gate was then extended to c=4 and c=8: c2/c4/c8 all passed generated-token
-  equality vs independent c=1 at `[137,137]`, `[137]*4`, and `[137]*8`
-  respectively, with `batched_lm_head`, `native_row_aware_lm_head=true`, and empty
-  sampler blockers (c2 now uses the 256-element stabilizer; c4/c8 do not).
+  baseline-attachment checks were also green. A current no-flag c2/c4/c8 equality
+  refresh then found that c8 without a stabilizer was still intermittent
+  (`[137,31]` and `[0]` failures in two no-flag c8 runs), while forced c8
+  stabilize-cast=256 was 3/3 green. The no-flag c8 default now also enables the
+  256-element stabilizer; after that change, c2/c4/c8 all passed generated-token
+  equality vs independent c=1 at `[137,137]`, `[137]*4`, and `[137]*8` respectively
+  (c8 4/4 repeats), with `batched_lm_head`, `native_row_aware_lm_head=true`, and
+  empty sampler blockers (c2/c8 use 256-element stabilizers; c4 does not).
   Follow-up c2 `rocprofv3 --kernel-trace` smokes stayed green at `[137,137]`
   (first 112, then current 256) and captured native batch full-attention/KV,
   grouped-MoE, accepted c-aware projection, row-aware output GEMV, linear segment
@@ -1133,7 +1136,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c4-default-profiler-342/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-profiler-343/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default128-baseline-344/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default256-profiler-345/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default256-profiler-345/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-stabilizer-346/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

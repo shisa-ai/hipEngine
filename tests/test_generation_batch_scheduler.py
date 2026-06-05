@@ -3690,6 +3690,31 @@ def test_retained_bench_defaults_to_valid_batched_sampler_artifact(tmp_path: Pat
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] == "2"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS"] == "256"
 
+    c8_artifact_path = retained_bench._DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE.format(rows=8)
+    (tmp_path / c8_artifact_path).write_text(
+        json.dumps(_sampler_equality_payload(rows=8, artifact_path=c8_artifact_path)),
+        encoding="utf-8",
+    )
+    c8_default = SimpleNamespace(
+        batch_size=8,
+        batch_sample_mode="serial_lm_head",
+        batch_sample_eq_ok=False,
+        batch_sample_eq_artifact=None,
+        batch_sample_eq_rows=None,
+    )
+    retained_bench._apply_default_batch_sample_evidence(c8_default, [])
+    assert c8_default.batch_sample_mode == "batched_lm_head"
+    assert c8_default.batch_sample_eq_ok is True
+    assert c8_default.batch_sample_eq_artifact == Path(c8_artifact_path)
+    assert c8_default.batch_sample_eq_rows == 8
+    assert c8_default.batch_sample_stabilize_cast_elems == 256
+
+    retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, **vars(c8_default)))
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "batched_lm_head"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"] == c8_artifact_path
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] == "8"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS"] == "256"
+
     explicit_serial = SimpleNamespace(
         batch_size=4,
         batch_sample_mode="serial_lm_head",
