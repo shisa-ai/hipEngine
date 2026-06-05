@@ -1085,7 +1085,13 @@ What is still not green:
   (first 112, then current 256) and captured native batch full-attention/KV,
   grouped-MoE, accepted c-aware projection, row-aware output GEMV, linear segment
   decode, batch residual combine, `batch_argmax_stage{1,2}`, and FP16→BF16
-  final-cast/stabilizer kernels.
+  final-cast/stabilizer kernels. A current c2 default256 baseline/profiler
+  attachment loaded c1, c2 serial bridge, primitive c2 correctness, and
+  retained-gate-shaped profiler references; equality stayed `[137,137]`, scaling
+  was complete, and native c-aware decode / batch blockers were green, but the row
+  remains non-retained because aggregate-vs-c1 is still below 1.0 and the profiler
+  was captured from the no-baseline current default smoke rather than the exact
+  retained-attachment command.
   The matching c4 and c8 no-flag profiler smokes stayed green at `[137]*4` and
   `[137]*8` with row-aware `batched_lm_head`, accepted c-aware projection,
   rowchunked native batch full-attention/KV, grouped-MoE, row-aware output GEMV,
@@ -1146,6 +1152,7 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-profiler-343/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default128-baseline-344/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default256-profiler-345/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default256-baseline-349/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-stabilizer-346/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default256-profiler-347/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default256-baseline-348/summary.json`).
