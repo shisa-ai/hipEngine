@@ -1,0 +1,77 @@
+{
+  "batch_execution": {
+    "blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "native_caware_decode": false
+  },
+  "decode_execution": {
+    "blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_row_chunk_size": 2,
+    "full_attention_row_chunk_source": "env",
+    "full_attention_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31,
+      35,
+      39
+    ]
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ]
+  },
+  "label": "current-c8-default256-profiled",
+  "performance_claim": false,
+  "profiler": {
+    "dispatches": 1412377,
+    "expected_kernel_fragments_present": true,
+    "trace_file": "/tmp/hipengine-iter347-c8-default256-profiler/raw/c8-default256_kernel_trace.csv",
+    "trace_sha256": "9881fb27cf72219f490c915ca7bb258221de2ce20a68aec05a4db92568c16d8f",
+    "unique_kernel_count": 61
+  },
+  "projection_dispatch": {
+    "blockers": [],
+    "path": "benchmark_accepted_caware_projection",
+    "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8"
+  },
+  "rows": 8,
+  "sampler_execution": {
+    "blockers": [],
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true,
+    "requested_mode": "batched_lm_head",
+    "stabilize_cast_elems": 256,
+    "stabilize_cast_elems_enabled": true
+  },
+  "status": "blocked"
+}
