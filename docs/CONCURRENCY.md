@@ -1228,6 +1228,15 @@ What is still not green:
   non-retained because aggregate-vs-c1 is below 1.0 and the profiler was captured
   from a no-baseline smoke
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-default512-profiler-baseline-356/summary.json`).
+  The c8 first-nine baseline/profiler attachment was then refreshed under the
+  current default512 c2 stabilizer. The current no-flag c8 row stayed green at
+  `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the first-
+  nine profiler summary loaded; the following active c2 verify stayed `[137,137]`
+  with `stabilize_cast_elems=512`. Scaling references remain complete
+  (`aggregate_vs_c1=1.2984`, `aggregate_vs_serial_bridge=1.5591`), but this is
+  still evidence-only because first-nine rowchunk keeps `native_caware_decode=false`
+  and the profiler was captured from a no-baseline smoke
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-first9-baseline-refresh-359/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
