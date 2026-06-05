@@ -1291,6 +1291,14 @@ What is still not green:
   This validates the current final matrix while keeping the residual c2 transient
   risk open and making no retained throughput/scaling claim
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-after-c4-first9-367/summary.json`).
+  The matching current c4 first-nine baseline/profiler attachment then stayed
+  green at `[137]*4` with c1, c4 serial-bridge, primitive c4 correctness, and a
+  fresh first-nine profiler summary loaded. Scaling references are complete
+  (`aggregate_vs_c1=1.0725`, `aggregate_vs_serial_bridge=1.3279`), but this is
+  still evidence-only because selected first-nine rowchunk keeps
+  `native_caware_decode=false` and the profiler was captured from a no-baseline
+  smoke
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first9-baseline-profiler-368/summary.json`).
   The matching current c8 first-nine baseline/profiler attachment also stayed
   green at `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the
   first-nine profiler summary loaded. Scaling references are complete
