@@ -1,0 +1,304 @@
+{
+  "artifacts": {
+    "diagnostic_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-norm-cast-split-319/diagnostic-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-norm-cast-split-319/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_c2_perrow_norm_batch_argmax": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-norm-batch-argmax-318/summary.json"
+    },
+    "previous_c2_perrow_norm_serial_argmax": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-perrow-norm-317/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-norm-cast-split-319/summary.json"
+    }
+  },
+  "code_change": {
+    "bench": "scripts/qwen35_batch_retained_bench.py adds --batch-sample-cast-path and workload/profiler metadata plumbing.",
+    "runtime": "hipengine/runtime/qwen35_paro_runner.py adds HIPENGINE_QWEN35_BATCH_SAMPLE_CAST_PATH=auto|batch|per_row and sampler_execution.final_cast_path; auto preserves previous combined norm/cast behavior.",
+    "tests": "tests/test_qwen35_resident_batch_layout.py covers per-row cast pointer layout and invalid cast-path validation."
+  },
+  "conclusion": "Splitting sampler final RMSNorm and FP16-to-BF16 cast shows neither single per-row repair is sufficient for current explicit c2 batched_lm_head stability with batch argmax: batch RMSNorm + per-row cast passed 7/8 but failed once at [82,0], and per-row RMSNorm + batch cast passed 7/8 but failed once at [137,0]. Since iter317/318 showed combined per-row norm+cast is 8/8 green with serial and batch argmax, both batched final RMSNorm and batched final cast can participate in the intermittent c2 batched-sampler instability; the safe diagnostic repair is per-row norm+per-row cast. The immediately following no-flag defaults stayed green for c2 [137,137] with serial_lm_head and for c4 [137]*4 / c8 [137]*8 with batched_lm_head plus all-layer rowchunk2. Correctness evidence only; all per-row sampler norm/cast paths are diagnostic and block retained sampler claims.",
+  "created_at": "2026-06-05T01:37:10.573909+00:00",
+  "git_commit_before_commit": "09c71892718f1aa25fe4d4cee32f5f722d3eec46",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 319,
+  "kind": "c2_sampler_final_norm_cast_split_diagnostics_plus_postdiag_default_c248_control",
+  "performance_claim": false,
+  "result": {
+    "batch_norm_per_row_cast": {
+      "argmax_modes": [
+        "batch"
+      ],
+      "failed_count": 1,
+      "final_cast_paths": [
+        "per_row"
+      ],
+      "final_norm_paths": [
+        "batch"
+      ],
+      "first_mismatch_indices": [
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          82,
+          0
+        ],
+        [
+          null,
+          null
+        ]
+      ],
+      "passed_count": 7,
+      "prefix_lengths": [
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          82,
+          0
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "sampler_blockers": [
+        [
+          "batched LM-head final cast forced to per_row diagnostic"
+        ]
+      ],
+      "sampler_modes": [
+        "batched_lm_head"
+      ]
+    },
+    "per_row_norm_batch_cast": {
+      "argmax_modes": [
+        "batch"
+      ],
+      "failed_count": 1,
+      "final_cast_paths": [
+        "batch"
+      ],
+      "final_norm_paths": [
+        "per_row"
+      ],
+      "first_mismatch_indices": [
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          0
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ]
+      ],
+      "passed_count": 7,
+      "prefix_lengths": [
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          0
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "sampler_blockers": [
+        [
+          "batched LM-head final norm forced to per_row diagnostic"
+        ]
+      ],
+      "sampler_modes": [
+        "batched_lm_head"
+      ]
+    },
+    "postdiag_default_c248": {
+      "c2": {
+        "argmax_mode": "serial_per_row",
+        "final_cast_path": "serial_per_row",
+        "final_norm_path": "serial_per_row",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "sampler_mode": "serial_lm_head"
+      },
+      "c4": {
+        "argmax_mode": "batch",
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "sampler_mode": "batched_lm_head"
+      },
+      "c8": {
+        "argmax_mode": "batch",
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "sampler_mode": "batched_lm_head"
+      }
+    }
+  },
+  "schema": 1,
+  "status": "diagnostic_red_default_green",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "sampler_equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+    "warmup_decode_tokens": 8
+  }
+}

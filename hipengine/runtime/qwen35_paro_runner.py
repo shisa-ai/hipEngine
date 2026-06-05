@@ -6302,17 +6302,25 @@ class Qwen35ParoResidentSession:
         sampler_norm_path = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_NORM_PATH", "batch").strip() or "batch"
         if sampler_norm_path not in {"batch", "per_row"}:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_NORM_PATH must be batch or per_row")
+        sampler_cast_path = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_CAST_PATH", "auto").strip() or "auto"
+        if sampler_cast_path not in {"auto", "batch", "per_row"}:
+            raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_CAST_PATH must be auto, batch, or per_row")
+        effective_sampler_cast_path = sampler_norm_path if sampler_cast_path == "auto" else sampler_cast_path
         sampler_argmax_mode = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE", "batch").strip() or "batch"
         if sampler_argmax_mode not in {"batch", "serial_per_row"}:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE must be batch or serial_per_row")
         sampler_argmax_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_AUDIT")
         sampler_execution = sampler_decision.to_json_dict()
         sampler_execution["final_norm_path"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else sampler_norm_path
+        sampler_execution["final_cast_path"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else effective_sampler_cast_path
         sampler_execution["argmax_mode"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else sampler_argmax_mode
         sampler_execution["argmax_audit_enabled"] = bool(sampler_argmax_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         if sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_norm_path == "per_row":
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head final norm forced to per_row diagnostic")
+        if sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and effective_sampler_cast_path == "per_row":
+            sampler_execution["native_row_aware_lm_head"] = False
+            sampler_execution["blockers"].append("batched LM-head final cast forced to per_row diagnostic")
         if sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "serial_per_row":
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head argmax forced to serial_per_row diagnostic")
@@ -6335,7 +6343,6 @@ class Qwen35ParoResidentSession:
             for row in range(rows):
                 row_hidden_ptr = hidden.ptr + row * self.hidden_nbytes
                 row_norm_ptr = self.batch_norm_out.ptr + row * self.hidden_nbytes
-                row_norm_bf16_ptr = self.batch_norm_out_bf16.ptr + row * self.hidden_nbytes
                 paro_rmsnorm_out_fp16(
                     row_hidden_ptr,
                     self.norm_weight.tensor.ptr,
@@ -6345,14 +6352,6 @@ class Qwen35ParoResidentSession:
                     self.config.rms_norm_eps,
                     stream=stream,
                     library=self.libraries["norm"],
-                    runtime=self.runtime,
-                )
-                fp16_to_bf16(
-                    row_norm_ptr,
-                    row_norm_bf16_ptr,
-                    self.config.hidden_size,
-                    stream=stream,
-                    library=self.libraries["cast"],
                     runtime=self.runtime,
                 )
         else:
@@ -6367,6 +6366,19 @@ class Qwen35ParoResidentSession:
                 library=self.libraries["norm"],
                 runtime=self.runtime,
             )
+        if effective_sampler_cast_path == "per_row":
+            for row in range(rows):
+                row_norm_ptr = self.batch_norm_out.ptr + row * self.hidden_nbytes
+                row_norm_bf16_ptr = self.batch_norm_out_bf16.ptr + row * self.hidden_nbytes
+                fp16_to_bf16(
+                    row_norm_ptr,
+                    row_norm_bf16_ptr,
+                    self.config.hidden_size,
+                    stream=stream,
+                    library=self.libraries["cast"],
+                    runtime=self.runtime,
+                )
+        else:
             fp16_to_bf16(
                 self.batch_norm_out.ptr,
                 self.batch_norm_out_bf16.ptr,
