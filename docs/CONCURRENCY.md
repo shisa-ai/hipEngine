@@ -1284,6 +1284,13 @@ What is still not green:
   (`native_caware_decode=false`) but leaves only final full-attention producer
   layer 39 native, matching the current c8 first-nine boundary
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first9-hard-default-366/summary.json`).
+  A post-promotion current c=2/c=4/c=8 equality refresh is final-green after a
+  c2 repeat recovery: the first c2 attempt flaked at `[137,0]`, then three c2
+  repeats plus the required active verify recovered to `[137,137]`; c4 stayed
+  `[137]*4` on the first-nine default and c8 stayed `[137]*8` on first-nine.
+  This validates the current final matrix while keeping the residual c2 transient
+  risk open and making no retained throughput/scaling claim
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-after-c4-first9-367/summary.json`).
   The matching current c8 first-nine baseline/profiler attachment also stayed
   green at `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the
   first-nine profiler summary loaded. Scaling references are complete
