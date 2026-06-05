@@ -1260,6 +1260,15 @@ What is still not green:
   correctness gate under the current defaults only; c4/c8 still have rowchunk
   blockers and no retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-final-after-demotions-362/summary.json`).
+  The matching current c2 serial-sampler baseline/profiler attachment stayed
+  green at `[137,137]` with c1, c2 serial-bridge, primitive c2 correctness, and
+  serial-sampler profiler evidence loaded. Batch/decode/projection blockers are
+  empty and `native_caware_decode=true`; scaling references are complete
+  (`aggregate_vs_c1=0.8441`, `aggregate_vs_serial_bridge=1.0767`). This is still
+  evidence-only because aggregate-vs-c1 remains below 1.0 and the profiler source
+  is a serial-sampler summary rather than a retained-gate-shaped batched-sampler
+  trace
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-serial-baseline-final-365/summary.json`).
   The matching current c4 all-layer baseline/profiler attachment stayed green at
   `[137]*4` with c1, c4 serial-bridge, primitive c4 correctness, and the all-layer
   profiler summary loaded. Scaling references are complete
