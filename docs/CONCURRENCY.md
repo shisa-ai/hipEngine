@@ -1307,6 +1307,14 @@ What is still not green:
   `native_caware_decode=false` and the profiler was captured from a no-baseline
   smoke
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-first9-baseline-final-364/summary.json`).
+  A fresh current c8 first-nine profiler recapture later reproduced row3/token118
+  red (`[137,137,137,118,137,137,137,137]`), so the c8 default was demoted back
+  to all-layer rowchunk2. The all-layer profiler control, retained-bench
+  attachment, and post-change c=2/c=4/c=8 matrix are green; c8 scaling references
+  remain complete (`aggregate_vs_c1=1.2751`, `aggregate_vs_serial_bridge=1.5311`).
+  This is still correctness/runtime evidence only because all-layer rowchunk keeps
+  `native_caware_decode=false`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-redemotion-369/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

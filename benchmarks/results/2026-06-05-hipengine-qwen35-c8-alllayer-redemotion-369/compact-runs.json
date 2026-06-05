@@ -1,0 +1,1106 @@
+{
+  "active_verify": {
+    "batch_execution": {
+      "blockers": [],
+      "native_caware_decode": true
+    },
+    "decision_reason": "artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; profiler kernel names must include selected projection_dispatch candidate or variant; execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true; execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true; execution.batch_execution.decode_execution.sampler_execution.equality_rows must be an int; execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+    "decode_execution": {
+      "blockers": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_row_chunked_layers": null
+    },
+    "generated_token_equality": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "mismatches": [],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ]
+    },
+    "label": "active_c2_verify_serial_default",
+    "performance_claim": false,
+    "primitive_batch_correctness": {
+      "aa_passed": null,
+      "artifact_path": null,
+      "attn_batch_vs_c1_max_abs": null,
+      "passed": false,
+      "status": "missing"
+    },
+    "profiler": {
+      "artifact_path": null,
+      "expected_kernels_present": null,
+      "kernel_duration_categories_ns": null,
+      "source_artifact_path": null,
+      "status": "not_captured",
+      "total_kernel_duration_ns": null,
+      "trace_dir": null,
+      "trace_files": null
+    },
+    "projection_dispatch": {
+      "blockers": [],
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.081395195821912,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+        "per_request_vs_row_gemv": 1.081395195821912
+      },
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+    },
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "raw_json_sha256": "78dcbbee35462d3ee85fce832cac641a87e31e5530562400b8a8fe3d4a09d75b",
+    "raw_json_size_bytes": 138409,
+    "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+    "raw_log_sha256": "78dcbbee35462d3ee85fce832cac641a87e31e5530562400b8a8fe3d4a09d75b",
+    "raw_log_size_bytes": 138409,
+    "sampler_execution": {
+      "blockers": [],
+      "mode": "serial_lm_head",
+      "native_row_aware_lm_head": false,
+      "requested_mode": "serial_lm_head",
+      "stabilize_cast_elems": 0
+    },
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "status": "missing"
+      },
+      "complete": false,
+      "native": {
+        "decode_tok_s_aggregate": 115.09586725825476,
+        "decode_tok_s_per_request": 57.54793362912738
+      },
+      "ratios": {
+        "aggregate_vs_c1": null,
+        "aggregate_vs_serial_bridge": null,
+        "per_request_vs_c1": null,
+        "per_request_vs_serial_bridge": null
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "status": "missing"
+      }
+    },
+    "status": "blocked"
+  },
+  "alllayer_green": {
+    "batch_execution": {
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "native_caware_decode": false
+    },
+    "decision_reason": "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[39].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[39].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty; profiler kernel names must include selected projection_dispatch candidate or variant; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+    "decode_execution": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ]
+    },
+    "generated_token_equality": {
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "mismatches": [],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "label": "profiled_c8_alllayer_green",
+    "performance_claim": false,
+    "primitive_batch_correctness": {
+      "aa_passed": null,
+      "artifact_path": null,
+      "attn_batch_vs_c1_max_abs": null,
+      "passed": false,
+      "status": "missing"
+    },
+    "profiler": {
+      "artifact_path": null,
+      "expected_kernels_present": null,
+      "kernel_duration_categories_ns": null,
+      "source_artifact_path": null,
+      "status": "not_captured",
+      "total_kernel_duration_ns": null,
+      "trace_dir": null,
+      "trace_files": null
+    },
+    "projection_dispatch": {
+      "blockers": [],
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.2927399483678248,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+        "per_request_vs_row_gemv": 1.2927399483678248
+      },
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8"
+    },
+    "raw_json": "/tmp/hipengine-iter369-c8-alllayer-profiler-control/c8-alllayer-profiler-bench.json",
+    "raw_json_sha256": "d1c020ce2716520a97a5e730cfa1f3f21d36c8610a815466bc598f38f459cb95",
+    "raw_json_size_bytes": 423124,
+    "raw_log": "/tmp/hipengine-iter369-c8-alllayer-profiler-control/c8-alllayer-profiler.log",
+    "raw_log_sha256": "0f55c2f1cd8a794708754305f425491b3ab2b32dab53308fa4337c74ebbdcb96",
+    "raw_log_size_bytes": 424884,
+    "sampler_execution": {
+      "blockers": [],
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "stabilize_cast_elems": 256
+    },
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "status": "missing"
+      },
+      "complete": false,
+      "native": {
+        "decode_tok_s_aggregate": 138.93580836799893,
+        "decode_tok_s_per_request": 17.366976045999866
+      },
+      "ratios": {
+        "aggregate_vs_c1": null,
+        "aggregate_vs_serial_bridge": null,
+        "per_request_vs_c1": null,
+        "per_request_vs_serial_bridge": null
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "status": "missing"
+      }
+    },
+    "status": "blocked"
+  },
+  "attachment": {
+    "batch_execution": {
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "native_caware_decode": false
+    },
+    "decision_reason": "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; profiler command must start with rocprofv3; profiler command device env prefix must match retained command; profiler command --profiler-json must match profiler.artifact_path; profiler command --json must match retained artifact path; profiler command --c1-baseline-json must match retained reference artifact; profiler command --serial-bridge-json must match retained reference artifact; profiler command --primitive-correctness-json must match retained reference artifact; profiler command --batch-sample-mode must match retained sampler mode; profiler command must include --batch-sample-eq-ok; profiler command --batch-sample-eq-artifact must match retained sampler equality artifact; profiler command --batch-sample-eq-rows must match retained sampler equality rows; profiler command must start with rocprofv3; profiler command device env prefix must match retained command; profiler command --profiler-json must match profiler.artifact_path; profiler command --json must match retained artifact path; profiler command --c1-baseline-json must match retained reference artifact; profiler command --serial-bridge-json must match retained reference artifact; profiler command --primitive-correctness-json must match retained reference artifact; profiler command --batch-sample-mode must match retained sampler mode; profiler command must include --batch-sample-eq-ok; profiler command --batch-sample-eq-artifact must match retained sampler equality artifact; profiler command --batch-sample-eq-rows must match retained sampler equality rows; profiler.kernel_duration_categories_ns.moe must match categorized kernel_durations_ns; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[39].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[39].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty",
+    "decode_execution": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ]
+    },
+    "generated_token_equality": {
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "mismatches": [],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "label": "c8_alllayer_with_baselines_profiler",
+    "performance_claim": false,
+    "primitive_batch_correctness": {
+      "aa_passed": true,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json",
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true,
+      "status": "loaded"
+    },
+    "profiler": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-redemotion-369/profiler-c8-alllayer-retained.json",
+      "expected_kernels_present": true,
+      "kernel_duration_categories_ns": {
+        "attention": 2048413251.0,
+        "graph_replay": 0.0,
+        "moe": 116223948.0,
+        "other": 8780765.0,
+        "projection": 2373257243.0,
+        "sampling": 10518545.0
+      },
+      "source_artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-redemotion-369/profiler-c8-alllayer-retained.json",
+      "status": "captured",
+      "total_kernel_duration_ns": 4557193752.0,
+      "trace_dir": "/tmp/hipengine-iter369-c8-alllayer-profiler-control/raw",
+      "trace_files": [
+        "/tmp/hipengine-iter369-c8-alllayer-profiler-control/raw/c8-alllayer_kernel_trace.csv"
+      ]
+    },
+    "projection_dispatch": {
+      "blockers": [],
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.2927399483678248,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+        "per_request_vs_row_gemv": 1.2927399483678248
+      },
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8"
+    },
+    "raw_json": "/tmp/hipengine-iter369-c8-alllayer-postchange/c8-alllayer-with-baselines-profiler.json",
+    "raw_json_sha256": "f0c54451acd23ecfc6c74e865a22eb531ef44b4c14c435ac7daf529994c47dab",
+    "raw_json_size_bytes": 434416,
+    "raw_log": "/tmp/hipengine-iter369-c8-alllayer-postchange/c8-alllayer-with-baselines-profiler.log",
+    "raw_log_sha256": "f0c54451acd23ecfc6c74e865a22eb531ef44b4c14c435ac7daf529994c47dab",
+    "raw_log_size_bytes": 434416,
+    "sampler_execution": {
+      "blockers": [],
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "stabilize_cast_elems": 256
+    },
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json",
+        "decode_tok_s_aggregate": 134.35835066115024,
+        "decode_tok_s_per_request": 134.35835066115024,
+        "status": "loaded"
+      },
+      "complete": true,
+      "native": {
+        "decode_tok_s_aggregate": 171.31615106453864,
+        "decode_tok_s_per_request": 21.41451888306733
+      },
+      "ratios": {
+        "aggregate_vs_c1": 1.2750688752989787,
+        "aggregate_vs_serial_bridge": 1.531115117160212,
+        "per_request_vs_c1": 0.15938360941237234,
+        "per_request_vs_serial_bridge": 1.531115117160212
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-serial-baseline-refresh-287/c8-serial-bridge-scaling.json",
+        "decode_tok_s_aggregate": 111.8897913974502,
+        "decode_tok_s_per_request": 13.986223924681275,
+        "status": "blocked"
+      }
+    },
+    "status": "blocked"
+  },
+  "first9_red": {
+    "batch_execution": {
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "native_caware_decode": false
+    },
+    "decision_reason": "batch_execution.throughput_claim_eligible=false; generated-token equality vs independent c=1 did not pass; correctness.generated_token_equality.passed must be true; correctness.generated_token_equality.batch_sequences must equal c1_sequences; correctness.generated_token_equality.mismatches must be empty; artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty; profiler kernel names must include selected projection_dispatch candidate or variant; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+    "decode_execution": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35
+      ]
+    },
+    "generated_token_equality": {
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118,
+        null,
+        null,
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 118,
+      "mismatches": [
+        {
+          "batch": [
+            2193,
+            13,
+            5044,
+            2962,
+            440,
+            61446,
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            81726,
+            35464,
+            11,
+            321,
+            81347,
+            13,
+            271,
+            248068,
+            198,
+            8160,
+            579,
+            264,
+            7047,
+            1817,
+            25,
+            271,
+            16,
+            13,
+            220,
+            2972,
+            2014,
+            53983,
+            2570,
+            5396,
+            64700,
+            198,
+            256,
+            471,
+            561,
+            1156,
+            682,
+            3766,
+            264,
+            3878,
+            314,
+            18922,
+            10442,
+            6648,
+            3295,
+            49219,
+            28853,
+            74988,
+            18,
+            25,
+            16,
+            60,
+            63,
+            1472,
+            74988,
+            18,
+            25,
+            16,
+            17,
+            60,
+            27653,
+            198,
+            256,
+            471,
+            8618,
+            9640,
+            2640,
+            25,
+            328,
+            76660,
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            18,
+            13,
+            1165,
+            513,
+            7262,
+            17603,
+            4422,
+            27867,
+            321,
+            81726,
+            35464,
+            7465,
+            440,
+            69892,
+            1414,
+            13,
+            5044,
+            2962,
+            440,
+            61446,
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            61369,
+            11,
+            4779,
+            32288,
+            11,
+            321,
+            81347,
+            1149,
+            318,
+            3002,
+            220,
+            16,
+            17,
+            4203,
+            9781,
+            310,
+            328,
+            2078,
+            1,
+            4370,
+            314,
+            328,
+            1272,
+            1,
+            321,
+            20382,
+            328,
+            16759,
+            32288,
+            1,
+            494,
+            279
+          ],
+          "c1": [
+            2193,
+            13,
+            5044,
+            2962,
+            440,
+            61446,
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            81726,
+            35464,
+            11,
+            321,
+            81347,
+            13,
+            271,
+            248068,
+            198,
+            8160,
+            579,
+            264,
+            7047,
+            1817,
+            25,
+            271,
+            16,
+            13,
+            220,
+            2972,
+            2014,
+            53983,
+            2570,
+            5396,
+            64700,
+            198,
+            256,
+            471,
+            561,
+            1156,
+            682,
+            3766,
+            264,
+            3878,
+            314,
+            18922,
+            10442,
+            6648,
+            3295,
+            49219,
+            28853,
+            74988,
+            18,
+            25,
+            16,
+            60,
+            63,
+            1472,
+            74988,
+            18,
+            25,
+            16,
+            17,
+            60,
+            27653,
+            198,
+            256,
+            471,
+            8618,
+            9640,
+            2640,
+            25,
+            328,
+            76660,
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            18,
+            13,
+            1165,
+            513,
+            7262,
+            17603,
+            4422,
+            27867,
+            321,
+            81726,
+            35464,
+            7465,
+            440,
+            69892,
+            1414,
+            13,
+            5044,
+            2962,
+            440,
+            61446,
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            61369,
+            11,
+            4779,
+            32288,
+            11,
+            321,
+            81347,
+            1149,
+            318,
+            3002,
+            220,
+            16,
+            17,
+            9781,
+            80086,
+            279,
+            1483,
+            11316,
+            310,
+            328,
+            23658,
+            3440,
+            11,
+            81726,
+            35464,
+            11,
+            321,
+            81347,
+            37457,
+            198,
+            256,
+            471
+          ],
+          "row": 3
+        }
+      ],
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "label": "profiled_c8_first9_red",
+    "performance_claim": false,
+    "primitive_batch_correctness": {
+      "aa_passed": null,
+      "artifact_path": null,
+      "attn_batch_vs_c1_max_abs": null,
+      "passed": false,
+      "status": "missing"
+    },
+    "profiler": {
+      "artifact_path": null,
+      "expected_kernels_present": null,
+      "kernel_duration_categories_ns": null,
+      "source_artifact_path": null,
+      "status": "not_captured",
+      "total_kernel_duration_ns": null,
+      "trace_dir": null,
+      "trace_files": null
+    },
+    "projection_dispatch": {
+      "blockers": [],
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.2927399483678248,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+        "per_request_vs_row_gemv": 1.2927399483678248
+      },
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8"
+    },
+    "raw_json": "/tmp/hipengine-iter369-c8-first9-profiler-baseline/c8-first9-profiler-bench.json",
+    "raw_json_sha256": "96fa3007a19f45ed006a88010bc53313296b00d2dc2519802a84f635b73987fe",
+    "raw_json_size_bytes": 422078,
+    "raw_log": "/tmp/hipengine-iter369-c8-first9-profiler-baseline/c8-first9-profiler.log",
+    "raw_log_sha256": "205a00ae8ab74827faa0a9f2f3a251d7aab62d44189be538e991b0512835f832",
+    "raw_log_size_bytes": 423744,
+    "sampler_execution": {
+      "blockers": [],
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "stabilize_cast_elems": 256
+    },
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "status": "missing"
+      },
+      "complete": false,
+      "native": {
+        "decode_tok_s_aggregate": 143.80708184187665,
+        "decode_tok_s_per_request": 17.97588523023458
+      },
+      "ratios": {
+        "aggregate_vs_c1": null,
+        "aggregate_vs_serial_bridge": null,
+        "per_request_vs_c1": null,
+        "per_request_vs_serial_bridge": null
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "status": "missing"
+      }
+    },
+    "status": "rejected_correctness"
+  },
+  "postchange_matrix": {
+    "c2": {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true
+      },
+      "decision_reason": "artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; profiler kernel names must include selected projection_dispatch candidate or variant; execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true; execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true; execution.batch_execution.decode_execution.sampler_execution.equality_rows must be an int; execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunk_size": null,
+        "full_attention_row_chunk_source": null,
+        "full_attention_row_chunked_layers": null
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2_postchange_default",
+      "performance_claim": false,
+      "primitive_batch_correctness": {
+        "aa_passed": null,
+        "artifact_path": null,
+        "attn_batch_vs_c1_max_abs": null,
+        "passed": false,
+        "status": "missing"
+      },
+      "profiler": {
+        "artifact_path": null,
+        "expected_kernels_present": null,
+        "kernel_duration_categories_ns": null,
+        "source_artifact_path": null,
+        "status": "not_captured",
+        "total_kernel_duration_ns": null,
+        "trace_dir": null,
+        "trace_files": null
+      },
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.081395195821912,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+          "per_request_vs_row_gemv": 1.081395195821912
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+      },
+      "raw_json": "/tmp/hipengine-iter369-c8-alllayer-postchange/c2-postchange-default.json",
+      "raw_json_sha256": "672b15d7862b0b63fa3ee98b48822c0380d708ef9d4342643f0b737d9989f776",
+      "raw_json_size_bytes": 138527,
+      "raw_log": "/tmp/hipengine-iter369-c8-alllayer-postchange/c2-postchange-default.log",
+      "raw_log_sha256": "672b15d7862b0b63fa3ee98b48822c0380d708ef9d4342643f0b737d9989f776",
+      "raw_log_size_bytes": 138527,
+      "sampler_execution": {
+        "blockers": [],
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "stabilize_cast_elems": 0
+      },
+      "scaling": {
+        "c1_baseline": {
+          "artifact_path": null,
+          "decode_tok_s_aggregate": null,
+          "decode_tok_s_per_request": null,
+          "status": "missing"
+        },
+        "complete": false,
+        "native": {
+          "decode_tok_s_aggregate": 114.9450413000225,
+          "decode_tok_s_per_request": 57.47252065001125
+        },
+        "ratios": {
+          "aggregate_vs_c1": null,
+          "aggregate_vs_serial_bridge": null,
+          "per_request_vs_c1": null,
+          "per_request_vs_serial_bridge": null
+        },
+        "serial_bridge_baseline": {
+          "artifact_path": null,
+          "decode_tok_s_aggregate": null,
+          "decode_tok_s_per_request": null,
+          "status": "missing"
+        }
+      },
+      "status": "blocked"
+    },
+    "c4": {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "native_caware_decode": false
+      },
+      "decision_reason": "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty; profiler kernel names must include selected projection_dispatch candidate or variant; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_source": "env",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35
+        ]
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "c4_postchange_default",
+      "performance_claim": false,
+      "primitive_batch_correctness": {
+        "aa_passed": null,
+        "artifact_path": null,
+        "attn_batch_vs_c1_max_abs": null,
+        "passed": false,
+        "status": "missing"
+      },
+      "profiler": {
+        "artifact_path": null,
+        "expected_kernels_present": null,
+        "kernel_duration_categories_ns": null,
+        "source_artifact_path": null,
+        "status": "not_captured",
+        "total_kernel_duration_ns": null,
+        "trace_dir": null,
+        "trace_files": null
+      },
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.214849947729695,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+          "per_request_vs_row_gemv": 1.214849947729695
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4"
+      },
+      "raw_json": "/tmp/hipengine-iter369-c8-alllayer-postchange/c4-postchange-default.json",
+      "raw_json_sha256": "13bb74d0ad66fbcf0349b7f7f23c65cf34c12518f90c5db9abfe0780f4eb3ff0",
+      "raw_json_size_bytes": 234951,
+      "raw_log": "/tmp/hipengine-iter369-c8-alllayer-postchange/c4-postchange-default.log",
+      "raw_log_sha256": "13bb74d0ad66fbcf0349b7f7f23c65cf34c12518f90c5db9abfe0780f4eb3ff0",
+      "raw_log_size_bytes": 234951,
+      "sampler_execution": {
+        "blockers": [],
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 0
+      },
+      "scaling": {
+        "c1_baseline": {
+          "artifact_path": null,
+          "decode_tok_s_aggregate": null,
+          "decode_tok_s_per_request": null,
+          "status": "missing"
+        },
+        "complete": false,
+        "native": {
+          "decode_tok_s_aggregate": 146.05826346997313,
+          "decode_tok_s_per_request": 36.51456586749328
+        },
+        "ratios": {
+          "aggregate_vs_c1": null,
+          "aggregate_vs_serial_bridge": null,
+          "per_request_vs_c1": null,
+          "per_request_vs_serial_bridge": null
+        },
+        "serial_bridge_baseline": {
+          "artifact_path": null,
+          "decode_tok_s_aggregate": null,
+          "decode_tok_s_per_request": null,
+          "status": "missing"
+        }
+      },
+      "status": "blocked"
+    },
+    "c8": {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false
+      },
+      "decision_reason": "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[39].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[39].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty; profiler kernel names must include selected projection_dispatch candidate or variant; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunk_source": "env",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ]
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "c8_postchange_default",
+      "performance_claim": false,
+      "primitive_batch_correctness": {
+        "aa_passed": null,
+        "artifact_path": null,
+        "attn_batch_vs_c1_max_abs": null,
+        "passed": false,
+        "status": "missing"
+      },
+      "profiler": {
+        "artifact_path": null,
+        "expected_kernels_present": null,
+        "kernel_duration_categories_ns": null,
+        "source_artifact_path": null,
+        "status": "not_captured",
+        "total_kernel_duration_ns": null,
+        "trace_dir": null,
+        "trace_files": null
+      },
+      "projection_dispatch": {
+        "blockers": [],
+        "evidence": {
+          "accepted": true,
+          "aggregate_vs_row_gemv": 1.2927399483678248,
+          "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c8-projection-evidence.json",
+          "per_request_vs_row_gemv": 1.2927399483678248
+        },
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8"
+      },
+      "raw_json": "/tmp/hipengine-iter369-c8-alllayer-postchange/c8-postchange-default.json",
+      "raw_json_sha256": "9283c6cb0b0c962ac413f0e9572aaff38f0aceeaf5e9b61515a12933f0596e74",
+      "raw_json_size_bytes": 416827,
+      "raw_log": "/tmp/hipengine-iter369-c8-alllayer-postchange/c8-postchange-default.log",
+      "raw_log_sha256": "9283c6cb0b0c962ac413f0e9572aaff38f0aceeaf5e9b61515a12933f0596e74",
+      "raw_log_size_bytes": 416827,
+      "sampler_execution": {
+        "blockers": [],
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 256
+      },
+      "scaling": {
+        "c1_baseline": {
+          "artifact_path": null,
+          "decode_tok_s_aggregate": null,
+          "decode_tok_s_per_request": null,
+          "status": "missing"
+        },
+        "complete": false,
+        "native": {
+          "decode_tok_s_aggregate": 169.37040464338713,
+          "decode_tok_s_per_request": 21.17130058042339
+        },
+        "ratios": {
+          "aggregate_vs_c1": null,
+          "aggregate_vs_serial_bridge": null,
+          "per_request_vs_c1": null,
+          "per_request_vs_serial_bridge": null
+        },
+        "serial_bridge_baseline": {
+          "artifact_path": null,
+          "decode_tok_s_aggregate": null,
+          "decode_tok_s_per_request": null,
+          "status": "missing"
+        }
+      },
+      "status": "blocked"
+    }
+  },
+  "schema": 1
+}

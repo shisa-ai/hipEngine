@@ -4169,11 +4169,13 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     # C4 layer 11 alone is repeat/profile-green on the primary first-four
     # fixture, but the hard rows4..7 fixture invalidated it as a prompt-stable
     # default. Current primary and hard rows4..7 probes both pass when only the
-    # final full-attention producer layer stays native, matching the c8 first-
-    # nine boundary. Keep c7 all-layer until its selected-layer path is stable.
+    # final full-attention producer layer stays native, so c4 uses first-nine.
+    # A current c8 first-nine profiler recaptured row3/token118 red while the
+    # all-layer rowchunk profiler control stayed green; keep c7/c8 all-layer
+    # until their selected-layer paths are profiler-stable.
     if int(batch_size) in {3, 5, 6}:
         return "3,7,11,15"
-    if int(batch_size) in {4, 8}:
+    if int(batch_size) == 4:
         return "3,7,11,15,19,23,27,31,35"
     return ""
 
