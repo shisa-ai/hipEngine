@@ -1,0 +1,46 @@
+{
+  "batch_execution": {
+    "blockers": [],
+    "native_caware_decode": true,
+    "projection_dispatch": {
+      "blockers": [],
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+    }
+  },
+  "decode_execution": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "full_attention_row_chunked_layers": null,
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "sampler_execution": {
+      "argmax_mode": "batch",
+      "blockers": [],
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "stabilize_cast_elems": 112,
+      "stabilize_cast_elems_enabled": true
+    }
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "performance_claim": false,
+  "raw_artifact": {
+    "path": "/tmp/hipengine-iter341-c2-profiler-smoke/c2-default-profiler-bench.json",
+    "sha256": "bdff97ac52c2def401c353573989ff2f9311cdb99c896acbfa9da2fd523b527e",
+    "size_bytes": 144765
+  },
+  "status": "blocked"
+}
