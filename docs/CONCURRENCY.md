@@ -1065,11 +1065,15 @@ What is still not green:
   was then promoted to `batched_lm_head` with the same 112-element stabilizer when
   the repo c2 sampler-equality artifact validates; the active c2 verify and four
   additional no-sampler-flag repeats were all green at `[137,137]` while recording
-  `native_row_aware_lm_head=true` and empty sampler blockers. The same no-flag
-  default equality gate was then extended to c=4 and c=8: c2/c4/c8 all passed
-  generated-token equality vs independent c=1 at `[137,137]`, `[137]*4`, and
-  `[137]*8` respectively, with `batched_lm_head`, `native_row_aware_lm_head=true`,
-  and empty sampler blockers (c2 uses the 112-element stabilizer; c4/c8 do not).
+  `native_row_aware_lm_head=true` and empty sampler blockers. A later c1/serial
+  baseline-attachment rerun found that 112 was still marginal under the retained
+  evidence path (`[137,104]` once), so the default c2 stabilizer was raised to 128;
+  explicit 128 was 4/4 green and the no-flag default with c1+serial baselines was
+  also 4/4 green at `[137,137]`. The same no-flag default equality gate was then
+  extended to c=4 and c=8: c2/c4/c8 all passed generated-token equality vs
+  independent c=1 at `[137,137]`, `[137]*4`, and `[137]*8` respectively, with
+  `batched_lm_head`, `native_row_aware_lm_head=true`, and empty sampler blockers
+  (c2 now uses the 128-element stabilizer; c4/c8 do not).
   A follow-up c2 `rocprofv3 --kernel-trace` smoke stayed green at `[137,137]`
   and captured native batch full-attention/KV, grouped-MoE, accepted c-aware
   projection, row-aware output GEMV, linear segment decode, batch residual
@@ -1122,7 +1126,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c248-default-equality-340/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-stabilized-batched-profiler-341/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c4-default-profiler-342/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-profiler-343/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-profiler-343/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default128-baseline-344/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

@@ -3682,13 +3682,13 @@ def test_retained_bench_defaults_to_valid_batched_sampler_artifact(tmp_path: Pat
     assert c2_default.batch_sample_eq_ok is True
     assert c2_default.batch_sample_eq_artifact == Path(c2_artifact_path)
     assert c2_default.batch_sample_eq_rows == 2
-    assert c2_default.batch_sample_stabilize_cast_elems == 112
+    assert c2_default.batch_sample_stabilize_cast_elems == 128
 
     retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, **vars(c2_default)))
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "batched_lm_head"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"] == c2_artifact_path
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] == "2"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS"] == "112"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS"] == "128"
 
     explicit_serial = SimpleNamespace(
         batch_size=4,
