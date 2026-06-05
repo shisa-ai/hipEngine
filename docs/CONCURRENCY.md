@@ -1065,8 +1065,12 @@ What is still not green:
   was then promoted to `batched_lm_head` with the same 112-element stabilizer when
   the repo c2 sampler-equality artifact validates; the active c2 verify and four
   additional no-sampler-flag repeats were all green at `[137,137]` while recording
-  `native_row_aware_lm_head=true` and empty sampler blockers. This is a
-  correctness-first workaround/default, not a retained throughput/scaling claim. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
+  `native_row_aware_lm_head=true` and empty sampler blockers. The same no-flag
+  default equality gate was then extended to c=4 and c=8: c2/c4/c8 all passed
+  generated-token equality vs independent c=1 at `[137,137]`, `[137]*4`, and
+  `[137]*8` respectively, with `batched_lm_head`, `native_row_aware_lm_head=true`,
+  and empty sampler blockers (c2 uses the 112-element stabilizer; c4/c8 do not).
+  This is a correctness-first workaround/default, not a retained throughput/scaling claim. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
   (`[137,137]`, `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
@@ -1105,7 +1109,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-cast-elems104-fence-336/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-cast-elems100-fence-337/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-stabilize-cast100-112-338/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default-stabilize112-339/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default-stabilize112-339/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c248-default-equality-340/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
