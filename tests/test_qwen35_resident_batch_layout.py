@@ -3832,6 +3832,37 @@ def test_qwen35_resident_sample_batch_final_rmsnorm_kernel_fence_skips_cast_and_
     assert decode_execution["sampler_execution"]["final_rmsnorm_fence"]["checked_rows"] == 2
 
 
+def test_qwen35_resident_sample_batch_sync_fence_skips_device_work(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    sync_count = 0
+
+    def sync() -> None:
+        nonlocal sync_count
+        sync_count += 1
+
+    session.runtime = SimpleNamespace(device_synchronize=sync)
+    monkeypatch.setattr(runner_module, "paro_rmsnorm_out_fp16", lambda *args, **kwargs: pytest.fail("sync fence should not run norm"))
+    monkeypatch.setattr(runner_module, "fp16_to_bf16", lambda *args, **kwargs: pytest.fail("sync fence should not run cast"))
+    monkeypatch.setattr(runner_module, "w8a16_linear_bf16_f32_out", lambda *args, **kwargs: pytest.fail("sync fence should not run LM-head"))
+    monkeypatch.setattr(runner_module, "argmax_f32", lambda *args, **kwargs: pytest.fail("sync fence should not run argmax"))
+    monkeypatch.setattr(runner_module, "copy_device_to_host", lambda *args, **kwargs: pytest.fail("sync fence should not read host"))
+
+    fence = session._record_batch_sync_fence(rows=2)
+
+    assert sync_count == 2
+    assert fence == {
+        "enabled": True,
+        "kind": "device_synchronize_only",
+        "checked_steps": 1,
+        "checked_rows": 2,
+        "host_reads": 0,
+        "device_synchronizes": 2,
+        "last_step": {"step_index": 0, "rows": 2, "host_reads": 0, "device_synchronizes": 2},
+    }
+    decode_execution = session._batch_decode_execution_with_sampler_audit({"sampler_execution": {"mode": "batched_lm_head"}})
+    assert decode_execution["sampler_execution"]["sync_fence"]["device_synchronizes"] == 2
+
+
 def test_qwen35_resident_sample_batch_final_norm_audit_records_suffix_mismatches(tmp_path, monkeypatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)

@@ -6204,6 +6204,7 @@ class Qwen35ParoResidentSession:
         final_norm_audit = getattr(self, "_batch_final_norm_audit", None)
         final_norm_fence = getattr(self, "_batch_final_norm_fence", None)
         final_rmsnorm_fence = getattr(self, "_batch_final_rmsnorm_fence", None)
+        sync_fence = getattr(self, "_batch_sync_fence", None)
         suffix_fence = getattr(self, "_batch_suffix_fence", None)
         if (
             not isinstance(argmax_audit, dict)
@@ -6212,6 +6213,7 @@ class Qwen35ParoResidentSession:
             and not isinstance(final_norm_audit, dict)
             and not isinstance(final_norm_fence, dict)
             and not isinstance(final_rmsnorm_fence, dict)
+            and not isinstance(sync_fence, dict)
             and not isinstance(suffix_fence, dict)
         ):
             return decode_execution
@@ -6229,6 +6231,8 @@ class Qwen35ParoResidentSession:
             sampler_execution["final_norm_fence"] = dict(final_norm_fence)
         if isinstance(final_rmsnorm_fence, dict):
             sampler_execution["final_rmsnorm_fence"] = dict(final_rmsnorm_fence)
+        if isinstance(sync_fence, dict):
+            sampler_execution["sync_fence"] = dict(sync_fence)
         if isinstance(suffix_fence, dict):
             sampler_execution["suffix_fence"] = dict(suffix_fence)
         execution["sampler_execution"] = sampler_execution
@@ -6670,6 +6674,34 @@ class Qwen35ParoResidentSession:
         fence["last_step"] = {"step_index": step_index, "rows": int(rows), "host_reads": 0}
         return dict(fence)
 
+    def _record_batch_sync_fence(self, *, rows: int) -> dict[str, Any]:
+        """Run extra device synchronizations as a no-kernel fence."""
+
+        fence = getattr(self, "_batch_sync_fence", None)
+        if not isinstance(fence, dict):
+            fence = {
+                "enabled": True,
+                "kind": "device_synchronize_only",
+                "checked_steps": 0,
+                "checked_rows": 0,
+                "host_reads": 0,
+                "device_synchronizes": 0,
+            }
+            self._batch_sync_fence = fence
+        step_index = int(fence["checked_steps"])
+        for _ in range(rows):
+            self.runtime.device_synchronize()
+        fence["checked_steps"] = step_index + 1
+        fence["checked_rows"] = int(fence["checked_rows"]) + int(rows)
+        fence["device_synchronizes"] = int(fence["device_synchronizes"]) + int(rows)
+        fence["last_step"] = {
+            "step_index": step_index,
+            "rows": int(rows),
+            "host_reads": 0,
+            "device_synchronizes": int(rows),
+        }
+        return dict(fence)
+
     def _record_batch_suffix_fence(
         self,
         *,
@@ -6794,6 +6826,7 @@ class Qwen35ParoResidentSession:
         sampler_final_norm_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT")
         sampler_final_norm_kernel_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_KERNEL_FENCE")
         sampler_final_rmsnorm_kernel_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_RMSNORM_KERNEL_FENCE")
+        sampler_sync_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SYNC_FENCE")
         sampler_suffix_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE")
         sampler_suffix_kernel_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE")
         sampler_execution = sampler_decision.to_json_dict()
@@ -6806,6 +6839,7 @@ class Qwen35ParoResidentSession:
         sampler_execution["final_norm_audit_enabled"] = bool(sampler_final_norm_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["final_norm_kernel_fence_enabled"] = bool(sampler_final_norm_kernel_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["final_rmsnorm_kernel_fence_enabled"] = bool(sampler_final_rmsnorm_kernel_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
+        sampler_execution["sync_fence_enabled"] = bool(sampler_sync_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_fence_enabled"] = bool(sampler_suffix_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_kernel_fence_enabled"] = bool(sampler_suffix_kernel_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         if sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_norm_path == "per_row":
@@ -6835,6 +6869,9 @@ class Qwen35ParoResidentSession:
         if sampler_execution["final_rmsnorm_kernel_fence_enabled"]:
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head final RMSNorm kernel fence enabled")
+        if sampler_execution["sync_fence_enabled"]:
+            sampler_execution["native_row_aware_lm_head"] = False
+            sampler_execution["blockers"].append("batched LM-head sync-only fence enabled")
         if sampler_execution["suffix_fence_enabled"]:
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head serial suffix fence enabled")
@@ -7002,6 +7039,9 @@ class Qwen35ParoResidentSession:
                 rows=rows,
                 stream=stream,
             )
+            self._publish_batch_sampler_execution(sampler_execution)
+        if sampler_execution["sync_fence_enabled"]:
+            sampler_execution["sync_fence"] = self._record_batch_sync_fence(rows=rows)
             self._publish_batch_sampler_execution(sampler_execution)
         if sampler_execution["suffix_fence_enabled"] or sampler_execution["suffix_kernel_fence_enabled"]:
             sampler_execution["suffix_fence"] = self._record_batch_suffix_fence(
