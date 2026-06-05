@@ -3807,7 +3807,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "0"
-    for batch_size in (3, 5, 6):
+    for batch_size in (3, 4, 5, 6):
         retained_bench._apply_runtime_env_args(
             SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=batch_size)
         )
@@ -3817,7 +3817,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] == "0"
         assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] == ""
-    for batch_size in (4, 7, 8):
+    for batch_size in (7, 8):
         retained_bench._apply_runtime_env_args(
             SimpleNamespace(projection_dispatch_artifact=None, batch_decode_full_attn_path="auto", batch_size=batch_size)
         )

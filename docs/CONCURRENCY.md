@@ -1158,6 +1158,16 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-stabilizer-346/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default256-profiler-347/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default256-baseline-348/summary.json`).
+  A focused c4 rowchunk-scope rerun then re-promotes c4 from all-layer rowchunk2
+  to the selected first-four full-attention producer layers `[3,7,11,15]` under
+  the current stabilized sampler/projection defaults. Explicit first-four c4
+  rowchunk was 4/4 green, post-change no-flag c4 default was 4/4 green
+  (`[137]*4`), while explicit no-rowchunk native and first-three controls failed
+  deterministically at row3/token118. This narrows the c4 full-attention
+  diagnostic blocker but does not make a retained performance/scaling claim:
+  selected rowchunk layers still report `native_caware_decode=false`, and c8
+  stays on all-layer rowchunk2 until its selected-layer path is profiler-stable
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-rowchunk-first4-351/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
