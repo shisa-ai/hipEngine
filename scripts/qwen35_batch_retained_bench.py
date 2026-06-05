@@ -106,6 +106,7 @@ _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILE
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _BATCH_SAMPLE_COMMAND_FLAGS = (
     "--batch-sample-mode",
+    "--batch-sample-norm-path",
     "--batch-sample-argmax-mode",
     "--batch-sample-argmax-audit",
     "--batch-sample-eq-ok",
@@ -2494,6 +2495,13 @@ def _profiler_command_provenance_blockers(
                 command_mode = "serial_lm_head"
             if command_mode != expected_mode:
                 blockers.append("profiler command --batch-sample-mode must match retained sampler mode")
+        expected_norm_path = expected_sampler.get("batch_sample_norm_path")
+        if isinstance(expected_norm_path, str) and expected_norm_path:
+            command_norm_path = _command_arg_value(retained_command, "--batch-sample-norm-path")
+            if command_norm_path is None and expected_norm_path == "batch":
+                command_norm_path = "batch"
+            if command_norm_path != expected_norm_path:
+                blockers.append("profiler command --batch-sample-norm-path must match retained sampler norm path")
         if expected_mode == "batched_lm_head":
             if expected_sampler.get("batch_sample_eq_ok") is not True:
                 blockers.append("retained command must include --batch-sample-eq-ok for batched_lm_head")
@@ -4293,6 +4301,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] = str(getattr(args, "batch_sample_mode", "serial_lm_head"))
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_NORM_PATH"] = str(getattr(args, "batch_sample_norm_path", "batch"))
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE"] = str(getattr(args, "batch_sample_argmax_mode", "batch"))
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_AUDIT"] = "1" if getattr(args, "batch_sample_argmax_audit", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] = (
@@ -4473,6 +4482,7 @@ def _build_payload(
         },
         expected_sampler={
             "batch_sample_mode": str(getattr(args, "batch_sample_mode", "serial_lm_head")),
+            "batch_sample_norm_path": str(getattr(args, "batch_sample_norm_path", "batch")),
             "batch_sample_argmax_mode": str(getattr(args, "batch_sample_argmax_mode", "batch")),
             "batch_sample_argmax_audit": bool(getattr(args, "batch_sample_argmax_audit", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
@@ -4782,6 +4792,7 @@ def _build_payload(
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
             "batch_sample_mode": str(getattr(args, "batch_sample_mode", "serial_lm_head")),
+            "batch_sample_norm_path": str(getattr(args, "batch_sample_norm_path", "batch")),
             "batch_sample_argmax_mode": str(getattr(args, "batch_sample_argmax_mode", "batch")),
             "batch_sample_argmax_audit": bool(getattr(args, "batch_sample_argmax_audit", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
@@ -5024,6 +5035,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("serial_lm_head", "batched_lm_head"),
         default="serial_lm_head",
         help="Sampler/LM-head path for native c>N decode; when omitted for c=4/8 the bench uses the repo-retained row-aware batched_lm_head equality artifact if it validates, while c=2 stays serial by default until the post-c9 batched-sampler flake is fixed. Explicit batched_lm_head still requires generated-token equality evidence via --batch-sample-eq-*.",
+    )
+    parser.add_argument(
+        "--batch-sample-norm-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic final RMSNorm/cast path when --batch-sample-mode=batched_lm_head; per_row normalizes each row into the batched LM-head input buffer and blocks retained sampler claims.",
     )
     parser.add_argument(
         "--batch-sample-argmax-mode",
