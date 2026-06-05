@@ -1031,11 +1031,14 @@ What is still not green:
   8/8 green at `[137,137]` with 136 fenced steps, 272 fenced rows, and 544 host
   reads per repeat. A kernel-only suffix fence (same serial suffix kernels but
   no serial host readback) was likewise 8/8 green at `[137,137]` with 136 fenced
-  steps, 272 fenced rows, and zero suffix host reads per repeat. This clears the
-  full sampler suffix for observed hidden inputs and suggests the remaining
-  intermittent c2 batched-sampler issue is upstream of the suffix or sensitive to
-  serial suffix kernel work/synchronization / scratch lifetime rather than host
-  readback. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
+  steps, 272 fenced rows, and zero suffix host reads per repeat. A narrower
+  LM-head+argmax-only kernel fence from the already-normalized BF16 rows was not
+  sufficient: it passed 7/8 repeats but failed once at `[0,137]` with row 0
+  diverging at token 0. This clears the full sampler suffix for observed hidden
+  inputs and suggests the remaining intermittent c2 batched-sampler issue is
+  upstream of the suffix or sensitive to serial final RMSNorm/cast kernel work /
+  synchronization / scratch lifetime rather than host readback or LM-head-only
+  fencing. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
   (`[137,137]`, `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
@@ -1059,7 +1062,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-lm-head-audit-321/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-norm-audit-322/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-suffix-fence-323/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-suffix-kernel-fence-324/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-suffix-kernel-fence-324/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-lm-head-kernel-fence-325/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

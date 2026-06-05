@@ -6200,11 +6200,13 @@ class Qwen35ParoResidentSession:
     def _batch_decode_execution_with_sampler_audit(self, decode_execution: dict[str, Any]) -> dict[str, Any]:
         argmax_audit = getattr(self, "_batch_argmax_audit", None)
         lm_head_audit = getattr(self, "_batch_lm_head_audit", None)
+        lm_head_fence = getattr(self, "_batch_lm_head_fence", None)
         final_norm_audit = getattr(self, "_batch_final_norm_audit", None)
         suffix_fence = getattr(self, "_batch_suffix_fence", None)
         if (
             not isinstance(argmax_audit, dict)
             and not isinstance(lm_head_audit, dict)
+            and not isinstance(lm_head_fence, dict)
             and not isinstance(final_norm_audit, dict)
             and not isinstance(suffix_fence, dict)
         ):
@@ -6215,6 +6217,8 @@ class Qwen35ParoResidentSession:
             sampler_execution["argmax_audit"] = dict(argmax_audit)
         if isinstance(lm_head_audit, dict):
             sampler_execution["lm_head_audit"] = dict(lm_head_audit)
+        if isinstance(lm_head_fence, dict):
+            sampler_execution["lm_head_fence"] = dict(lm_head_fence)
         if isinstance(final_norm_audit, dict):
             sampler_execution["final_norm_audit"] = dict(final_norm_audit)
         if isinstance(suffix_fence, dict):
@@ -6398,6 +6402,57 @@ class Qwen35ParoResidentSession:
             "max_abs_value_delta": step_max_delta,
         }
         return dict(audit)
+
+    def _record_batch_lm_head_fence(
+        self,
+        *,
+        rows: int,
+        stream: int,
+    ) -> dict[str, Any]:
+        """Run serial per-row LM-head+argmax kernels as a fence only."""
+
+        fence = getattr(self, "_batch_lm_head_fence", None)
+        if not isinstance(fence, dict):
+            fence = {
+                "enabled": True,
+                "kind": "serial_lm_head_argmax_kernel_only",
+                "checked_steps": 0,
+                "checked_rows": 0,
+                "host_reads": 0,
+            }
+            self._batch_lm_head_fence = fence
+        step_index = int(fence["checked_steps"])
+        for row in range(rows):
+            w8a16_linear_bf16_f32_out(
+                self.batch_norm_out_bf16.ptr + row * self.hidden_nbytes,
+                self.lm_head_weight.tensor.ptr,
+                self.lm_head_scale.tensor.ptr,
+                self.lm_logits.ptr,
+                1,
+                self.config.hidden_size,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["w8a16"],
+                runtime=self.runtime,
+            )
+            argmax_f32(
+                self.lm_logits.ptr,
+                self.lm_block_values.ptr,
+                self.lm_block_indices.ptr,
+                self.lm_out_index.ptr,
+                self.lm_out_value.ptr,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["lm_head"],
+                runtime=self.runtime,
+            )
+            self.runtime.device_synchronize()
+        fence["checked_steps"] = step_index + 1
+        fence["checked_rows"] = int(fence["checked_rows"]) + int(rows)
+        fence["last_step"] = {"step_index": step_index, "rows": int(rows), "host_reads": 0}
+        return dict(fence)
 
     def _record_batch_final_norm_audit(
         self,
@@ -6641,6 +6696,7 @@ class Qwen35ParoResidentSession:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE must be batch or serial_per_row")
         sampler_argmax_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_AUDIT")
         sampler_lm_head_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_AUDIT")
+        sampler_lm_head_kernel_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_KERNEL_FENCE")
         sampler_final_norm_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT")
         sampler_suffix_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE")
         sampler_suffix_kernel_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE")
@@ -6650,6 +6706,7 @@ class Qwen35ParoResidentSession:
         sampler_execution["argmax_mode"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else sampler_argmax_mode
         sampler_execution["argmax_audit_enabled"] = bool(sampler_argmax_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["lm_head_audit_enabled"] = bool(sampler_lm_head_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
+        sampler_execution["lm_head_kernel_fence_enabled"] = bool(sampler_lm_head_kernel_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["final_norm_audit_enabled"] = bool(sampler_final_norm_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_fence_enabled"] = bool(sampler_suffix_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_kernel_fence_enabled"] = bool(sampler_suffix_kernel_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
@@ -6668,6 +6725,9 @@ class Qwen35ParoResidentSession:
         if sampler_execution["lm_head_audit_enabled"]:
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head serial projection audit enabled")
+        if sampler_execution["lm_head_kernel_fence_enabled"]:
+            sampler_execution["native_row_aware_lm_head"] = False
+            sampler_execution["blockers"].append("batched LM-head serial projection kernel fence enabled")
         if sampler_execution["final_norm_audit_enabled"]:
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head final norm/cast audit enabled")
@@ -6806,6 +6866,12 @@ class Qwen35ParoResidentSession:
             sampler_execution["lm_head_audit"] = self._record_batch_lm_head_audit(
                 batch_indices=index_host,
                 batch_values=value_host,
+                rows=rows,
+                stream=stream,
+            )
+            self._publish_batch_sampler_execution(sampler_execution)
+        if sampler_execution["lm_head_kernel_fence_enabled"]:
+            sampler_execution["lm_head_fence"] = self._record_batch_lm_head_fence(
                 rows=rows,
                 stream=stream,
             )

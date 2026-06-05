@@ -3697,6 +3697,51 @@ def test_qwen35_resident_sample_batch_lm_head_audit_records_projection_mismatche
     assert decode_execution["sampler_execution"]["lm_head_audit"]["mismatch_rows"] == 1
 
 
+def test_qwen35_resident_sample_batch_lm_head_kernel_fence_skips_host_reads(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8)
+    session.vocab_size = 16
+    session.lm_head_threads = 256
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.libraries = {"w8a16": object(), "lm_head": object()}
+    session.batch_norm_out_bf16 = SimpleNamespace(ptr=0x8200)
+    session.lm_head_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8300))
+    session.lm_head_scale = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8400))
+    session.lm_logits = SimpleNamespace(ptr=0x8A00)
+    session.lm_block_values = SimpleNamespace(ptr=0x8B00)
+    session.lm_block_indices = SimpleNamespace(ptr=0x8C00)
+    session.lm_out_index = SimpleNamespace(ptr=0x8D00)
+    session.lm_out_value = SimpleNamespace(ptr=0x8E00)
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args))
+            return None
+        return _inner
+
+    monkeypatch.setattr(runner_module, "w8a16_linear_bf16_f32_out", record("lm_head"))
+    monkeypatch.setattr(runner_module, "argmax_f32", record("argmax"))
+    monkeypatch.setattr(runner_module, "copy_device_to_host", lambda *args, **kwargs: pytest.fail("kernel-only LM-head fence should not read host"))
+
+    fence = session._record_batch_lm_head_fence(rows=2, stream=0)
+
+    assert fence == {
+        "enabled": True,
+        "kind": "serial_lm_head_argmax_kernel_only",
+        "checked_steps": 1,
+        "checked_rows": 2,
+        "host_reads": 0,
+        "last_step": {"step_index": 0, "rows": 2, "host_reads": 0},
+    }
+    lm_head_calls = [args for name, args in calls if name == "lm_head"]
+    assert [(args[0], args[3], args[4]) for args in lm_head_calls] == [
+        (0x8200, 0x8A00, 1),
+        (0x8200 + session.hidden_nbytes, 0x8A00, 1),
+    ]
+
+
 def test_qwen35_resident_sample_batch_final_norm_audit_records_suffix_mismatches(tmp_path, monkeypatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)

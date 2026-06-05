@@ -3864,6 +3864,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
             projection_dispatch_artifact=None,
             batch_sample_mode="batched_lm_head",
             batch_sample_lm_head_audit=True,
+            batch_sample_lm_head_kernel_fence=True,
             batch_sample_final_norm_audit=True,
             batch_sample_suffix_fence=True,
             batch_sample_suffix_kernel_fence=True,
@@ -3874,6 +3875,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "batched_lm_head"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_AUDIT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_KERNEL_FENCE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE"] == "1"
