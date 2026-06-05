@@ -1159,6 +1159,7 @@ def build_validator_status_report(
         "next_action": next_action,
         "next_action_artifact_name": summary["next_action_artifact_name"],
         "next_action_readiness_gate": summary["next_action_readiness_gate"],
+        "next_action_status": summary["next_action_status"],
         "next_action_validator_command_sha256": summary[
             "next_action_validator_command_sha256"
         ],
@@ -1233,7 +1234,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.next_action_readiness_gate_only:
         payload = report["next_action_readiness_gate"]
     elif args.next_action_status_only:
-        payload = next_action.get("status") if isinstance(next_action, dict) else None
+        payload = report["next_action_status"]
     elif args.next_action_reason_only:
         payload = next_action.get("reason") if isinstance(next_action, dict) else None
     elif args.next_action_validator_command_kind_only:
