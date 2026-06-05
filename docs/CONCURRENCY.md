@@ -1452,6 +1452,16 @@ What is still not green:
   This remains correctness/runtime evidence only because selected rowchunk keeps
   `native_caware_decode=false`; no retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-current-profiler-refresh-392/summary.json`).
+  A follow-up c2 full-hidden sampler-stabilizer stress showed why c2 is still
+  not re-promoted to the no-flag `batched_lm_head` default: explicit c2
+  `batched_lm_head` with `stabilize_cast_elems=2048` was 20/20 green (including
+  four c8→c2 cycles) with native row-aware sampler metadata and no sampler
+  blockers, but a temporary no-flag promotion candidate reproduced the old
+  row0/token82 flake once in 8 runs and a subsequent serial no-flag active
+  verify transiently printed 104 before recovery repeats returned to 137. The
+  c2 default therefore remains `serial_lm_head`; this is sampler-stability
+  evidence only and no retained throughput/scaling claim is made
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-fullcast-sampler-stress-393/summary.json`).
   An earlier post-c8 stability stress ran three then-current no-flag c8 all-layer
   default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
   run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,

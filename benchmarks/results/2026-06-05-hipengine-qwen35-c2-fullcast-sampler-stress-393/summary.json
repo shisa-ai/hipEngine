@@ -1,0 +1,293 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-fullcast-sampler-stress-393/compact-runs.json",
+      "sha256": "d548bd4d3a4fcba759b4cc2b8dea18d38046624ff57974dd688667b0ebcd95a4",
+      "size_bytes": 43758
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-fullcast-sampler-stress-393/summary.json"
+    }
+  },
+  "commands": {
+    "active_verify": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "c8_then_c2_cycles": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 8 --json c8_i.json; then explicit c2 fullcast command --json c2_i.json",
+    "explicit_fullcast_c2": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --batch-sample-stabilize-cast-elems 999999 --json /tmp/hipengine-iter393-c2-batched-fullcast-stress*/runN.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "post_red_matrix": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size {2,4,8} --decode-tokens 128 --json /tmp/hipengine-iter393-post-red-c248-matrix/c{2,4,8}.json",
+    "temporary_default_candidate": "temporary local default-map promotion to c2 batched_lm_head with stabilize_cast_elems=2048, reverted before commit; raw JSON/logs under /tmp/hipengine-iter393-c2-default-fullcast-postchange/"
+  },
+  "conclusion": "Explicit c2 batched_lm_head with the full-hidden final-cast stabilizer (requested 999999, clamped to 2048) was green across 20 reproducible explicit runs, including four c8\u2192c2 cycles, with native_row_aware_lm_head=true and empty sampler blockers. A temporary no-flag promotion candidate using the same stabilizer nevertheless reproduced the historical row0/token82 flake once in 8 runs, and a subsequent serial no-flag active verify transiently printed 104 before three recovery repeats and the final active verify returned to 137. Therefore c2 is not promoted this iteration; the no-flag default remains serial_lm_head. This is sampler-stability runtime evidence only and makes no retained throughput/scaling claim.",
+  "created_at": "2026-06-05T20:39:11.708486+00:00",
+  "git_commit_before_commit": "923797f6de98d4a063501fc8ec38a3045bace9fb",
+  "guard": {
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      }
+    ]
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 393,
+  "kind": "c2_batched_sampler_fullcast_stress",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: this records focused c2 no-serial-sampler runtime evidence on GPU1/XTX. Explicit full-hidden stabilized c2 batched_lm_head is 20/20 green with native row-aware sampler metadata, but a temporary default candidate still reproduced a row0/token82 flake and an active serial verify transient printed 104; therefore c2 is intentionally not promoted and no throughput claim is made.",
+    "passed": true
+  },
+  "result": {
+    "active_verify": {
+      "final_min_equal_prefix": 137,
+      "final_prefixes": [
+        137,
+        137
+      ],
+      "recovery_repeat_prefixes": [
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "transient_min_equal_prefix": 104
+    },
+    "explicit_fullcast_green_runs": 20,
+    "explicit_fullcast_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "explicit_fullcast_sampler": {
+      "blockers": [],
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "stabilize_cast_elems": 2048
+    },
+    "explicit_fullcast_total_runs": 20,
+    "post_red_matrix": {
+      "c2": {
+        "native_row_aware_lm_head": false,
+        "prefixes": [
+          137,
+          137
+        ],
+        "rowchunk_layers": null,
+        "sampler": "serial_lm_head",
+        "stabilize_cast_elems": 0
+      },
+      "c4": {
+        "native_row_aware_lm_head": true,
+        "prefixes": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23
+        ],
+        "sampler": "batched_lm_head",
+        "stabilize_cast_elems": 0
+      },
+      "c8": {
+        "native_row_aware_lm_head": true,
+        "prefixes": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          35
+        ],
+        "sampler": "batched_lm_head",
+        "stabilize_cast_elems": 256
+      }
+    },
+    "temporary_default_candidate_failures": [
+      {
+        "first_mismatch_indices": [
+          82,
+          null
+        ],
+        "prefixes": [
+          82,
+          137
+        ],
+        "run": 6
+      }
+    ],
+    "temporary_default_candidate_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        82,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ]
+  },
+  "schema": 1
+}

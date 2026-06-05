@@ -1,0 +1,1471 @@
+{
+  "active_verify": {
+    "final": {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": false,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "serial_lm_head",
+        "sampler_requested_mode": "serial_lm_head",
+        "stabilize_cast_elems": 0,
+        "stabilize_enabled": false
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "6dba523897a358a903dbf9a39fb9128241e28f154fc8ff1b5c0b4ed340ceb783",
+        "size_bytes": 138400
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "6dba523897a358a903dbf9a39fb9128241e28f154fc8ff1b5c0b4ed340ceb783",
+        "size_bytes": 138400
+      }
+    },
+    "recovery_repeats": [
+      {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": true,
+          "native_row_aware_lm_head": false,
+          "rowchunk_layers": null,
+          "sampler_blockers": [],
+          "sampler_mode": "serial_lm_head",
+          "sampler_requested_mode": "serial_lm_head",
+          "stabilize_cast_elems": 0,
+          "stabilize_enabled": false
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat1.json",
+          "sha256": "af6eeac083d409677f2bdb1c9b0afda567856a39586eb906242bc12fbd509ad1",
+          "size_bytes": 138437
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat1.log",
+          "sha256": "af6eeac083d409677f2bdb1c9b0afda567856a39586eb906242bc12fbd509ad1",
+          "size_bytes": 138437
+        }
+      },
+      {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": true,
+          "native_row_aware_lm_head": false,
+          "rowchunk_layers": null,
+          "sampler_blockers": [],
+          "sampler_mode": "serial_lm_head",
+          "sampler_requested_mode": "serial_lm_head",
+          "stabilize_cast_elems": 0,
+          "stabilize_enabled": false
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat2.json",
+          "sha256": "f34d286468e32bf78e0ca8d31463b47ae7720b0bda90e3a17374cb648f2af32f",
+          "size_bytes": 138465
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat2.log",
+          "sha256": "f34d286468e32bf78e0ca8d31463b47ae7720b0bda90e3a17374cb648f2af32f",
+          "size_bytes": 138465
+        }
+      },
+      {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": true,
+          "native_row_aware_lm_head": false,
+          "rowchunk_layers": null,
+          "sampler_blockers": [],
+          "sampler_mode": "serial_lm_head",
+          "sampler_requested_mode": "serial_lm_head",
+          "stabilize_cast_elems": 0,
+          "stabilize_enabled": false
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat3.json",
+          "sha256": "b6d78daaebc59ab5dacf1c7d5e2f43f4ceab2f2340558cc429a1aae74bcac1b7",
+          "size_bytes": 138459
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat3.log",
+          "sha256": "b6d78daaebc59ab5dacf1c7d5e2f43f4ceab2f2340558cc429a1aae74bcac1b7",
+          "size_bytes": 138459
+        }
+      }
+    ],
+    "transient_red_stdout_record": {
+      "min_equal_prefix_tokens": 104,
+      "native_row_aware_lm_head": false,
+      "note": "The first canonical active verify after reverting the temporary promotion printed 104 with prefixes [137,104]; its raw JSON was at /tmp/hipengine-e2e-native-c2-512-128.json and was overwritten by the final green active verify.",
+      "prefix_lengths": [
+        137,
+        104
+      ],
+      "sampler_mode": "serial_lm_head"
+    }
+  },
+  "c8_then_explicit_c2_cycles": [
+    {
+      "c2_explicit_fullcast": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": true,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": null,
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 2048,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_1.json",
+          "sha256": "b562feff5de0fc8bbee8413dcda4eface7ea38979b0009f09e9350242a547131",
+          "size_bytes": 138798
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_1.log",
+          "sha256": "b562feff5de0fc8bbee8413dcda4eface7ea38979b0009f09e9350242a547131",
+          "size_bytes": 138798
+        }
+      },
+      "c8": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": false,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            35
+          ],
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 256,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_1.json",
+          "sha256": "1db61c8782d5616ef6571d08c70fd52128e27953952cf844670cdd4ce9967da7",
+          "size_bytes": 400626
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_1.log",
+          "sha256": "1db61c8782d5616ef6571d08c70fd52128e27953952cf844670cdd4ce9967da7",
+          "size_bytes": 400626
+        }
+      }
+    },
+    {
+      "c2_explicit_fullcast": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": true,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": null,
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 2048,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_2.json",
+          "sha256": "0d01a4c18f2cc9870faa633ab7bad4904bc7178fef58d8c8a96eeb4fb533f7f2",
+          "size_bytes": 138810
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_2.log",
+          "sha256": "0d01a4c18f2cc9870faa633ab7bad4904bc7178fef58d8c8a96eeb4fb533f7f2",
+          "size_bytes": 138810
+        }
+      },
+      "c8": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": false,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            35
+          ],
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 256,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_2.json",
+          "sha256": "e918bab60dc26dd492e1816b2537d5efb8946f5dc3c34b99b36cb1f39458ef67",
+          "size_bytes": 400640
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_2.log",
+          "sha256": "e918bab60dc26dd492e1816b2537d5efb8946f5dc3c34b99b36cb1f39458ef67",
+          "size_bytes": 400640
+        }
+      }
+    },
+    {
+      "c2_explicit_fullcast": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": true,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": null,
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 2048,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_3.json",
+          "sha256": "196fca505ec40bf5a4e27c393498422846ba2c993e847c0d97acf3a986959e55",
+          "size_bytes": 138812
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_3.log",
+          "sha256": "196fca505ec40bf5a4e27c393498422846ba2c993e847c0d97acf3a986959e55",
+          "size_bytes": 138812
+        }
+      },
+      "c8": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": false,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            35
+          ],
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 256,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_3.json",
+          "sha256": "66d4136df0e5e7ac7e4e2cc3f49fe5285be7cf9ee887807fb06661d5f23c134a",
+          "size_bytes": 400614
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_3.log",
+          "sha256": "66d4136df0e5e7ac7e4e2cc3f49fe5285be7cf9ee887807fb06661d5f23c134a",
+          "size_bytes": 400614
+        }
+      }
+    },
+    {
+      "c2_explicit_fullcast": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": true,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": null,
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 2048,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_4.json",
+          "sha256": "6ff8d16f589a8c15c30d70a81f42a0b305276f6dc524bf77071f367bd6f47d24",
+          "size_bytes": 138811
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c2_4.log",
+          "sha256": "6ff8d16f589a8c15c30d70a81f42a0b305276f6dc524bf77071f367bd6f47d24",
+          "size_bytes": 138811
+        }
+      },
+      "c8": {
+        "equality": {
+          "first_mismatch_indices": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ]
+        },
+        "execution": {
+          "native_caware_decode": false,
+          "native_row_aware_lm_head": true,
+          "rowchunk_layers": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            35
+          ],
+          "sampler_blockers": [],
+          "sampler_mode": "batched_lm_head",
+          "sampler_requested_mode": "batched_lm_head",
+          "stabilize_cast_elems": 256,
+          "stabilize_enabled": true
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_4.json",
+          "sha256": "82a99d0019094d56a6d1c93b5f130cbcc6a856bf16a987665c797ec1d69982fc",
+          "size_bytes": 400627
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-iter393-c8-then-c2-fullcast-cycles/c8_4.log",
+          "sha256": "82a99d0019094d56a6d1c93b5f130cbcc6a856bf16a987665c797ec1d69982fc",
+          "size_bytes": 400627
+        }
+      }
+    }
+  ],
+  "explicit_fullcast_first8": [
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run1.json",
+        "sha256": "76814c383f69a3207db86c14c640899d745b69cc6711a25948050ef9061c5b4e",
+        "size_bytes": 138787
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run1.log",
+        "sha256": "76814c383f69a3207db86c14c640899d745b69cc6711a25948050ef9061c5b4e",
+        "size_bytes": 138787
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run2.json",
+        "sha256": "95b8b6b7cd3e044893192376450278cfc1507011cf06db6b2dcdc5b2026fcfab",
+        "size_bytes": 138797
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run2.log",
+        "sha256": "95b8b6b7cd3e044893192376450278cfc1507011cf06db6b2dcdc5b2026fcfab",
+        "size_bytes": 138797
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run3.json",
+        "sha256": "d1008ae996dea2e1e29a84e6e437f4ad67e34464d4b4c5a7a55b9a7c1f1cf368",
+        "size_bytes": 138816
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run3.log",
+        "sha256": "d1008ae996dea2e1e29a84e6e437f4ad67e34464d4b4c5a7a55b9a7c1f1cf368",
+        "size_bytes": 138816
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run4.json",
+        "sha256": "18ee5edeb3da91a8719bd9a53b19d9e32fa7d159e86241eb09bdeaec509caaad",
+        "size_bytes": 138821
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run4.log",
+        "sha256": "18ee5edeb3da91a8719bd9a53b19d9e32fa7d159e86241eb09bdeaec509caaad",
+        "size_bytes": 138821
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run5.json",
+        "sha256": "60e8b65a73bb9158149c2ee09e5ace1c45bc8c0daf23446b6ea36b873f4205f2",
+        "size_bytes": 138815
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run5.log",
+        "sha256": "60e8b65a73bb9158149c2ee09e5ace1c45bc8c0daf23446b6ea36b873f4205f2",
+        "size_bytes": 138815
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run6.json",
+        "sha256": "e8990612e011bc06f51da47478b814a2c8fd4030de4f09a09cf068ca0883c2d2",
+        "size_bytes": 138817
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run6.log",
+        "sha256": "e8990612e011bc06f51da47478b814a2c8fd4030de4f09a09cf068ca0883c2d2",
+        "size_bytes": 138817
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run7.json",
+        "sha256": "91e4b9b6aefb82469e788997199d4e750de0bcd42cf368f8c05bc71529d6b525",
+        "size_bytes": 138813
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run7.log",
+        "sha256": "91e4b9b6aefb82469e788997199d4e750de0bcd42cf368f8c05bc71529d6b525",
+        "size_bytes": 138813
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run8.json",
+        "sha256": "c80578ea63907f894c71b4d5fa3ef10afc754c635e3d39e60bc08a87337d0522",
+        "size_bytes": 138799
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress/run8.log",
+        "sha256": "c80578ea63907f894c71b4d5fa3ef10afc754c635e3d39e60bc08a87337d0522",
+        "size_bytes": 138799
+      }
+    }
+  ],
+  "explicit_fullcast_second8": [
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run1.json",
+        "sha256": "f7cd0b46f8d6f36c8fb0975b07aeb65711747c36ac4bf9225d8e4bfb62cd101e",
+        "size_bytes": 138812
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run1.log",
+        "sha256": "f7cd0b46f8d6f36c8fb0975b07aeb65711747c36ac4bf9225d8e4bfb62cd101e",
+        "size_bytes": 138812
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run2.json",
+        "sha256": "418255ef1cf98def3189c18e1027473c8151d5de36ef2c9b79e549ef1a9d5cd6",
+        "size_bytes": 138809
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run2.log",
+        "sha256": "418255ef1cf98def3189c18e1027473c8151d5de36ef2c9b79e549ef1a9d5cd6",
+        "size_bytes": 138809
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run3.json",
+        "sha256": "832daf8dd26cf86486641589c2e055a2908f08acd45f0b6b3ec89987075b977d",
+        "size_bytes": 138813
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run3.log",
+        "sha256": "832daf8dd26cf86486641589c2e055a2908f08acd45f0b6b3ec89987075b977d",
+        "size_bytes": 138813
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run4.json",
+        "sha256": "d9dd6fa4034b95b5b73b70fb0ac73acb34c1e17ed497cc7861bd4b6cf6b69beb",
+        "size_bytes": 138816
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run4.log",
+        "sha256": "d9dd6fa4034b95b5b73b70fb0ac73acb34c1e17ed497cc7861bd4b6cf6b69beb",
+        "size_bytes": 138816
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run5.json",
+        "sha256": "fc8701187b333961551cfbb30cfec55955c4d2166b7858d8ea50f44eaec31f60",
+        "size_bytes": 138823
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run5.log",
+        "sha256": "fc8701187b333961551cfbb30cfec55955c4d2166b7858d8ea50f44eaec31f60",
+        "size_bytes": 138823
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run6.json",
+        "sha256": "a7110a9bfbb9d61967c9d5e97afceae13f52f2e923ee7e7a1678b01968725902",
+        "size_bytes": 138821
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run6.log",
+        "sha256": "a7110a9bfbb9d61967c9d5e97afceae13f52f2e923ee7e7a1678b01968725902",
+        "size_bytes": 138821
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run7.json",
+        "sha256": "6062ed7b10ee47cad02140c0b6b80e09e154d65830f4688849f414fde5aeaa8c",
+        "size_bytes": 138801
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run7.log",
+        "sha256": "6062ed7b10ee47cad02140c0b6b80e09e154d65830f4688849f414fde5aeaa8c",
+        "size_bytes": 138801
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run8.json",
+        "sha256": "994f0f2e3f53e2034bb9ac95071096a305d6f11a452002a953e851f159ac75c7",
+        "size_bytes": 138813
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-batched-fullcast-stress2/run8.log",
+        "sha256": "994f0f2e3f53e2034bb9ac95071096a305d6f11a452002a953e851f159ac75c7",
+        "size_bytes": 138813
+      }
+    }
+  ],
+  "post_red_matrix": {
+    "c2": {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": false,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "serial_lm_head",
+        "sampler_requested_mode": "serial_lm_head",
+        "stabilize_cast_elems": 0,
+        "stabilize_enabled": false
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-post-red-c248-matrix/c2.json",
+        "sha256": "a9ab3abfe9f3fdc86bd7f61be530502b263b48b1dc224c80fe36b197add45872",
+        "size_bytes": 138458
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-post-red-c248-matrix/c2.log",
+        "sha256": "a9ab3abfe9f3fdc86bd7f61be530502b263b48b1dc224c80fe36b197add45872",
+        "size_bytes": 138458
+      }
+    },
+    "c4": {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23
+        ],
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 0,
+        "stabilize_enabled": false
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-post-red-c248-matrix/c4.json",
+        "sha256": "125ca149aff203c7b3f1f4159b3a2ba97547231f1394a9d45766b026794885a7",
+        "size_bytes": 228662
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-post-red-c248-matrix/c4.log",
+        "sha256": "125ca149aff203c7b3f1f4159b3a2ba97547231f1394a9d45766b026794885a7",
+        "size_bytes": 228662
+      }
+    },
+    "c8": {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": false,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          35
+        ],
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 256,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-post-red-c248-matrix/c8.json",
+        "sha256": "2ad63d67fa87a2c7978d79e2e578c5d6d6d053e1a83f30629d61a3ee0a90c984",
+        "size_bytes": 400590
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-post-red-c248-matrix/c8.log",
+        "sha256": "2ad63d67fa87a2c7978d79e2e578c5d6d6d053e1a83f30629d61a3ee0a90c984",
+        "size_bytes": 400590
+      }
+    }
+  },
+  "temporary_default_candidate_8": [
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run1.json",
+        "sha256": "e19b52dffb519bfaec581437e0c0bb19a8d5a1b400db7688004ff58278627d96",
+        "size_bytes": 138587
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run1.log",
+        "sha256": "e19b52dffb519bfaec581437e0c0bb19a8d5a1b400db7688004ff58278627d96",
+        "size_bytes": 138587
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run2.json",
+        "sha256": "e51095d086dbc3cd5d192c9727ff48bbda4fb7c4396f175bdf44062444b6769b",
+        "size_bytes": 138582
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run2.log",
+        "sha256": "e51095d086dbc3cd5d192c9727ff48bbda4fb7c4396f175bdf44062444b6769b",
+        "size_bytes": 138582
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run3.json",
+        "sha256": "87bf28e3c7c764a4a2e46c9a04571ccee28fd21a5a560da94d47cd701317bf21",
+        "size_bytes": 138573
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run3.log",
+        "sha256": "87bf28e3c7c764a4a2e46c9a04571ccee28fd21a5a560da94d47cd701317bf21",
+        "size_bytes": 138573
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run4.json",
+        "sha256": "3a8208d65f517f8cee978e17b0883166c41412e332b06ddcbc2627f0d06a879f",
+        "size_bytes": 138580
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run4.log",
+        "sha256": "3a8208d65f517f8cee978e17b0883166c41412e332b06ddcbc2627f0d06a879f",
+        "size_bytes": 138580
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run5.json",
+        "sha256": "8b041437a3a4f29a26100875c441cc2eb83c85c9f872f1e406a9e08127619e2f",
+        "size_bytes": 138576
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run5.log",
+        "sha256": "8b041437a3a4f29a26100875c441cc2eb83c85c9f872f1e406a9e08127619e2f",
+        "size_bytes": 138576
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          82,
+          null
+        ],
+        "min_equal_prefix_tokens": 82,
+        "passed": false,
+        "prefix_lengths": [
+          82,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run6.json",
+        "sha256": "f4e2007e5565d69a66f7a7d458355da7cab97d7a27c3aebcbc3f6b6ed0050302",
+        "size_bytes": 145258
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run6.log",
+        "sha256": "f4e2007e5565d69a66f7a7d458355da7cab97d7a27c3aebcbc3f6b6ed0050302",
+        "size_bytes": 145258
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run7.json",
+        "sha256": "1d012345541d272b54e67a90470ed225ec5afe9cc91bbe2e62e994d95d7e11d1",
+        "size_bytes": 138561
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run7.log",
+        "sha256": "1d012345541d272b54e67a90470ed225ec5afe9cc91bbe2e62e994d95d7e11d1",
+        "size_bytes": 138561
+      }
+    },
+    {
+      "equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "execution": {
+        "native_caware_decode": true,
+        "native_row_aware_lm_head": true,
+        "rowchunk_layers": null,
+        "sampler_blockers": [],
+        "sampler_mode": "batched_lm_head",
+        "sampler_requested_mode": "batched_lm_head",
+        "stabilize_cast_elems": 2048,
+        "stabilize_enabled": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run8.json",
+        "sha256": "94a2b8635e9116db392f38a15d6a2054a870c6835f579d4c5315672c2a8b9342",
+        "size_bytes": 138587
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter393-c2-default-fullcast-postchange/run8.log",
+        "sha256": "94a2b8635e9116db392f38a15d6a2054a870c6835f579d4c5315672c2a8b9342",
+        "size_bytes": 138587
+      }
+    }
+  ]
+}
