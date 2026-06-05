@@ -1026,10 +1026,13 @@ What is still not green:
   RMSNorm, FP16→BF16 cast, LM-head projection, and argmax from the same hidden
   row; full-batch c2 final norm/cast plus this audit was also 8/8 green at
   `[137,137]`, again with 136 audited steps, 272 audited rows, zero mismatches,
-  and max value delta 0.0 per repeat. This clears the full sampler suffix for
-  observed hidden inputs and moves the remaining intermittent c2 batched-sampler
-  suspicion upstream to hidden-state production or probe/timing-sensitive state.
-  The immediately following post-audit no-flag c2/c4/c8 controls recovered green
+  and max value delta 0.0 per repeat. A serial suffix-fence variant that reruns
+  the same serial suffix with host reads but without output comparison was also
+  8/8 green at `[137,137]` with 136 fenced steps, 272 fenced rows, and 544 host
+  reads per repeat. This clears the full sampler suffix for observed hidden
+  inputs and suggests the remaining intermittent c2 batched-sampler issue is
+  upstream of the suffix or probe/timing/scratch-lifetime sensitive. The
+  immediately following post-audit no-flag c2/c4/c8 controls recovered green
   (`[137,137]`, `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
@@ -1051,7 +1054,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-norm-cast-split-319/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default-batched-perrow-reject-320/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-lm-head-audit-321/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-norm-audit-322/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-norm-audit-322/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-suffix-fence-323/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

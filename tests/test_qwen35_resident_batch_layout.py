@@ -3826,6 +3826,124 @@ def test_qwen35_resident_sample_batch_final_norm_audit_records_suffix_mismatches
     assert decode_execution["sampler_execution"]["final_norm_audit"]["mismatch_rows"] == 1
 
 
+def test_qwen35_resident_sample_batch_suffix_fence_records_timing_work(tmp_path, monkeypatch) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    artifact_path = "benchmarks/results/qwen35-c2-eq.json"
+    equality_payload = {
+        "schema": 1,
+        "rows": 2,
+        "artifact_path": artifact_path,
+        "source_artifact_path": artifact_path,
+        "passed": True,
+        "generated_token_equality": {
+            "passed": True,
+            "skipped": False,
+            "batch_sequences": [[11, 12], [21, 22]],
+            "c1_sequences": [[11, 12], [21, 22]],
+            "mismatches": [],
+        },
+    }
+    (artifact_dir / "qwen35-c2-eq.json").write_text(json.dumps(equality_payload), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "batched_lm_head")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT", artifact_path)
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS", "2")
+
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 2
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8, rms_norm_eps=1e-6)
+    session.vocab_size = 16
+    session.lm_head_threads = 256
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.libraries = {"norm": object(), "cast": object(), "w8a16": object(), "lm_head": object()}
+    session.tokenizer = SimpleNamespace(decode=lambda ids, skip_special_tokens=False: str(ids[0]))
+    session.norm_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8000))
+    session.batch_norm_out = SimpleNamespace(ptr=0x8100)
+    session.batch_norm_out_bf16 = SimpleNamespace(ptr=0x8200)
+    session.lm_head_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8300))
+    session.lm_head_scale = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8400))
+    session.batch_lm_logits = SimpleNamespace(ptr=0x8500)
+    session.batch_lm_block_values = SimpleNamespace(ptr=0x8600)
+    session.batch_lm_block_indices = SimpleNamespace(ptr=0x8700)
+    session.batch_lm_out_index = SimpleNamespace(ptr=0x8800)
+    session.batch_lm_out_value = SimpleNamespace(ptr=0x8900)
+    session.lm_logits = SimpleNamespace(ptr=0x8A00)
+    session.lm_block_values = SimpleNamespace(ptr=0x8B00)
+    session.lm_block_indices = SimpleNamespace(ptr=0x8C00)
+    session.lm_out_index = SimpleNamespace(ptr=0x8D00)
+    session.lm_out_value = SimpleNamespace(ptr=0x8E00)
+    session.norm_out = SimpleNamespace(ptr=0x8F00)
+    session.norm_out_bf16 = SimpleNamespace(ptr=0x9000)
+    hidden = Tensor.from_handle(0x6000, (2, 8), DType.FP16, Device("hip", 0))
+    calls: list[tuple[str, tuple[object, ...]]] = []
+    serial_copy_count = 0
+
+    def write_i64(dst_ptr: int, values: list[int]) -> None:
+        arr = np.ctypeslib.as_array((ctypes.c_int64 * len(values)).from_address(dst_ptr))
+        arr[:] = values
+
+    def write_f32(dst_ptr: int, values: list[float]) -> None:
+        arr = np.ctypeslib.as_array((ctypes.c_float * len(values)).from_address(dst_ptr))
+        arr[:] = values
+
+    def fake_copy_device_to_host(dst_ptr, src, runtime=None):
+        nonlocal serial_copy_count
+        if src.ptr == session.batch_lm_out_index.ptr:
+            write_i64(dst_ptr, [101, 202])
+        elif src.ptr == session.batch_lm_out_value.ptr:
+            write_f32(dst_ptr, [1.0, 2.0])
+        elif src.ptr == session.lm_out_index.ptr:
+            serial_copy_count += 1
+            write_i64(dst_ptr, [303])
+        elif src.ptr == session.lm_out_value.ptr:
+            serial_copy_count += 1
+            write_f32(dst_ptr, [3.0])
+        else:
+            raise AssertionError(f"unexpected copy source {src!r}")
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args))
+            return None
+        return _inner
+
+    monkeypatch.setattr(runner_module, "paro_rmsnorm_out_fp16", record("norm"))
+    monkeypatch.setattr(runner_module, "fp16_to_bf16", record("cast"))
+    monkeypatch.setattr(runner_module, "w8a16_linear_bf16_f32_out", record("lm_head"))
+    monkeypatch.setattr(runner_module, "batch_argmax_f32", record("batch_argmax"))
+    monkeypatch.setattr(runner_module, "argmax_f32", record("argmax"))
+    monkeypatch.setattr(runner_module, "copy_device_to_host", fake_copy_device_to_host)
+
+    results = session._sample_batch_from_hidden(hidden, rows=2)
+
+    assert [result.token_id for result in results] == [101, 202]
+    assert serial_copy_count == 4
+    norm_calls = [args for name, args in calls if name == "norm"]
+    assert [(args[0], args[2], args[3]) for args in norm_calls] == [
+        (0x6000, 0x8100, 2),
+        (0x6000, 0x8F00, 1),
+        (0x6000 + session.hidden_nbytes, 0x8F00, 1),
+    ]
+    sampler = session.last_batch_sampler_execution
+    assert sampler["suffix_fence_enabled"] is True
+    assert sampler["native_row_aware_lm_head"] is False
+    assert "batched LM-head serial suffix fence enabled" in sampler["blockers"]
+    assert sampler["suffix_fence"] == {
+        "enabled": True,
+        "kind": "serial_final_norm_cast_lm_head_argmax_host_read",
+        "checked_steps": 1,
+        "checked_rows": 2,
+        "host_reads": 4,
+        "last_step": {"step_index": 0, "rows": 2, "host_reads": 4},
+    }
+    decode_execution = session._batch_decode_execution_with_sampler_audit({"sampler_execution": {"mode": "batched_lm_head"}})
+    assert decode_execution["sampler_execution"]["suffix_fence"]["host_reads"] == 4
+
+
 def test_qwen35_resident_sample_batch_rejects_unknown_norm_path(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_NORM_PATH", "surprise")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)

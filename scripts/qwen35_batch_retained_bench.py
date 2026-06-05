@@ -112,6 +112,7 @@ _BATCH_SAMPLE_COMMAND_FLAGS = (
     "--batch-sample-argmax-audit",
     "--batch-sample-lm-head-audit",
     "--batch-sample-final-norm-audit",
+    "--batch-sample-suffix-fence",
     "--batch-sample-eq-ok",
     "--batch-sample-eq-artifact",
     "--batch-sample-eq-rows",
@@ -4318,6 +4319,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_AUDIT"] = "1" if getattr(args, "batch_sample_argmax_audit", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_AUDIT"] = "1" if getattr(args, "batch_sample_lm_head_audit", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT"] = "1" if getattr(args, "batch_sample_final_norm_audit", False) else "0"
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE"] = "1" if getattr(args, "batch_sample_suffix_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] = (
         "1" if getattr(args, "batch_sample_eq_ok", False) else "0"
     )
@@ -4502,6 +4504,7 @@ def _build_payload(
             "batch_sample_argmax_audit": bool(getattr(args, "batch_sample_argmax_audit", False)),
             "batch_sample_lm_head_audit": bool(getattr(args, "batch_sample_lm_head_audit", False)),
             "batch_sample_final_norm_audit": bool(getattr(args, "batch_sample_final_norm_audit", False)),
+            "batch_sample_suffix_fence": bool(getattr(args, "batch_sample_suffix_fence", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
             "batch_sample_eq_artifact": str(getattr(args, "batch_sample_eq_artifact", "") or ""),
             "batch_sample_eq_rows": getattr(args, "batch_sample_eq_rows", None),
@@ -4815,6 +4818,7 @@ def _build_payload(
             "batch_sample_argmax_audit": bool(getattr(args, "batch_sample_argmax_audit", False)),
             "batch_sample_lm_head_audit": bool(getattr(args, "batch_sample_lm_head_audit", False)),
             "batch_sample_final_norm_audit": bool(getattr(args, "batch_sample_final_norm_audit", False)),
+            "batch_sample_suffix_fence": bool(getattr(args, "batch_sample_suffix_fence", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
             "batch_sample_eq_artifact": (
                 str(getattr(args, "batch_sample_eq_artifact", "") or "")
@@ -5088,6 +5092,11 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-sample-final-norm-audit",
         action="store_true",
         help="Diagnostic-only parity audit for batched_lm_head + batch argmax: reruns each row through serial c=1 final RMSNorm, FP16-to-BF16 cast, LM-head projection, and argmax from the same hidden row, records mismatches, and blocks retained sampler claims.",
+    )
+    parser.add_argument(
+        "--batch-sample-suffix-fence",
+        action="store_true",
+        help="Diagnostic-only timing fence for batched_lm_head + batch argmax: reruns each row through serial c=1 final RMSNorm/cast/LM-head/argmax with host reads but does not compare outputs; blocks retained sampler claims.",
     )
     parser.add_argument(
         "--batch-sample-eq-ok",
