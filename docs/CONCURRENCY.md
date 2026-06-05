@@ -1034,7 +1034,10 @@ What is still not green:
   steps, 272 fenced rows, and zero suffix host reads per repeat. A narrower
   LM-head+argmax-only kernel fence from the already-normalized BF16 rows was not
   sufficient: it passed 7/8 repeats but failed once at `[0,137]` with row 0
-  diverging at token 0. This clears the full sampler suffix for observed hidden
+  diverging at token 0. The complementary final RMSNorm+FP16→BF16 cast-only
+  kernel fence (no LM-head, argmax, host readback, or output comparison) was
+  8/8 green at `[137,137]` with 136 fenced steps, 272 fenced rows, and zero host
+  reads per repeat. This clears the full sampler suffix for observed hidden
   inputs and suggests the remaining intermittent c2 batched-sampler issue is
   upstream of the suffix or sensitive to serial final RMSNorm/cast kernel work /
   synchronization / scratch lifetime rather than host readback or LM-head-only
@@ -1063,7 +1066,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-norm-audit-322/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-suffix-fence-323/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-suffix-kernel-fence-324/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-lm-head-kernel-fence-325/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-lm-head-kernel-fence-325/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-norm-kernel-fence-326/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

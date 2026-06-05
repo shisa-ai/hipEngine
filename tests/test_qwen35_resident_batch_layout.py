@@ -3742,6 +3742,54 @@ def test_qwen35_resident_sample_batch_lm_head_kernel_fence_skips_host_reads(monk
     ]
 
 
+def test_qwen35_resident_sample_batch_final_norm_kernel_fence_skips_suffix_work(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8, rms_norm_eps=1e-6)
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.libraries = {"norm": object(), "cast": object()}
+    session.norm_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8000))
+    session.norm_out = SimpleNamespace(ptr=0x8F00)
+    session.norm_out_bf16 = SimpleNamespace(ptr=0x9000)
+    hidden = SimpleNamespace(ptr=0x6000)
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args))
+            return None
+        return _inner
+
+    monkeypatch.setattr(runner_module, "paro_rmsnorm_out_fp16", record("norm"))
+    monkeypatch.setattr(runner_module, "fp16_to_bf16", record("cast"))
+    monkeypatch.setattr(runner_module, "w8a16_linear_bf16_f32_out", lambda *args, **kwargs: pytest.fail("final-norm fence should not run LM-head"))
+    monkeypatch.setattr(runner_module, "argmax_f32", lambda *args, **kwargs: pytest.fail("final-norm fence should not run argmax"))
+    monkeypatch.setattr(runner_module, "copy_device_to_host", lambda *args, **kwargs: pytest.fail("final-norm fence should not read host"))
+
+    fence = session._record_batch_final_norm_fence(hidden=hidden, rows=2, stream=0)
+
+    assert fence == {
+        "enabled": True,
+        "kind": "serial_final_norm_cast_kernel_only",
+        "checked_steps": 1,
+        "checked_rows": 2,
+        "host_reads": 0,
+        "last_step": {"step_index": 0, "rows": 2, "host_reads": 0},
+    }
+    norm_calls = [args for name, args in calls if name == "norm"]
+    assert [(args[0], args[2], args[3]) for args in norm_calls] == [
+        (0x6000, 0x8F00, 1),
+        (0x6000 + session.hidden_nbytes, 0x8F00, 1),
+    ]
+    cast_calls = [args for name, args in calls if name == "cast"]
+    assert [(args[0], args[1], args[2]) for args in cast_calls] == [
+        (0x8F00, 0x9000, 8),
+        (0x8F00, 0x9000, 8),
+    ]
+    decode_execution = session._batch_decode_execution_with_sampler_audit({"sampler_execution": {"mode": "batched_lm_head"}})
+    assert decode_execution["sampler_execution"]["final_norm_fence"]["checked_rows"] == 2
+
+
 def test_qwen35_resident_sample_batch_final_norm_audit_records_suffix_mismatches(tmp_path, monkeypatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)

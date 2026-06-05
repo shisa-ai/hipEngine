@@ -113,6 +113,7 @@ _BATCH_SAMPLE_COMMAND_FLAGS = (
     "--batch-sample-lm-head-audit",
     "--batch-sample-lm-head-kernel-fence",
     "--batch-sample-final-norm-audit",
+    "--batch-sample-final-norm-kernel-fence",
     "--batch-sample-suffix-fence",
     "--batch-sample-suffix-kernel-fence",
     "--batch-sample-eq-ok",
@@ -4322,6 +4323,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_AUDIT"] = "1" if getattr(args, "batch_sample_lm_head_audit", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_KERNEL_FENCE"] = "1" if getattr(args, "batch_sample_lm_head_kernel_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT"] = "1" if getattr(args, "batch_sample_final_norm_audit", False) else "0"
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_KERNEL_FENCE"] = "1" if getattr(args, "batch_sample_final_norm_kernel_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE"] = "1" if getattr(args, "batch_sample_suffix_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE"] = "1" if getattr(args, "batch_sample_suffix_kernel_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] = (
@@ -4509,6 +4511,7 @@ def _build_payload(
             "batch_sample_lm_head_audit": bool(getattr(args, "batch_sample_lm_head_audit", False)),
             "batch_sample_lm_head_kernel_fence": bool(getattr(args, "batch_sample_lm_head_kernel_fence", False)),
             "batch_sample_final_norm_audit": bool(getattr(args, "batch_sample_final_norm_audit", False)),
+            "batch_sample_final_norm_kernel_fence": bool(getattr(args, "batch_sample_final_norm_kernel_fence", False)),
             "batch_sample_suffix_fence": bool(getattr(args, "batch_sample_suffix_fence", False)),
             "batch_sample_suffix_kernel_fence": bool(getattr(args, "batch_sample_suffix_kernel_fence", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
@@ -4825,6 +4828,7 @@ def _build_payload(
             "batch_sample_lm_head_audit": bool(getattr(args, "batch_sample_lm_head_audit", False)),
             "batch_sample_lm_head_kernel_fence": bool(getattr(args, "batch_sample_lm_head_kernel_fence", False)),
             "batch_sample_final_norm_audit": bool(getattr(args, "batch_sample_final_norm_audit", False)),
+            "batch_sample_final_norm_kernel_fence": bool(getattr(args, "batch_sample_final_norm_kernel_fence", False)),
             "batch_sample_suffix_fence": bool(getattr(args, "batch_sample_suffix_fence", False)),
             "batch_sample_suffix_kernel_fence": bool(getattr(args, "batch_sample_suffix_kernel_fence", False)),
             "batch_sample_eq_ok": bool(getattr(args, "batch_sample_eq_ok", False)),
@@ -5105,6 +5109,11 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-sample-final-norm-audit",
         action="store_true",
         help="Diagnostic-only parity audit for batched_lm_head + batch argmax: reruns each row through serial c=1 final RMSNorm, FP16-to-BF16 cast, LM-head projection, and argmax from the same hidden row, records mismatches, and blocks retained sampler claims.",
+    )
+    parser.add_argument(
+        "--batch-sample-final-norm-kernel-fence",
+        action="store_true",
+        help="Diagnostic-only timing fence for batched_lm_head + batch argmax: reruns each row through serial c=1 final RMSNorm and FP16-to-BF16 cast kernels without LM-head, argmax, host readback, or output comparison; blocks retained sampler claims.",
     )
     parser.add_argument(
         "--batch-sample-suffix-fence",
