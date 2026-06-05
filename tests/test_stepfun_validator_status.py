@@ -339,6 +339,9 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_status"] == report["next_action_status"]
     assert summary["next_action_reason"] is None
     assert summary["next_action_reason"] == report["next_action_reason"]
+    assert summary["next_action_missing_evidence_count"] == report[
+        "next_action_missing_evidence_count"
+    ]
     assert summary["next_action_validator_command_kind"] is None
     assert summary["next_action_validator_command_kind"] == report[
         "next_action_validator_command_kind"
@@ -591,6 +594,9 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_status"] == report["next_action_status"]
     assert summary["next_action_reason"] == "artifact_file_missing"
     assert summary["next_action_reason"] == report["next_action_reason"]
+    assert summary["next_action_missing_evidence_count"] == report[
+        "next_action_missing_evidence_count"
+    ]
     assert summary["next_action_validator_command_kind"] == "kv_trace_check_command"
     assert summary["next_action_validator_command_kind"] == report[
         "next_action_validator_command_kind"
@@ -741,6 +747,9 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
         "validator_missing_evidence"
     ]
     assert summary["next_action_missing_evidence_count"] == 5
+    assert summary["next_action_missing_evidence_count"] == report[
+        "next_action_missing_evidence_count"
+    ]
     assert summary["next_action_missing_evidence_sha256"] == (
         status_mod._stable_json_sha256(
             report["next_blocker"]["validator_missing_evidence"]
