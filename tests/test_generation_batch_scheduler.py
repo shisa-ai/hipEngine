@@ -3868,6 +3868,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
             batch_sample_final_norm_audit=True,
             batch_sample_final_norm_kernel_fence=True,
             batch_sample_final_rmsnorm_kernel_fence=True,
+            batch_sample_final_rmsnorm_temp_fence=True,
             batch_sample_sync_fence=True,
             batch_sample_suffix_fence=True,
             batch_sample_suffix_kernel_fence=True,
@@ -3882,6 +3883,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_KERNEL_FENCE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_RMSNORM_KERNEL_FENCE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_RMSNORM_TEMP_FENCE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SYNC_FENCE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE"] == "1"
