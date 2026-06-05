@@ -1,0 +1,234 @@
+{
+  "artifacts": {
+    "current_c4_profiled_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-314/current-c4-profiled-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-314/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_c2_sampler_demotion": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/summary.json"
+    },
+    "previous_c4_alllayer_profiler": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-308/summary.json"
+    },
+    "previous_c8_alllayer_profiler_refresh": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-profiler-313/summary.json"
+    },
+    "previous_post_c2_sampler_baselines": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-post-c2-sampler-baseline-attach-311/summary.json"
+    },
+    "raw_trace_not_committed": {
+      "path": "/tmp/hipengine-iter314-c4-alllayer-profiler/rocprof-c4/epyc/1122346_kernel_trace.csv",
+      "sha256": "a185af890a85034f5db4112024817fd1594a482d5322e6fa292ec46f1b742261",
+      "size_bytes": 216186389
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-profiler-314/summary.json"
+    }
+  },
+  "commands": {
+    "profiled_c4": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-iter314-c4-alllayer-profiler/rocprof-c4 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter314-c4-alllayer-profiler/current-c4-profiled.json"
+  },
+  "conclusion": "Current c4 no-flag all-layer rowchunk2 profiler evidence is generated-token green at [137]*4 with accepted c-aware projection and sampler_execution.mode=batched_lm_head. The rocprofv3 kernel trace contains expected native batch full-attention context/KV append, grouped-MoE, c-aware projection, row-aware output GEMV, linear segment decode, and batched argmax kernels. This refreshes required c4 runtime/profiler evidence under the post-c2-sampler-demotion defaults; c4 remains rowchunk diagnostic with native_caware_decode=false and no retained throughput/scaling claim is made.",
+  "created_at": "2026-06-04T23:59:21.516762+00:00",
+  "git_commit_before_commit": "4f40258b07585ed6c604a556d14234755857e0e1",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 314,
+  "kind": "current_c4_all_layer_rowchunk_profiler",
+  "performance_claim": false,
+  "profiler": {
+    "agent_dispatch_counts": {
+      "Agent 2": 781465
+    },
+    "dispatches": 781465,
+    "expected_kernel_fragments_present": true,
+    "fragments": {
+      "batched_sampler_argmax": {
+        "calls": 1360,
+        "duration_ns": 5648648,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 680,
+            "duration_ns": 3664313,
+            "kernel_name": "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)"
+          },
+          {
+            "calls": 680,
+            "duration_ns": 1984335,
+            "kernel_name": "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+          }
+        ]
+      },
+      "caware_projection": {
+        "calls": 57120,
+        "duration_ns": 1168430534,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 28560,
+            "duration_ns": 605842089,
+            "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+          },
+          {
+            "calls": 28560,
+            "duration_ns": 562588445,
+            "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+          }
+        ]
+      },
+      "full_attention_context": {
+        "calls": 8160,
+        "duration_ns": 934644628,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 8160,
+            "duration_ns": 934644628,
+            "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+          }
+        ]
+      },
+      "grouped_moe": {
+        "calls": 21000,
+        "duration_ns": 59687101,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 7000,
+            "duration_ns": 30419759,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)"
+          },
+          {
+            "calls": 7000,
+            "duration_ns": 18439234,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)"
+          },
+          {
+            "calls": 7000,
+            "duration_ns": 10828108,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)"
+          }
+        ]
+      },
+      "kv_append": {
+        "calls": 8210,
+        "duration_ns": 38569892,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 8160,
+            "duration_ns": 38213211,
+            "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+          },
+          {
+            "calls": 50,
+            "duration_ns": 356681,
+            "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+          }
+        ]
+      },
+      "linear_attention_segment_decode": {
+        "calls": 16320,
+        "duration_ns": 63637983,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 16320,
+            "duration_ns": 63637983,
+            "kernel_name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)"
+          }
+        ]
+      },
+      "row_aware_output_gemv": {
+        "calls": 16320,
+        "duration_ns": 57648980,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 16320,
+            "duration_ns": 57648980,
+            "kernel_name": "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)"
+          }
+        ]
+      },
+      "serial_sampler_argmax": {
+        "calls": 16,
+        "duration_ns": 62680,
+        "present": true,
+        "top_kernels": [
+          {
+            "calls": 8,
+            "duration_ns": 37280,
+            "kernel_name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)"
+          },
+          {
+            "calls": 8,
+            "duration_ns": 25400,
+            "kernel_name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+          }
+        ]
+      }
+    },
+    "present": true,
+    "raw_trace_not_committed": true,
+    "sha256": "a185af890a85034f5db4112024817fd1594a482d5322e6fa292ec46f1b742261",
+    "size_bytes": 216186389,
+    "total_kernel_duration_ns": 8198865863,
+    "trace_file": "/tmp/hipengine-iter314-c4-alllayer-profiler/rocprof-c4/epyc/1122346_kernel_trace.csv",
+    "unique_kernel_count": 61
+  },
+  "result": {
+    "profiled_c4": {
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "expected_kernel_fragments_present": true,
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "generated_token_equality_passed": true,
+      "native_caware_decode": false,
+      "native_row_aware_lm_head": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "profiler_trace_file": "/tmp/hipengine-iter314-c4-alllayer-profiler/rocprof-c4/epyc/1122346_kernel_trace.csv",
+      "profiler_trace_sha256": "a185af890a85034f5db4112024817fd1594a482d5322e6fa292ec46f1b742261",
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+      "sampler_mode": "batched_lm_head"
+    }
+  },
+  "schema": 1,
+  "status": "passed",
+  "workload": {
+    "batch_size": 4,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "full_attention_default": "all_layer_rowchunk2",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "sampler_default": "batched_lm_head",
+    "warmup_decode_tokens": 8
+  }
+}
