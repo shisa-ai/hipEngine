@@ -3290,10 +3290,18 @@ roll-up/status view.
       native batched output fallback/retention, and native full-attention hidden
       parity; raw `recurrent_out` stage summaries from segmented state are not
       equivalent to token-1 decode post-gate `recurrent_out` and must not be
-      used as a closure/blocker signal. The next target is retained projection/
-      output/full-attention parity without diagnostic flags; do not change
-      paged-KV writer code yet. Do not re-open row setup, native linear segment
-      metadata, output trace/copy semantics, or grouped MoE output yet.
+      used as a closure/blocker signal. A refreshed L8 context split under the
+      selected-projection/native-state/batch-GEMV-output native-full control
+      confirms the narrower context-only split is still hidden-only red; adding
+      per-row KV append or per-row QKV prep does not clear it. The per-row full-
+      attention positive control remains hidden/token green, so the blocker is
+      still native batch context/output integration, not the standalone KV append
+      or QKV prep branch
+      (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-fullattn-context-split-394/summary.json`).
+      The next target is retained projection/output/full-attention parity without
+      diagnostic flags; do not change paged-KV writer code yet. Do not re-open
+      row setup, native linear segment metadata, output trace/copy semantics, or
+      grouped MoE output yet.
 - [x] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
