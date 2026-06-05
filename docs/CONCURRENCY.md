@@ -1276,6 +1276,14 @@ What is still not green:
   still evidence-only because all-layer rowchunk keeps `native_caware_decode=false`
   and the profiler was captured from a no-baseline smoke
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-baseline-refresh-363/summary.json`).
+  A focused hard-window c4 first-nine rowchunk probe then narrowed the current
+  c4 default from all ten full-attention producer layers to
+  `[3,7,11,15,19,23,27,31,35]`: explicit first-nine and post-change no-flag
+  runs are green at `[137]*4` for both the primary first-four fixture and the
+  hard rows4..7 fixture. This keeps the c4 rowchunk blocker
+  (`native_caware_decode=false`) but leaves only final full-attention producer
+  layer 39 native, matching the current c8 first-nine boundary
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first9-hard-default-366/summary.json`).
   The matching current c8 first-nine baseline/profiler attachment also stayed
   green at `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the
   first-nine profiler summary loaded. Scaling references are complete

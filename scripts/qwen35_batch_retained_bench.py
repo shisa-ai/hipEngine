@@ -4167,14 +4167,13 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     # attention producer layers preserves generated-token equality for those
     # correctness-first auto row counts while smaller tested subsets remain red.
     # C4 layer 11 alone is repeat/profile-green on the primary first-four
-    # fixture, but the hard rows4..7 fixture still needs all full-attention
-    # producer layers rowchunked. Keep c4 correctness-first auto on all-layer
-    # rowchunk2 until a selected-layer scope is prompt/window-stable. C8 likewise
-    # has profiler-stable evidence with only the final full-attention layer left
-    # native; keep c7 all-layer until its selected-layer path is stable.
+    # fixture, but the hard rows4..7 fixture invalidated it as a prompt-stable
+    # default. Current primary and hard rows4..7 probes both pass when only the
+    # final full-attention producer layer stays native, matching the c8 first-
+    # nine boundary. Keep c7 all-layer until its selected-layer path is stable.
     if int(batch_size) in {3, 5, 6}:
         return "3,7,11,15"
-    if int(batch_size) == 8:
+    if int(batch_size) in {4, 8}:
         return "3,7,11,15,19,23,27,31,35"
     return ""
 
