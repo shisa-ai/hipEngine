@@ -6200,7 +6200,8 @@ class Qwen35ParoResidentSession:
     def _batch_decode_execution_with_sampler_audit(self, decode_execution: dict[str, Any]) -> dict[str, Any]:
         argmax_audit = getattr(self, "_batch_argmax_audit", None)
         lm_head_audit = getattr(self, "_batch_lm_head_audit", None)
-        if not isinstance(argmax_audit, dict) and not isinstance(lm_head_audit, dict):
+        final_norm_audit = getattr(self, "_batch_final_norm_audit", None)
+        if not isinstance(argmax_audit, dict) and not isinstance(lm_head_audit, dict) and not isinstance(final_norm_audit, dict):
             return decode_execution
         execution = dict(decode_execution)
         sampler_execution = dict(execution.get("sampler_execution") or {})
@@ -6208,6 +6209,8 @@ class Qwen35ParoResidentSession:
             sampler_execution["argmax_audit"] = dict(argmax_audit)
         if isinstance(lm_head_audit, dict):
             sampler_execution["lm_head_audit"] = dict(lm_head_audit)
+        if isinstance(final_norm_audit, dict):
+            sampler_execution["final_norm_audit"] = dict(final_norm_audit)
         execution["sampler_execution"] = sampler_execution
         return execution
 
@@ -6388,6 +6391,128 @@ class Qwen35ParoResidentSession:
         }
         return dict(audit)
 
+    def _record_batch_final_norm_audit(
+        self,
+        *,
+        hidden: Tensor,
+        batch_indices: np.ndarray,
+        batch_values: np.ndarray,
+        rows: int,
+        stream: int,
+    ) -> dict[str, Any]:
+        """Compare batched sampler output with a serial final RMSNorm/cast path.
+
+        Each row is re-normalized and re-cast through the serial c=1 sampler
+        suffix from the same hidden row that fed the batched sampler.  A clean
+        audit clears final RMSNorm, FP16->BF16 cast, LM-head projection, and
+        argmax for the observed hidden rows; generated-token drift must then come
+        from hidden-state production before the sampler or from timing/probe
+        sensitivity outside the audited suffix.
+        """
+
+        audit = getattr(self, "_batch_final_norm_audit", None)
+        if not isinstance(audit, dict):
+            audit = {
+                "enabled": True,
+                "checked_steps": 0,
+                "checked_rows": 0,
+                "mismatch_steps": 0,
+                "mismatch_rows": 0,
+                "max_abs_value_delta": 0.0,
+                "mismatches": [],
+            }
+            self._batch_final_norm_audit = audit
+        step_index = int(audit["checked_steps"])
+        serial_indices = np.empty((rows,), dtype=np.int64)
+        serial_values = np.empty((rows,), dtype=np.float32)
+        for row in range(rows):
+            row_hidden_ptr = hidden.ptr + row * self.hidden_nbytes
+            paro_rmsnorm_out_fp16(
+                row_hidden_ptr,
+                self.norm_weight.tensor.ptr,
+                self.norm_out.ptr,
+                1,
+                self.config.hidden_size,
+                self.config.rms_norm_eps,
+                stream=stream,
+                library=self.libraries["norm"],
+                runtime=self.runtime,
+            )
+            fp16_to_bf16(
+                self.norm_out.ptr,
+                self.norm_out_bf16.ptr,
+                self.config.hidden_size,
+                stream=stream,
+                library=self.libraries["cast"],
+                runtime=self.runtime,
+            )
+            w8a16_linear_bf16_f32_out(
+                self.norm_out_bf16.ptr,
+                self.lm_head_weight.tensor.ptr,
+                self.lm_head_scale.tensor.ptr,
+                self.lm_logits.ptr,
+                1,
+                self.config.hidden_size,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["w8a16"],
+                runtime=self.runtime,
+            )
+            argmax_f32(
+                self.lm_logits.ptr,
+                self.lm_block_values.ptr,
+                self.lm_block_indices.ptr,
+                self.lm_out_index.ptr,
+                self.lm_out_value.ptr,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["lm_head"],
+                runtime=self.runtime,
+            )
+            self.runtime.device_synchronize()
+            serial_index = np.empty((1,), dtype=np.int64)
+            serial_value = np.empty((1,), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(serial_index), self.lm_out_index, runtime=self.runtime)
+            copy_device_to_host(host_array_ptr(serial_value), self.lm_out_value, runtime=self.runtime)
+            serial_indices[row] = serial_index[0]
+            serial_values[row] = serial_value[0]
+        mismatches: list[dict[str, Any]] = []
+        step_max_delta = 0.0
+        for row in range(rows):
+            value_delta = float(abs(float(batch_values[row]) - float(serial_values[row])))
+            if np.isfinite(value_delta):
+                step_max_delta = max(step_max_delta, value_delta)
+            if int(batch_indices[row]) != int(serial_indices[row]):
+                mismatch: dict[str, Any] = {
+                    "step_index": step_index,
+                    "row": row,
+                    "batch_index": int(batch_indices[row]),
+                    "serial_index": int(serial_indices[row]),
+                    "batch_value": float(batch_values[row]),
+                    "serial_value": float(serial_values[row]),
+                }
+                if np.isfinite(value_delta):
+                    mismatch["value_delta"] = value_delta
+                mismatches.append(mismatch)
+        audit["checked_steps"] = step_index + 1
+        audit["checked_rows"] = int(audit["checked_rows"]) + int(rows)
+        audit["max_abs_value_delta"] = max(float(audit.get("max_abs_value_delta") or 0.0), step_max_delta)
+        if mismatches:
+            audit["mismatch_steps"] = int(audit["mismatch_steps"]) + 1
+            audit["mismatch_rows"] = int(audit["mismatch_rows"]) + len(mismatches)
+            retained = list(audit.get("mismatches") or [])
+            retained.extend(mismatches)
+            audit["mismatches"] = retained[:16]
+        audit["last_step"] = {
+            "step_index": step_index,
+            "rows": int(rows),
+            "mismatch_rows": len(mismatches),
+            "max_abs_value_delta": step_max_delta,
+        }
+        return dict(audit)
+
     def _sample_batch_from_hidden(self, hidden: Tensor, *, rows: int, stream: int = 0) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
         if rows <= 0:
             raise ValueError("rows must be positive")
@@ -6416,12 +6541,14 @@ class Qwen35ParoResidentSession:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_MODE must be batch or serial_per_row")
         sampler_argmax_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_ARGMAX_AUDIT")
         sampler_lm_head_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_AUDIT")
+        sampler_final_norm_audit = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT")
         sampler_execution = sampler_decision.to_json_dict()
         sampler_execution["final_norm_path"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else sampler_norm_path
         sampler_execution["final_cast_path"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else effective_sampler_cast_path
         sampler_execution["argmax_mode"] = "serial_per_row" if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD else sampler_argmax_mode
         sampler_execution["argmax_audit_enabled"] = bool(sampler_argmax_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["lm_head_audit_enabled"] = bool(sampler_lm_head_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
+        sampler_execution["final_norm_audit_enabled"] = bool(sampler_final_norm_audit and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         if sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_norm_path == "per_row":
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head final norm forced to per_row diagnostic")
@@ -6437,6 +6564,9 @@ class Qwen35ParoResidentSession:
         if sampler_execution["lm_head_audit_enabled"]:
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head serial projection audit enabled")
+        if sampler_execution["final_norm_audit_enabled"]:
+            sampler_execution["native_row_aware_lm_head"] = False
+            sampler_execution["blockers"].append("batched LM-head final norm/cast audit enabled")
         self._publish_batch_sampler_execution(sampler_execution)
         if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD:
             results: list[Qwen35ParoAutoregressiveStepResult] = []
@@ -6564,6 +6694,15 @@ class Qwen35ParoResidentSession:
             self._publish_batch_sampler_execution(sampler_execution)
         if sampler_execution["lm_head_audit_enabled"]:
             sampler_execution["lm_head_audit"] = self._record_batch_lm_head_audit(
+                batch_indices=index_host,
+                batch_values=value_host,
+                rows=rows,
+                stream=stream,
+            )
+            self._publish_batch_sampler_execution(sampler_execution)
+        if sampler_execution["final_norm_audit_enabled"]:
+            sampler_execution["final_norm_audit"] = self._record_batch_final_norm_audit(
+                hidden=hidden,
                 batch_indices=index_host,
                 batch_values=value_host,
                 rows=rows,

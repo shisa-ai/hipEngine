@@ -3864,6 +3864,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
             projection_dispatch_artifact=None,
             batch_sample_mode="batched_lm_head",
             batch_sample_lm_head_audit=True,
+            batch_sample_final_norm_audit=True,
             batch_sample_eq_ok=True,
             batch_sample_eq_artifact=Path("benchmarks/results/qwen35-c2-sampler-eq.json"),
             batch_sample_eq_rows=2,
@@ -3871,6 +3872,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "batched_lm_head"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_LM_HEAD_AUDIT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_NORM_AUDIT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"] == "benchmarks/results/qwen35-c2-sampler-eq.json"
     assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] == "2"
