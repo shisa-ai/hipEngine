@@ -1069,15 +1069,20 @@ What is still not green:
   baseline-attachment rerun found that 112 was still marginal under the retained
   evidence path (`[137,104]` once), so the default c2 stabilizer was raised to 128;
   explicit 128 was 4/4 green and the no-flag default with c1+serial baselines was
-  also 4/4 green at `[137,137]`. The same no-flag default equality gate was then
-  extended to c=4 and c=8: c2/c4/c8 all passed generated-token equality vs
-  independent c=1 at `[137,137]`, `[137]*4`, and `[137]*8` respectively, with
-  `batched_lm_head`, `native_row_aware_lm_head=true`, and empty sampler blockers
-  (c2 now uses the 128-element stabilizer; c4/c8 do not).
-  A follow-up c2 `rocprofv3 --kernel-trace` smoke stayed green at `[137,137]`
-  and captured native batch full-attention/KV, grouped-MoE, accepted c-aware
-  projection, row-aware output GEMV, linear segment decode, batch residual
-  combine, `batch_argmax_stage{1,2}`, and FP16→BF16 final-cast/stabilizer kernels.
+  also 4/4 green at `[137,137]`. A current c2 `rocprofv3 --kernel-trace` rerun then
+  exposed that 128 was still marginal under profiler instrumentation (`[137,23]`),
+  so the default c2 stabilizer was raised to 256; forced 256 and no-flag default256
+  profiler runs were green at `[137,137]`, and two no-flag default256 c1+serial
+  baseline-attachment checks were also green. The same no-flag default equality
+  gate was then extended to c=4 and c=8: c2/c4/c8 all passed generated-token
+  equality vs independent c=1 at `[137,137]`, `[137]*4`, and `[137]*8`
+  respectively, with `batched_lm_head`, `native_row_aware_lm_head=true`, and empty
+  sampler blockers (c2 now uses the 256-element stabilizer; c4/c8 do not).
+  Follow-up c2 `rocprofv3 --kernel-trace` smokes stayed green at `[137,137]`
+  (first 112, then current 256) and captured native batch full-attention/KV,
+  grouped-MoE, accepted c-aware projection, row-aware output GEMV, linear segment
+  decode, batch residual combine, `batch_argmax_stage{1,2}`, and FP16→BF16
+  final-cast/stabilizer kernels.
   The matching c4 and c8 no-flag profiler smokes stayed green at `[137]*4` and
   `[137]*8` with row-aware `batched_lm_head`, accepted c-aware projection,
   rowchunked native batch full-attention/KV, grouped-MoE, row-aware output GEMV,
@@ -1127,7 +1132,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-stabilized-batched-profiler-341/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c4-default-profiler-342/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-profiler-343/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default128-baseline-344/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default128-baseline-344/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default256-profiler-345/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
