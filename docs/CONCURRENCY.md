@@ -1315,6 +1315,13 @@ What is still not green:
   This is still correctness/runtime evidence only because all-layer rowchunk keeps
   `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-redemotion-369/summary.json`).
+  A follow-up post-c8 stability stress ran three current no-flag c8 all-layer
+  default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
+  run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,
+  and the required active c2 verify also stayed `[137,137]`. This adds runtime
+  confidence after the iter367 `[137,0]` c2 flake, but the residual transient
+  risk remains open and no retained throughput/scaling claim is made
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-post-c8-c2-stress-370/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
