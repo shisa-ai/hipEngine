@@ -1392,6 +1392,12 @@ What is still not green:
   rowchunk diagnostic by leaving layer 31 native, but it is still evidence-only
   because selected rowchunk layers keep `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop31-promotion-382/summary.json`).
+  The next drop27/drop31 scope (`[3,7,11,15,19,23,35,39]`) was then promoted as
+  the no-flag c8 default after three explicit green repeats and a post-change
+  no-flag c8/c2/c4/c8 matrix all stayed at prefix 137. This leaves layers 27 and
+  31 native while rowchunking 35/39, but remains evidence-only because selected
+  rowchunk layers keep `native_caware_decode=false`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop27-promotion-383/summary.json`).
   An earlier post-c8 stability stress ran three then-current no-flag c8 all-layer
   default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
   run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,

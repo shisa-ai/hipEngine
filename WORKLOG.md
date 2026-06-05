@@ -66692,3 +66692,13 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - This narrows the c8 rowchunk diagnostic by leaving layer 31 native. It is still runtime/correctness evidence only: c8 keeps selected rowchunked full attention, `native_caware_decode=false`, and no retained throughput/scaling claim is made.
 - Compact artifact: `benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop31-promotion-382/summary.json` plus `compact-runs.json`; raw JSON/logs remain under `/tmp/hipengine-iter382-c8-drop31-probe/` with hashes recorded.
 - Validation: active c2 verify printed `137` and recorded `[137,137]`; guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because this materially advances c8 full-attention runtime correctness while preserving current c2/c4/c8 equality.
+
+## 2026-06-05 — concurrency-e2e/native-c2-e2e iter383 c8 drop-layer27 promotion
+- Probed the next c8 narrowed rowchunk scope after iter382: left layer 27 native as well as layer 31 while rowchunking `3,7,11,15,19,23,35,39`.
+- The explicit drop-layer27/drop-layer31 scope was 3/3 green on the primary 8-row fixture at `[137]*8`; the pre-change current drop-layer31 c8 control and c=2/c=4/c=8 matrix were also green.
+- Promoted the no-flag c8 rowchunk diagnostic default from `3,7,11,15,19,23,27,35,39` to `3,7,11,15,19,23,35,39`. Updated the scheduler env expectation test for the new c8 default.
+- Post-change no-flag c8 stayed `[137]*8` with the selected layer list `3,7,11,15,19,23,35,39`, row-aware `batched_lm_head`, accepted c-aware projection, and `stabilize_cast_elems=256`.
+- Post-change no-flag c=2/c=4/c=8 matrix is green: c2 `[137,137]` with `serial_lm_head`/`native_caware_decode=true`, c4 `[137]*4` with first-six rowchunk, and c8 `[137]*8` with drop27/drop31 rowchunk.
+- This narrows the c8 rowchunk diagnostic by leaving layers 27 and 31 native. It is still runtime/correctness evidence only: c8 keeps selected rowchunked full attention, `native_caware_decode=false`, and no retained throughput/scaling claim is made.
+- Compact artifact: `benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop27-promotion-383/summary.json` plus `compact-runs.json`; raw JSON/logs remain under `/tmp/hipengine-iter383-c8-drop27-probe/` with hashes recorded.
+- Validation: active c2 verify printed `137` and recorded `[137,137]`; guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because this materially advances c8 full-attention runtime correctness while preserving current c2/c4/c8 equality.

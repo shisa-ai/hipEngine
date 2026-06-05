@@ -4171,16 +4171,16 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     # default. Current primary and hard rows4..7 probes both pass when only the
     # final four full-attention producer layers stay native, so c4 uses first-
     # six. A current c8 first-nine/drop39 profiler recaptured row3/token118 red
-    # and drop35 failed at row3/token0, while all-minus-layer31 stayed green in
-    # repeated retained-bench probes. Keep c7 all-layer until its selected-layer
-    # path is profiler-stable; use the c8 all-minus-31 rowchunk diagnostic as the
-    # current narrowest repeated-green c8 scope.
+    # and drop35 failed at row3/token0, while drop31 and then drop27 stayed green
+    # in repeated retained-bench probes. Keep c7 all-layer until its selected-
+    # layer path is profiler-stable; use the c8 drop27/drop31 rowchunk diagnostic
+    # as the current narrowest repeated-green c8 scope.
     if int(batch_size) in {3, 5, 6}:
         return "3,7,11,15"
     if int(batch_size) == 4:
         return "3,7,11,15,19,23"
     if int(batch_size) == 8:
-        return "3,7,11,15,19,23,27,35,39"
+        return "3,7,11,15,19,23,35,39"
     return ""
 
 
