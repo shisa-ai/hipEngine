@@ -1,0 +1,66 @@
+{
+  "batch_execution": {
+    "blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "native_caware_decode": false,
+    "projection_dispatch": {
+      "blockers": [],
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4"
+    }
+  },
+  "decode_execution": {
+    "blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31,
+      35,
+      39
+    ],
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": false,
+    "sampler_execution": {
+      "argmax_mode": "batch",
+      "blockers": [],
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "stabilize_cast_elems": 0,
+      "stabilize_cast_elems_enabled": false
+    }
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null,
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ]
+  },
+  "performance_claim": false,
+  "raw_artifact": {
+    "path": "/tmp/hipengine-iter342-c4-profiler-smoke/c4-default-profiler-bench.json",
+    "sha256": "c2a31f61280a2b5171d7c55db5854fabda3381959c5ad781a47e75ff0dc3c864",
+    "size_bytes": 244937
+  },
+  "status": "blocked"
+}
