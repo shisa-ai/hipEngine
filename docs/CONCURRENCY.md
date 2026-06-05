@@ -1165,8 +1165,9 @@ What is still not green:
   (`[137]*4`), while explicit no-rowchunk native and first-three controls failed
   deterministically at row3/token118. This narrows the c4 full-attention
   diagnostic blocker but does not make a retained performance/scaling claim:
-  selected rowchunk layers still report `native_caware_decode=false`, and c8
-  stays on all-layer rowchunk2 until its selected-layer path is profiler-stable
+  selected rowchunk layers still report `native_caware_decode=false`; at that
+  point c8 stayed on all-layer rowchunk2 until a selected-layer path became
+  profiler-stable
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-rowchunk-first4-351/summary.json`).
   The matching c4 first-four profiler/baseline attachment then stayed green at
   `[137]*4` with c1, c4 serial-bridge, primitive c4 correctness, and a fresh
@@ -1177,6 +1178,16 @@ What is still not green:
   batched argmax, and final-cast kernels. This remains required runtime evidence
   only because selected rowchunk layers keep `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first4-profiler-baseline-352/summary.json`).
+  A focused c8 first-nine rowchunk probe then narrows the c8 full-attention
+  diagnostic scope from all ten full-attention producer layers to
+  `[3,7,11,15,19,23,27,31,35]`: explicit first-nine repeats were 3/3 green,
+  the `rocprofv3` smoke stayed `[137]*8`, and the post-change no-flag c8 default
+  was 2/2 green with the expected native batch/projection/sampler kernel families.
+  This remains correctness/runtime evidence only because selected rowchunk layers
+  still keep `native_caware_decode=false`; prior first-seven/first-eight c8
+  selected scopes were unstable/red, so first-nine is the current narrowest
+  profiler-backed c8 scope
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-first9-rowchunk-353/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
