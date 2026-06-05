@@ -3944,6 +3944,56 @@ def test_qwen35_resident_sample_batch_suffix_fence_records_timing_work(tmp_path,
     assert decode_execution["sampler_execution"]["suffix_fence"]["host_reads"] == 4
 
 
+def test_qwen35_resident_sample_batch_suffix_kernel_fence_skips_host_reads(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8, rms_norm_eps=1e-6)
+    session.vocab_size = 16
+    session.lm_head_threads = 256
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.libraries = {"norm": object(), "cast": object(), "w8a16": object(), "lm_head": object()}
+    session.norm_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8000))
+    session.lm_head_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8300))
+    session.lm_head_scale = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8400))
+    session.lm_logits = SimpleNamespace(ptr=0x8A00)
+    session.lm_block_values = SimpleNamespace(ptr=0x8B00)
+    session.lm_block_indices = SimpleNamespace(ptr=0x8C00)
+    session.lm_out_index = SimpleNamespace(ptr=0x8D00)
+    session.lm_out_value = SimpleNamespace(ptr=0x8E00)
+    session.norm_out = SimpleNamespace(ptr=0x8F00)
+    session.norm_out_bf16 = SimpleNamespace(ptr=0x9000)
+    hidden = Tensor.from_handle(0x6000, (2, 8), DType.FP16, Device("hip", 0))
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args))
+            return None
+        return _inner
+
+    monkeypatch.setattr(runner_module, "paro_rmsnorm_out_fp16", record("norm"))
+    monkeypatch.setattr(runner_module, "fp16_to_bf16", record("cast"))
+    monkeypatch.setattr(runner_module, "w8a16_linear_bf16_f32_out", record("lm_head"))
+    monkeypatch.setattr(runner_module, "argmax_f32", record("argmax"))
+    monkeypatch.setattr(runner_module, "copy_device_to_host", lambda *args, **kwargs: pytest.fail("kernel-only fence should not read host"))
+
+    fence = session._record_batch_suffix_fence(hidden=hidden, rows=2, stream=0, host_read=False)
+
+    assert fence == {
+        "enabled": True,
+        "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+        "checked_steps": 1,
+        "checked_rows": 2,
+        "host_reads": 0,
+        "last_step": {"step_index": 0, "rows": 2, "host_reads": 0},
+    }
+    norm_calls = [args for name, args in calls if name == "norm"]
+    assert [(args[0], args[2], args[3]) for args in norm_calls] == [
+        (0x6000, 0x8F00, 1),
+        (0x6000 + session.hidden_nbytes, 0x8F00, 1),
+    ]
+
+
 def test_qwen35_resident_sample_batch_rejects_unknown_norm_path(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_NORM_PATH", "surprise")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
