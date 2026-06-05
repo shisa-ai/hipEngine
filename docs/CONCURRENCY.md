@@ -1431,6 +1431,12 @@ What is still not green:
   layers 27, 31, and 39 native, but remains evidence-only because selected
   rowchunk layers keep `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop39-promotion-389/summary.json`).
+  A follow-up current-default drop-layer35 / c4-aligned first-six attempt
+  (`[3,7,11,15,19,23]`) was green twice but failed the third repeat at
+  `[137,137,137,137,137,58,137,137]`; the current c8 default and c=2/c=4/c=8
+  matrix stayed green. Thus layer 35 remains required for repeat-stable c8
+  equality under the current narrowed default
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop35-current-boundary-390/summary.json`).
   An earlier post-c8 stability stress ran three then-current no-flag c8 all-layer
   default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
   run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,
