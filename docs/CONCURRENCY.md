@@ -1204,6 +1204,15 @@ What is still not green:
   `[137,137]`, and the final active c2 verify printed 137. This is a
   correctness-stability workaround, not a retained throughput claim
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-default512-stabilizer-355/summary.json`).
+  The matching c2 default512 profiler/baseline attachment then stayed green at
+  `[137,137]` with c1, c2 serial-bridge, primitive c2 correctness, and a fresh
+  retained-gate-shaped profiler summary loaded. Batch/decode/sampler/projection
+  blockers are empty and `native_caware_decode=true`; scaling references are
+  complete (`aggregate_vs_c1=0.8382`, `aggregate_vs_serial_bridge=1.0690`). This
+  refreshes required runtime evidence after the stabilizer change, but c2 remains
+  non-retained because aggregate-vs-c1 is below 1.0 and the profiler was captured
+  from a no-baseline smoke
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-default512-profiler-baseline-356/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
