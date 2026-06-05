@@ -4087,6 +4087,9 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_batch_scratch = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_BATCH_SCRATCH"
         )
+        force_per_row_full_attention_attn_batch_moe = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_ATTN_BATCH_MOE"
+        )
         force_per_row_full_attention_persistent_scratch = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PERSISTENT_SCRATCH"
         )
@@ -4202,6 +4205,8 @@ class Qwen35ParoResidentSession:
         full_attention_scratch_decode_path = (
             "persistent_c1_scratch_fallback"
             if force_per_row_full_attention_persistent_scratch
+            else "per_row_attention_batch_moe_fallback"
+            if force_per_row_full_attention_attn_batch_moe
             else "per_row_layer_batch_scratch_fallback"
             if force_per_row_full_attention_batch_scratch
             else "per_row_layer_scratch_fallback" if force_per_row_full_attention_scratch else "native_batch"
@@ -4537,11 +4542,12 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_suffix
                                 or force_per_row_full_attention_scratch
                                 or force_per_row_full_attention_batch_scratch
+                                or force_per_row_full_attention_attn_batch_moe
                                 or force_per_row_full_attention_persistent_scratch
                             )
                         ):
-                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or layer_force_per_row_dense_context_only or layer_force_per_row_dense_context_batch_gate or layer_force_per_row_paged_context_only or force_batch_compact_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_persistent_scratch else None
-                            per_row_append_contexts = [] if force_per_row_full_attention_kv_append or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_persistent_scratch else None
+                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or layer_force_per_row_dense_context_only or layer_force_per_row_dense_context_batch_gate or layer_force_per_row_paged_context_only or force_batch_compact_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_attn_batch_moe or force_per_row_full_attention_persistent_scratch else None
+                            per_row_append_contexts = [] if force_per_row_full_attention_kv_append or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_attn_batch_moe or force_per_row_full_attention_persistent_scratch else None
                             for slot in slots:
                                 row_key_cache, row_value_cache = self._slot_full_cache(layer_id, slot)
                                 _row_position, row_append_spans, row_decode_spans = self._slot_full_spans(layer_id, slot)
@@ -4756,6 +4762,7 @@ class Qwen35ParoResidentSession:
                                     force_per_row_qkv_scratch=force_per_row_full_attention_qkv,
                                     force_per_row_layer_scratch=force_per_row_full_attention_scratch,
                                     force_per_row_layer_batch_scratch=force_per_row_full_attention_batch_scratch,
+                                    force_per_row_attention_batch_moe=force_per_row_full_attention_attn_batch_moe,
                                     force_per_row_context=force_per_row_full_attention_context,
                                     force_per_row_context_only=force_per_row_full_attention_context_only,
                                     force_per_row_dense_context_only=layer_force_per_row_dense_context_only,
@@ -4903,6 +4910,7 @@ class Qwen35ParoResidentSession:
                                 force_per_row_qkv_scratch=force_per_row_full_attention_qkv,
                                 force_per_row_layer_scratch=force_per_row_full_attention_scratch,
                                 force_per_row_layer_batch_scratch=force_per_row_full_attention_batch_scratch,
+                                force_per_row_attention_batch_moe=force_per_row_full_attention_attn_batch_moe,
                                 force_per_row_context=force_per_row_full_attention_context,
                                 force_per_row_context_only=force_per_row_full_attention_context_only,
                                 force_per_row_dense_context_only=layer_force_per_row_dense_context_only,
@@ -4980,6 +4988,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_qkv
                                 or force_per_row_full_attention_scratch
                                 or force_per_row_full_attention_batch_scratch
+                                or force_per_row_full_attention_attn_batch_moe
                                 or force_per_row_full_attention_persistent_scratch
                                 or force_per_row_full_attention_skip_batch_setup
                                 or force_per_row_full_attention_output
@@ -5011,6 +5020,7 @@ class Qwen35ParoResidentSession:
                         if (
                             force_per_row_full_attention_scratch
                             or force_per_row_full_attention_batch_scratch
+                            or force_per_row_full_attention_attn_batch_moe
                             or force_per_row_full_attention_persistent_scratch
                         ):
                             layer_execution["full_attention_scratch_decode_path"] = full_attention_scratch_decode_path
@@ -5190,6 +5200,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention layer forced to independent per-row scratch diagnostic path")
             if force_per_row_full_attention_batch_scratch:
                 decode_blockers.append("full-attention layer forced to batch-view per-row scratch diagnostic path")
+            if force_per_row_full_attention_attn_batch_moe:
+                decode_blockers.append("full-attention attention/post forced to per-row diagnostic path with grouped batch MoE")
             if force_per_row_full_attention_persistent_scratch:
                 decode_blockers.append("full-attention layer forced to persistent c1 scratch diagnostic path")
             if force_per_row_full_attention_skip_batch_setup:
@@ -5268,6 +5280,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_qkv
                 and not force_per_row_full_attention_scratch
                 and not force_per_row_full_attention_batch_scratch
+                and not force_per_row_full_attention_attn_batch_moe
                 and not force_per_row_full_attention_persistent_scratch
                 and not force_per_row_full_attention_skip_batch_setup
                 and not force_per_row_full_attention_context

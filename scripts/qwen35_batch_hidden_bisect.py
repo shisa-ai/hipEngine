@@ -5754,9 +5754,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--batch-decode-attn-scratch-path",
-        choices=("batch", "per_row", "per_row_batch_scratch", "persistent_c1", "persistent_c1_no_batch_setup"),
+        choices=("batch", "per_row", "per_row_batch_scratch", "per_row_attn_batch_moe", "persistent_c1", "persistent_c1_no_batch_setup"),
         default="batch",
-        help="Diagnostic full-attention scratch path for c>N batch decode; per_row runs each row on an independent token-1 attention scratch, per_row_batch_scratch replays each row through c1 full-attention kernels using row views of the batch scratch, persistent_c1 reuses the session token-1 c1 scratch, persistent_c1_no_batch_setup also skips native batch span/scratch setup, and all non-batch choices block retained claims.",
+        help="Diagnostic full-attention scratch path for c>N batch decode; per_row runs each row on an independent token-1 attention scratch, per_row_batch_scratch replays each row through c1 full-attention kernels using row views of the batch scratch, per_row_attn_batch_moe replays attention/post per row with batch scratch row views before grouped batch MoE, persistent_c1 reuses the session token-1 c1 scratch, persistent_c1_no_batch_setup also skips native batch span/scratch setup, and all non-batch choices block retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-context-path",
@@ -6065,6 +6065,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_BATCH_SCRATCH"] = (
         "1" if args.batch_decode_attn_scratch_path == "per_row_batch_scratch" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_ATTN_BATCH_MOE"] = (
+        "1" if args.batch_decode_attn_scratch_path == "per_row_attn_batch_moe" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_PERSISTENT_SCRATCH"] = (
         "1" if args.batch_decode_attn_scratch_path in {"persistent_c1", "persistent_c1_no_batch_setup"} else "0"

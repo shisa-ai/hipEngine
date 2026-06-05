@@ -4172,6 +4172,7 @@ class Qwen35ParoDecodeState:
         force_per_row_qkv_scratch: bool = False,
         force_per_row_layer_scratch: bool = False,
         force_per_row_layer_batch_scratch: bool = False,
+        force_per_row_attention_batch_moe: bool = False,
         force_per_row_context: bool = False,
         force_per_row_context_only: bool = False,
         force_per_row_dense_context_only: bool = False,
@@ -4233,6 +4234,118 @@ class Qwen35ParoDecodeState:
         )
         if post_input_rmsnorm_trace is not None:
             post_input_rmsnorm_trace(attention_scratch)
+        if force_per_row_attention_batch_moe and tokens > 1:
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            if dense_mlp:
+                raise NotImplementedError("per-row attention / batch-MoE diagnostic is currently wired for MoE layers")
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                raise ValueError("per-row attention / batch-MoE diagnostic requires grouped MoE scratch")
+            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
+                zip(per_row_append_contexts, per_row_contexts, strict=True)
+            ):
+                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple
+                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
+                    raise ValueError("per-row attention / batch-MoE diagnostics must use matching row cache views")
+                row_hidden = self._row_tensor_view(hidden, row)
+                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                row_position = Tensor.from_handle(
+                    positions.ptr + row * DType.INT64.itemsize,
+                    (1,),
+                    DType.INT64,
+                    positions.device,
+                )
+
+                def row_input_scratch_trace(stage: str, scratch: Qwen35ParoAttentionScratch, *, _row: int = row) -> None:
+                    if input_scratch_trace is not None:
+                        input_scratch_trace(stage, _row, scratch)
+
+                def row_qkv_tensor_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
+                    if qkv_tensor_trace is not None:
+                        qkv_tensor_trace(stage, _row, tensor)
+
+                self.input_rmsnorm_fp16(row_hidden, row_scratch.attn_input, tokens=1, library=library, stream=stream)
+                self.rotate_full_attention_inputs_fp16(
+                    row_scratch.attn_input,
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_input_scratch_trace("attn_input_after_rotate", row_scratch)
+                self.project_full_attention_qkv_fp16(
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    producer_trace=row_qkv_tensor_trace if qkv_tensor_trace is not None else None,
+                    library=library,
+                    stream=stream,
+                )
+                row_input_scratch_trace("attn_input_after_project", row_scratch)
+                _row_query, _row_key, _row_value, row_gate = self.prepare_full_attention_qkv_fp16(
+                    row_scratch,
+                    cos_table=cos_table,
+                    sin_table=sin_table,
+                    position=row_position,
+                    max_positions=max_positions,
+                    tokens=1,
+                    producer_trace=row_qkv_tensor_trace if qkv_tensor_trace is not None else None,
+                    library=library,
+                    stream=stream,
+                )
+                row_input_scratch_trace("attn_input_after_prepare", row_scratch)
+                self.append_full_attention_kv_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_append_spans,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                if not _requires_full_attention_split_decode(row_decode_spans):
+                    row_gated = self.decode_full_attention_context_gate_fp16(
+                        row_scratch,
+                        key_cache=row_key_cache,
+                        value_cache=row_value_cache,
+                        spans=row_decode_spans,
+                        gate=row_gate,
+                        block_size=block_size,
+                        library=library,
+                        stream=stream,
+                    )
+                else:
+                    raise NotImplementedError(
+                        "per-row attention / batch-MoE diagnostic does not cover split-K full-attention decode"
+                    )
+                self.project_full_attention_o_fp16(
+                    row_gated,
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+            mlp_input, residual = self.post_attention_add_rmsnorm_fp16_per_row(
+                hidden,
+                attention_scratch.o_proj,
+                moe_scratch,
+                tokens=tokens,
+                library=library,
+                stream=stream,
+            )
+            return self.run_moe_grouped_compact_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         if (force_per_row_layer_scratch or force_per_row_layer_batch_scratch) and tokens > 1:
             if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
                 raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
