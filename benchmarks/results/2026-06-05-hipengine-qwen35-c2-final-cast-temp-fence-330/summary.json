@@ -1,0 +1,443 @@
+{
+  "active_verify": {
+    "command": "active multiloop c2 512/128 verify, no diagnostic flags",
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "metric": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "raw_json_sha256": "79fc5f0841d95251e4258798c819e54a731ae1f95cd38f48e32d0b4a208956cc",
+    "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+    "raw_log_sha256": "79fc5f0841d95251e4258798c819e54a731ae1f95cd38f48e32d0b4a208956cc",
+    "status": "blocked"
+  },
+  "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-cast-temp-fence-330/summary.json",
+  "children": [
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-1.json",
+      "raw_json_sha256": "4cf2427c4af90210e148816e623ac7fc9c30017216f9dd302c5dfa6fcd28f07c",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-1.log",
+      "raw_log_sha256": "4cf2427c4af90210e148816e623ac7fc9c30017216f9dd302c5dfa6fcd28f07c",
+      "repeat": 1,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140214605357056
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-2.json",
+      "raw_json_sha256": "3fd0b8625f28e1d82af552dd72167087f839c3f71ff69f4fa41801cf317b788d",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-2.log",
+      "raw_log_sha256": "3fd0b8625f28e1d82af552dd72167087f839c3f71ff69f4fa41801cf317b788d",
+      "repeat": 2,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 139703638466560
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-3.json",
+      "raw_json_sha256": "ad2bf10d140863c6ba09199049f4c6b6396b0f9be8362f96b4f9562110125577",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-3.log",
+      "raw_log_sha256": "ad2bf10d140863c6ba09199049f4c6b6396b0f9be8362f96b4f9562110125577",
+      "repeat": 3,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140561577058304
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-4.json",
+      "raw_json_sha256": "9af59a411b99d63f49a56101bdf6a8234a2876b74222f329aa9226daa4d1da10",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-4.log",
+      "raw_log_sha256": "9af59a411b99d63f49a56101bdf6a8234a2876b74222f329aa9226daa4d1da10",
+      "repeat": 4,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140080991608832
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-5.json",
+      "raw_json_sha256": "a6278fc8f8019e85033589222e0802e7c734001a3cce5299747f744ec3e3d542",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-5.log",
+      "raw_log_sha256": "a6278fc8f8019e85033589222e0802e7c734001a3cce5299747f744ec3e3d542",
+      "repeat": 5,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140599944454144
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-6.json",
+      "raw_json_sha256": "55182a81389d81490b74393a4c09a5126587dd374a6fe445810cb927fc492936",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-6.log",
+      "raw_log_sha256": "55182a81389d81490b74393a4c09a5126587dd374a6fe445810cb927fc492936",
+      "repeat": 6,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 139656460935168
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-7.json",
+      "raw_json_sha256": "8b2f56bdff2275eab51aa9dd0b7e42365d8fa9aa1fd10964592dc46cc7b4ac11",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-7.log",
+      "raw_log_sha256": "8b2f56bdff2275eab51aa9dd0b7e42365d8fa9aa1fd10964592dc46cc7b4ac11",
+      "repeat": 7,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140189976403968
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-8.json",
+      "raw_json_sha256": "baab7752a1e861f0bc171d2340c11b5d6dbcebbc96e5621f410bd40ca106de10",
+      "raw_log": "/tmp/hipengine-iter330-c2-final-cast-temp-fence/c2-batch-norm-cast-final-cast-temp-fence-8.log",
+      "raw_log_sha256": "baab7752a1e861f0bc171d2340c11b5d6dbcebbc96e5621f410bd40ca106de10",
+      "repeat": 8,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final cast temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_cast_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_cast_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140397562994688
+        },
+        "final_cast_temp_fence_enabled": true,
+        "final_norm_path": "batch",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    }
+  ],
+  "command": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model $MODEL --fixture $FIXTURE --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-norm-path batch --batch-sample-cast-path batch --batch-sample-final-cast-temp-fence --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --json <repeat-json>",
+  "date": "2026-06-05",
+  "diagnostic": {
+    "flags": [
+      "--batch-sample-mode batched_lm_head",
+      "--batch-sample-norm-path batch",
+      "--batch-sample-cast-path batch",
+      "--batch-sample-final-cast-temp-fence",
+      "--batch-sample-eq-ok",
+      "--batch-sample-eq-rows 2"
+    ],
+    "name": "batch_sample_final_cast_temp_fence",
+    "purpose": "Rerun serial per-row final FP16-to-BF16 cast kernels into a dedicated temp BF16 buffer as a kernel-only fence, without clobbering sampler BF16 scratch, RMSNorm, LM-head, argmax, host readback, or output comparison."
+  },
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d"
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd"
+      }
+    ]
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 330,
+  "lane": "concurrency-e2e/native-c2-e2e",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "retained_claim": false,
+  "schema": 1,
+  "shape": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  },
+  "summary": {
+    "all_green": true,
+    "conclusion": "Serial final FP16-to-BF16 cast kernel into a dedicated temp buffer is sufficient for this 8-repeat c2 explicit batched-sampler matrix: all repeats passed at [137,137] with zero host reads and no RMSNorm/LM-head/argmax fence. Together with iter329 temp RMSNorm green, iter328 sync-only red, and iter325 LM-head+argmax red, the stabilizer appears to be lightweight final-suffix kernel launch/work touching temp memory, not pure synchronization and not LM-head/argmax-specific work.",
+    "failed_repeats": [],
+    "min_equal_prefixes_by_repeat": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "passed_repeats": 8,
+    "total_repeats": 8
+  }
+}
