@@ -1442,6 +1442,16 @@ What is still not green:
   matrix stayed green. Thus layer 3 is currently required, closing the current
   c8 selected-layer boundary at `[3,7,11,15,19,23,35]`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop3-boundary-391/summary.json`).
+  Fresh profiler/runtime evidence now covers that narrowed no-flag c8 default:
+  a `rocprofv3 --kernel-trace` baseline/profiler attachment stayed `[137]*8`,
+  loaded c1, c8 serial-bridge, primitive c8 correctness, and expected native
+  batch/projection/sampler kernels, and the final attachment remained green with
+  scaling references complete (`aggregate_vs_c1=1.3236`,
+  `aggregate_vs_serial_bridge=1.5895`). The post-profiler c=2/c=4/c=8 matrix
+  stayed `[137,137]`, `[137]*4`, `[137]*8`, and active c2 verify stayed 137.
+  This remains correctness/runtime evidence only because selected rowchunk keeps
+  `native_caware_decode=false`; no retained throughput/scaling claim is made
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-current-profiler-refresh-392/summary.json`).
   An earlier post-c8 stability stress ran three then-current no-flag c8 all-layer
   default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
   run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,
