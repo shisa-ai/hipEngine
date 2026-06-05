@@ -1,0 +1,791 @@
+{
+  "perrow_norm_batch_argmax_repeats": [
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-1",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-1.json",
+        "sha256": "8011e192ae0d3418f83e5847b8a61b44893a814b1334b11a0647ce444cc47d2e",
+        "size_bytes": 137186
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-1.log",
+        "sha256": "8011e192ae0d3418f83e5847b8a61b44893a814b1334b11a0647ce444cc47d2e",
+        "size_bytes": 137186
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-2",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-2.json",
+        "sha256": "43115f5cc08177619070f04731a4b63901074717a5f9d0cf361ad1aeb78663f4",
+        "size_bytes": 137182
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-2.log",
+        "sha256": "43115f5cc08177619070f04731a4b63901074717a5f9d0cf361ad1aeb78663f4",
+        "size_bytes": 137182
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-3",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-3.json",
+        "sha256": "f9e40423320e44523374d76d3d88b085f27cf465c805c80526b0011caf245c42",
+        "size_bytes": 137200
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-3.log",
+        "sha256": "f9e40423320e44523374d76d3d88b085f27cf465c805c80526b0011caf245c42",
+        "size_bytes": 137200
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-4",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-4.json",
+        "sha256": "faa061d91ce2bb31ddffd8e20530af007980d75bed40bb8d49e4735aabeb7831",
+        "size_bytes": 137197
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-4.log",
+        "sha256": "faa061d91ce2bb31ddffd8e20530af007980d75bed40bb8d49e4735aabeb7831",
+        "size_bytes": 137197
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-5",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-5.json",
+        "sha256": "2fa5b38737605fc5f76ec8a4d04753496296cbab94f9f428f910f56cc4460f56",
+        "size_bytes": 137202
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-5.log",
+        "sha256": "2fa5b38737605fc5f76ec8a4d04753496296cbab94f9f428f910f56cc4460f56",
+        "size_bytes": 137202
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-6",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-6.json",
+        "sha256": "dabf9a741faf73aa5a4863759159a023169de3f24cae5e429156aebfb6a12dfd",
+        "size_bytes": 137200
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-6.log",
+        "sha256": "dabf9a741faf73aa5a4863759159a023169de3f24cae5e429156aebfb6a12dfd",
+        "size_bytes": 137200
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-7",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-7.json",
+        "sha256": "4d10d0c1419a67691c23c1bc25134d753df68424a407c96ce1878c3e562110ad",
+        "size_bytes": 137192
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-7.log",
+        "sha256": "4d10d0c1419a67691c23c1bc25134d753df68424a407c96ce1878c3e562110ad",
+        "size_bytes": 137192
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head final norm forced to per_row diagnostic"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_norm_path": "per_row",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-batched-lm-head-perrow-norm-batch-argmax-repeat-8",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-8.json",
+        "sha256": "2245590ea9d02429c8c042b491cf0f4cffce88fb18f1043bae09bb81407aa74b",
+        "size_bytes": 137193
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/repeat-8.log",
+        "sha256": "2245590ea9d02429c8c042b491cf0f4cffce88fb18f1043bae09bb81407aa74b",
+        "size_bytes": 137193
+      },
+      "rows": 2,
+      "status": "blocked"
+    }
+  ],
+  "perrow_norm_batch_argmax_summary": {
+    "argmax_modes": [
+      "batch"
+    ],
+    "failed_count": 0,
+    "final_norm_paths": [
+      "per_row"
+    ],
+    "first_mismatch_indices": [
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ]
+    ],
+    "passed_count": 8,
+    "prefix_lengths": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "sampler_blockers": [
+      [
+        "batched LM-head final norm forced to per_row diagnostic"
+      ]
+    ],
+    "sampler_modes": [
+      "batched_lm_head"
+    ]
+  },
+  "postdiag_default_controls": [
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_mode": "serial_per_row",
+          "blockers": [],
+          "equality_artifact": null,
+          "equality_rows": null,
+          "final_norm_path": "serial_per_row",
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "serial_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-default-c2",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/postdiag-default-c2.json",
+        "sha256": "6b767453f9768217f169e36e23efc160763644733c5154c5c283b9a487c07eba",
+        "size_bytes": 137150
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/postdiag-default-c2.log",
+        "sha256": "6b767453f9768217f169e36e23efc160763644733c5154c5c283b9a487c07eba",
+        "size_bytes": 137150
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+          "equality_rows": 4,
+          "final_norm_path": "batch",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-default-c4",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/postdiag-default-c4.json",
+        "sha256": "c0447cfd4140a2262fff3d53c91caeb72901ce07211f91758bd812fc08a0937d",
+        "size_bytes": 237461
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/postdiag-default-c4.log",
+        "sha256": "c0447cfd4140a2262fff3d53c91caeb72901ce07211f91758bd812fc08a0937d",
+        "size_bytes": 237461
+      },
+      "rows": 4,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "sampler_execution": {
+          "argmax_mode": "batch",
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+          "equality_rows": 8,
+          "final_norm_path": "batch",
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head"
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-default-c8",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/postdiag-default-c8.json",
+        "sha256": "0119ac0be5e2cf8cc0b2f59b0689de588ee1a57ddb1acb4571be46a4ca082597",
+        "size_bytes": 414914
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter318-c2-perrow-norm-batch-argmax/postdiag-default-c8.log",
+        "sha256": "0119ac0be5e2cf8cc0b2f59b0689de588ee1a57ddb1acb4571be46a4ca082597",
+        "size_bytes": 414914
+      },
+      "rows": 8,
+      "status": "blocked"
+    }
+  ],
+  "postdiag_default_summary": {
+    "c2": {
+      "argmax_mode": "serial_per_row",
+      "final_norm_path": "serial_per_row",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "sampler_mode": "serial_lm_head"
+    },
+    "c4": {
+      "argmax_mode": "batch",
+      "final_norm_path": "batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+      "sampler_mode": "batched_lm_head"
+    },
+    "c8": {
+      "argmax_mode": "batch",
+      "final_norm_path": "batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+      "sampler_mode": "batched_lm_head"
+    }
+  }
+}
