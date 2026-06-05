@@ -3298,6 +3298,13 @@ roll-up/status view.
       still native batch context/output integration, not the standalone KV append
       or QKV prep branch
       (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-fullattn-context-split-394/summary.json`).
+      A narrower suffix split then made the controlled native-full gate green:
+      forcing pre-QKV setup (`attn_input`, QKV prep, and scratch) plus
+      context/gate per-row clears the L8 c2 hidden/token check even while keeping
+      batch-GEMV O projection, batch post-attention, batch layer-copy, and grouped
+      MoE. Context+gate+O alone remains hidden-only red, so the blocker is the
+      coupled pre-QKV plus context/gate setup rather than O/MoE/post-attention
+      (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-preqkv-context-split-395/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
