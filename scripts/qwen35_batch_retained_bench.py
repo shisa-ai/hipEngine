@@ -4163,12 +4163,15 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     # Original c3/c5/c6 evidence shows rowchunking only the first four full-
     # attention producer layers preserves generated-token equality for those
     # correctness-first auto row counts while smaller tested subsets remain red.
-    # C4 is repeat-green again under the current stabilized sampler/projection
-    # defaults with only the first four full-attention producer layers rowchunked.
-    # C8 likewise has profiler-stable evidence with only the final full-attention
-    # layer left native; keep c7 all-layer until its selected-layer path is stable.
-    if int(batch_size) in {3, 4, 5, 6}:
+    # C4 is repeat/profile-green again under the current stabilized sampler/
+    # projection defaults with only layer 11 rowchunked; smaller tested single-
+    # layer controls (3 and 15) remain red. C8 likewise has profiler-stable
+    # evidence with only the final full-attention layer left native; keep c7
+    # all-layer until its selected-layer path is stable.
+    if int(batch_size) in {3, 5, 6}:
         return "3,7,11,15"
+    if int(batch_size) == 4:
+        return "11"
     if int(batch_size) == 8:
         return "3,7,11,15,19,23,27,31,35"
     return ""

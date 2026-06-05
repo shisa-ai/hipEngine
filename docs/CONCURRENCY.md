@@ -1178,6 +1178,14 @@ What is still not green:
   batched argmax, and final-cast kernels. This remains required runtime evidence
   only because selected rowchunk layers keep `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first4-profiler-baseline-352/summary.json`).
+  A follow-up c4 layer-subset probe narrows the primary c4 rowchunk scope again:
+  layer 11 alone passed 5/5 normal repeats, the layer-11 `rocprofv3` smoke stayed
+  `[137]*4`, and the post-change no-flag c4 default was 2/2 green with only
+  layer 11 rowchunked. Single-layer controls for 3 and 15 were red (layer15-only
+  failed `[82,137,137,137]`), so layer 11 is the current narrowest proven c4
+  scope. This remains correctness/runtime evidence only because that one selected
+  rowchunk layer still keeps `native_caware_decode=false`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-layer11-rowchunk-357/summary.json`).
   A focused c8 first-nine rowchunk probe then narrows the c8 full-attention
   diagnostic scope from all ten full-attention producer layers to
   `[3,7,11,15,19,23,27,31,35]`: explicit first-nine repeats were 3/3 green,
