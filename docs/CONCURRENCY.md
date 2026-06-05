@@ -1188,6 +1188,16 @@ What is still not green:
   selected scopes were unstable/red, so first-nine is the current narrowest
   profiler-backed c8 scope
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-first9-rowchunk-353/summary.json`).
+  The matching c8 first-nine baseline/profiler attachment stayed green at
+  `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the first-
+  nine profiler summary loaded. Scaling references are complete
+  (`aggregate_vs_c1=1.3066`, `aggregate_vs_serial_bridge=1.5690`), but the row
+  remains evidence-only because selected rowchunk layers keep
+  `native_caware_decode=false`. The immediately following active c2 verify
+  flaked once at `104` and an explicit post-c8 repeat reproduced `[137,104]`,
+  before two more repeats recovered to `[137,137]`; c2 remains green for final
+  measurement but the intermittent sampler-stability risk is still open
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-first9-baseline-354/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
