@@ -1186,6 +1186,13 @@ What is still not green:
   scope. This remains correctness/runtime evidence only because that one selected
   rowchunk layer still keeps `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-layer11-rowchunk-357/summary.json`).
+  The matching c4 layer-11 baseline/profiler attachment stayed green at
+  `[137]*4` with c1, c4 serial-bridge, primitive c4 correctness, and the layer-11
+  profiler summary loaded. Scaling references are complete
+  (`aggregate_vs_c1=1.1395`, `aggregate_vs_serial_bridge=1.4107`), but this is
+  still evidence-only because layer-11 rowchunk keeps `native_caware_decode=false`
+  and the profiler was captured from a no-baseline smoke
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-layer11-baseline-358/summary.json`).
   A focused c8 first-nine rowchunk probe then narrows the c8 full-attention
   diagnostic scope from all ten full-attention producer layers to
   `[3,7,11,15,19,23,27,31,35]`: explicit first-nine repeats were 3/3 green,
