@@ -3678,17 +3678,17 @@ def test_retained_bench_defaults_to_valid_batched_sampler_artifact(tmp_path: Pat
         batch_sample_eq_rows=None,
     )
     retained_bench._apply_default_batch_sample_evidence(c2_default, [])
-    assert c2_default.batch_sample_mode == "batched_lm_head"
-    assert c2_default.batch_sample_eq_ok is True
-    assert c2_default.batch_sample_eq_artifact == Path(c2_artifact_path)
-    assert c2_default.batch_sample_eq_rows == 2
-    assert c2_default.batch_sample_stabilize_cast_elems == 512
+    assert c2_default.batch_sample_mode == "serial_lm_head"
+    assert c2_default.batch_sample_eq_ok is False
+    assert c2_default.batch_sample_eq_artifact is None
+    assert c2_default.batch_sample_eq_rows is None
+    assert not hasattr(c2_default, "batch_sample_stabilize_cast_elems")
 
     retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, **vars(c2_default)))
-    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "batched_lm_head"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"] == c2_artifact_path
-    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"] == "2"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS"] == "512"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"] == "serial_lm_head"
+    assert "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT" not in os.environ
+    assert "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS" not in os.environ
+    assert os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS"] == "0"
 
     c8_artifact_path = retained_bench._DEFAULT_BATCH_SAMPLE_EQ_ARTIFACT_TEMPLATE.format(rows=8)
     (tmp_path / c8_artifact_path).write_text(

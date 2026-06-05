@@ -1244,6 +1244,15 @@ What is still not green:
   both stayed `[137]*4`. This is a correctness-first demotion, not a retained
   throughput/scaling claim, and c4 still has the full-attention rowchunk blocker
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-hard-demotion-360/summary.json`).
+  The c2 batched-sampler default was then demoted back to `serial_lm_head` after
+  the token-104 flake reproduced even with a wider 1024-element stabilizer. Four
+  forced 1024 runs and four temporary no-flag default1024 runs were green, but
+  the required active verify immediately afterward failed `[137,104]`. Removing
+  c2 from the no-flag sampler-evidence defaults produced six serial no-flag
+  repeats plus the final active verify at `[137,137]`, with
+  `native_caware_decode=true` and no decode blockers. This is correctness-first
+  c2 stability evidence, not a retained throughput/scaling claim
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-redemotion-361/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
