@@ -6207,6 +6207,7 @@ class Qwen35ParoResidentSession:
         final_rmsnorm_temp_fence = getattr(self, "_batch_final_rmsnorm_temp_fence", None)
         final_cast_temp_fence = getattr(self, "_batch_final_cast_temp_fence", None)
         final_cast_tiny_fence = getattr(self, "_batch_final_cast_tiny_fence", None)
+        final_cast_elems_fence = getattr(self, "_batch_final_cast_elems_fence", None)
         sync_fence = getattr(self, "_batch_sync_fence", None)
         suffix_fence = getattr(self, "_batch_suffix_fence", None)
         if (
@@ -6219,6 +6220,7 @@ class Qwen35ParoResidentSession:
             and not isinstance(final_rmsnorm_temp_fence, dict)
             and not isinstance(final_cast_temp_fence, dict)
             and not isinstance(final_cast_tiny_fence, dict)
+            and not isinstance(final_cast_elems_fence, dict)
             and not isinstance(sync_fence, dict)
             and not isinstance(suffix_fence, dict)
         ):
@@ -6243,6 +6245,8 @@ class Qwen35ParoResidentSession:
             sampler_execution["final_cast_temp_fence"] = dict(final_cast_temp_fence)
         if isinstance(final_cast_tiny_fence, dict):
             sampler_execution["final_cast_tiny_fence"] = dict(final_cast_tiny_fence)
+        if isinstance(final_cast_elems_fence, dict):
+            sampler_execution["final_cast_elems_fence"] = dict(final_cast_elems_fence)
         if isinstance(sync_fence, dict):
             sampler_execution["sync_fence"] = dict(sync_fence)
         if isinstance(suffix_fence, dict):
@@ -6791,35 +6795,56 @@ class Qwen35ParoResidentSession:
     ) -> dict[str, Any]:
         """Run one-element serial FP16->BF16 cast kernels into a temp buffer."""
 
-        fence = getattr(self, "_batch_final_cast_tiny_fence", None)
-        if not isinstance(fence, dict):
-            scratch = getattr(self, "_batch_final_cast_tiny_buffer", None)
-            if not isinstance(scratch, DeviceBuffer):
-                scratch = malloc(DType.BF16.itemsize, runtime=self.runtime)
+        return self._record_batch_final_cast_elems_fence(rows=rows, stream=stream, elements=1, tiny_alias=True)
+
+    def _record_batch_final_cast_elems_fence(
+        self,
+        *,
+        rows: int,
+        stream: int,
+        elements: int,
+        tiny_alias: bool = False,
+    ) -> dict[str, Any]:
+        """Run a prefix of each normalized FP16 row through FP16->BF16 cast into temp."""
+
+        elements_per_row = max(1, min(int(elements), int(self.config.hidden_size)))
+        attr_name = "_batch_final_cast_tiny_fence" if tiny_alias else "_batch_final_cast_elems_fence"
+        buffer_name = "_batch_final_cast_tiny_buffer" if tiny_alias else "_batch_final_cast_elems_buffer"
+        scratch_nbytes = elements_per_row * DType.BF16.itemsize
+        fence = getattr(self, attr_name, None)
+        scratch = getattr(self, buffer_name, None)
+        if not isinstance(fence, dict) or int(fence.get("elements_per_row", 0)) != elements_per_row:
+            if not isinstance(scratch, DeviceBuffer) or int(scratch.nbytes) < scratch_nbytes:
+                scratch = malloc(scratch_nbytes, runtime=self.runtime)
                 self.buffers.append(scratch)
-                self._batch_final_cast_tiny_buffer = scratch
+                setattr(self, buffer_name, scratch)
             fence = {
                 "enabled": True,
-                "kind": "serial_final_cast_temp_1elem_kernel_only",
+                "kind": (
+                    "serial_final_cast_temp_1elem_kernel_only"
+                    if tiny_alias
+                    else "serial_final_cast_temp_nelems_kernel_only"
+                ),
                 "checked_steps": 0,
                 "checked_rows": 0,
                 "host_reads": 0,
-                "elements_per_row": 1,
+                "elements_per_row": elements_per_row,
+                "scratch_nbytes": scratch_nbytes,
                 "scratch_ptr": int(scratch.ptr),
             }
-            self._batch_final_cast_tiny_fence = fence
-        scratch = getattr(self, "_batch_final_cast_tiny_buffer", None)
-        if not isinstance(scratch, DeviceBuffer):
-            scratch = malloc(DType.BF16.itemsize, runtime=self.runtime)
+            setattr(self, attr_name, fence)
+        if not isinstance(scratch, DeviceBuffer) or int(scratch.nbytes) < scratch_nbytes:
+            scratch = malloc(scratch_nbytes, runtime=self.runtime)
             self.buffers.append(scratch)
-            self._batch_final_cast_tiny_buffer = scratch
+            setattr(self, buffer_name, scratch)
             fence["scratch_ptr"] = int(scratch.ptr)
+            fence["scratch_nbytes"] = scratch_nbytes
         step_index = int(fence["checked_steps"])
         for row in range(rows):
             fp16_to_bf16(
                 self.batch_norm_out.ptr + row * self.hidden_nbytes,
                 scratch.ptr,
-                1,
+                elements_per_row,
                 stream=stream,
                 library=self.libraries["cast"],
                 runtime=self.runtime,
@@ -6827,7 +6852,12 @@ class Qwen35ParoResidentSession:
             self.runtime.device_synchronize()
         fence["checked_steps"] = step_index + 1
         fence["checked_rows"] = int(fence["checked_rows"]) + int(rows)
-        fence["last_step"] = {"step_index": step_index, "rows": int(rows), "host_reads": 0, "elements_per_row": 1}
+        fence["last_step"] = {
+            "step_index": step_index,
+            "rows": int(rows),
+            "host_reads": 0,
+            "elements_per_row": elements_per_row,
+        }
         return dict(fence)
 
     def _record_batch_sync_fence(self, *, rows: int) -> dict[str, Any]:
@@ -6985,6 +7015,8 @@ class Qwen35ParoResidentSession:
         sampler_final_rmsnorm_temp_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_RMSNORM_TEMP_FENCE")
         sampler_final_cast_temp_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_TEMP_FENCE")
         sampler_final_cast_tiny_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_TINY_FENCE")
+        sampler_final_cast_elems_fence = max(0, _env_int("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_ELEMS_FENCE", 0))
+        sampler_final_cast_elems_fence = min(sampler_final_cast_elems_fence, int(self.config.hidden_size))
         sampler_sync_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SYNC_FENCE")
         sampler_suffix_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE")
         sampler_suffix_kernel_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE")
@@ -7001,6 +7033,8 @@ class Qwen35ParoResidentSession:
         sampler_execution["final_rmsnorm_temp_fence_enabled"] = bool(sampler_final_rmsnorm_temp_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["final_cast_temp_fence_enabled"] = bool(sampler_final_cast_temp_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["final_cast_tiny_fence_enabled"] = bool(sampler_final_cast_tiny_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
+        sampler_execution["final_cast_elems_fence_elements"] = int(sampler_final_cast_elems_fence)
+        sampler_execution["final_cast_elems_fence_enabled"] = bool(sampler_final_cast_elems_fence > 0 and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["sync_fence_enabled"] = bool(sampler_sync_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_fence_enabled"] = bool(sampler_suffix_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_kernel_fence_enabled"] = bool(sampler_suffix_kernel_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
@@ -7040,6 +7074,9 @@ class Qwen35ParoResidentSession:
         if sampler_execution["final_cast_tiny_fence_enabled"]:
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head final cast tiny temp-buffer kernel fence enabled")
+        if sampler_execution["final_cast_elems_fence_enabled"]:
+            sampler_execution["native_row_aware_lm_head"] = False
+            sampler_execution["blockers"].append("batched LM-head final cast prefix temp-buffer kernel fence enabled")
         if sampler_execution["sync_fence_enabled"]:
             sampler_execution["native_row_aware_lm_head"] = False
             sampler_execution["blockers"].append("batched LM-head sync-only fence enabled")
@@ -7228,6 +7265,13 @@ class Qwen35ParoResidentSession:
             sampler_execution["final_cast_tiny_fence"] = self._record_batch_final_cast_tiny_fence(
                 rows=rows,
                 stream=stream,
+            )
+            self._publish_batch_sampler_execution(sampler_execution)
+        if sampler_execution["final_cast_elems_fence_enabled"]:
+            sampler_execution["final_cast_elems_fence"] = self._record_batch_final_cast_elems_fence(
+                rows=rows,
+                stream=stream,
+                elements=int(sampler_execution["final_cast_elems_fence_elements"]),
             )
             self._publish_batch_sampler_execution(sampler_execution)
         if sampler_execution["sync_fence_enabled"]:

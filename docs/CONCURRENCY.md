@@ -1045,14 +1045,16 @@ What is still not green:
   final FP16→BF16 cast-only kernel into a dedicated temp buffer was likewise 8/8
   green at `[137,137]`; however, a one-element final-cast temp-buffer fence was
   not sufficient, passing only 6/8 repeats with failures at `[82,137]` and
-  `[137,104]`. A sync-only fence (extra `device_synchronize` calls, no kernels,
-  host readback, or output comparison) was also not sufficient: it passed 7/8
-  repeats but failed once at `[137,0]`. This clears the full sampler suffix for
-  observed hidden inputs and suggests the remaining intermittent c2
+  `[137,104]`, while a 1024-element prefix final-cast temp-buffer fence was 8/8
+  green at `[137,137]`. A sync-only fence (extra `device_synchronize` calls, no
+  kernels, host readback, or output comparison) was also not sufficient: it
+  passed 7/8 repeats but failed once at `[137,0]`. This clears the full sampler
+  suffix for observed hidden inputs and suggests the remaining intermittent c2
   batched-sampler issue is upstream of the suffix or sensitive to the amount /
-  pattern of lightweight final-suffix kernel work touching temp memory rather
-  than sampler norm-scratch clobbering, host readback, LM-head-only fencing, a
-  minimal one-element launch, or extra synchronization alone. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
+  pattern of lightweight final-suffix kernel work touching temp memory (threshold
+  between 1 and 1024 cast elements in this workload) rather than sampler
+  norm-scratch clobbering, host readback, LM-head-only fencing, a minimal
+  one-element launch, or extra synchronization alone. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
   (`[137,137]`, `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
@@ -1083,7 +1085,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sync-fence-328/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-rmsnorm-temp-fence-329/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-cast-temp-fence-330/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-cast-tiny-fence-331/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-cast-tiny-fence-331/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-cast-elems1024-fence-332/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
