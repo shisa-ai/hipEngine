@@ -1168,6 +1168,15 @@ What is still not green:
   selected rowchunk layers still report `native_caware_decode=false`, and c8
   stays on all-layer rowchunk2 until its selected-layer path is profiler-stable
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-rowchunk-first4-351/summary.json`).
+  The matching c4 first-four profiler/baseline attachment then stayed green at
+  `[137]*4` with c1, c4 serial-bridge, primitive c4 correctness, and a fresh
+  retained-gate-shaped `rocprofv3` summary loaded. Scaling references are complete
+  (`aggregate_vs_c1=1.1297`, `aggregate_vs_serial_bridge=1.3987`), and the trace
+  contains expected native batch full-attention/KV, grouped-MoE, accepted c-aware
+  projection, row-aware output GEMV, linear segment decode, batch residual combine,
+  batched argmax, and final-cast kernels. This remains required runtime evidence
+  only because selected rowchunk layers keep `native_caware_decode=false`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first4-profiler-baseline-352/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
