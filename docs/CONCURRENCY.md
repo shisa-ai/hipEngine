@@ -1074,11 +1074,12 @@ What is still not green:
   and captured native batch full-attention/KV, grouped-MoE, accepted c-aware
   projection, row-aware output GEMV, linear segment decode, batch residual
   combine, `batch_argmax_stage{1,2}`, and FP16→BF16 final-cast/stabilizer kernels.
-  The matching c4 no-flag profiler smoke stayed green at `[137]*4` with
-  row-aware `batched_lm_head`, accepted c-aware projection, rowchunked native
-  batch full-attention/KV, grouped-MoE, row-aware output GEMV, linear segment
-  decode, batch residual combine, `batch_argmax_stage{1,2}`, and final-cast kernels.
-  This is correctness/runtime evidence, not a retained throughput/scaling claim. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
+  The matching c4 and c8 no-flag profiler smokes stayed green at `[137]*4` and
+  `[137]*8` with row-aware `batched_lm_head`, accepted c-aware projection,
+  rowchunked native batch full-attention/KV, grouped-MoE, row-aware output GEMV,
+  linear segment decode, batch residual combine, `batch_argmax_stage{1,2}`, and
+  final-cast kernels. This is correctness/runtime evidence, not a retained
+  throughput/scaling claim. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
   (`[137,137]`, `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
@@ -1120,7 +1121,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default-stabilize112-339/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c248-default-equality-340/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-stabilized-batched-profiler-341/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c4-default-profiler-342/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c4-default-profiler-342/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-profiler-343/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
