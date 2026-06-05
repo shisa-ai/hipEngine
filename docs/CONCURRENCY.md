@@ -1318,6 +1318,12 @@ What is still not green:
   c=2/c=4/c=8 matrix is green. This keeps the c4 rowchunk blocker but leaves
   layers 27, 31, 35, and 39 native
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first6-default-373/summary.json`).
+  A first-five follow-up (`[3,7,11,15,19]`) is not prompt-stable: primary stayed
+  `[137]*4`, but hard rows4..7 failed at `[137,31,137,137]`. The current
+  first-six default stayed green on the hard fixture and the c=2/c=4/c=8 matrix
+  stayed green, so first-six is the current c4 boundary and was not narrowed
+  further
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-first5-red-boundary-374/summary.json`).
   The matching current c8 first-nine baseline/profiler attachment also stayed
   green at `[137]*8` with c1, c8 serial-bridge, primitive c8 correctness, and the
   first-nine profiler summary loaded. Scaling references are complete
