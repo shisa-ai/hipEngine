@@ -1014,10 +1014,12 @@ What is still not green:
   per-row repair is sufficient: batch RMSNorm + per-row cast passed 7/8 but
   failed `[82,0]`, and per-row RMSNorm + batch cast passed 7/8 but failed
   `[137,0]`. Thus both batched final RMSNorm and batched final cast can
-  participate in the intermittent c2 batched-sampler instability; the safe
-  diagnostic repair is per-row norm plus per-row cast. The immediately following
-  no-flag c2/c4/c8 controls recovered green (`[137,137]`, `[137]*4`, `[137]*8`).
-  No retained throughput/scaling claim is made
+  participate in the intermittent c2 batched-sampler instability. A follow-up
+  attempted to promote c2's no-flag default to batched LM-head plus per-row norm
+  and per-row cast, but rejected it after 7/8 repeats passed and one failed at
+  `[137,104]`; c2 therefore stays `serial_lm_head` by default. The immediately
+  following post-revert no-flag c2/c4/c8 controls recovered green (`[137,137]`,
+  `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-baseline-attach-302/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json`,
@@ -1035,7 +1037,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-batched-lm-serial-argmax-current-316/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-perrow-norm-317/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-norm-batch-argmax-318/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-norm-cast-split-319/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-norm-cast-split-319/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default-batched-perrow-reject-320/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU

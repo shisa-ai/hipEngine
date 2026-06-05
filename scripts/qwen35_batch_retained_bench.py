@@ -141,7 +141,8 @@ def _apply_default_batch_sample_evidence(args: argparse.Namespace, argv: Sequenc
     generated-token equality artifacts for the row-aware sampler.  Use them as
     the no-flag diagnostic default for covered rows while preserving an explicit
     user override and the existing evidence gate.  Keep c=2 serial by default;
-    repeated active c2 checks have exposed intermittent batched-sampler flakes.
+    fully batched and per-row-final-norm/cast c2 sampler promotions have both
+    exposed intermittent flakes.
     """
 
     if any(_argv_has_flag(argv, flag) for flag in _BATCH_SAMPLE_COMMAND_FLAGS):
@@ -5045,7 +5046,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-sample-mode",
         choices=("serial_lm_head", "batched_lm_head"),
         default="serial_lm_head",
-        help="Sampler/LM-head path for native c>N decode; when omitted for c=4/8 the bench uses the repo-retained row-aware batched_lm_head equality artifact if it validates, while c=2 stays serial by default until the post-c9 batched-sampler flake is fixed. Explicit batched_lm_head still requires generated-token equality evidence via --batch-sample-eq-*.",
+        help="Sampler/LM-head path for native c>N decode; when omitted for c=4/8 the bench uses the repo-retained row-aware batched_lm_head equality artifact if it validates, while c=2 stays serial by default until the c2 batched-sampler flakes are fixed. Explicit batched_lm_head still requires generated-token equality evidence via --batch-sample-eq-*."
     )
     parser.add_argument(
         "--batch-sample-norm-path",
