@@ -1171,6 +1171,7 @@ def build_validator_status_report(
         "next_action_producer_command_kind": summary[
             "next_action_producer_command_kind"
         ],
+        "next_action_producer_command": summary["next_action_producer_command"],
         "next_action_producer_command_sha256": summary[
             "next_action_producer_command_sha256"
         ],
@@ -1254,9 +1255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.next_action_producer_command_kind_only:
         payload = report["next_action_producer_command_kind"]
     elif args.next_action_producer_command_only:
-        payload = (
-            next_action.get("producer_command") if isinstance(next_action, dict) else None
-        )
+        payload = report["next_action_producer_command"]
     elif args.next_action_producer_command_sha_only:
         payload = report["next_action_producer_command_sha256"]
     elif args.next_action_only:

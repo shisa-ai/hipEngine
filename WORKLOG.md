@@ -36211,3 +36211,43 @@ git diff --check
 ```
 
 Results: persisted handoff/status/manifest verification commands returned `"match"`; targeted validator-status tests passed (`5` tests); the top-level and summary next-action producer-command kinds matched; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Refreshed artifact hashes include correctness-status file SHA `b4899d39da4d1eeee6036f50060940a04553374583f6200ddfec52ed45c15de0`, `source_artifacts_sha256=4709ac6885e9edb1f62d8c2e52337260a40ee6d20b8605220984505ca937e086`, final-blocker file SHA `091019e36409abbefdca35f8bdbbdeaaca7bafc4236c3fb97072ae1d3394d3c5`, `status_provenance_sha256=c7223d474c7a5b7d02e189ee0c35411421db562c4e50c217208d19569838647c`, handoff file SHA `c30406497ec64f22c636274ca51497057a2f40db0781d97395361276859d8144`, and handoff `digest_summary_sha256=3c37e3d70e2bac33b20d3b918db8ed4333dcb9fefa9d88703a707e25279e9633`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
+
+## 2026-06-05 — StepFun top-level next-action producer command
+
+Surfaced `next_action_producer_command` at the top level of `scripts/stepfun_validator_status.py` reports, and made `--next-action-producer-command-only` read that report field instead of reaching into the next-action bundle at output time. The aggregate validator summary already carried the command; the top-level field lets pollers retrieve the concrete remediation command for the next recommended action without parsing either the full next-action bundle or the nested summary. Against the retained final-blocker manifest, `--next-action-producer-command-only` emits the long `python3 scripts/stepfun_llamacpp_oracle.py ... --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json` command, matching both `validator_status_summary.next_action_producer_command` and the `producer_command` field inside `--next-action-only`.
+
+Updated `tests/test_stepfun_validator_status.py` to cover the report/summary equality for both all-passed and missing-artifact fixtures, updated `docs/STEPFUN.md` P11 to document top-level next-action producer-command availability, and regenerated correctness-status, final-blocker, and handoff artifacts for updated docs/source hashes. This is blocker observability only: `oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`, and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_validator_status.py
+python3 scripts/stepfun_validator_status.py --next-action-producer-command-only --pretty
+python3 scripts/stepfun_validator_status.py --summary-only --pretty | grep -n "next_action_producer_command"
+python3 scripts/stepfun_validator_status.py --next-action-only --pretty | python3 -c 'import json,sys; p=json.load(sys.stdin); print(p.get("producer_command") if isinstance(p, dict) else None)'
+python3 - <<'PY'
+from scripts import stepfun_correctness_status as status_mod
+from scripts.stepfun_validator_status import _load_manifest, build_validator_status_report
+m=_load_manifest(None, prompt_artifact=status_mod.DEFAULT_PROMPT_ARTIFACT, oracle_artifact=status_mod.DEFAULT_ORACLE_ARTIFACT, resource_artifact=status_mod.DEFAULT_RESOURCE_ARTIFACT, docs=status_mod.DEFAULT_DOCS_PATH)
+r=build_validator_status_report(m, prompt_artifact=status_mod.DEFAULT_PROMPT_ARTIFACT, resource_artifact=status_mod.DEFAULT_RESOURCE_ARTIFACT)
+s=r['validator_status_summary']
+print(r['next_action_producer_command'])
+print(s['next_action_producer_command'])
+print(r['next_action_producer_command'] == s['next_action_producer_command'])
+PY
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_validator_status.py scripts/stepfun_correctness_status.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_llamacpp_oracle.py scripts/stepfun_handoff_check.py scripts/stepfun_oracle_artifact_check.py scripts/stepfun_kv_trace_check.py scripts/stepfun_kv_next_token_check.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_validator_status.py tests/test_stepfun_validator_status.py benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|performance claims|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|making token or performance claims\|without making.*performance claims\|claims separate\|throughput/performance claim\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+git diff --check
+```
+
+Results: persisted handoff/status/manifest verification commands returned `"match"`; targeted validator-status tests passed (`5` tests); the top-level and summary next-action producer commands matched; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Refreshed artifact hashes include correctness-status file SHA `59b2f6c971b564fc29d10b99e38913051e56d06bbc41a480604f8a1318a7ba75`, `source_artifacts_sha256=0a9a1d1a02427b76b0434be1dd6e8e3f1e520c81bd10b2282448da0885dc3bdc`, final-blocker file SHA `1abefe11f774c4e044fa973622cdc0fb160d8ef0b74cbe6178d83ab2b6ce2a44`, `status_provenance_sha256=030fbc59af231dd85c90c01c7ca227a2d8e8dd565735a30471ac0b80bf56901f`, handoff file SHA `cf52bc5fb41bdadba93757332996054ad394f923d77ef1d147f68bf19cbc4b46`, and handoff `digest_summary_sha256=405a26a45ba0d53470b910a448ea50ac2ce45f22ae1f84dde9269a9b365bbcf6`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.

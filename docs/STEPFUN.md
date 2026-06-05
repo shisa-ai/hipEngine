@@ -696,8 +696,8 @@ reporting.
   `--next-action-producer-command-sha-only` expose compact pollable validator
   records/commands/evidence gaps by artifact (with next-action artifact name,
   readiness gate, status, reason, validator command kind/command, producer
-  command kind, and validator/producer command digests also available at the
-  top-level report), all gates,
+  command kind/command, and validator/producer command digests also available
+  at the top-level report), all gates,
   blocked gate names,
   selected gate (with a `selected_blocked_gate_found` flag in the aggregate
   summary), and first blocked gate,
