@@ -1182,9 +1182,9 @@ What is still not green:
   layer 11 alone passed 5/5 normal repeats, the layer-11 `rocprofv3` smoke stayed
   `[137]*4`, and the post-change no-flag c4 default was 2/2 green with only
   layer 11 rowchunked. Single-layer controls for 3 and 15 were red (layer15-only
-  failed `[82,137,137,137]`), so layer 11 is the current narrowest proven c4
-  scope. This remains correctness/runtime evidence only because that one selected
-  rowchunk layer still keeps `native_caware_decode=false`
+  failed `[82,137,137,137]`), so layer 11 was the narrowest proven c4 scope for
+  the primary first-four fixture. This remains correctness/runtime evidence only
+  because that one selected rowchunk layer still keeps `native_caware_decode=false`
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-layer11-rowchunk-357/summary.json`).
   The matching c4 layer-11 baseline/profiler attachment stayed green at
   `[137]*4` with c1, c4 serial-bridge, primitive c4 correctness, and the layer-11
@@ -1237,6 +1237,13 @@ What is still not green:
   still evidence-only because first-nine rowchunk keeps `native_caware_decode=false`
   and the profiler was captured from a no-baseline smoke
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-first9-baseline-refresh-359/summary.json`).
+  A hard rows4..7 c4 recheck then invalidated the c4 layer-11-only default as a
+  prompt/window-stable auto policy: layer 11 alone failed `[45,11,68,137]`, while
+  all-layer rowchunk2 passed `[137]*4`. The no-flag c4 default was demoted back
+  to all-layer rowchunk2; post-change hard rows4..7 and primary first-four c4
+  both stayed `[137]*4`. This is a correctness-first demotion, not a retained
+  throughput/scaling claim, and c4 still has the full-attention rowchunk blocker
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-hard-demotion-360/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
