@@ -1403,6 +1403,13 @@ What is still not green:
   and c=2/c=4/c=8 matrix stayed green. Thus layer 23 is currently required for
   the c8 rowchunk boundary
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop23-boundary-384/summary.json`).
+  A follow-up drop-layer19 attempt (`[3,7,11,15,23,35,39]`) failed at
+  `[137,137,137,118,137,72,137,137]`; the first c=2/c=4/c=8 matrix had one
+  transient current-c8 flake at `[137,137,137,137,0,137,137,137]`, but the
+  direct current-c8 control plus three immediate repeats were green and a full
+  retry matrix recovered. Thus layer 19 is currently required, with residual
+  transient c8 risk noted
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop19-boundary-385/summary.json`).
   An earlier post-c8 stability stress ran three then-current no-flag c8 all-layer
   default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
   run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,
