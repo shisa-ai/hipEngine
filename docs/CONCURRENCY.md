@@ -1349,6 +1349,12 @@ What is still not green:
   green on both fixtures and the c=2/c=4/c=8 matrix stayed green, so layer 7 is
   currently required for prompt-stable c4 hard-window equality
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-sparse-drop7-boundary-379/summary.json`).
+  A sparse five-layer follow-up that kept layers 7, 11, 15, 19, and 23 but
+  dropped layer 3 (`[7,11,15,19,23]`) failed primary at `[137,137,137,118]` and
+  hard rows4..7 broadly at `[45,58,68,137]`. The current first-six default stayed
+  green on both fixtures and the c=2/c=4/c=8 matrix stayed green, so layer 3 is
+  currently required for prompt-stable c4 equality
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-sparse-drop3-boundary-380/summary.json`).
   The current c4 first-six default now also has refreshed profiler/scaling
   evidence: a no-baseline `rocprofv3` smoke stayed `[137]*4` with expected native
   batch full-attention context/KV, grouped-MoE, accepted c-aware projection,
