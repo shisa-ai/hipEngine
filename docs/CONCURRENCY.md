@@ -1260,6 +1260,13 @@ What is still not green:
   correctness gate under the current defaults only; c4/c8 still have rowchunk
   blockers and no retained throughput/scaling claim is made
   (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-final-after-demotions-362/summary.json`).
+  The matching current c4 all-layer baseline/profiler attachment stayed green at
+  `[137]*4` with c1, c4 serial-bridge, primitive c4 correctness, and the all-layer
+  profiler summary loaded. Scaling references are complete
+  (`aggregate_vs_c1=1.0666`, `aggregate_vs_serial_bridge=1.3205`), but this is
+  still evidence-only because all-layer rowchunk keeps `native_caware_decode=false`
+  and the profiler was captured from a no-baseline smoke
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c4-alllayer-baseline-refresh-363/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
