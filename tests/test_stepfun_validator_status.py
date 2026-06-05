@@ -344,6 +344,9 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
         "next_action_validator_command_kind"
     ]
     assert summary["next_action_validator_command"] is None
+    assert summary["next_action_validator_command"] == report[
+        "next_action_validator_command"
+    ]
     assert summary["next_action_validator_command_sha256"] == status_mod._stable_json_sha256(
         None
     )
@@ -588,6 +591,9 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     ]
     assert summary["next_action_validator_command"] == expected_missing_trace[
         "validator_command_concrete"
+    ]
+    assert summary["next_action_validator_command"] == report[
+        "next_action_validator_command"
     ]
     assert summary["next_action_validator_command_sha256"] == status_mod._stable_json_sha256(
         expected_missing_trace["validator_command_concrete"]
