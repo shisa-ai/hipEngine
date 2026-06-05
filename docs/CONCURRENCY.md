@@ -3298,24 +3298,21 @@ roll-up/status view.
       still native batch context/output integration, not the standalone KV append
       or QKV prep branch
       (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-fullattn-context-split-394/summary.json`).
-      A narrower suffix split then made the controlled native-full gate green:
-      forcing pre-QKV setup (`attn_input`, QKV prep, and scratch) plus
-      context/gate per-row clears the L8 c2 hidden/token check even while keeping
-      batch-GEMV O projection, batch post-attention, batch layer-copy, and grouped
-      MoE. Context+gate+O alone remains hidden-only red, so the blocker is the
-      coupled pre-QKV plus context/gate setup rather than O/MoE/post-attention
-      (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-preqkv-context-split-395/summary.json`).
-      A follow-up source/GPU deconfound corrects that scratch interpretation:
-      `--batch-decode-attn-scratch-path per_row` enters the broad
-      `force_per_row_layer_scratch` branch and replays the full full-attention
-      layer per row, so the iter396 green result is not proof that native batch
-      context can remain active. The true QKV temp-scratch diagnostic is
-      `--batch-decode-attn-qkv-path per_row`, and a fresh L8 run with only that
-      temp scratch remains token-green but hidden-red like the native-full
-      baseline. The blocker therefore remains native full-attention batch
-      scratch/context integration, with the only green repair still a non-
-      retained per-row-layer fallback
-      (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-scratch-semantics-397/summary.json`).
+      The apparent narrower pre-QKV+context green split was deconfounded by
+      follow-up source/GPU checks. `--batch-decode-attn-scratch-path per_row`
+      enters the broad `force_per_row_layer_scratch` branch and replays the full
+      full-attention layer per row, so the iter395/396 green results are not
+      proof that native batch context can remain active. The true QKV temp-
+      scratch diagnostic is `--batch-decode-attn-qkv-path per_row`: QKV-temp only
+      remains token-green but hidden-red, and fresh true input+QKV-temp+context
+      variants without the broad layer-scratch flag also remain hidden-red with
+      batch-GEMV O, per-row O, and context-only controls. A fresh broad layer-
+      scratch positive control is still hidden/token green. The blocker therefore
+      remains native full-attention batch scratch/context integration, with the
+      only green repair still a non-retained complete per-row full-attention
+      layer replay
+      (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-scratch-semantics-397/summary.json`,
+      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-true-preqkv-context-398/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
