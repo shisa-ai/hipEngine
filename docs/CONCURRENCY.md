@@ -1253,6 +1253,13 @@ What is still not green:
   `native_caware_decode=true` and no decode blockers. This is correctness-first
   c2 stability evidence, not a retained throughput/scaling claim
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-redemotion-361/summary.json`).
+  A current no-flag c=2/c=4/c=8 equality refresh after the c2 and c4 demotions is
+  green for every row: c2 `[137,137]` with `native_caware_decode=true` and
+  `serial_lm_head`, c4 `[137]*4` with all-layer rowchunk2, and c8 `[137]*8` with
+  first-nine rowchunk2 plus `stabilize_cast_elems=256`. This refreshes the
+  correctness gate under the current defaults only; c4/c8 still have rowchunk
+  blockers and no retained throughput/scaling claim is made
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-final-after-demotions-362/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
