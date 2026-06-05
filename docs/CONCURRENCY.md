@@ -1198,6 +1198,12 @@ What is still not green:
   before two more repeats recovered to `[137,137]`; c2 remains green for final
   measurement but the intermittent sampler-stability risk is still open
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-first9-baseline-354/summary.json`).
+  The c2 no-flag sampler stabilizer was then raised from 256 to 512 elements:
+  forced c2 stabilize512 was 4/4 green, a current c8 first-nine control stayed
+  `[137]*8`, the following four no-flag c2 default512 repeats were 4/4 green at
+  `[137,137]`, and the final active c2 verify printed 137. This is a
+  correctness-stability workaround, not a retained throughput claim
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-default512-stabilizer-355/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
