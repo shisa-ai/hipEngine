@@ -6208,6 +6208,7 @@ class Qwen35ParoResidentSession:
         final_cast_temp_fence = getattr(self, "_batch_final_cast_temp_fence", None)
         final_cast_tiny_fence = getattr(self, "_batch_final_cast_tiny_fence", None)
         final_cast_elems_fence = getattr(self, "_batch_final_cast_elems_fence", None)
+        stabilize_cast_elems_fence = getattr(self, "_batch_stabilize_cast_elems_fence", None)
         sync_fence = getattr(self, "_batch_sync_fence", None)
         suffix_fence = getattr(self, "_batch_suffix_fence", None)
         if (
@@ -6221,6 +6222,7 @@ class Qwen35ParoResidentSession:
             and not isinstance(final_cast_temp_fence, dict)
             and not isinstance(final_cast_tiny_fence, dict)
             and not isinstance(final_cast_elems_fence, dict)
+            and not isinstance(stabilize_cast_elems_fence, dict)
             and not isinstance(sync_fence, dict)
             and not isinstance(suffix_fence, dict)
         ):
@@ -6247,6 +6249,8 @@ class Qwen35ParoResidentSession:
             sampler_execution["final_cast_tiny_fence"] = dict(final_cast_tiny_fence)
         if isinstance(final_cast_elems_fence, dict):
             sampler_execution["final_cast_elems_fence"] = dict(final_cast_elems_fence)
+        if isinstance(stabilize_cast_elems_fence, dict):
+            sampler_execution["stabilize_cast_elems_fence"] = dict(stabilize_cast_elems_fence)
         if isinstance(sync_fence, dict):
             sampler_execution["sync_fence"] = dict(sync_fence)
         if isinstance(suffix_fence, dict):
@@ -6804,12 +6808,19 @@ class Qwen35ParoResidentSession:
         stream: int,
         elements: int,
         tiny_alias: bool = False,
+        attr_name: str | None = None,
+        buffer_name: str | None = None,
+        kind: str | None = None,
     ) -> dict[str, Any]:
         """Run a prefix of each normalized FP16 row through FP16->BF16 cast into temp."""
 
         elements_per_row = max(1, min(int(elements), int(self.config.hidden_size)))
-        attr_name = "_batch_final_cast_tiny_fence" if tiny_alias else "_batch_final_cast_elems_fence"
-        buffer_name = "_batch_final_cast_tiny_buffer" if tiny_alias else "_batch_final_cast_elems_buffer"
+        if attr_name is None:
+            attr_name = "_batch_final_cast_tiny_fence" if tiny_alias else "_batch_final_cast_elems_fence"
+        if buffer_name is None:
+            buffer_name = "_batch_final_cast_tiny_buffer" if tiny_alias else "_batch_final_cast_elems_buffer"
+        if kind is None:
+            kind = "serial_final_cast_temp_1elem_kernel_only" if tiny_alias else "serial_final_cast_temp_nelems_kernel_only"
         scratch_nbytes = elements_per_row * DType.BF16.itemsize
         fence = getattr(self, attr_name, None)
         scratch = getattr(self, buffer_name, None)
@@ -6820,11 +6831,7 @@ class Qwen35ParoResidentSession:
                 setattr(self, buffer_name, scratch)
             fence = {
                 "enabled": True,
-                "kind": (
-                    "serial_final_cast_temp_1elem_kernel_only"
-                    if tiny_alias
-                    else "serial_final_cast_temp_nelems_kernel_only"
-                ),
+                "kind": kind,
                 "checked_steps": 0,
                 "checked_rows": 0,
                 "host_reads": 0,
@@ -6859,6 +6866,24 @@ class Qwen35ParoResidentSession:
             "elements_per_row": elements_per_row,
         }
         return dict(fence)
+
+    def _record_batch_stabilize_cast_elems_fence(
+        self,
+        *,
+        rows: int,
+        stream: int,
+        elements: int,
+    ) -> dict[str, Any]:
+        """Run an opt-in post-sampler cast-work fence without marking diagnostics."""
+
+        return self._record_batch_final_cast_elems_fence(
+            rows=rows,
+            stream=stream,
+            elements=elements,
+            attr_name="_batch_stabilize_cast_elems_fence",
+            buffer_name="_batch_stabilize_cast_elems_buffer",
+            kind="batch_sampler_stabilize_cast_nelems_kernel",
+        )
 
     def _record_batch_sync_fence(self, *, rows: int) -> dict[str, Any]:
         """Run extra device synchronizations as a no-kernel fence."""
@@ -7017,6 +7042,8 @@ class Qwen35ParoResidentSession:
         sampler_final_cast_tiny_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_TINY_FENCE")
         sampler_final_cast_elems_fence = max(0, _env_int("HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_ELEMS_FENCE", 0))
         sampler_final_cast_elems_fence = min(sampler_final_cast_elems_fence, int(self.config.hidden_size))
+        sampler_stabilize_cast_elems = max(0, _env_int("HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS", 0))
+        sampler_stabilize_cast_elems = min(sampler_stabilize_cast_elems, int(self.config.hidden_size))
         sampler_sync_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SYNC_FENCE")
         sampler_suffix_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE")
         sampler_suffix_kernel_fence = _env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE")
@@ -7035,6 +7062,8 @@ class Qwen35ParoResidentSession:
         sampler_execution["final_cast_tiny_fence_enabled"] = bool(sampler_final_cast_tiny_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["final_cast_elems_fence_elements"] = int(sampler_final_cast_elems_fence)
         sampler_execution["final_cast_elems_fence_enabled"] = bool(sampler_final_cast_elems_fence > 0 and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
+        sampler_execution["stabilize_cast_elems"] = int(sampler_stabilize_cast_elems)
+        sampler_execution["stabilize_cast_elems_enabled"] = bool(sampler_stabilize_cast_elems > 0 and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["sync_fence_enabled"] = bool(sampler_sync_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_fence_enabled"] = bool(sampler_suffix_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
         sampler_execution["suffix_kernel_fence_enabled"] = bool(sampler_suffix_kernel_fence and sampler_decision.mode is BatchSamplerMode.BATCHED_LM_HEAD and sampler_argmax_mode == "batch")
@@ -7272,6 +7301,13 @@ class Qwen35ParoResidentSession:
                 rows=rows,
                 stream=stream,
                 elements=int(sampler_execution["final_cast_elems_fence_elements"]),
+            )
+            self._publish_batch_sampler_execution(sampler_execution)
+        if sampler_execution["stabilize_cast_elems_enabled"]:
+            sampler_execution["stabilize_cast_elems_fence"] = self._record_batch_stabilize_cast_elems_fence(
+                rows=rows,
+                stream=stream,
+                elements=int(sampler_execution["stabilize_cast_elems"]),
             )
             self._publish_batch_sampler_execution(sampler_execution)
         if sampler_execution["sync_fence_enabled"]:

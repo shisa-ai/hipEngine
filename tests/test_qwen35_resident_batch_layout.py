@@ -4014,6 +4014,52 @@ def test_qwen35_resident_sample_batch_final_cast_elems_fence_casts_prefix(monkey
     assert decode_execution["sampler_execution"]["final_cast_elems_fence"]["elements_per_row"] == 4
 
 
+def test_qwen35_resident_sample_batch_stabilize_cast_elems_fence_casts_prefix(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8)
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.libraries = {"cast": object()}
+    session.batch_norm_out = SimpleNamespace(ptr=0x8100)
+    session.buffers = []
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args))
+            return None
+        return _inner
+
+    monkeypatch.setattr(runner_module, "malloc", lambda nbytes, runtime=None: DeviceBuffer(0x9500, nbytes))
+    monkeypatch.setattr(runner_module, "paro_rmsnorm_out_fp16", lambda *args, **kwargs: pytest.fail("stabilize cast fence should not run norm"))
+    monkeypatch.setattr(runner_module, "fp16_to_bf16", record("cast"))
+    monkeypatch.setattr(runner_module, "w8a16_linear_bf16_f32_out", lambda *args, **kwargs: pytest.fail("stabilize cast fence should not run LM-head"))
+    monkeypatch.setattr(runner_module, "argmax_f32", lambda *args, **kwargs: pytest.fail("stabilize cast fence should not run argmax"))
+    monkeypatch.setattr(runner_module, "copy_device_to_host", lambda *args, **kwargs: pytest.fail("stabilize cast fence should not read host"))
+
+    fence = session._record_batch_stabilize_cast_elems_fence(rows=2, stream=0, elements=4)
+
+    assert session.buffers == [DeviceBuffer(0x9500, 4 * DType.BF16.itemsize)]
+    assert fence == {
+        "enabled": True,
+        "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+        "checked_steps": 1,
+        "checked_rows": 2,
+        "host_reads": 0,
+        "elements_per_row": 4,
+        "scratch_nbytes": 4 * DType.BF16.itemsize,
+        "scratch_ptr": 0x9500,
+        "last_step": {"step_index": 0, "rows": 2, "host_reads": 0, "elements_per_row": 4},
+    }
+    cast_calls = [args for name, args in calls if name == "cast"]
+    assert [(args[0], args[1], args[2]) for args in cast_calls] == [
+        (0x8100, 0x9500, 4),
+        (0x8100 + session.hidden_nbytes, 0x9500, 4),
+    ]
+    decode_execution = session._batch_decode_execution_with_sampler_audit({"sampler_execution": {"mode": "batched_lm_head"}})
+    assert decode_execution["sampler_execution"]["stabilize_cast_elems_fence"]["elements_per_row"] == 4
+
+
 def test_qwen35_resident_sample_batch_sync_fence_skips_device_work(monkeypatch) -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     sync_count = 0

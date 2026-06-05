@@ -119,6 +119,7 @@ _BATCH_SAMPLE_COMMAND_FLAGS = (
     "--batch-sample-final-cast-temp-fence",
     "--batch-sample-final-cast-tiny-fence",
     "--batch-sample-final-cast-elems-fence",
+    "--batch-sample-stabilize-cast-elems",
     "--batch-sample-sync-fence",
     "--batch-sample-suffix-fence",
     "--batch-sample-suffix-kernel-fence",
@@ -4335,6 +4336,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_TEMP_FENCE"] = "1" if getattr(args, "batch_sample_final_cast_temp_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_TINY_FENCE"] = "1" if getattr(args, "batch_sample_final_cast_tiny_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_FINAL_CAST_ELEMS_FENCE"] = str(max(0, int(getattr(args, "batch_sample_final_cast_elems_fence", 0) or 0)))
+    os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS"] = str(max(0, int(getattr(args, "batch_sample_stabilize_cast_elems", 0) or 0)))
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SYNC_FENCE"] = "1" if getattr(args, "batch_sample_sync_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE"] = "1" if getattr(args, "batch_sample_suffix_fence", False) else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE"] = "1" if getattr(args, "batch_sample_suffix_kernel_fence", False) else "0"
@@ -4529,6 +4531,7 @@ def _build_payload(
             "batch_sample_final_cast_temp_fence": bool(getattr(args, "batch_sample_final_cast_temp_fence", False)),
             "batch_sample_final_cast_tiny_fence": bool(getattr(args, "batch_sample_final_cast_tiny_fence", False)),
             "batch_sample_final_cast_elems_fence": max(0, int(getattr(args, "batch_sample_final_cast_elems_fence", 0) or 0)),
+            "batch_sample_stabilize_cast_elems": max(0, int(getattr(args, "batch_sample_stabilize_cast_elems", 0) or 0)),
             "batch_sample_sync_fence": bool(getattr(args, "batch_sample_sync_fence", False)),
             "batch_sample_suffix_fence": bool(getattr(args, "batch_sample_suffix_fence", False)),
             "batch_sample_suffix_kernel_fence": bool(getattr(args, "batch_sample_suffix_kernel_fence", False)),
@@ -4852,6 +4855,7 @@ def _build_payload(
             "batch_sample_final_cast_temp_fence": bool(getattr(args, "batch_sample_final_cast_temp_fence", False)),
             "batch_sample_final_cast_tiny_fence": bool(getattr(args, "batch_sample_final_cast_tiny_fence", False)),
             "batch_sample_final_cast_elems_fence": max(0, int(getattr(args, "batch_sample_final_cast_elems_fence", 0) or 0)),
+            "batch_sample_stabilize_cast_elems": max(0, int(getattr(args, "batch_sample_stabilize_cast_elems", 0) or 0)),
             "batch_sample_sync_fence": bool(getattr(args, "batch_sample_sync_fence", False)),
             "batch_sample_suffix_fence": bool(getattr(args, "batch_sample_suffix_fence", False)),
             "batch_sample_suffix_kernel_fence": bool(getattr(args, "batch_sample_suffix_kernel_fence", False)),
@@ -5164,6 +5168,12 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=0,
         help="Diagnostic-only timing fence for batched_lm_head + batch argmax: reruns the first N FP16 elements of each normalized row through the final FP16-to-BF16 cast kernel into a dedicated temp buffer, without clobbering sampler BF16 scratch, LM-head, argmax, host readback, or output comparison; blocks retained sampler claims when N > 0.",
+    )
+    parser.add_argument(
+        "--batch-sample-stabilize-cast-elems",
+        type=int,
+        default=0,
+        help="Correctness-first opt-in stabilization fence for batched_lm_head + batch argmax: reruns the first N FP16 elements of each normalized row through the final FP16-to-BF16 cast kernel into a dedicated temp buffer after sampler host readback; records sampler metadata but does not mark the sampler as diagnostic-blocked.",
     )
     parser.add_argument(
         "--batch-sample-sync-fence",
