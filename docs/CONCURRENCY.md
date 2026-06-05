@@ -1386,7 +1386,13 @@ What is still not green:
   c=2/c=4/c=8 matrix stayed green. This establishes layer 35 as required for the
   current c8 all-layer rowchunk boundary
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop35-boundary-381/summary.json`).
-  A follow-up post-c8 stability stress ran three current no-flag c8 all-layer
+  The all-minus-layer31 scope (`[3,7,11,15,19,23,27,35,39]`) was then promoted
+  as the no-flag c8 default after three explicit green repeats and a post-change
+  no-flag c8/c2/c4/c8 matrix all stayed at prefix 137. This narrows the c8
+  rowchunk diagnostic by leaving layer 31 native, but it is still evidence-only
+  because selected rowchunk layers keep `native_caware_decode=false`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop31-promotion-382/summary.json`).
+  An earlier post-c8 stability stress ran three then-current no-flag c8 all-layer
   default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
   run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,
   and the required active c2 verify also stayed `[137,137]`. This adds runtime
