@@ -1093,6 +1093,12 @@ What is still not green:
   final-cast kernels; after the c8 stabilizer promotion, the current c8 default256
   profiler smoke was refreshed and stayed green at `[137]*8` with the same expected
   native/projection/sampler kernel families and rowchunked full-attention blockers.
+  A matching current c8 baseline/profiler attachment then loaded c1, c8 serial
+  bridge, primitive c8 correctness, and retained-gate-shaped profiler references;
+  generated-token equality stayed `[137]*8` and scaling was complete, but the row
+  remains non-retained because rowchunked full attention keeps
+  `native_caware_decode=false` and the profiler was captured from the no-baseline
+  current default smoke rather than the exact retained-attachment command.
   This is correctness/runtime evidence, not a retained
   throughput/scaling claim. The immediately following post-audit no-flag c2/c4/c8 controls recovered green
   (`[137,137]`, `[137]*4`, `[137]*8`). No retained throughput/scaling claim is made
@@ -1141,7 +1147,8 @@ What is still not green:
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default128-baseline-344/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c2-default256-profiler-345/summary.json`,
   `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default-stabilizer-346/summary.json`,
-  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default256-profiler-347/summary.json`).
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default256-profiler-347/summary.json`,
+  `benchmarks/results/2026-06-05-hipengine-qwen35-c8-default256-baseline-348/summary.json`).
   A grouped-compact auto-MoE promotion was tried but rolled back: the first
   primitive-attached repeat kept c2 green but rejected c4 at `[137,137,137,0]`
   and c8 at `[137,137,137,137,137,137,0,137]`. Repo-relative primitive GPU
