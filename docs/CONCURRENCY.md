@@ -1437,6 +1437,11 @@ What is still not green:
   matrix stayed green. Thus layer 35 remains required for repeat-stable c8
   equality under the current narrowed default
   (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop35-current-boundary-390/summary.json`).
+  The final current-default drop-layer3 attempt (`[7,11,15,19,23,35]`) failed at
+  `[137,137,137,118,45,58,68,137]`, while the current c8 default and c=2/c=4/c=8
+  matrix stayed green. Thus layer 3 is currently required, closing the current
+  c8 selected-layer boundary at `[3,7,11,15,19,23,35]`
+  (`benchmarks/results/2026-06-05-hipengine-qwen35-c8-drop3-boundary-391/summary.json`).
   An earlier post-c8 stability stress ran three then-current no-flag c8 all-layer
   default → c2 default cycles. Every c8 run stayed `[137]*8`, every following c2
   run stayed `[137,137]` with `serial_lm_head` and `native_caware_decode=true`,
