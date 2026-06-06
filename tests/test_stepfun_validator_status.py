@@ -352,6 +352,10 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_artifact_file_present_missing"] == report[
         "next_action_artifact_file_present_missing"
     ]
+    assert summary["next_action_oracle_success_status_missing"] is None
+    assert summary["next_action_oracle_success_status_missing"] == report[
+        "next_action_oracle_success_status_missing"
+    ]
     assert summary["next_action_missing_evidence_sha256"] == report[
         "next_action_missing_evidence_sha256"
     ]
@@ -680,6 +684,10 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_artifact_file_present_missing"] is True
     assert summary["next_action_artifact_file_present_missing"] == report[
         "next_action_artifact_file_present_missing"
+    ]
+    assert summary["next_action_oracle_success_status_missing"] is False
+    assert summary["next_action_oracle_success_status_missing"] == report[
+        "next_action_oracle_success_status_missing"
     ]
     assert summary["next_action_missing_evidence_sha256"] == report[
         "next_action_missing_evidence_sha256"
@@ -1093,6 +1101,10 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_artifact_file_present_missing"] is False
     assert summary["next_action_artifact_file_present_missing"] == report[
         "next_action_artifact_file_present_missing"
+    ]
+    assert summary["next_action_oracle_success_status_missing"] is True
+    assert summary["next_action_oracle_success_status_missing"] == report[
+        "next_action_oracle_success_status_missing"
     ]
     assert summary["next_action_missing_evidence_sha256"] == (
         status_mod._stable_json_sha256(
@@ -2666,6 +2678,13 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == (
         "artifact_file_present" in missing_evidence
+    )
+
+    rc = main([*args, "--next-action-oracle-success-status-missing-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == (
+        "oracle_success_status" in missing_evidence
     )
 
     rc = main([*args, "--next-action-missing-evidence-sha-only"])
