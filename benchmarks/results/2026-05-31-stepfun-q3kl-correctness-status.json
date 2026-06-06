@@ -211,6 +211,16 @@
   ],
   "docs_checklist": {
     "docs_path": "docs/STEPFUN.md",
+    "first_open_or_partial_item_p0_p12": {
+      "line": 510,
+      "state": "partial",
+      "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
+    },
+    "last_open_or_partial_item_p0_p12": {
+      "line": 813,
+      "state": "partial",
+      "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
+    },
     "open_or_partial_count_p0_p12": 2,
     "open_or_partial_items_p0_p12": [
       {
@@ -219,13 +229,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 808,
+        "line": 813,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ]
   },
-  "docs_checklist_sha256": "1919a6f043622fd92a659d0547a0791a4af32dd82762a4bf2268757a789828b3",
+  "docs_checklist_sha256": "cece400ba9b83a5c6a64dc2827a7c2c655e491390370bd52bd07ecb87a0f9bd8",
   "e2e_inference_ready": false,
   "first_remaining_blocker_report": {
     "blocked_gates": [
@@ -506,6 +516,10 @@
       "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
       "docs_checklist_only": "docs_checklist",
       "docs_checklist_sha_only": "docs_checklist_sha256",
+      "docs_first_open_partial_item_only": "docs_checklist.first_open_or_partial_item_p0_p12",
+      "docs_first_open_partial_item_sha_only": "docs_checklist.first_open_or_partial_item_p0_p12.sha256",
+      "docs_last_open_partial_item_only": "docs_checklist.last_open_or_partial_item_p0_p12",
+      "docs_last_open_partial_item_sha_only": "docs_checklist.last_open_or_partial_item_p0_p12.sha256",
       "docs_open_partial_count_only": "docs_checklist.open_or_partial_count_p0_p12",
       "fail_on_blocked_preserves_payload": true,
       "first_blocker_only": "handoff_summary.first_blocker_work_item",
@@ -802,7 +816,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "7c14c52fa04e51287c670c465149a675e4e2d15a0b7f74cb60d47c186bee553c",
+  "handoff_summary_sha256": "c3aa4f456492ddcbbc81e868c14e6ce33722b948e2e7780944876fcba7eb1a6e",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -17326,7 +17340,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "cdce891d55004276b8a52378bc1163f4df6f659df7031cdadcffac91ecceab98",
-    "handoff_summary_sha256": "7c14c52fa04e51287c670c465149a675e4e2d15a0b7f74cb60d47c186bee553c",
+    "handoff_summary_sha256": "c3aa4f456492ddcbbc81e868c14e6ce33722b948e2e7780944876fcba7eb1a6e",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "2d6a9da297c9a0c84687b34cbb9580907af8a5c39c04b51caf4074c04e5772e7",
@@ -17336,10 +17350,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "8ac1ceea7c249ba1c72d39f233847c4f92c2384f7467933c6a57dc7209904fa4",
     "schema_version": 1,
-    "source_artifacts_sha256": "cd7bdf676f2dfa56f7d67e94ab5476ef09d697e4cf5fa2dac153e74a50a21b2b",
+    "source_artifacts_sha256": "34aa4e9cee6459818b83646e12612f4f4f4a499a8ba880213376e923ebfed2e3",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "36880cf66133e98e167d6ab8c0f3d0c5316d09ba71d25edbd1858b8dee972375",
+  "readiness_summary_sha256": "160483627f87d2ec4797c636eaf935c82a8d49f3d04b1e4500e2e3a57a01ccff",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -17458,8 +17472,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "d40f78260e761be7e62c83bcea7bfabc34744ab5fcef7b29e45207e016713d54",
-      "size_bytes": 81725
+      "sha256": "65896cb3672eb021fd1a7241dca4716b6bdbbf01c7310d1531d2a58310501021",
+      "size_bytes": 82001
     },
     "oracle": {
       "exists": true,
@@ -17486,7 +17500,7 @@
       "size_bytes": 176642
     }
   },
-  "source_artifacts_sha256": "cd7bdf676f2dfa56f7d67e94ab5476ef09d697e4cf5fa2dac153e74a50a21b2b",
+  "source_artifacts_sha256": "34aa4e9cee6459818b83646e12612f4f4f4a499a8ba880213376e923ebfed2e3",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

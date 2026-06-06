@@ -337,6 +337,38 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--docs-first-open-partial-item-only",
+        action="store_true",
+        help=(
+            "Emit only docs_checklist.first_open_or_partial_item_p0_p12 for "
+            "handoff routing. Overrides --summary-only and readiness modes."
+        ),
+    )
+    parser.add_argument(
+        "--docs-first-open-partial-item-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the stable digest of the first P0-P12 open/partial "
+            "checklist item. Overrides --summary-only and readiness modes."
+        ),
+    )
+    parser.add_argument(
+        "--docs-last-open-partial-item-only",
+        action="store_true",
+        help=(
+            "Emit only docs_checklist.last_open_or_partial_item_p0_p12 for "
+            "handoff routing. Overrides --summary-only and readiness modes."
+        ),
+    )
+    parser.add_argument(
+        "--docs-last-open-partial-item-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the stable digest of the last P0-P12 open/partial "
+            "checklist item. Overrides --summary-only and readiness modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-kinds-only",
         action="store_true",
         help=(
@@ -1611,6 +1643,14 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "docs_checklist_sha256"
             and compact_output_modes.get("docs_open_partial_count_only")
             == "docs_checklist.open_or_partial_count_p0_p12"
+            and compact_output_modes.get("docs_first_open_partial_item_only")
+            == "docs_checklist.first_open_or_partial_item_p0_p12"
+            and compact_output_modes.get("docs_first_open_partial_item_sha_only")
+            == "docs_checklist.first_open_or_partial_item_p0_p12.sha256"
+            and compact_output_modes.get("docs_last_open_partial_item_only")
+            == "docs_checklist.last_open_or_partial_item_p0_p12"
+            and compact_output_modes.get("docs_last_open_partial_item_sha_only")
+            == "docs_checklist.last_open_or_partial_item_p0_p12.sha256"
         ),
         "docs_checklist_count_matches_items": (
             isinstance(docs_open_or_partial_items, list)
@@ -1988,6 +2028,8 @@ def _docs_checklist_status(docs_path: Path) -> dict[str, object]:
         "docs_path": str(docs_path),
         "open_or_partial_count_p0_p12": len(items),
         "open_or_partial_items_p0_p12": items,
+        "first_open_or_partial_item_p0_p12": items[0] if items else None,
+        "last_open_or_partial_item_p0_p12": items[-1] if items else None,
     }
 
 
@@ -4084,6 +4126,18 @@ def _handoff_summary(
             "docs_open_partial_count_only": (
                 "docs_checklist.open_or_partial_count_p0_p12"
             ),
+            "docs_first_open_partial_item_only": (
+                "docs_checklist.first_open_or_partial_item_p0_p12"
+            ),
+            "docs_first_open_partial_item_sha_only": (
+                "docs_checklist.first_open_or_partial_item_p0_p12.sha256"
+            ),
+            "docs_last_open_partial_item_only": (
+                "docs_checklist.last_open_or_partial_item_p0_p12"
+            ),
+            "docs_last_open_partial_item_sha_only": (
+                "docs_checklist.last_open_or_partial_item_p0_p12.sha256"
+            ),
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "readiness_gates_only": "readiness_gates",
@@ -4811,6 +4865,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["readiness_gates"]
     elif args.docs_open_partial_count_only:
         result = status["docs_checklist"].get("open_or_partial_count_p0_p12")
+    elif args.docs_first_open_partial_item_sha_only:
+        result = _stable_json_sha256(
+            status["docs_checklist"].get("first_open_or_partial_item_p0_p12")
+        )
+    elif args.docs_first_open_partial_item_only:
+        result = status["docs_checklist"].get("first_open_or_partial_item_p0_p12")
+    elif args.docs_last_open_partial_item_sha_only:
+        result = _stable_json_sha256(
+            status["docs_checklist"].get("last_open_or_partial_item_p0_p12")
+        )
+    elif args.docs_last_open_partial_item_only:
+        result = status["docs_checklist"].get("last_open_or_partial_item_p0_p12")
     elif args.docs_checklist_sha_only:
         result = status["docs_checklist_sha256"]
     elif args.docs_checklist_only:
