@@ -411,6 +411,29 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_expected_next_token_logit"] == report[
         "next_action_expected_next_token_logit"
     ]
+    assert summary["next_action_oracle_generated_text"] is None
+    assert summary["next_action_oracle_generated_text"] == report[
+        "next_action_oracle_generated_text"
+    ]
+    assert summary["next_action_oracle_generated_text_sha256"] == report[
+        "next_action_oracle_generated_text_sha256"
+    ]
+    assert summary["next_action_generated_text"] is None
+    assert summary["next_action_generated_text"] == report[
+        "next_action_generated_text"
+    ]
+    assert summary["next_action_generated_text_len"] is None
+    assert summary["next_action_generated_text_len"] == report[
+        "next_action_generated_text_len"
+    ]
+    assert summary["next_action_generated_text_matches_expected_exact"] is None
+    assert summary["next_action_generated_text_matches_expected_exact"] == report[
+        "next_action_generated_text_matches_expected_exact"
+    ]
+    assert summary["next_action_generated_text_matches_expected_stripped"] is None
+    assert summary["next_action_generated_text_matches_expected_stripped"] == report[
+        "next_action_generated_text_matches_expected_stripped"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
@@ -894,6 +917,46 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     ]
     assert summary["next_action_expected_next_token_logit"] == report[
         "next_action_expected_next_token_logit"
+    ]
+    expected_generated_text = {
+        "generated_text": report["next_blocker"]["validator_summary"][
+            "generated_text"
+        ],
+        "generated_text_len": report["next_blocker"]["validator_summary"][
+            "generated_text_len"
+        ],
+        "text_matches_expected_exact": report["next_blocker"][
+            "validator_summary"
+        ]["text_matches_expected_exact"],
+        "text_matches_expected_stripped": report["next_blocker"][
+            "validator_summary"
+        ]["text_matches_expected_stripped"],
+    }
+    assert summary["next_action_oracle_generated_text"] == expected_generated_text
+    assert summary["next_action_oracle_generated_text"] == report[
+        "next_action_oracle_generated_text"
+    ]
+    assert summary["next_action_oracle_generated_text_sha256"] == (
+        status_mod._stable_json_sha256(expected_generated_text)
+    )
+    assert summary["next_action_oracle_generated_text_sha256"] == report[
+        "next_action_oracle_generated_text_sha256"
+    ]
+    assert summary["next_action_generated_text"] == ""
+    assert summary["next_action_generated_text"] == report[
+        "next_action_generated_text"
+    ]
+    assert summary["next_action_generated_text_len"] == 0
+    assert summary["next_action_generated_text_len"] == report[
+        "next_action_generated_text_len"
+    ]
+    assert summary["next_action_generated_text_matches_expected_exact"] is False
+    assert summary["next_action_generated_text_matches_expected_exact"] == report[
+        "next_action_generated_text_matches_expected_exact"
+    ]
+    assert summary["next_action_generated_text_matches_expected_stripped"] is False
+    assert summary["next_action_generated_text_matches_expected_stripped"] == report[
+        "next_action_generated_text_matches_expected_stripped"
     ]
     expected_handoff = {
         "producer_writes_partial_output_before_launch": True,
@@ -2285,6 +2348,46 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == summary["expected_next_token_logit"]
+
+    rc = main([*args, "--next-action-oracle-generated-text-only", "--pretty"])
+
+    assert rc == 0
+    oracle_generated_text = json.loads(capsys.readouterr().out)
+    assert oracle_generated_text == {
+        "generated_text": summary["generated_text"],
+        "generated_text_len": summary["generated_text_len"],
+        "text_matches_expected_exact": summary["text_matches_expected_exact"],
+        "text_matches_expected_stripped": summary[
+            "text_matches_expected_stripped"
+        ],
+    }
+
+    rc = main([*args, "--next-action-oracle-generated-text-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        oracle_generated_text
+    )
+
+    rc = main([*args, "--next-action-generated-text-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["generated_text"]
+
+    rc = main([*args, "--next-action-generated-text-len-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["generated_text_len"]
+
+    rc = main([*args, "--next-action-generated-text-matches-expected-exact-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is False
+
+    rc = main([*args, "--next-action-generated-text-matches-expected-stripped-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is False
 
     rc = main([*args, "--next-action-no-claim-policy-only", "--pretty"])
 

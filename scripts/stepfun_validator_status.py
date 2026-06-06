@@ -427,6 +427,36 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the expected next-token logit from the next-action validator summary.",
     )
     parser.add_argument(
+        "--next-action-oracle-generated-text-only",
+        action="store_true",
+        help="Print only the oracle generated-text bundle from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-generated-text-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the next-action oracle generated-text bundle.",
+    )
+    parser.add_argument(
+        "--next-action-generated-text-only",
+        action="store_true",
+        help="Print only the generated text from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-generated-text-len-only",
+        action="store_true",
+        help="Print only the generated text length from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-generated-text-matches-expected-exact-only",
+        action="store_true",
+        help="Print only the exact generated-text match flag from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-generated-text-matches-expected-stripped-only",
+        action="store_true",
+        help="Print only the stripped generated-text match flag from the next-action validator summary.",
+    )
+    parser.add_argument(
         "--next-action-no-claim-policy-only",
         action="store_true",
         help="Print only the no-claim policy from the next-action validator summary.",
@@ -755,6 +785,26 @@ def _next_action_oracle_expected_token(
     return expected_token
 
 
+def _next_action_oracle_generated_text(
+    validator_summary: object,
+) -> dict[str, object] | None:
+    if not isinstance(validator_summary, dict):
+        return None
+    generated_text = {
+        "generated_text": validator_summary.get("generated_text"),
+        "generated_text_len": validator_summary.get("generated_text_len"),
+        "text_matches_expected_exact": validator_summary.get(
+            "text_matches_expected_exact"
+        ),
+        "text_matches_expected_stripped": validator_summary.get(
+            "text_matches_expected_stripped"
+        ),
+    }
+    if not any(value is not None and value != "" for value in generated_text.values()):
+        return None
+    return generated_text
+
+
 def _unique_preserving_order(values: Sequence[object]) -> list[object]:
     seen: set[str] = set()
     result: list[object] = []
@@ -1021,6 +1071,25 @@ def build_validator_status_report(
         next_action_oracle_expected_token,
         "expected_next_token_logit",
     )
+    next_action_oracle_generated_text = _next_action_oracle_generated_text(
+        next_action_validator_summary
+    )
+    next_action_generated_text = _summary_field(
+        next_action_oracle_generated_text,
+        "generated_text",
+    )
+    next_action_generated_text_len = _summary_field(
+        next_action_oracle_generated_text,
+        "generated_text_len",
+    )
+    next_action_generated_text_matches_expected_exact = _summary_field(
+        next_action_oracle_generated_text,
+        "text_matches_expected_exact",
+    )
+    next_action_generated_text_matches_expected_stripped = _summary_field(
+        next_action_oracle_generated_text,
+        "text_matches_expected_stripped",
+    )
     next_action_missing_evidence = None
     if isinstance(next_action, dict):
         next_action_missing_evidence = next_action.get("validator_missing_evidence")
@@ -1273,6 +1342,18 @@ def build_validator_status_report(
         "next_action_expected_next_token_id": next_action_expected_next_token_id,
         "next_action_expected_next_token_text": next_action_expected_next_token_text,
         "next_action_expected_next_token_logit": next_action_expected_next_token_logit,
+        "next_action_oracle_generated_text": next_action_oracle_generated_text,
+        "next_action_oracle_generated_text_sha256": status_mod._stable_json_sha256(
+            next_action_oracle_generated_text
+        ),
+        "next_action_generated_text": next_action_generated_text,
+        "next_action_generated_text_len": next_action_generated_text_len,
+        "next_action_generated_text_matches_expected_exact": (
+            next_action_generated_text_matches_expected_exact
+        ),
+        "next_action_generated_text_matches_expected_stripped": (
+            next_action_generated_text_matches_expected_stripped
+        ),
         "next_action_no_claim_policy": next_action_no_claim_policy,
         "next_action_no_claim_policy_sha256": status_mod._stable_json_sha256(
             next_action_no_claim_policy
@@ -1425,6 +1506,22 @@ def build_validator_status_report(
         "next_action_expected_next_token_logit": summary[
             "next_action_expected_next_token_logit"
         ],
+        "next_action_oracle_generated_text": summary[
+            "next_action_oracle_generated_text"
+        ],
+        "next_action_oracle_generated_text_sha256": summary[
+            "next_action_oracle_generated_text_sha256"
+        ],
+        "next_action_generated_text": summary["next_action_generated_text"],
+        "next_action_generated_text_len": summary[
+            "next_action_generated_text_len"
+        ],
+        "next_action_generated_text_matches_expected_exact": summary[
+            "next_action_generated_text_matches_expected_exact"
+        ],
+        "next_action_generated_text_matches_expected_stripped": summary[
+            "next_action_generated_text_matches_expected_stripped"
+        ],
         "next_action_no_claim_policy": summary["next_action_no_claim_policy"],
         "next_action_no_claim_policy_sha256": summary[
             "next_action_no_claim_policy_sha256"
@@ -1548,6 +1645,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_expected_next_token_text"]
     elif args.next_action_expected_next_token_logit_only:
         payload = report["next_action_expected_next_token_logit"]
+    elif args.next_action_oracle_generated_text_sha_only:
+        payload = report["next_action_oracle_generated_text_sha256"]
+    elif args.next_action_oracle_generated_text_only:
+        payload = report["next_action_oracle_generated_text"]
+    elif args.next_action_generated_text_only:
+        payload = report["next_action_generated_text"]
+    elif args.next_action_generated_text_len_only:
+        payload = report["next_action_generated_text_len"]
+    elif args.next_action_generated_text_matches_expected_exact_only:
+        payload = report["next_action_generated_text_matches_expected_exact"]
+    elif args.next_action_generated_text_matches_expected_stripped_only:
+        payload = report["next_action_generated_text_matches_expected_stripped"]
     elif args.next_action_no_claim_policy_sha_only:
         payload = report["next_action_no_claim_policy_sha256"]
     elif args.next_action_no_claim_policy_only:
