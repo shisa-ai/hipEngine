@@ -362,6 +362,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--next-action-validator-summary-status-only",
+        action="store_true",
+        help="Print only the status field from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-validator-summary-ready-only",
+        action="store_true",
+        help="Print only the ready boolean from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-validator-summary-oracle-status-only",
+        action="store_true",
+        help="Print only the oracle_status field from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-validator-summary-oracle-blocker-kind-only",
+        action="store_true",
+        help="Print only the oracle_blocker_kind field from the next-action validator summary.",
+    )
+    parser.add_argument(
         "--next-action-missing-evidence-only",
         action="store_true",
         help="Print only the next-action validator missing-evidence list.",
@@ -618,6 +638,12 @@ def _result_missing_evidence(record: dict[str, object]) -> list[object]:
     return list(missing) if isinstance(missing, list) else []
 
 
+def _summary_field(summary: object, key: str) -> object:
+    if isinstance(summary, dict):
+        return summary.get(key)
+    return None
+
+
 def _unique_preserving_order(values: Sequence[object]) -> list[object]:
     seen: set[str] = set()
     result: list[object] = []
@@ -832,6 +858,22 @@ def build_validator_status_report(
                 next_action[key] = next_blocker.get(key)
     next_action_validator_summary = (
         next_action.get("validator_summary") if isinstance(next_action, dict) else None
+    )
+    next_action_validator_summary_status = _summary_field(
+        next_action_validator_summary,
+        "status",
+    )
+    next_action_validator_summary_ready = _summary_field(
+        next_action_validator_summary,
+        "ready",
+    )
+    next_action_validator_summary_oracle_status = _summary_field(
+        next_action_validator_summary,
+        "oracle_status",
+    )
+    next_action_validator_summary_oracle_blocker_kind = _summary_field(
+        next_action_validator_summary,
+        "oracle_blocker_kind",
     )
     next_action_missing_evidence = None
     if isinstance(next_action, dict):
@@ -1051,6 +1093,14 @@ def build_validator_status_report(
         "next_action_validator_summary_sha256": status_mod._stable_json_sha256(
             next_action_validator_summary
         ),
+        "next_action_validator_summary_status": next_action_validator_summary_status,
+        "next_action_validator_summary_ready": next_action_validator_summary_ready,
+        "next_action_validator_summary_oracle_status": (
+            next_action_validator_summary_oracle_status
+        ),
+        "next_action_validator_summary_oracle_blocker_kind": (
+            next_action_validator_summary_oracle_blocker_kind
+        ),
         "next_action_missing_evidence": next_action_missing_evidence,
         "next_action_missing_evidence_count": next_action_missing_evidence_count,
         "next_action_missing_evidence_sha256": status_mod._stable_json_sha256(
@@ -1160,6 +1210,18 @@ def build_validator_status_report(
         "next_action_validator_summary_sha256": summary[
             "next_action_validator_summary_sha256"
         ],
+        "next_action_validator_summary_status": summary[
+            "next_action_validator_summary_status"
+        ],
+        "next_action_validator_summary_ready": summary[
+            "next_action_validator_summary_ready"
+        ],
+        "next_action_validator_summary_oracle_status": summary[
+            "next_action_validator_summary_oracle_status"
+        ],
+        "next_action_validator_summary_oracle_blocker_kind": summary[
+            "next_action_validator_summary_oracle_blocker_kind"
+        ],
         "next_action_artifact_name": summary["next_action_artifact_name"],
         "next_action_readiness_gate": summary["next_action_readiness_gate"],
         "next_action_status": summary["next_action_status"],
@@ -1237,6 +1299,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload: object = report["status"]
     elif args.next_action_validator_summary_sha_only:
         payload = report["next_action_validator_summary_sha256"]
+    elif args.next_action_validator_summary_status_only:
+        payload = report["next_action_validator_summary_status"]
+    elif args.next_action_validator_summary_ready_only:
+        payload = report["next_action_validator_summary_ready"]
+    elif args.next_action_validator_summary_oracle_status_only:
+        payload = report["next_action_validator_summary_oracle_status"]
+    elif args.next_action_validator_summary_oracle_blocker_kind_only:
+        payload = report["next_action_validator_summary_oracle_blocker_kind"]
     elif args.next_action_validator_summary_only:
         payload = next_action_validator_summary
     elif args.next_action_missing_evidence_count_only:

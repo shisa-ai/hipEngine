@@ -376,6 +376,22 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_validator_summary_sha256"] == report[
         "next_action_validator_summary_sha256"
     ]
+    assert summary["next_action_validator_summary_status"] is None
+    assert summary["next_action_validator_summary_status"] == report[
+        "next_action_validator_summary_status"
+    ]
+    assert summary["next_action_validator_summary_ready"] is None
+    assert summary["next_action_validator_summary_ready"] == report[
+        "next_action_validator_summary_ready"
+    ]
+    assert summary["next_action_validator_summary_oracle_status"] is None
+    assert summary["next_action_validator_summary_oracle_status"] == report[
+        "next_action_validator_summary_oracle_status"
+    ]
+    assert summary["next_action_validator_summary_oracle_blocker_kind"] is None
+    assert summary["next_action_validator_summary_oracle_blocker_kind"] == report[
+        "next_action_validator_summary_oracle_blocker_kind"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
@@ -641,6 +657,22 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_validator_summary_sha256"] == report[
         "next_action_validator_summary_sha256"
     ]
+    assert summary["next_action_validator_summary_status"] is None
+    assert summary["next_action_validator_summary_status"] == report[
+        "next_action_validator_summary_status"
+    ]
+    assert summary["next_action_validator_summary_ready"] is None
+    assert summary["next_action_validator_summary_ready"] == report[
+        "next_action_validator_summary_ready"
+    ]
+    assert summary["next_action_validator_summary_oracle_status"] is None
+    assert summary["next_action_validator_summary_oracle_status"] == report[
+        "next_action_validator_summary_oracle_status"
+    ]
+    assert summary["next_action_validator_summary_oracle_blocker_kind"] is None
+    assert summary["next_action_validator_summary_oracle_blocker_kind"] == report[
+        "next_action_validator_summary_oracle_blocker_kind"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert summary["blocked_validator_results_sha256"] == report[
@@ -757,6 +789,24 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     )
     assert summary["next_action_validator_summary_sha256"] == report[
         "next_action_validator_summary_sha256"
+    ]
+    assert summary["next_action_validator_summary_status"] == "failed"
+    assert summary["next_action_validator_summary_status"] == report[
+        "next_action_validator_summary_status"
+    ]
+    assert summary["next_action_validator_summary_ready"] is False
+    assert summary["next_action_validator_summary_ready"] == report[
+        "next_action_validator_summary_ready"
+    ]
+    assert summary["next_action_validator_summary_oracle_status"] == "timeout"
+    assert summary["next_action_validator_summary_oracle_status"] == report[
+        "next_action_validator_summary_oracle_status"
+    ]
+    assert summary["next_action_validator_summary_oracle_blocker_kind"] == (
+        "llama_cpp_oracle_timeout"
+    )
+    assert summary["next_action_validator_summary_oracle_blocker_kind"] == report[
+        "next_action_validator_summary_oracle_blocker_kind"
     ]
     assert summary["next_action_missing_evidence"] == report["next_blocker"][
         "validator_missing_evidence"
@@ -2068,6 +2118,26 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
     assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
         summary
     )
+
+    rc = main([*args, "--next-action-validator-summary-status-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == "failed"
+
+    rc = main([*args, "--next-action-validator-summary-ready-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is False
+
+    rc = main([*args, "--next-action-validator-summary-oracle-status-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == "timeout"
+
+    rc = main([*args, "--next-action-validator-summary-oracle-blocker-kind-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == "llama_cpp_oracle_timeout"
 
     rc = main([*args, "--next-action-missing-evidence-only", "--pretty"])
 
