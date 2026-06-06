@@ -603,7 +603,9 @@ reporting.
   `--docs-open-partial-summary-sha-only` expose a compact count+boundary+digest
   summary, `--docs-open-partial-state-counts-only` /
   `--docs-open-partial-state-counts-sha-only` expose open-vs-partial blocker
-  counts, and `--docs-first-open-partial-item-only` /
+  counts, `--docs-open-partial-lines-only` /
+  `--docs-open-partial-lines-sha-only` expose direct checklist line numbers,
+  and `--docs-first-open-partial-item-only` /
   `--docs-first-open-partial-item-sha-only` /
   `--docs-last-open-partial-item-only` /
   `--docs-last-open-partial-item-sha-only` expose the current first/last

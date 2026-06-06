@@ -1593,6 +1593,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "docs_open_partial_state_counts_sha_only": (
             "docs_checklist.open_or_partial_state_counts_p0_p12_sha256"
         ),
+        "docs_open_partial_lines_only": (
+            "docs_checklist.open_or_partial_lines_p0_p12"
+        ),
+        "docs_open_partial_lines_sha_only": (
+            "docs_checklist.open_or_partial_lines_p0_p12_sha256"
+        ),
         "docs_first_open_partial_item_only": (
             "docs_checklist.first_open_or_partial_item_p0_p12"
         ),
@@ -2463,6 +2469,8 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     summary_sha_output = tmp_path / "docs-open-partial-summary-sha.json"
     state_counts_output = tmp_path / "docs-open-partial-state-counts.json"
     state_counts_sha_output = tmp_path / "docs-open-partial-state-counts-sha.json"
+    lines_output = tmp_path / "docs-open-partial-lines.json"
+    lines_sha_output = tmp_path / "docs-open-partial-lines-sha.json"
     first_output = tmp_path / "docs-first-open-partial-item.json"
     first_sha_output = tmp_path / "docs-first-open-partial-item-sha.json"
     last_output = tmp_path / "docs-last-open-partial-item.json"
@@ -2512,9 +2520,17 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     ][-1]
     assert payload["last_open_or_partial_item_p0_p12"]["state"] == "partial"
     expected_state_counts = {"open": 1, "partial": 1}
+    expected_lines = [
+        payload["first_open_or_partial_item_p0_p12"]["line"],
+        payload["last_open_or_partial_item_p0_p12"]["line"],
+    ]
     assert payload["open_or_partial_state_counts_p0_p12"] == expected_state_counts
     assert payload["open_or_partial_state_counts_p0_p12_sha256"] == (
         _stable_json_sha256(expected_state_counts)
+    )
+    assert payload["open_or_partial_lines_p0_p12"] == expected_lines
+    assert payload["open_or_partial_lines_p0_p12_sha256"] == (
+        _stable_json_sha256(expected_lines)
     )
     expected_summary = {
         "schema_version": 1,
@@ -2528,10 +2544,8 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
         "open_or_partial_state_counts_sha256": _stable_json_sha256(
             expected_state_counts
         ),
-        "open_or_partial_lines": [
-            payload["first_open_or_partial_item_p0_p12"]["line"],
-            payload["last_open_or_partial_item_p0_p12"]["line"],
-        ],
+        "open_or_partial_lines": expected_lines,
+        "open_or_partial_lines_sha256": _stable_json_sha256(expected_lines),
         "first_open_or_partial_item_p0_p12": payload[
             "first_open_or_partial_item_p0_p12"
         ],
@@ -2726,6 +2740,64 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     assert status["handoff_summary"]["compact_output_modes"][
         "docs_open_partial_state_counts_sha_only"
     ] == "docs_checklist.open_or_partial_state_counts_p0_p12_sha256"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(lines_output),
+            "--summary-only",
+            "--docs-open-partial-lines-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(lines_output.read_text()) == status["docs_checklist"][
+        "open_or_partial_lines_p0_p12"
+    ]
+    assert status["handoff_summary"]["compact_output_modes"][
+        "docs_open_partial_lines_only"
+    ] == "docs_checklist.open_or_partial_lines_p0_p12"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(lines_sha_output),
+            "--summary-only",
+            "--docs-open-partial-lines-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(lines_sha_output.read_text()) == status["docs_checklist"][
+        "open_or_partial_lines_p0_p12_sha256"
+    ]
+    assert status["handoff_summary"]["compact_output_modes"][
+        "docs_open_partial_lines_sha_only"
+    ] == "docs_checklist.open_or_partial_lines_p0_p12_sha256"
 
     rc = main(
         [
@@ -5178,6 +5250,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "docs_open_partial_state_counts_sha_only": (
             "docs_checklist.open_or_partial_state_counts_p0_p12_sha256"
+        ),
+        "docs_open_partial_lines_only": (
+            "docs_checklist.open_or_partial_lines_p0_p12"
+        ),
+        "docs_open_partial_lines_sha_only": (
+            "docs_checklist.open_or_partial_lines_p0_p12_sha256"
         ),
         "docs_first_open_partial_item_only": (
             "docs_checklist.first_open_or_partial_item_p0_p12"
