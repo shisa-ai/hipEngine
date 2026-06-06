@@ -693,11 +693,16 @@ reporting.
   `--next-action-validator-command-sha-only` /
   `--next-action-producer-command-kind-only` /
   `--next-action-producer-command-only` /
-  `--next-action-producer-command-sha-only` expose compact pollable validator
+  `--next-action-producer-command-sha-only`, plus
+  `--next-action-partial-output-handoff-only` /
+  `--next-action-partial-output-handoff-sha-only` /
+  `--next-action-partial-output-path-only` /
+  `--next-action-partial-output-status-only`, expose compact pollable validator
   records/commands/evidence gaps by artifact (with next-action artifact name,
   readiness gate, status, reason, missing-evidence count/digest, validator
-  command kind/command, producer command kind/command, and
-  validator/producer command digests also available at the top-level report), all gates,
+  command kind/command, producer command kind/command, partial-output handoff
+  bundle/path/status, and validator/producer command digests also available at
+  the top-level report), all gates,
   blocked gate names,
   selected gate (with a `selected_blocked_gate_found` flag in the aggregate
   summary), and first blocked gate,

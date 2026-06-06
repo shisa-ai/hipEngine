@@ -808,6 +808,34 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_validator_summary_oracle_blocker_kind"] == report[
         "next_action_validator_summary_oracle_blocker_kind"
     ]
+    expected_handoff = {
+        "producer_writes_partial_output_before_launch": True,
+        "producer_partial_output_path": str(oracle),
+        "producer_partial_output_status": "running",
+        "producer_partial_output_overwrite_policy": "overwrite_on_execute_or_timeout",
+        "producer_partial_output_supervisor_signal_handoff_safe": True,
+        "artifact_partial_output_handoff_safe": True,
+        "artifact_partial_output_supervisor_signal_handoff_safe": True,
+        "artifact_partial_output_supervisor_signal_contract": supervisor_contract,
+    }
+    assert summary["next_action_partial_output_handoff"] == expected_handoff
+    assert summary["next_action_partial_output_handoff"] == report[
+        "next_action_partial_output_handoff"
+    ]
+    assert summary["next_action_partial_output_handoff_sha256"] == (
+        status_mod._stable_json_sha256(expected_handoff)
+    )
+    assert summary["next_action_partial_output_handoff_sha256"] == report[
+        "next_action_partial_output_handoff_sha256"
+    ]
+    assert summary["next_action_partial_output_path"] == str(oracle)
+    assert summary["next_action_partial_output_path"] == report[
+        "next_action_partial_output_path"
+    ]
+    assert summary["next_action_partial_output_status"] == "running"
+    assert summary["next_action_partial_output_status"] == report[
+        "next_action_partial_output_status"
+    ]
     assert summary["next_action_missing_evidence"] == report["next_blocker"][
         "validator_missing_evidence"
     ]
@@ -2138,6 +2166,36 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == "llama_cpp_oracle_timeout"
+
+    rc = main([*args, "--next-action-partial-output-handoff-only", "--pretty"])
+
+    assert rc == 0
+    partial_handoff = json.loads(capsys.readouterr().out)
+    assert partial_handoff["producer_partial_output_path"] == str(oracle)
+    assert partial_handoff["producer_partial_output_status"] == "running"
+    assert partial_handoff["producer_partial_output_supervisor_signal_handoff_safe"] is True
+    assert partial_handoff["artifact_partial_output_handoff_safe"] is True
+    assert partial_handoff["artifact_partial_output_supervisor_signal_handoff_safe"] is True
+    assert partial_handoff["artifact_partial_output_supervisor_signal_contract"][
+        "timeout_blocker_kind"
+    ] == "llama_cpp_oracle_timeout"
+
+    rc = main([*args, "--next-action-partial-output-handoff-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        partial_handoff
+    )
+
+    rc = main([*args, "--next-action-partial-output-path-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == str(oracle)
+
+    rc = main([*args, "--next-action-partial-output-status-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == "running"
 
     rc = main([*args, "--next-action-missing-evidence-only", "--pretty"])
 

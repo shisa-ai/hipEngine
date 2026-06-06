@@ -347,6 +347,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the producer command from the next-action payload.",
     )
     parser.add_argument(
+        "--next-action-partial-output-handoff-only",
+        action="store_true",
+        help="Print only the partial-output handoff bundle from the next-action payload.",
+    )
+    parser.add_argument(
+        "--next-action-partial-output-handoff-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the next-action partial-output handoff bundle.",
+    )
+    parser.add_argument(
+        "--next-action-partial-output-path-only",
+        action="store_true",
+        help="Print only the producer partial-output path from the next-action payload.",
+    )
+    parser.add_argument(
+        "--next-action-partial-output-status-only",
+        action="store_true",
+        help="Print only the producer partial-output status from the next-action payload.",
+    )
+    parser.add_argument(
         "--next-action-validator-summary-only",
         action="store_true",
         help=(
@@ -644,6 +664,27 @@ def _summary_field(summary: object, key: str) -> object:
     return None
 
 
+def _next_action_partial_output_handoff(
+    next_action: object,
+) -> dict[str, object] | None:
+    if not isinstance(next_action, dict):
+        return None
+    keys = (
+        "producer_writes_partial_output_before_launch",
+        "producer_partial_output_path",
+        "producer_partial_output_status",
+        "producer_partial_output_overwrite_policy",
+        "producer_partial_output_supervisor_signal_handoff_safe",
+        "artifact_partial_output_handoff_safe",
+        "artifact_partial_output_supervisor_signal_handoff_safe",
+        "artifact_partial_output_supervisor_signal_contract",
+    )
+    handoff = {key: next_action.get(key) for key in keys}
+    if not any(value is not None and value != "" for value in handoff.values()):
+        return None
+    return handoff
+
+
 def _unique_preserving_order(values: Sequence[object]) -> list[object]:
     seen: set[str] = set()
     result: list[object] = []
@@ -889,6 +930,19 @@ def build_validator_status_report(
         if isinstance(next_action_missing_evidence, list)
         else None
     )
+    next_action_partial_output_handoff = _next_action_partial_output_handoff(
+        next_action
+    )
+    next_action_partial_output_path = (
+        next_action_partial_output_handoff.get("producer_partial_output_path")
+        if isinstance(next_action_partial_output_handoff, dict)
+        else None
+    )
+    next_action_partial_output_status = (
+        next_action_partial_output_handoff.get("producer_partial_output_status")
+        if isinstance(next_action_partial_output_handoff, dict)
+        else None
+    )
     selected_blocked_gate = _blocked_gate_by_name(
         blocked_evidence_by_gate,
         selected_blocked_gate_name,
@@ -1089,6 +1143,12 @@ def build_validator_status_report(
         "next_action_producer_command_sha256": status_mod._stable_json_sha256(
             next_action.get("producer_command") if isinstance(next_action, dict) else None
         ),
+        "next_action_partial_output_handoff": next_action_partial_output_handoff,
+        "next_action_partial_output_handoff_sha256": status_mod._stable_json_sha256(
+            next_action_partial_output_handoff
+        ),
+        "next_action_partial_output_path": next_action_partial_output_path,
+        "next_action_partial_output_status": next_action_partial_output_status,
         "next_action_sha256": status_mod._stable_json_sha256(next_action),
         "next_action_validator_summary_sha256": status_mod._stable_json_sha256(
             next_action_validator_summary
@@ -1246,6 +1306,18 @@ def build_validator_status_report(
         "next_action_producer_command_sha256": summary[
             "next_action_producer_command_sha256"
         ],
+        "next_action_partial_output_handoff": summary[
+            "next_action_partial_output_handoff"
+        ],
+        "next_action_partial_output_handoff_sha256": summary[
+            "next_action_partial_output_handoff_sha256"
+        ],
+        "next_action_partial_output_path": summary[
+            "next_action_partial_output_path"
+        ],
+        "next_action_partial_output_status": summary[
+            "next_action_partial_output_status"
+        ],
         "next_action_sha256": status_mod._stable_json_sha256(next_action),
         "readiness_impact": {
             "validator_artifacts_passed": ready,
@@ -1337,6 +1409,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_producer_command"]
     elif args.next_action_producer_command_sha_only:
         payload = report["next_action_producer_command_sha256"]
+    elif args.next_action_partial_output_handoff_sha_only:
+        payload = report["next_action_partial_output_handoff_sha256"]
+    elif args.next_action_partial_output_handoff_only:
+        payload = report["next_action_partial_output_handoff"]
+    elif args.next_action_partial_output_path_only:
+        payload = report["next_action_partial_output_path"]
+    elif args.next_action_partial_output_status_only:
+        payload = report["next_action_partial_output_status"]
     elif args.next_action_only:
         payload = report["next_action"]
     elif args.next_producer_command_kind_only:
