@@ -27,6 +27,13 @@ from scripts import stepfun_kv_trace_check as kv_trace_check_mod
 from scripts import stepfun_oracle_artifact_check as oracle_check_mod
 
 VALIDATOR_STATUS_SCHEMA_VERSION = 1
+ORACLE_EVIDENCE_GAP_NAMES = (
+    "oracle_success_status",
+    "oracle_returncode_zero",
+    "no_timeout_or_oracle_blocker",
+    "generated_text_nonempty",
+    "generated_text_matches_target",
+)
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -560,6 +567,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--next-action-missing-evidence-count-only",
         action="store_true",
         help="Print only the next-action missing-evidence item count.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-evidence-gap-count-only",
+        action="store_true",
+        help="Print only the next-action oracle evidence-gap item count.",
     )
     parser.add_argument(
         "--next-action-missing-evidence-present-only",
@@ -1366,6 +1378,11 @@ def build_validator_status_report(
         if isinstance(next_action_missing_evidence, list)
         else None
     )
+    next_action_oracle_evidence_gap_count = (
+        sum(name in next_action_missing_evidence for name in ORACLE_EVIDENCE_GAP_NAMES)
+        if isinstance(next_action_missing_evidence, list)
+        else None
+    )
     next_action_partial_output_handoff = _next_action_partial_output_handoff(
         next_action
     )
@@ -1652,6 +1669,9 @@ def build_validator_status_report(
         ),
         "next_action_missing_evidence": next_action_missing_evidence,
         "next_action_missing_evidence_count": next_action_missing_evidence_count,
+        "next_action_oracle_evidence_gap_count": (
+            next_action_oracle_evidence_gap_count
+        ),
         "next_action_missing_evidence_present": next_action_missing_evidence_present,
         "next_action_missing_evidence_joined": next_action_missing_evidence_joined,
         "next_action_missing_evidence_sorted": next_action_missing_evidence_sorted,
@@ -1888,6 +1908,9 @@ def build_validator_status_report(
         "next_action_missing_evidence_count": summary[
             "next_action_missing_evidence_count"
         ],
+        "next_action_oracle_evidence_gap_count": summary[
+            "next_action_oracle_evidence_gap_count"
+        ],
         "next_action_missing_evidence_present": summary[
             "next_action_missing_evidence_present"
         ],
@@ -2079,6 +2102,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = next_action_validator_summary
     elif args.next_action_missing_evidence_count_only:
         payload = report["next_action_missing_evidence_count"]
+    elif args.next_action_oracle_evidence_gap_count_only:
+        payload = report["next_action_oracle_evidence_gap_count"]
     elif args.next_action_missing_evidence_present_only:
         payload = report["next_action_missing_evidence_present"]
     elif args.next_action_missing_evidence_joined_only:
