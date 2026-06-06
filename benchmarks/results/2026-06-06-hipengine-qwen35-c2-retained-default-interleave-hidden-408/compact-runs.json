@@ -1,0 +1,619 @@
+{
+  "active_verify_repeats": {
+    "final_active_verify_green": {
+      "correctness_passed": false,
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "4f2e30286b120e6443f894021429587a3b6686976fb888a067655ad69d51527c",
+        "size_bytes": 138425
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "4f2e30286b120e6443f894021429587a3b6686976fb888a067655ad69d51527c",
+        "size_bytes": 138425
+      },
+      "sampler_execution": {
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head"
+      }
+    },
+    "first_active_verify_red": {
+      "correctness_passed": false,
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          104
+        ],
+        "min_equal_prefix_tokens": 104,
+        "passed": false,
+        "prefix_lengths": [
+          137,
+          104
+        ]
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-iter408-first-red.json",
+        "sha256": "e9f2857459377b5c3e720bd26ec77be6b5960092c545c7dcdc26c364e3429447",
+        "size_bytes": 144926
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-iter408-first-red.log",
+        "sha256": "e9f2857459377b5c3e720bd26ec77be6b5960092c545c7dcdc26c364e3429447",
+        "size_bytes": 144926
+      },
+      "sampler_execution": {
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head"
+      }
+    },
+    "repeat_active_verify_green": {
+      "correctness_passed": false,
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter408.json",
+        "sha256": "f4a48a8d6de3b66ff586b4a236e15877d875c473c0d17a650885966c8833a2c3",
+        "size_bytes": 138484
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter408.log",
+        "sha256": "f4a48a8d6de3b66ff586b4a236e15877d875c473c0d17a650885966c8833a2c3",
+        "size_bytes": 138484
+      },
+      "sampler_execution": {
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head"
+      }
+    }
+  },
+  "hidden_runs": {
+    "iter406_selected_projection_interleaved_green": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 0,
+          "hidden_failure_rows": [],
+          "layer_limits": [
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            },
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 40,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 0,
+          "strict_hidden_bit_drift_rows": [],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": true,
+          "decode_full_context_oracle_passed": true,
+          "decode_full_kv_sample_passed": true,
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "first_context_oracle_failure": null,
+          "first_full_attention_failure": null,
+          "first_kv_sample_failure": null,
+          "hidden_failure_rows": [],
+          "hidden_passed": true,
+          "layer_limit": 8,
+          "token_failure_rows": [],
+          "token_passed": true
+        },
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": true,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": true,
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "first_context_oracle_failure": {
+            "comparison": "batch_context_vs_numpy",
+            "context_len": 514,
+            "context_len_match": true,
+            "decode_step": 1,
+            "elements_over_atol": 1,
+            "generated_index": 2,
+            "layer_index": 15,
+            "max_abs": 4.00543212890625e-05,
+            "max_abs_flat_index": 2033,
+            "max_abs_index": [
+              0,
+              2033
+            ],
+            "row": 1
+          },
+          "first_full_attention_failure": null,
+          "first_kv_sample_failure": null,
+          "hidden_failure_rows": [],
+          "hidden_passed": true,
+          "layer_limit": 40,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter406-L8-L40-c2-append-context-interleave-atol4e-3-focus1269.json",
+        "sha256": "cecc90726e00cc6879029a4519167e2d01400113c85d805ccd57a1f1b7d4dc54",
+        "size_bytes": 43772385
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter406-L8-L40-c2-append-context-interleave-atol4e-3-focus1269.log",
+        "sha256": "cecc90726e00cc6879029a4519167e2d01400113c85d805ccd57a1f1b7d4dc54",
+        "size_bytes": 43772385
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_attention_append_context_order": "interleaved",
+        "batch_decode_attention_context_path": "per_row",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "selected_c1",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": null
+      }
+    },
+    "iter407_retained_default_no_flag_red": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            },
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                1,
+                0
+              ],
+              "layer_limit": 40,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": false,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": false,
+          "decode_linear_stage_passed": false,
+          "decode_linear_state_passed": false,
+          "first_context_oracle_failure": {
+            "comparison": "batch_numpy_vs_c1_numpy",
+            "context_len": 513,
+            "context_len_match": true,
+            "decode_step": 0,
+            "elements_over_atol": 3142,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.007256507873535156,
+            "max_abs_flat_index": 2812,
+            "max_abs_index": [
+              0,
+              2812
+            ],
+            "row": 0
+          },
+          "first_full_attention_failure": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 3,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1269,
+            "max_abs_index": [
+              0,
+              1269
+            ],
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "first_kv_sample_failure": {
+            "bit_mismatch": 143,
+            "check": "batch_source_vs_c1_source",
+            "decode_step": 0,
+            "elements_over_atol": 143,
+            "generated_index": 1,
+            "kind": "key",
+            "layer_index": 7,
+            "max_abs": 0.03125,
+            "max_abs_flat_index": 214,
+            "max_abs_index": [
+              214
+            ],
+            "row": 0,
+            "sample_index": 4,
+            "sample_label": "current",
+            "sample_position": 512,
+            "source_stage": "key_after_prepare"
+          },
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "hidden_passed": false,
+          "layer_limit": 8,
+          "token_failure_rows": [],
+          "token_passed": true
+        },
+        {
+          "decode_full_attention_input_passed": false,
+          "decode_full_attention_output_passed": false,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": false,
+          "decode_linear_stage_passed": false,
+          "decode_linear_state_passed": false,
+          "first_context_oracle_failure": {
+            "comparison": "c1_context_vs_numpy",
+            "context_len": 514,
+            "context_len_match": true,
+            "decode_step": 1,
+            "elements_over_atol": 1,
+            "generated_index": 2,
+            "layer_index": 15,
+            "max_abs": 4.00543212890625e-05,
+            "max_abs_flat_index": 2033,
+            "max_abs_index": [
+              0,
+              2033
+            ],
+            "row": 1
+          },
+          "first_full_attention_failure": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 1,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1197,
+            "max_abs_index": [
+              0,
+              1197
+            ],
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "first_kv_sample_failure": {
+            "bit_mismatch": 123,
+            "check": "batch_source_vs_c1_source",
+            "decode_step": 0,
+            "elements_over_atol": 123,
+            "generated_index": 1,
+            "kind": "key",
+            "layer_index": 7,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 122,
+            "max_abs_index": [
+              122
+            ],
+            "row": 0,
+            "sample_index": 4,
+            "sample_label": "current",
+            "sample_position": 512,
+            "source_stage": "key_after_prepare"
+          },
+          "hidden_failure_rows": [
+            1,
+            0
+          ],
+          "hidden_passed": false,
+          "layer_limit": 40,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter407-L8-L40-c2-retained-default-atol4e-3-focus1269.json",
+        "sha256": "e4cace79cae915b3924ec4790493299e08690f0cdfca5014b8c5f496c280cdc0",
+        "size_bytes": 144515089
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter407-L8-L40-c2-retained-default-atol4e-3-focus1269.log",
+        "sha256": "e4cace79cae915b3924ec4790493299e08690f0cdfca5014b8c5f496c280cdc0",
+        "size_bytes": 144515089
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "batch",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": null
+      }
+    },
+    "retained_default_interleaved_green": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 0,
+          "hidden_failure_rows": [],
+          "layer_limits": [
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            },
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 40,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 0,
+          "strict_hidden_bit_drift_rows": [],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": true,
+          "decode_full_context_oracle_passed": true,
+          "decode_full_kv_sample_passed": true,
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "first_context_oracle_failure": null,
+          "first_full_attention_failure": null,
+          "first_kv_sample_failure": null,
+          "hidden_failure_rows": [],
+          "hidden_passed": true,
+          "layer_limit": 8,
+          "token_failure_rows": [],
+          "token_passed": true
+        },
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": true,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": true,
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "first_context_oracle_failure": {
+            "comparison": "batch_context_vs_numpy",
+            "context_len": 514,
+            "context_len_match": true,
+            "decode_step": 1,
+            "elements_over_atol": 1,
+            "generated_index": 2,
+            "layer_index": 15,
+            "max_abs": 4.00543212890625e-05,
+            "max_abs_flat_index": 2033,
+            "max_abs_index": [
+              0,
+              2033
+            ],
+            "row": 1
+          },
+          "first_full_attention_failure": null,
+          "first_kv_sample_failure": null,
+          "hidden_failure_rows": [],
+          "hidden_passed": true,
+          "layer_limit": 40,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter408-L8-L40-c2-retained-default-interleaved-atol4e-3-focus1269.json",
+        "sha256": "b4ea6f788764277cd5243f44c6293edd84161d823ad8a91ee40df9983090d4fc",
+        "size_bytes": 43765236
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter408-L8-L40-c2-retained-default-interleaved-atol4e-3-focus1269.log",
+        "sha256": "b4ea6f788764277cd5243f44c6293edd84161d823ad8a91ee40df9983090d4fc",
+        "size_bytes": 43765236
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_attention_append_context_order": "interleaved",
+        "batch_decode_attention_context_path": "per_row",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": null
+      }
+    }
+  },
+  "previous_artifacts": {
+    "iter406": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-l40-append-context-interleave-406/summary.json",
+      "sha256": "b8acb7ffb3d896ff614b2e95600859963dda6da2a5d82334d844050267aaa480",
+      "size_bytes": 13056
+    },
+    "iter407": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-retained-interleave-bridge-407/summary.json",
+      "sha256": "13f256106cd4dedd76f0026e7c63923513f33e906c1f13498aef8ac1ffac514c",
+      "size_bytes": 41855
+    }
+  }
+}

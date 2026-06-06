@@ -3349,9 +3349,13 @@ roll-up/status view.
       KV-append/context/interleave blockers and `native_caware_decode=false`; the
       no-flag retained bench is also generated-token green and native, while
       no-flag, batch-temp-context, and compact-cache-context hidden-bisect
-      contrasts remain hidden-red. The interleaving fallback is therefore
-      correctness evidence, not a retained/native fix
-      (`benchmarks/results/2026-06-06-hipengine-qwen35-c2-retained-interleave-bridge-407/summary.json`).
+      contrasts remain hidden-red. The retained-default hidden-bisect projection
+      path also clears at L8+L40 with only the same per-row KV-append/context plus
+      interleaved ordering fallback, so the blocker is not selected-projection
+      specific and not batch linear projection/state/output. The interleaving
+      fallback is therefore correctness evidence, not a retained/native fix
+      (`benchmarks/results/2026-06-06-hipengine-qwen35-c2-retained-interleave-bridge-407/summary.json`,
+      `benchmarks/results/2026-06-06-hipengine-qwen35-c2-retained-default-interleave-hidden-408/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
