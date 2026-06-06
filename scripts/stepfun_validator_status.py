@@ -611,6 +611,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print only whether generated_text_matches_target is missing evidence.",
     )
+    parser.add_argument(
+        "--next-action-generated-text-nonempty-missing-only",
+        action="store_true",
+        help="Print only whether generated_text_nonempty is missing evidence.",
+    )
 
     parser.add_argument(
         "--sha-only",
@@ -1336,6 +1341,11 @@ def build_validator_status_report(
         if isinstance(next_action_missing_evidence, list)
         else None
     )
+    next_action_generated_text_nonempty_missing = (
+        "generated_text_nonempty" in next_action_missing_evidence
+        if isinstance(next_action_missing_evidence, list)
+        else None
+    )
     next_action_partial_output_handoff = _next_action_partial_output_handoff(
         next_action
     )
@@ -1642,6 +1652,9 @@ def build_validator_status_report(
         "next_action_generated_text_matches_target_missing": (
             next_action_generated_text_matches_target_missing
         ),
+        "next_action_generated_text_nonempty_missing": (
+            next_action_generated_text_nonempty_missing
+        ),
         "next_action_missing_evidence_sha256": status_mod._stable_json_sha256(
             next_action_missing_evidence
         ),
@@ -1879,6 +1892,9 @@ def build_validator_status_report(
         "next_action_generated_text_matches_target_missing": summary[
             "next_action_generated_text_matches_target_missing"
         ],
+        "next_action_generated_text_nonempty_missing": summary[
+            "next_action_generated_text_nonempty_missing"
+        ],
         "next_action_missing_evidence_sha256": summary[
             "next_action_missing_evidence_sha256"
         ],
@@ -2051,6 +2067,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_oracle_success_status_missing"]
     elif args.next_action_generated_text_matches_target_missing_only:
         payload = report["next_action_generated_text_matches_target_missing"]
+    elif args.next_action_generated_text_nonempty_missing_only:
+        payload = report["next_action_generated_text_nonempty_missing"]
     elif args.next_action_missing_evidence_sha_only:
         payload = report["next_action_missing_evidence_sha256"]
     elif args.next_action_missing_evidence_only:
