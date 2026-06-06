@@ -712,14 +712,18 @@ reporting.
   `--next-action-validator-summary-ready-only` /
   `--next-action-validator-summary-oracle-status-only` /
   `--next-action-validator-summary-oracle-blocker-kind-only` expose compact
-  status/oracle-timeout routing fields from that summary, and
+  status/oracle-timeout routing fields from that summary,
+  `--next-action-no-claim-policy-only` /
+  `--next-action-no-claim-policy-sha-only` plus per-gate
+  `--next-action-*-claim-allowed-only` modes expose the embedded no-claim policy,
+  and
   `--next-action-missing-evidence-only` /
   `--next-action-missing-evidence-sha-only` /
   `--next-action-missing-evidence-count-only` expose just its missing-evidence
   list/digest/count (including `artifact_file_present` for missing retained files),
   while the aggregate validator summary carries the next-action validator-summary
-  digest, status/oracle routing fields, plus missing-evidence list/count/digest
-  for drift polling; with the
+  digest, status/oracle routing fields, no-claim policy booleans, plus
+  missing-evidence list/count/digest for drift polling; with the
   oracle next-action bundle mirroring the current validator summary plus
   partial-output and supervisor-signal timeout handoff when it is
   the first blocker),

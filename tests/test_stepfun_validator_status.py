@@ -808,6 +808,35 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_validator_summary_oracle_blocker_kind"] == report[
         "next_action_validator_summary_oracle_blocker_kind"
     ]
+    expected_no_claim_policy = report["next_blocker"]["validator_summary"][
+        "no_claim_policy"
+    ]
+    assert summary["next_action_no_claim_policy"] == expected_no_claim_policy
+    assert summary["next_action_no_claim_policy"] == report[
+        "next_action_no_claim_policy"
+    ]
+    assert summary["next_action_no_claim_policy_sha256"] == (
+        status_mod._stable_json_sha256(expected_no_claim_policy)
+    )
+    assert summary["next_action_no_claim_policy_sha256"] == report[
+        "next_action_no_claim_policy_sha256"
+    ]
+    assert summary["next_action_oracle_parity_claim_allowed"] is False
+    assert summary["next_action_oracle_parity_claim_allowed"] == report[
+        "next_action_oracle_parity_claim_allowed"
+    ]
+    assert summary["next_action_kv_backed_decode_claim_allowed"] is False
+    assert summary["next_action_kv_backed_decode_claim_allowed"] == report[
+        "next_action_kv_backed_decode_claim_allowed"
+    ]
+    assert summary["next_action_e2e_inference_claim_allowed"] is False
+    assert summary["next_action_e2e_inference_claim_allowed"] == report[
+        "next_action_e2e_inference_claim_allowed"
+    ]
+    assert summary["next_action_performance_claim_allowed"] is False
+    assert summary["next_action_performance_claim_allowed"] == report[
+        "next_action_performance_claim_allowed"
+    ]
     expected_handoff = {
         "producer_writes_partial_output_before_launch": True,
         "producer_partial_output_path": str(oracle),
@@ -2166,6 +2195,43 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == "llama_cpp_oracle_timeout"
+
+    rc = main([*args, "--next-action-no-claim-policy-only", "--pretty"])
+
+    assert rc == 0
+    no_claim_policy = json.loads(capsys.readouterr().out)
+    assert no_claim_policy == summary["no_claim_policy"]
+    assert no_claim_policy["oracle_parity_claim_allowed"] is False
+    assert no_claim_policy["kv_backed_decode_claim_allowed"] is False
+    assert no_claim_policy["e2e_inference_claim_allowed"] is False
+    assert no_claim_policy["performance_claim_allowed"] is False
+
+    rc = main([*args, "--next-action-no-claim-policy-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        no_claim_policy
+    )
+
+    rc = main([*args, "--next-action-oracle-parity-claim-allowed-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is False
+
+    rc = main([*args, "--next-action-kv-backed-decode-claim-allowed-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is False
+
+    rc = main([*args, "--next-action-e2e-inference-claim-allowed-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is False
+
+    rc = main([*args, "--next-action-performance-claim-allowed-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is False
 
     rc = main([*args, "--next-action-partial-output-handoff-only", "--pretty"])
 

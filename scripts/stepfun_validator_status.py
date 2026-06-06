@@ -402,6 +402,36 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the oracle_blocker_kind field from the next-action validator summary.",
     )
     parser.add_argument(
+        "--next-action-no-claim-policy-only",
+        action="store_true",
+        help="Print only the no-claim policy from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-no-claim-policy-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the next-action no-claim policy.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-parity-claim-allowed-only",
+        action="store_true",
+        help="Print only the next-action oracle-parity claim-allowed boolean.",
+    )
+    parser.add_argument(
+        "--next-action-kv-backed-decode-claim-allowed-only",
+        action="store_true",
+        help="Print only the next-action KV-backed-decode claim-allowed boolean.",
+    )
+    parser.add_argument(
+        "--next-action-e2e-inference-claim-allowed-only",
+        action="store_true",
+        help="Print only the next-action e2e-inference claim-allowed boolean.",
+    )
+    parser.add_argument(
+        "--next-action-performance-claim-allowed-only",
+        action="store_true",
+        help="Print only the next-action performance-claim allowed boolean.",
+    )
+    parser.add_argument(
         "--next-action-missing-evidence-only",
         action="store_true",
         help="Print only the next-action validator missing-evidence list.",
@@ -916,6 +946,26 @@ def build_validator_status_report(
         next_action_validator_summary,
         "oracle_blocker_kind",
     )
+    next_action_no_claim_policy = _summary_field(
+        next_action_validator_summary,
+        "no_claim_policy",
+    )
+    next_action_oracle_parity_claim_allowed = _summary_field(
+        next_action_no_claim_policy,
+        "oracle_parity_claim_allowed",
+    )
+    next_action_kv_backed_decode_claim_allowed = _summary_field(
+        next_action_no_claim_policy,
+        "kv_backed_decode_claim_allowed",
+    )
+    next_action_e2e_inference_claim_allowed = _summary_field(
+        next_action_no_claim_policy,
+        "e2e_inference_claim_allowed",
+    )
+    next_action_performance_claim_allowed = _summary_field(
+        next_action_no_claim_policy,
+        "performance_claim_allowed",
+    )
     next_action_missing_evidence = None
     if isinstance(next_action, dict):
         next_action_missing_evidence = next_action.get("validator_missing_evidence")
@@ -1161,6 +1211,22 @@ def build_validator_status_report(
         "next_action_validator_summary_oracle_blocker_kind": (
             next_action_validator_summary_oracle_blocker_kind
         ),
+        "next_action_no_claim_policy": next_action_no_claim_policy,
+        "next_action_no_claim_policy_sha256": status_mod._stable_json_sha256(
+            next_action_no_claim_policy
+        ),
+        "next_action_oracle_parity_claim_allowed": (
+            next_action_oracle_parity_claim_allowed
+        ),
+        "next_action_kv_backed_decode_claim_allowed": (
+            next_action_kv_backed_decode_claim_allowed
+        ),
+        "next_action_e2e_inference_claim_allowed": (
+            next_action_e2e_inference_claim_allowed
+        ),
+        "next_action_performance_claim_allowed": (
+            next_action_performance_claim_allowed
+        ),
         "next_action_missing_evidence": next_action_missing_evidence,
         "next_action_missing_evidence_count": next_action_missing_evidence_count,
         "next_action_missing_evidence_sha256": status_mod._stable_json_sha256(
@@ -1282,6 +1348,22 @@ def build_validator_status_report(
         "next_action_validator_summary_oracle_blocker_kind": summary[
             "next_action_validator_summary_oracle_blocker_kind"
         ],
+        "next_action_no_claim_policy": summary["next_action_no_claim_policy"],
+        "next_action_no_claim_policy_sha256": summary[
+            "next_action_no_claim_policy_sha256"
+        ],
+        "next_action_oracle_parity_claim_allowed": summary[
+            "next_action_oracle_parity_claim_allowed"
+        ],
+        "next_action_kv_backed_decode_claim_allowed": summary[
+            "next_action_kv_backed_decode_claim_allowed"
+        ],
+        "next_action_e2e_inference_claim_allowed": summary[
+            "next_action_e2e_inference_claim_allowed"
+        ],
+        "next_action_performance_claim_allowed": summary[
+            "next_action_performance_claim_allowed"
+        ],
         "next_action_artifact_name": summary["next_action_artifact_name"],
         "next_action_readiness_gate": summary["next_action_readiness_gate"],
         "next_action_status": summary["next_action_status"],
@@ -1379,6 +1461,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_validator_summary_oracle_status"]
     elif args.next_action_validator_summary_oracle_blocker_kind_only:
         payload = report["next_action_validator_summary_oracle_blocker_kind"]
+    elif args.next_action_no_claim_policy_sha_only:
+        payload = report["next_action_no_claim_policy_sha256"]
+    elif args.next_action_no_claim_policy_only:
+        payload = report["next_action_no_claim_policy"]
+    elif args.next_action_oracle_parity_claim_allowed_only:
+        payload = report["next_action_oracle_parity_claim_allowed"]
+    elif args.next_action_kv_backed_decode_claim_allowed_only:
+        payload = report["next_action_kv_backed_decode_claim_allowed"]
+    elif args.next_action_e2e_inference_claim_allowed_only:
+        payload = report["next_action_e2e_inference_claim_allowed"]
+    elif args.next_action_performance_claim_allowed_only:
+        payload = report["next_action_performance_claim_allowed"]
     elif args.next_action_validator_summary_only:
         payload = next_action_validator_summary
     elif args.next_action_missing_evidence_count_only:
