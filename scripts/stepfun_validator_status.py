@@ -569,6 +569,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the next-action missing-evidence item count.",
     )
     parser.add_argument(
+        "--next-action-missing-evidence-summary-only",
+        action="store_true",
+        help="Print only the compact next-action missing-evidence summary.",
+    )
+    parser.add_argument(
+        "--next-action-missing-evidence-summary-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the missing-evidence summary.",
+    )
+    parser.add_argument(
         "--next-action-oracle-evidence-gap-count-only",
         action="store_true",
         help="Print only the next-action oracle evidence-gap item count.",
@@ -1388,6 +1398,41 @@ def build_validator_status_report(
         )
         else None
     )
+    next_action_missing_evidence_summary = (
+        {
+            "schema_version": 1,
+            "artifact_name": next_action.get("artifact_name")
+            if isinstance(next_action, dict)
+            else None,
+            "readiness_gate": next_action.get("readiness_gate")
+            if isinstance(next_action, dict)
+            else None,
+            "status": next_action.get("status")
+            if isinstance(next_action, dict)
+            else None,
+            "reason": next_action.get("reason")
+            if isinstance(next_action, dict)
+            else None,
+            "missing_count": next_action_missing_evidence_count,
+            "missing_present": next_action_missing_evidence_present,
+            "missing_names": next_action_missing_evidence,
+            "missing_names_sha256": status_mod._stable_json_sha256(
+                next_action_missing_evidence
+            ),
+            "missing_names_joined": next_action_missing_evidence_joined,
+            "sorted_missing_names": next_action_missing_evidence_sorted,
+            "sorted_missing_names_sha256": status_mod._stable_json_sha256(
+                next_action_missing_evidence_sorted
+            ),
+            "sorted_missing_names_joined": (
+                next_action_missing_evidence_sorted_joined
+            ),
+            "first_missing": next_action_first_missing_evidence,
+            "last_missing": next_action_last_missing_evidence,
+        }
+        if isinstance(next_action_missing_evidence, list)
+        else None
+    )
     next_action_artifact_file_present_missing = (
         "artifact_file_present" in next_action_missing_evidence
         if isinstance(next_action_missing_evidence, list)
@@ -1766,6 +1811,10 @@ def build_validator_status_report(
         ),
         "next_action_missing_evidence": next_action_missing_evidence,
         "next_action_missing_evidence_count": next_action_missing_evidence_count,
+        "next_action_missing_evidence_summary": next_action_missing_evidence_summary,
+        "next_action_missing_evidence_summary_sha256": (
+            status_mod._stable_json_sha256(next_action_missing_evidence_summary)
+        ),
         "next_action_oracle_evidence_gaps": next_action_oracle_evidence_gaps,
         "next_action_oracle_evidence_gaps_sha256": status_mod._stable_json_sha256(
             next_action_oracle_evidence_gaps
@@ -2027,6 +2076,12 @@ def build_validator_status_report(
         "next_action_missing_evidence_count": summary[
             "next_action_missing_evidence_count"
         ],
+        "next_action_missing_evidence_summary": summary[
+            "next_action_missing_evidence_summary"
+        ],
+        "next_action_missing_evidence_summary_sha256": summary[
+            "next_action_missing_evidence_summary_sha256"
+        ],
         "next_action_oracle_evidence_gaps": summary[
             "next_action_oracle_evidence_gaps"
         ],
@@ -2265,6 +2320,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_oracle_evidence_gaps"]
     elif args.next_action_missing_evidence_present_only:
         payload = report["next_action_missing_evidence_present"]
+    elif args.next_action_missing_evidence_summary_sha_only:
+        payload = report["next_action_missing_evidence_summary_sha256"]
+    elif args.next_action_missing_evidence_summary_only:
+        payload = report["next_action_missing_evidence_summary"]
     elif args.next_action_missing_evidence_joined_only:
         payload = report["next_action_missing_evidence_joined"]
     elif args.next_action_missing_evidence_sorted_sha_only:

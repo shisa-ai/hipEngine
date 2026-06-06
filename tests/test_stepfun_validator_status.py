@@ -348,6 +348,13 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_missing_evidence_count"] == report[
         "next_action_missing_evidence_count"
     ]
+    assert summary["next_action_missing_evidence_summary"] is None
+    assert summary["next_action_missing_evidence_summary"] == report[
+        "next_action_missing_evidence_summary"
+    ]
+    assert summary["next_action_missing_evidence_summary_sha256"] == report[
+        "next_action_missing_evidence_summary_sha256"
+    ]
     assert summary["next_action_oracle_evidence_gap_count"] is None
     assert summary["next_action_oracle_evidence_gap_count"] == report[
         "next_action_oracle_evidence_gap_count"
@@ -753,6 +760,39 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_reason"] == report["next_action_reason"]
     assert summary["next_action_missing_evidence_count"] == report[
         "next_action_missing_evidence_count"
+    ]
+    expected_missing_evidence_summary = {
+        "schema_version": 1,
+        "artifact_name": "kv_kernel_trace_artifact",
+        "readiness_gate": "kv_backed_decode",
+        "status": "missing",
+        "reason": "artifact_file_missing",
+        "missing_count": 1,
+        "missing_present": True,
+        "missing_names": ["artifact_file_present"],
+        "missing_names_sha256": status_mod._stable_json_sha256(
+            ["artifact_file_present"]
+        ),
+        "missing_names_joined": "artifact_file_present",
+        "sorted_missing_names": ["artifact_file_present"],
+        "sorted_missing_names_sha256": status_mod._stable_json_sha256(
+            ["artifact_file_present"]
+        ),
+        "sorted_missing_names_joined": "artifact_file_present",
+        "first_missing": "artifact_file_present",
+        "last_missing": "artifact_file_present",
+    }
+    assert summary["next_action_missing_evidence_summary"] == (
+        expected_missing_evidence_summary
+    )
+    assert summary["next_action_missing_evidence_summary"] == report[
+        "next_action_missing_evidence_summary"
+    ]
+    assert summary["next_action_missing_evidence_summary_sha256"] == (
+        status_mod._stable_json_sha256(expected_missing_evidence_summary)
+    )
+    assert summary["next_action_missing_evidence_summary_sha256"] == report[
+        "next_action_missing_evidence_summary_sha256"
     ]
     assert summary["next_action_oracle_evidence_gap_count"] == 0
     assert summary["next_action_oracle_evidence_gap_count"] == report[
@@ -1271,6 +1311,46 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_missing_evidence_count"] == report[
         "next_action_missing_evidence_count"
     ]
+    expected_sorted_missing_evidence = sorted(
+        report["next_blocker"]["validator_missing_evidence"]
+    )
+    expected_missing_evidence_summary = {
+        "schema_version": 1,
+        "artifact_name": "llama_cpp_oracle_success_artifact",
+        "readiness_gate": "oracle_parity",
+        "status": "failed",
+        "reason": "validator_report_failed",
+        "missing_count": 5,
+        "missing_present": True,
+        "missing_names": report["next_blocker"]["validator_missing_evidence"],
+        "missing_names_sha256": status_mod._stable_json_sha256(
+            report["next_blocker"]["validator_missing_evidence"]
+        ),
+        "missing_names_joined": "|".join(
+            report["next_blocker"]["validator_missing_evidence"]
+        ),
+        "sorted_missing_names": expected_sorted_missing_evidence,
+        "sorted_missing_names_sha256": status_mod._stable_json_sha256(
+            expected_sorted_missing_evidence
+        ),
+        "sorted_missing_names_joined": "|".join(
+            expected_sorted_missing_evidence
+        ),
+        "first_missing": "oracle_success_status",
+        "last_missing": report["next_blocker"]["validator_missing_evidence"][-1],
+    }
+    assert summary["next_action_missing_evidence_summary"] == (
+        expected_missing_evidence_summary
+    )
+    assert summary["next_action_missing_evidence_summary"] == report[
+        "next_action_missing_evidence_summary"
+    ]
+    assert summary["next_action_missing_evidence_summary_sha256"] == (
+        status_mod._stable_json_sha256(expected_missing_evidence_summary)
+    )
+    assert summary["next_action_missing_evidence_summary_sha256"] == report[
+        "next_action_missing_evidence_summary_sha256"
+    ]
     assert summary["next_action_oracle_evidence_gap_count"] == 5
     assert summary["next_action_oracle_evidence_gap_count"] == report[
         "next_action_oracle_evidence_gap_count"
@@ -1346,9 +1426,6 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_missing_evidence_joined"] == report[
         "next_action_missing_evidence_joined"
     ]
-    expected_sorted_missing_evidence = sorted(
-        report["next_blocker"]["validator_missing_evidence"]
-    )
     assert summary["next_action_missing_evidence_sorted"] == (
         expected_sorted_missing_evidence
     )
@@ -2962,6 +3039,37 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == len(missing_evidence)
+
+    expected_missing_evidence_summary = {
+        "schema_version": 1,
+        "artifact_name": "llama_cpp_oracle_success_artifact",
+        "readiness_gate": "oracle_parity",
+        "status": "failed",
+        "reason": "validator_report_failed",
+        "missing_count": len(missing_evidence),
+        "missing_present": True,
+        "missing_names": missing_evidence,
+        "missing_names_sha256": status_mod._stable_json_sha256(missing_evidence),
+        "missing_names_joined": "|".join(missing_evidence),
+        "sorted_missing_names": sorted(missing_evidence),
+        "sorted_missing_names_sha256": status_mod._stable_json_sha256(
+            sorted(missing_evidence)
+        ),
+        "sorted_missing_names_joined": "|".join(sorted(missing_evidence)),
+        "first_missing": missing_evidence[0],
+        "last_missing": missing_evidence[-1],
+    }
+    rc = main([*args, "--next-action-missing-evidence-summary-only", "--pretty"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == expected_missing_evidence_summary
+
+    rc = main([*args, "--next-action-missing-evidence-summary-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        expected_missing_evidence_summary
+    )
 
     rc = main([*args, "--next-action-oracle-evidence-gap-count-only"])
 
