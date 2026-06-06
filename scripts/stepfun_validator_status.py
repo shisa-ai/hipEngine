@@ -1157,6 +1157,9 @@ def build_validator_status_report(
             next_producer_command
         ),
         "next_action": next_action,
+        "next_action_validator_summary_sha256": summary[
+            "next_action_validator_summary_sha256"
+        ],
         "next_action_artifact_name": summary["next_action_artifact_name"],
         "next_action_readiness_gate": summary["next_action_readiness_gate"],
         "next_action_status": summary["next_action_status"],
@@ -1233,7 +1236,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.status_only:
         payload: object = report["status"]
     elif args.next_action_validator_summary_sha_only:
-        payload = status_mod._stable_json_sha256(next_action_validator_summary)
+        payload = report["next_action_validator_summary_sha256"]
     elif args.next_action_validator_summary_only:
         payload = next_action_validator_summary
     elif args.next_action_missing_evidence_count_only:

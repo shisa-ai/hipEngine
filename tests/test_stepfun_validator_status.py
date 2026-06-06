@@ -373,6 +373,9 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_producer_command_sha256"] == report[
         "next_action_producer_command_sha256"
     ]
+    assert summary["next_action_validator_summary_sha256"] == report[
+        "next_action_validator_summary_sha256"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
@@ -635,6 +638,9 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_producer_command_sha256"] == report[
         "next_action_producer_command_sha256"
     ]
+    assert summary["next_action_validator_summary_sha256"] == report[
+        "next_action_validator_summary_sha256"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert summary["blocked_validator_results_sha256"] == report[
@@ -749,6 +755,9 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_validator_summary_sha256"] == (
         status_mod._stable_json_sha256(report["next_blocker"]["validator_summary"])
     )
+    assert summary["next_action_validator_summary_sha256"] == report[
+        "next_action_validator_summary_sha256"
+    ]
     assert summary["next_action_missing_evidence"] == report["next_blocker"][
         "validator_missing_evidence"
     ]
