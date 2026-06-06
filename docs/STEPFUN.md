@@ -601,7 +601,9 @@ reporting.
   and digest used by the loop metric, `--docs-open-partial-count-only` emits just
   the single integer loop metric, `--docs-open-partial-summary-only` /
   `--docs-open-partial-summary-sha-only` expose a compact count+boundary+digest
-  summary, and `--docs-first-open-partial-item-only` /
+  summary, `--docs-open-partial-state-counts-only` /
+  `--docs-open-partial-state-counts-sha-only` expose open-vs-partial blocker
+  counts, and `--docs-first-open-partial-item-only` /
   `--docs-first-open-partial-item-sha-only` /
   `--docs-last-open-partial-item-only` /
   `--docs-last-open-partial-item-sha-only` expose the current first/last
