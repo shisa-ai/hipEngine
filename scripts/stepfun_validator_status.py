@@ -492,6 +492,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the evidence-checks SHA-256 from the next-action validator summary.",
     )
     parser.add_argument(
+        "--next-action-oracle-artifact-presence-only",
+        action="store_true",
+        help="Print only the oracle/prompt artifact presence bundle from the next-action provenance.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-artifact-presence-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the next-action artifact presence bundle.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-artifact-present-only",
+        action="store_true",
+        help="Print only whether the next-action oracle artifact path exists.",
+    )
+    parser.add_argument(
+        "--next-action-prompt-artifact-present-only",
+        action="store_true",
+        help="Print only whether the next-action prompt artifact path exists.",
+    )
+    parser.add_argument(
         "--next-action-no-claim-policy-only",
         action="store_true",
         help="Print only the no-claim policy from the next-action validator summary.",
@@ -857,6 +877,26 @@ def _next_action_oracle_artifact_provenance(
     return provenance
 
 
+def _path_value_present(path_value: object) -> bool | None:
+    if path_value in (None, ""):
+        return None
+    return Path(str(path_value)).exists()
+
+
+def _artifact_presence_bundle(
+    *,
+    oracle_artifact_present: bool | None,
+    prompt_artifact_present: bool | None,
+) -> dict[str, object] | None:
+    presence = {
+        "oracle_artifact_present": oracle_artifact_present,
+        "prompt_artifact_present": prompt_artifact_present,
+    }
+    if not any(value is not None for value in presence.values()):
+        return None
+    return presence
+
+
 def _unique_preserving_order(values: Sequence[object]) -> list[object]:
     seen: set[str] = set()
     result: list[object] = []
@@ -1165,6 +1205,16 @@ def build_validator_status_report(
         next_action_oracle_artifact_provenance,
         "evidence_checks_sha256",
     )
+    next_action_oracle_artifact_present = _path_value_present(
+        next_action_oracle_artifact_path
+    )
+    next_action_prompt_artifact_present = _path_value_present(
+        next_action_prompt_artifact_path
+    )
+    next_action_oracle_artifact_presence = _artifact_presence_bundle(
+        oracle_artifact_present=next_action_oracle_artifact_present,
+        prompt_artifact_present=next_action_prompt_artifact_present,
+    )
     next_action_missing_evidence = None
     if isinstance(next_action, dict):
         next_action_missing_evidence = next_action.get("validator_missing_evidence")
@@ -1440,6 +1490,12 @@ def build_validator_status_report(
         "next_action_prompt_artifact_path": next_action_prompt_artifact_path,
         "next_action_prompt_artifact_sha256": next_action_prompt_artifact_sha256,
         "next_action_evidence_checks_sha256": next_action_evidence_checks_sha256,
+        "next_action_oracle_artifact_presence": next_action_oracle_artifact_presence,
+        "next_action_oracle_artifact_presence_sha256": (
+            status_mod._stable_json_sha256(next_action_oracle_artifact_presence)
+        ),
+        "next_action_oracle_artifact_present": next_action_oracle_artifact_present,
+        "next_action_prompt_artifact_present": next_action_prompt_artifact_present,
         "next_action_no_claim_policy": next_action_no_claim_policy,
         "next_action_no_claim_policy_sha256": status_mod._stable_json_sha256(
             next_action_no_claim_policy
@@ -1629,6 +1685,18 @@ def build_validator_status_report(
         "next_action_evidence_checks_sha256": summary[
             "next_action_evidence_checks_sha256"
         ],
+        "next_action_oracle_artifact_presence": summary[
+            "next_action_oracle_artifact_presence"
+        ],
+        "next_action_oracle_artifact_presence_sha256": summary[
+            "next_action_oracle_artifact_presence_sha256"
+        ],
+        "next_action_oracle_artifact_present": summary[
+            "next_action_oracle_artifact_present"
+        ],
+        "next_action_prompt_artifact_present": summary[
+            "next_action_prompt_artifact_present"
+        ],
         "next_action_no_claim_policy": summary["next_action_no_claim_policy"],
         "next_action_no_claim_policy_sha256": summary[
             "next_action_no_claim_policy_sha256"
@@ -1778,6 +1846,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_prompt_artifact_sha256"]
     elif args.next_action_evidence_checks_sha_only:
         payload = report["next_action_evidence_checks_sha256"]
+    elif args.next_action_oracle_artifact_presence_sha_only:
+        payload = report["next_action_oracle_artifact_presence_sha256"]
+    elif args.next_action_oracle_artifact_presence_only:
+        payload = report["next_action_oracle_artifact_presence"]
+    elif args.next_action_oracle_artifact_present_only:
+        payload = report["next_action_oracle_artifact_present"]
+    elif args.next_action_prompt_artifact_present_only:
+        payload = report["next_action_prompt_artifact_present"]
     elif args.next_action_no_claim_policy_sha_only:
         payload = report["next_action_no_claim_policy_sha256"]
     elif args.next_action_no_claim_policy_only:

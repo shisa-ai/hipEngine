@@ -1009,6 +1009,28 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_evidence_checks_sha256"] == report[
         "next_action_evidence_checks_sha256"
     ]
+    expected_presence = {
+        "oracle_artifact_present": True,
+        "prompt_artifact_present": True,
+    }
+    assert summary["next_action_oracle_artifact_presence"] == expected_presence
+    assert summary["next_action_oracle_artifact_presence"] == report[
+        "next_action_oracle_artifact_presence"
+    ]
+    assert summary["next_action_oracle_artifact_presence_sha256"] == (
+        status_mod._stable_json_sha256(expected_presence)
+    )
+    assert summary["next_action_oracle_artifact_presence_sha256"] == report[
+        "next_action_oracle_artifact_presence_sha256"
+    ]
+    assert summary["next_action_oracle_artifact_present"] is True
+    assert summary["next_action_oracle_artifact_present"] == report[
+        "next_action_oracle_artifact_present"
+    ]
+    assert summary["next_action_prompt_artifact_present"] is True
+    assert summary["next_action_prompt_artifact_present"] == report[
+        "next_action_prompt_artifact_present"
+    ]
     expected_handoff = {
         "producer_writes_partial_output_before_launch": True,
         "producer_partial_output_path": str(oracle),
@@ -2483,6 +2505,32 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == summary["evidence_checks_sha256"]
+
+    rc = main([*args, "--next-action-oracle-artifact-presence-only", "--pretty"])
+
+    assert rc == 0
+    artifact_presence = json.loads(capsys.readouterr().out)
+    assert artifact_presence == {
+        "oracle_artifact_present": True,
+        "prompt_artifact_present": True,
+    }
+
+    rc = main([*args, "--next-action-oracle-artifact-presence-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        artifact_presence
+    )
+
+    rc = main([*args, "--next-action-oracle-artifact-present-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is True
+
+    rc = main([*args, "--next-action-prompt-artifact-present-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is True
 
     rc = main([*args, "--next-action-no-claim-policy-only", "--pretty"])
 

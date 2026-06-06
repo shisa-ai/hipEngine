@@ -36661,3 +36661,49 @@ git diff --check
 ```
 
 Results: targeted validator-status tests passed (`5` tests); the new compact CLI modes emitted the provenance bundle, digest `4f6ddaa8f6cf85838db6b1503cfd78338340941e043d7f17e899a2d8fb8ac1fa`, oracle artifact SHA `616c6c4dce35df06f4abe0351343d9fac4ca351ec2d0f85f45e251c2db771901`, prompt artifact SHA `53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb`, and evidence-checks SHA `135ee01013995b52109a65042413c7075c4f4c036ae19be22678fdce72ecd7af`; top-level report fields matched `validator_status_summary`; persisted handoff/status/manifest verification commands returned `"match"`; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Refreshed artifact hashes include correctness-status file SHA `d2fa82a80539628733fdbc9dbed740951125bf16f2fa649aea884f5bdd4033bc`, `source_artifacts_sha256=28d8091261d17e85e0cafcffc14126498143b09f4a2c2fa02bf39855e3d19c37`, final-blocker file SHA `ae4d7714dcff373de51ac7030b748433c2c10747126f1739847ccd10a60a9443`, `status_provenance_sha256=079d97baf10d4ac4d4d1a2a144136c8f8b2e9573b6703088dcb7c8d4ca8a6a23`, handoff file SHA `892c534ddd5b1d33faf16a6446f5ddcae3cb2ea34f70a1e477e4ab284c7eb74b`, and handoff `digest_summary_sha256=57a256d3a2d6ef16dad1238f2a09211f55f4a4555e827f228b68dc7f65e0b8cf`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
+
+## 2026-06-06 — StepFun next-action artifact presence telemetry
+
+Surfaced compact next-action artifact presence telemetry in `scripts/stepfun_validator_status.py`: `next_action_oracle_artifact_presence`, `next_action_oracle_artifact_presence_sha256`, and scalar top-level booleans for oracle artifact and prompt artifact path existence. Added compact CLI modes (`--next-action-oracle-artifact-presence-only`, `--next-action-oracle-artifact-presence-sha-only`, `--next-action-oracle-artifact-present-only`, and `--next-action-prompt-artifact-present-only`) so pollers can verify the retained oracle timeout/prompt files still exist without parsing the full next-action payload or nested validator summary. Against the retained final-blocker manifest, both presence booleans are `true` and the presence digest is `be835adcbfd17a028c418929574876ec6aa922067179b4507a2a00f57080b676`.
+
+Updated `tests/test_stepfun_validator_status.py` to cover report/summary equality and compact CLI output for the next-action artifact presence telemetry, updated `docs/STEPFUN.md` P11 to document the modes, and refreshed correctness-status, final-blocker, and handoff artifacts for the updated docs/source hashes. This is blocker observability only: `oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`, and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_validator_status.py
+python3 -m compileall -q scripts/stepfun_validator_status.py tests/test_stepfun_validator_status.py
+python3 scripts/stepfun_validator_status.py --next-action-oracle-artifact-presence-only --pretty
+python3 scripts/stepfun_validator_status.py --next-action-oracle-artifact-presence-sha-only
+python3 scripts/stepfun_validator_status.py --next-action-oracle-artifact-present-only
+python3 scripts/stepfun_validator_status.py --next-action-prompt-artifact-present-only
+python3 - <<'PY'
+from scripts import stepfun_correctness_status as status_mod
+from scripts.stepfun_validator_status import _load_manifest, build_validator_status_report
+m=_load_manifest(None, prompt_artifact=status_mod.DEFAULT_PROMPT_ARTIFACT, oracle_artifact=status_mod.DEFAULT_ORACLE_ARTIFACT, resource_artifact=status_mod.DEFAULT_RESOURCE_ARTIFACT, docs=status_mod.DEFAULT_DOCS_PATH)
+r=build_validator_status_report(m, prompt_artifact=status_mod.DEFAULT_PROMPT_ARTIFACT, resource_artifact=status_mod.DEFAULT_RESOURCE_ARTIFACT)
+s=r['validator_status_summary']
+for key in [
+    'next_action_oracle_artifact_presence',
+    'next_action_oracle_artifact_presence_sha256',
+    'next_action_oracle_artifact_present',
+    'next_action_prompt_artifact_present',
+]:
+    print(key, repr(r[key]), repr(s[key]), r[key] == s[key])
+PY
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_validator_status.py scripts/stepfun_correctness_status.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_llamacpp_oracle.py scripts/stepfun_handoff_check.py scripts/stepfun_oracle_artifact_check.py scripts/stepfun_kv_trace_check.py scripts/stepfun_kv_next_token_check.py || true
+git diff -U0 -- docs/STEPFUN.md WORKLOG.md scripts/stepfun_validator_status.py tests/test_stepfun_validator_status.py benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|performance claims|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|making token or performance claims\|without making.*performance claims\|claims separate\|throughput/performance claim\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+git diff --check
+```
+
+Results: targeted validator-status tests passed (`5` tests); the new compact CLI modes emitted artifact presence `{oracle_artifact_present: true, prompt_artifact_present: true}` and digest `be835adcbfd17a028c418929574876ec6aa922067179b4507a2a00f57080b676`; top-level report fields matched `validator_status_summary`; persisted handoff/status/manifest verification commands returned `"match"`; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Refreshed artifact hashes include correctness-status file SHA `e09cca9ae1c962759351a6462fb8677cb1ab593d8f9b39b397a660fbc21c207d`, `source_artifacts_sha256=851d632b9d95983661db24057280b511963c376cb5817bc225ea999956e10c19`, final-blocker file SHA `64f48fce3a5cea734965b08df841d82216d8699d6717023604c405e35a3ad9e6`, `status_provenance_sha256=172f1d2c2bab57db11d551d8e5cd66018307078e64f9913f0499ed0c36e29dda`, handoff file SHA `92f3a1e002377cc5ec6464036762d1560042b63eea088c84e9243d6c5f017db0`, and handoff `digest_summary_sha256=cffd0826619826d6c2bc3e90a99f641fe3a05298c33224b9aee29c8f0ea59c6c`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
