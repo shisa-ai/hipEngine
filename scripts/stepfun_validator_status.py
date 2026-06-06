@@ -567,6 +567,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only whether the next-action missing-evidence list is non-empty.",
     )
     parser.add_argument(
+        "--next-action-missing-evidence-joined-only",
+        action="store_true",
+        help="Print only the pipe-joined next-action missing-evidence sequence.",
+    )
+    parser.add_argument(
         "--next-action-first-missing-evidence-only",
         action="store_true",
         help="Print only the first next-action missing-evidence item.",
@@ -1270,6 +1275,11 @@ def build_validator_status_report(
         if isinstance(next_action_missing_evidence, list)
         else None
     )
+    next_action_missing_evidence_joined = (
+        "|".join(str(item) for item in next_action_missing_evidence)
+        if isinstance(next_action_missing_evidence, list)
+        else None
+    )
     next_action_first_missing_evidence = (
         next_action_missing_evidence[0]
         if (
@@ -1588,6 +1598,7 @@ def build_validator_status_report(
         "next_action_missing_evidence": next_action_missing_evidence,
         "next_action_missing_evidence_count": next_action_missing_evidence_count,
         "next_action_missing_evidence_present": next_action_missing_evidence_present,
+        "next_action_missing_evidence_joined": next_action_missing_evidence_joined,
         "next_action_first_missing_evidence": next_action_first_missing_evidence,
         "next_action_last_missing_evidence": next_action_last_missing_evidence,
         "next_action_artifact_file_present_missing": (
@@ -1809,6 +1820,9 @@ def build_validator_status_report(
         "next_action_missing_evidence_present": summary[
             "next_action_missing_evidence_present"
         ],
+        "next_action_missing_evidence_joined": summary[
+            "next_action_missing_evidence_joined"
+        ],
         "next_action_first_missing_evidence": summary[
             "next_action_first_missing_evidence"
         ],
@@ -1978,6 +1992,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_missing_evidence_count"]
     elif args.next_action_missing_evidence_present_only:
         payload = report["next_action_missing_evidence_present"]
+    elif args.next_action_missing_evidence_joined_only:
+        payload = report["next_action_missing_evidence_joined"]
     elif args.next_action_first_missing_evidence_only:
         payload = report["next_action_first_missing_evidence"]
     elif args.next_action_last_missing_evidence_only:

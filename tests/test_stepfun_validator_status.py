@@ -348,6 +348,10 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_missing_evidence_present"] == report[
         "next_action_missing_evidence_present"
     ]
+    assert summary["next_action_missing_evidence_joined"] is None
+    assert summary["next_action_missing_evidence_joined"] == report[
+        "next_action_missing_evidence_joined"
+    ]
     assert summary["next_action_first_missing_evidence"] is None
     assert summary["next_action_first_missing_evidence"] == report[
         "next_action_first_missing_evidence"
@@ -692,6 +696,10 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_missing_evidence_present"] is True
     assert summary["next_action_missing_evidence_present"] == report[
         "next_action_missing_evidence_present"
+    ]
+    assert summary["next_action_missing_evidence_joined"] == "artifact_file_present"
+    assert summary["next_action_missing_evidence_joined"] == report[
+        "next_action_missing_evidence_joined"
     ]
     assert summary["next_action_first_missing_evidence"] == "artifact_file_present"
     assert summary["next_action_first_missing_evidence"] == report[
@@ -1121,6 +1129,12 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_missing_evidence_present"] is True
     assert summary["next_action_missing_evidence_present"] == report[
         "next_action_missing_evidence_present"
+    ]
+    assert summary["next_action_missing_evidence_joined"] == "|".join(
+        report["next_blocker"]["validator_missing_evidence"]
+    )
+    assert summary["next_action_missing_evidence_joined"] == report[
+        "next_action_missing_evidence_joined"
     ]
     assert summary["next_action_first_missing_evidence"] == "oracle_success_status"
     assert summary["next_action_first_missing_evidence"] == report[
@@ -2710,6 +2724,11 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) is True
+
+    rc = main([*args, "--next-action-missing-evidence-joined-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == "|".join(missing_evidence)
 
     rc = main([*args, "--next-action-first-missing-evidence-only"])
 
