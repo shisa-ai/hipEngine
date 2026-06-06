@@ -730,6 +730,7 @@ reporting.
   `--next-action-missing-evidence-only` /
   `--next-action-missing-evidence-sha-only` /
   `--next-action-missing-evidence-count-only` /
+  `--next-action-missing-evidence-present-only` /
   `--next-action-first-missing-evidence-only` /
   `--next-action-last-missing-evidence-only` /
   `--next-action-artifact-file-present-missing-only` /
@@ -741,7 +742,7 @@ reporting.
   while the aggregate validator summary carries the next-action availability flag,
   validator-summary digest, status/oracle routing fields, expected-token,
   generated-text, artifact-provenance, and artifact-presence bundles, no-claim
-  policy booleans, plus missing-evidence list/count/first-item/last-item/
+  policy booleans, plus missing-evidence list/count/present/first-item/last-item/
   artifact-file-present, oracle-success-status, and generated-text-target
   flags/digest for drift polling; with the
   oracle next-action bundle mirroring the current validator summary plus
