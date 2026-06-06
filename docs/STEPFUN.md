@@ -599,7 +599,9 @@ reporting.
   the readiness/blocker compact output-mode mappings, `--docs-checklist-only` /
   `--docs-checklist-sha-only` expose the exact P0-P12 open/partial checklist payload
   and digest used by the loop metric, `--docs-open-partial-count-only` emits just
-  the single integer loop metric, and `--docs-first-open-partial-item-only` /
+  the single integer loop metric, `--docs-open-partial-summary-only` /
+  `--docs-open-partial-summary-sha-only` expose a compact count+boundary+digest
+  summary, and `--docs-first-open-partial-item-only` /
   `--docs-first-open-partial-item-sha-only` /
   `--docs-last-open-partial-item-only` /
   `--docs-last-open-partial-item-sha-only` expose the current first/last
