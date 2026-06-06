@@ -574,6 +574,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the next-action oracle evidence-gap item count.",
     )
     parser.add_argument(
+        "--next-action-oracle-evidence-gaps-only",
+        action="store_true",
+        help="Print only the next-action oracle evidence-gap list.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-evidence-gaps-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the oracle evidence-gap list.",
+    )
+    parser.add_argument(
         "--next-action-missing-evidence-present-only",
         action="store_true",
         help="Print only whether the next-action missing-evidence list is non-empty.",
@@ -1378,9 +1388,18 @@ def build_validator_status_report(
         if isinstance(next_action_missing_evidence, list)
         else None
     )
-    next_action_oracle_evidence_gap_count = (
-        sum(name in next_action_missing_evidence for name in ORACLE_EVIDENCE_GAP_NAMES)
+    next_action_oracle_evidence_gaps = (
+        [
+            name
+            for name in ORACLE_EVIDENCE_GAP_NAMES
+            if name in next_action_missing_evidence
+        ]
         if isinstance(next_action_missing_evidence, list)
+        else None
+    )
+    next_action_oracle_evidence_gap_count = (
+        len(next_action_oracle_evidence_gaps)
+        if isinstance(next_action_oracle_evidence_gaps, list)
         else None
     )
     next_action_partial_output_handoff = _next_action_partial_output_handoff(
@@ -1669,6 +1688,10 @@ def build_validator_status_report(
         ),
         "next_action_missing_evidence": next_action_missing_evidence,
         "next_action_missing_evidence_count": next_action_missing_evidence_count,
+        "next_action_oracle_evidence_gaps": next_action_oracle_evidence_gaps,
+        "next_action_oracle_evidence_gaps_sha256": status_mod._stable_json_sha256(
+            next_action_oracle_evidence_gaps
+        ),
         "next_action_oracle_evidence_gap_count": (
             next_action_oracle_evidence_gap_count
         ),
@@ -1908,6 +1931,12 @@ def build_validator_status_report(
         "next_action_missing_evidence_count": summary[
             "next_action_missing_evidence_count"
         ],
+        "next_action_oracle_evidence_gaps": summary[
+            "next_action_oracle_evidence_gaps"
+        ],
+        "next_action_oracle_evidence_gaps_sha256": summary[
+            "next_action_oracle_evidence_gaps_sha256"
+        ],
         "next_action_oracle_evidence_gap_count": summary[
             "next_action_oracle_evidence_gap_count"
         ],
@@ -2104,6 +2133,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_missing_evidence_count"]
     elif args.next_action_oracle_evidence_gap_count_only:
         payload = report["next_action_oracle_evidence_gap_count"]
+    elif args.next_action_oracle_evidence_gaps_sha_only:
+        payload = report["next_action_oracle_evidence_gaps_sha256"]
+    elif args.next_action_oracle_evidence_gaps_only:
+        payload = report["next_action_oracle_evidence_gaps"]
     elif args.next_action_missing_evidence_present_only:
         payload = report["next_action_missing_evidence_present"]
     elif args.next_action_missing_evidence_joined_only:

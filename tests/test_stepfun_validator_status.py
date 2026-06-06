@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 
 from scripts import stepfun_correctness_status as status_mod
-from scripts.stepfun_validator_status import build_validator_status_report, main
+from scripts.stepfun_validator_status import (
+    ORACLE_EVIDENCE_GAP_NAMES,
+    build_validator_status_report,
+    main,
+)
 
 PROMPT_KV = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
 DECODE_KV = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
@@ -347,6 +351,13 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_oracle_evidence_gap_count"] is None
     assert summary["next_action_oracle_evidence_gap_count"] == report[
         "next_action_oracle_evidence_gap_count"
+    ]
+    assert summary["next_action_oracle_evidence_gaps"] is None
+    assert summary["next_action_oracle_evidence_gaps"] == report[
+        "next_action_oracle_evidence_gaps"
+    ]
+    assert summary["next_action_oracle_evidence_gaps_sha256"] == report[
+        "next_action_oracle_evidence_gaps_sha256"
     ]
     assert summary["next_action_missing_evidence_present"] is None
     assert summary["next_action_missing_evidence_present"] == report[
@@ -723,6 +734,16 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_oracle_evidence_gap_count"] == 0
     assert summary["next_action_oracle_evidence_gap_count"] == report[
         "next_action_oracle_evidence_gap_count"
+    ]
+    assert summary["next_action_oracle_evidence_gaps"] == []
+    assert summary["next_action_oracle_evidence_gaps"] == report[
+        "next_action_oracle_evidence_gaps"
+    ]
+    assert summary["next_action_oracle_evidence_gaps_sha256"] == (
+        status_mod._stable_json_sha256([])
+    )
+    assert summary["next_action_oracle_evidence_gaps_sha256"] == report[
+        "next_action_oracle_evidence_gaps_sha256"
     ]
     assert summary["next_action_missing_evidence_present"] is True
     assert summary["next_action_missing_evidence_present"] == report[
@@ -1190,6 +1211,19 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_oracle_evidence_gap_count"] == 5
     assert summary["next_action_oracle_evidence_gap_count"] == report[
         "next_action_oracle_evidence_gap_count"
+    ]
+    expected_oracle_evidence_gaps = list(ORACLE_EVIDENCE_GAP_NAMES)
+    assert summary["next_action_oracle_evidence_gaps"] == (
+        expected_oracle_evidence_gaps
+    )
+    assert summary["next_action_oracle_evidence_gaps"] == report[
+        "next_action_oracle_evidence_gaps"
+    ]
+    assert summary["next_action_oracle_evidence_gaps_sha256"] == (
+        status_mod._stable_json_sha256(expected_oracle_evidence_gaps)
+    )
+    assert summary["next_action_oracle_evidence_gaps_sha256"] == report[
+        "next_action_oracle_evidence_gaps_sha256"
     ]
     assert summary["next_action_missing_evidence_present"] is True
     assert summary["next_action_missing_evidence_present"] == report[
@@ -2822,6 +2856,19 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == 5
+
+    rc = main([*args, "--next-action-oracle-evidence-gaps-only", "--pretty"])
+
+    assert rc == 0
+    oracle_evidence_gaps = json.loads(capsys.readouterr().out)
+    assert oracle_evidence_gaps == list(ORACLE_EVIDENCE_GAP_NAMES)
+
+    rc = main([*args, "--next-action-oracle-evidence-gaps-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        oracle_evidence_gaps
+    )
 
     rc = main([*args, "--next-action-missing-evidence-present-only"])
 

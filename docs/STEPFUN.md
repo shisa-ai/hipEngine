@@ -731,6 +731,8 @@ reporting.
   `--next-action-missing-evidence-sha-only` /
   `--next-action-missing-evidence-count-only` /
   `--next-action-oracle-evidence-gap-count-only` /
+  `--next-action-oracle-evidence-gaps-only` /
+  `--next-action-oracle-evidence-gaps-sha-only` /
   `--next-action-missing-evidence-present-only` /
   `--next-action-missing-evidence-joined-only` /
   `--next-action-missing-evidence-sorted-only` /
@@ -744,15 +746,15 @@ reporting.
   `--next-action-no-timeout-or-oracle-blocker-missing-only` /
   `--next-action-generated-text-matches-target-missing-only` /
   `--next-action-generated-text-nonempty-missing-only` expose just its
-  missing-evidence list/digest/count/oracle-gap-count/presence/pipe-joined
-  sequence/sorted list+digest/sorted pipe-joined sequence/leading or trailing item/retained-artifact
-  missing flag/oracle-timeout return-status/return-code/no-timeout flags/
+  missing-evidence list/digest/count/oracle-gap-count/oracle-gap list+digest/
+  presence/pipe-joined sequence/sorted list+digest/sorted pipe-joined sequence/
+  leading or trailing item/retained-artifact missing flag/oracle-timeout return-status/return-code/no-timeout flags/
   generated-text target/nonempty flags (including `artifact_file_present` for missing retained files),
   while the aggregate validator summary carries the next-action availability flag,
   validator-summary digest, status/oracle routing fields, expected-token,
   generated-text, artifact-provenance, and artifact-presence bundles, no-claim
-  policy booleans, plus missing-evidence list/count/oracle-gap-count/present/
-  joined/sorted/sorted-joined/first-item/last-item/artifact-file-present, oracle-success-status,
+  policy booleans, plus missing-evidence list/count/oracle-gap-count/oracle-gap
+  list/present/joined/sorted/sorted-joined/first-item/last-item/artifact-file-present, oracle-success-status,
   oracle-returncode-zero, no-timeout-or-oracle-blocker, generated-text-target,
   and generated-text-nonempty flags/digest for drift polling; with the
   oracle next-action bundle mirroring the current validator summary plus
