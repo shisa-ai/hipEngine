@@ -457,6 +457,41 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the stripped generated-text match flag from the next-action validator summary.",
     )
     parser.add_argument(
+        "--next-action-oracle-artifact-provenance-only",
+        action="store_true",
+        help="Print only the oracle artifact provenance bundle from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-artifact-provenance-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the next-action oracle artifact provenance bundle.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-artifact-path-only",
+        action="store_true",
+        help="Print only the oracle artifact path from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-artifact-sha-only",
+        action="store_true",
+        help="Print only the oracle artifact SHA-256 from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-prompt-artifact-path-only",
+        action="store_true",
+        help="Print only the prompt artifact path from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-prompt-artifact-sha-only",
+        action="store_true",
+        help="Print only the prompt artifact SHA-256 from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-evidence-checks-sha-only",
+        action="store_true",
+        help="Print only the evidence-checks SHA-256 from the next-action validator summary.",
+    )
+    parser.add_argument(
         "--next-action-no-claim-policy-only",
         action="store_true",
         help="Print only the no-claim policy from the next-action validator summary.",
@@ -805,6 +840,23 @@ def _next_action_oracle_generated_text(
     return generated_text
 
 
+def _next_action_oracle_artifact_provenance(
+    validator_summary: object,
+) -> dict[str, object] | None:
+    if not isinstance(validator_summary, dict):
+        return None
+    provenance = {
+        "artifact": validator_summary.get("artifact"),
+        "artifact_sha256": validator_summary.get("artifact_sha256"),
+        "prompt_artifact": validator_summary.get("prompt_artifact"),
+        "prompt_artifact_sha256": validator_summary.get("prompt_artifact_sha256"),
+        "evidence_checks_sha256": validator_summary.get("evidence_checks_sha256"),
+    }
+    if not any(value is not None and value != "" for value in provenance.values()):
+        return None
+    return provenance
+
+
 def _unique_preserving_order(values: Sequence[object]) -> list[object]:
     seen: set[str] = set()
     result: list[object] = []
@@ -1090,6 +1142,29 @@ def build_validator_status_report(
         next_action_oracle_generated_text,
         "text_matches_expected_stripped",
     )
+    next_action_oracle_artifact_provenance = (
+        _next_action_oracle_artifact_provenance(next_action_validator_summary)
+    )
+    next_action_oracle_artifact_path = _summary_field(
+        next_action_oracle_artifact_provenance,
+        "artifact",
+    )
+    next_action_oracle_artifact_sha256 = _summary_field(
+        next_action_oracle_artifact_provenance,
+        "artifact_sha256",
+    )
+    next_action_prompt_artifact_path = _summary_field(
+        next_action_oracle_artifact_provenance,
+        "prompt_artifact",
+    )
+    next_action_prompt_artifact_sha256 = _summary_field(
+        next_action_oracle_artifact_provenance,
+        "prompt_artifact_sha256",
+    )
+    next_action_evidence_checks_sha256 = _summary_field(
+        next_action_oracle_artifact_provenance,
+        "evidence_checks_sha256",
+    )
     next_action_missing_evidence = None
     if isinstance(next_action, dict):
         next_action_missing_evidence = next_action.get("validator_missing_evidence")
@@ -1354,6 +1429,17 @@ def build_validator_status_report(
         "next_action_generated_text_matches_expected_stripped": (
             next_action_generated_text_matches_expected_stripped
         ),
+        "next_action_oracle_artifact_provenance": (
+            next_action_oracle_artifact_provenance
+        ),
+        "next_action_oracle_artifact_provenance_sha256": (
+            status_mod._stable_json_sha256(next_action_oracle_artifact_provenance)
+        ),
+        "next_action_oracle_artifact_path": next_action_oracle_artifact_path,
+        "next_action_oracle_artifact_sha256": next_action_oracle_artifact_sha256,
+        "next_action_prompt_artifact_path": next_action_prompt_artifact_path,
+        "next_action_prompt_artifact_sha256": next_action_prompt_artifact_sha256,
+        "next_action_evidence_checks_sha256": next_action_evidence_checks_sha256,
         "next_action_no_claim_policy": next_action_no_claim_policy,
         "next_action_no_claim_policy_sha256": status_mod._stable_json_sha256(
             next_action_no_claim_policy
@@ -1522,6 +1608,27 @@ def build_validator_status_report(
         "next_action_generated_text_matches_expected_stripped": summary[
             "next_action_generated_text_matches_expected_stripped"
         ],
+        "next_action_oracle_artifact_provenance": summary[
+            "next_action_oracle_artifact_provenance"
+        ],
+        "next_action_oracle_artifact_provenance_sha256": summary[
+            "next_action_oracle_artifact_provenance_sha256"
+        ],
+        "next_action_oracle_artifact_path": summary[
+            "next_action_oracle_artifact_path"
+        ],
+        "next_action_oracle_artifact_sha256": summary[
+            "next_action_oracle_artifact_sha256"
+        ],
+        "next_action_prompt_artifact_path": summary[
+            "next_action_prompt_artifact_path"
+        ],
+        "next_action_prompt_artifact_sha256": summary[
+            "next_action_prompt_artifact_sha256"
+        ],
+        "next_action_evidence_checks_sha256": summary[
+            "next_action_evidence_checks_sha256"
+        ],
         "next_action_no_claim_policy": summary["next_action_no_claim_policy"],
         "next_action_no_claim_policy_sha256": summary[
             "next_action_no_claim_policy_sha256"
@@ -1657,6 +1764,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_generated_text_matches_expected_exact"]
     elif args.next_action_generated_text_matches_expected_stripped_only:
         payload = report["next_action_generated_text_matches_expected_stripped"]
+    elif args.next_action_oracle_artifact_provenance_sha_only:
+        payload = report["next_action_oracle_artifact_provenance_sha256"]
+    elif args.next_action_oracle_artifact_provenance_only:
+        payload = report["next_action_oracle_artifact_provenance"]
+    elif args.next_action_oracle_artifact_path_only:
+        payload = report["next_action_oracle_artifact_path"]
+    elif args.next_action_oracle_artifact_sha_only:
+        payload = report["next_action_oracle_artifact_sha256"]
+    elif args.next_action_prompt_artifact_path_only:
+        payload = report["next_action_prompt_artifact_path"]
+    elif args.next_action_prompt_artifact_sha_only:
+        payload = report["next_action_prompt_artifact_sha256"]
+    elif args.next_action_evidence_checks_sha_only:
+        payload = report["next_action_evidence_checks_sha256"]
     elif args.next_action_no_claim_policy_sha_only:
         payload = report["next_action_no_claim_policy_sha256"]
     elif args.next_action_no_claim_policy_only:

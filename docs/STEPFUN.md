@@ -719,7 +719,10 @@ reporting.
   target token, `--next-action-oracle-generated-text-only` /
   `--next-action-oracle-generated-text-sha-only` plus
   `--next-action-generated-text-*-only` modes expose generated text length/match
-  flags, `--next-action-no-claim-policy-only` /
+  flags, `--next-action-oracle-artifact-provenance-only` /
+  `--next-action-oracle-artifact-provenance-sha-only` plus artifact/prompt/evidence
+  SHA scalar modes expose retained oracle/prompt artifact provenance,
+  `--next-action-no-claim-policy-only` /
   `--next-action-no-claim-policy-sha-only` plus per-gate
   `--next-action-*-claim-allowed-only` modes expose the embedded no-claim policy,
   and
@@ -728,9 +731,9 @@ reporting.
   `--next-action-missing-evidence-count-only` expose just its missing-evidence
   list/digest/count (including `artifact_file_present` for missing retained files),
   while the aggregate validator summary carries the next-action validator-summary
-  digest, status/oracle routing fields, expected-token and generated-text
-  bundles, no-claim policy booleans, plus missing-evidence list/count/digest for
-  drift polling; with the
+  digest, status/oracle routing fields, expected-token, generated-text, and
+  artifact-provenance bundles, no-claim policy booleans, plus missing-evidence
+  list/count/digest for drift polling; with the
   oracle next-action bundle mirroring the current validator summary plus
   partial-output and supervisor-signal timeout handoff when it is
   the first blocker),

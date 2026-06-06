@@ -958,6 +958,57 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_generated_text_matches_expected_stripped"] == report[
         "next_action_generated_text_matches_expected_stripped"
     ]
+    expected_provenance = {
+        "artifact": report["next_blocker"]["validator_summary"]["artifact"],
+        "artifact_sha256": report["next_blocker"]["validator_summary"][
+            "artifact_sha256"
+        ],
+        "prompt_artifact": report["next_blocker"]["validator_summary"][
+            "prompt_artifact"
+        ],
+        "prompt_artifact_sha256": report["next_blocker"]["validator_summary"][
+            "prompt_artifact_sha256"
+        ],
+        "evidence_checks_sha256": report["next_blocker"]["validator_summary"][
+            "evidence_checks_sha256"
+        ],
+    }
+    assert summary["next_action_oracle_artifact_provenance"] == expected_provenance
+    assert summary["next_action_oracle_artifact_provenance"] == report[
+        "next_action_oracle_artifact_provenance"
+    ]
+    assert summary["next_action_oracle_artifact_provenance_sha256"] == (
+        status_mod._stable_json_sha256(expected_provenance)
+    )
+    assert summary["next_action_oracle_artifact_provenance_sha256"] == report[
+        "next_action_oracle_artifact_provenance_sha256"
+    ]
+    assert summary["next_action_oracle_artifact_path"] == str(oracle)
+    assert summary["next_action_oracle_artifact_path"] == report[
+        "next_action_oracle_artifact_path"
+    ]
+    assert summary["next_action_oracle_artifact_sha256"] == expected_provenance[
+        "artifact_sha256"
+    ]
+    assert summary["next_action_oracle_artifact_sha256"] == report[
+        "next_action_oracle_artifact_sha256"
+    ]
+    assert summary["next_action_prompt_artifact_path"] == str(prompt)
+    assert summary["next_action_prompt_artifact_path"] == report[
+        "next_action_prompt_artifact_path"
+    ]
+    assert summary["next_action_prompt_artifact_sha256"] == expected_provenance[
+        "prompt_artifact_sha256"
+    ]
+    assert summary["next_action_prompt_artifact_sha256"] == report[
+        "next_action_prompt_artifact_sha256"
+    ]
+    assert summary["next_action_evidence_checks_sha256"] == expected_provenance[
+        "evidence_checks_sha256"
+    ]
+    assert summary["next_action_evidence_checks_sha256"] == report[
+        "next_action_evidence_checks_sha256"
+    ]
     expected_handoff = {
         "producer_writes_partial_output_before_launch": True,
         "producer_partial_output_path": str(oracle),
@@ -2388,6 +2439,50 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) is False
+
+    rc = main([*args, "--next-action-oracle-artifact-provenance-only", "--pretty"])
+
+    assert rc == 0
+    artifact_provenance = json.loads(capsys.readouterr().out)
+    assert artifact_provenance == {
+        "artifact": summary["artifact"],
+        "artifact_sha256": summary["artifact_sha256"],
+        "prompt_artifact": summary["prompt_artifact"],
+        "prompt_artifact_sha256": summary["prompt_artifact_sha256"],
+        "evidence_checks_sha256": summary["evidence_checks_sha256"],
+    }
+
+    rc = main([*args, "--next-action-oracle-artifact-provenance-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        artifact_provenance
+    )
+
+    rc = main([*args, "--next-action-oracle-artifact-path-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == str(oracle)
+
+    rc = main([*args, "--next-action-oracle-artifact-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["artifact_sha256"]
+
+    rc = main([*args, "--next-action-prompt-artifact-path-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == str(prompt)
+
+    rc = main([*args, "--next-action-prompt-artifact-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["prompt_artifact_sha256"]
+
+    rc = main([*args, "--next-action-evidence-checks-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["evidence_checks_sha256"]
 
     rc = main([*args, "--next-action-no-claim-policy-only", "--pretty"])
 
