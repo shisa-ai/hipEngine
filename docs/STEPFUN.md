@@ -740,19 +740,20 @@ reporting.
   `--next-action-artifact-file-present-missing-only` /
   `--next-action-oracle-success-status-missing-only` /
   `--next-action-oracle-returncode-zero-missing-only` /
+  `--next-action-no-timeout-or-oracle-blocker-missing-only` /
   `--next-action-generated-text-matches-target-missing-only` /
   `--next-action-generated-text-nonempty-missing-only` expose just its
   missing-evidence list/digest/count/presence/pipe-joined sequence/sorted
   list+digest/sorted pipe-joined sequence/leading or trailing item/retained-artifact
-  missing flag/oracle-timeout return-status/return-code flags/generated-text
-  target/nonempty flags (including `artifact_file_present` for missing retained files),
+  missing flag/oracle-timeout return-status/return-code/no-timeout flags/
+  generated-text target/nonempty flags (including `artifact_file_present` for missing retained files),
   while the aggregate validator summary carries the next-action availability flag,
   validator-summary digest, status/oracle routing fields, expected-token,
   generated-text, artifact-provenance, and artifact-presence bundles, no-claim
   policy booleans, plus missing-evidence list/count/present/joined/sorted/
   sorted-joined/first-item/last-item/artifact-file-present, oracle-success-status,
-  oracle-returncode-zero, generated-text-target, and generated-text-nonempty
-  flags/digest for drift polling; with the
+  oracle-returncode-zero, no-timeout-or-oracle-blocker, generated-text-target,
+  and generated-text-nonempty flags/digest for drift polling; with the
   oracle next-action bundle mirroring the current validator summary plus
   partial-output and supervisor-signal timeout handoff when it is
   the first blocker),

@@ -383,6 +383,10 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_oracle_returncode_zero_missing"] == report[
         "next_action_oracle_returncode_zero_missing"
     ]
+    assert summary["next_action_no_timeout_or_oracle_blocker_missing"] is None
+    assert summary["next_action_no_timeout_or_oracle_blocker_missing"] == report[
+        "next_action_no_timeout_or_oracle_blocker_missing"
+    ]
     assert summary["next_action_generated_text_matches_target_missing"] is None
     assert summary["next_action_generated_text_matches_target_missing"] == report[
         "next_action_generated_text_matches_target_missing"
@@ -757,6 +761,10 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_oracle_returncode_zero_missing"] is False
     assert summary["next_action_oracle_returncode_zero_missing"] == report[
         "next_action_oracle_returncode_zero_missing"
+    ]
+    assert summary["next_action_no_timeout_or_oracle_blocker_missing"] is False
+    assert summary["next_action_no_timeout_or_oracle_blocker_missing"] == report[
+        "next_action_no_timeout_or_oracle_blocker_missing"
     ]
     assert summary["next_action_generated_text_matches_target_missing"] is False
     assert summary["next_action_generated_text_matches_target_missing"] == report[
@@ -1223,6 +1231,10 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_oracle_returncode_zero_missing"] is True
     assert summary["next_action_oracle_returncode_zero_missing"] == report[
         "next_action_oracle_returncode_zero_missing"
+    ]
+    assert summary["next_action_no_timeout_or_oracle_blocker_missing"] is True
+    assert summary["next_action_no_timeout_or_oracle_blocker_missing"] == report[
+        "next_action_no_timeout_or_oracle_blocker_missing"
     ]
     assert summary["next_action_generated_text_matches_target_missing"] is True
     assert summary["next_action_generated_text_matches_target_missing"] == report[
@@ -2851,6 +2863,13 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == (
         "oracle_returncode_zero" in missing_evidence
+    )
+
+    rc = main([*args, "--next-action-no-timeout-or-oracle-blocker-missing-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == (
+        "no_timeout_or_oracle_blocker" in missing_evidence
     )
 
     rc = main([*args, "--next-action-generated-text-matches-target-missing-only"])

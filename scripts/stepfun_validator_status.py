@@ -612,6 +612,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only whether oracle_returncode_zero is missing evidence.",
     )
     parser.add_argument(
+        "--next-action-no-timeout-or-oracle-blocker-missing-only",
+        action="store_true",
+        help="Print only whether no_timeout_or_oracle_blocker is missing evidence.",
+    )
+    parser.add_argument(
         "--next-action-generated-text-matches-target-missing-only",
         action="store_true",
         help="Print only whether generated_text_matches_target is missing evidence.",
@@ -1346,6 +1351,11 @@ def build_validator_status_report(
         if isinstance(next_action_missing_evidence, list)
         else None
     )
+    next_action_no_timeout_or_oracle_blocker_missing = (
+        "no_timeout_or_oracle_blocker" in next_action_missing_evidence
+        if isinstance(next_action_missing_evidence, list)
+        else None
+    )
     next_action_generated_text_matches_target_missing = (
         "generated_text_matches_target" in next_action_missing_evidence
         if isinstance(next_action_missing_evidence, list)
@@ -1662,6 +1672,9 @@ def build_validator_status_report(
         "next_action_oracle_returncode_zero_missing": (
             next_action_oracle_returncode_zero_missing
         ),
+        "next_action_no_timeout_or_oracle_blocker_missing": (
+            next_action_no_timeout_or_oracle_blocker_missing
+        ),
         "next_action_generated_text_matches_target_missing": (
             next_action_generated_text_matches_target_missing
         ),
@@ -1905,6 +1918,9 @@ def build_validator_status_report(
         "next_action_oracle_returncode_zero_missing": summary[
             "next_action_oracle_returncode_zero_missing"
         ],
+        "next_action_no_timeout_or_oracle_blocker_missing": summary[
+            "next_action_no_timeout_or_oracle_blocker_missing"
+        ],
         "next_action_generated_text_matches_target_missing": summary[
             "next_action_generated_text_matches_target_missing"
         ],
@@ -2083,6 +2099,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_oracle_success_status_missing"]
     elif args.next_action_oracle_returncode_zero_missing_only:
         payload = report["next_action_oracle_returncode_zero_missing"]
+    elif args.next_action_no_timeout_or_oracle_blocker_missing_only:
+        payload = report["next_action_no_timeout_or_oracle_blocker_missing"]
     elif args.next_action_generated_text_matches_target_missing_only:
         payload = report["next_action_generated_text_matches_target_missing"]
     elif args.next_action_generated_text_nonempty_missing_only:
