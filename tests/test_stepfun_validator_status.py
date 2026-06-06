@@ -329,6 +329,8 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_producer_command_sha256"] == report[
         "next_producer_command_sha256"
     ]
+    assert summary["next_action_available"] is False
+    assert summary["next_action_available"] == report["next_action_available"]
     assert summary["next_action_artifact_name"] is None
     assert summary["next_action_artifact_name"] == report["next_action_artifact_name"]
     assert summary["next_action_readiness_gate"] is None
@@ -648,6 +650,8 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
         "validator_missing_evidence_count": 1,
     }
     assert report["next_action"] == expected_next_action
+    assert summary["next_action_available"] is True
+    assert summary["next_action_available"] == report["next_action_available"]
     assert summary["next_action_artifact_name"] == "kv_kernel_trace_artifact"
     assert summary["next_action_artifact_name"] == report["next_action_artifact_name"]
     assert summary["next_action_readiness_gate"] == "kv_backed_decode"
@@ -1157,6 +1161,7 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     next_producer_command_sha_output = tmp_path / "next-producer-command-sha.json"
     next_action_output = tmp_path / "next-action.json"
     next_action_sha_output = tmp_path / "next-action-sha.json"
+    next_action_available_output = tmp_path / "next-action-available.json"
     next_action_artifact_name_output = tmp_path / "next-action-artifact-name.json"
     next_action_readiness_gate_output = tmp_path / "next-action-readiness-gate.json"
     next_action_status_output = tmp_path / "next-action-status.json"
@@ -2077,6 +2082,23 @@ def test_stepfun_validator_status_cli_compact_modes(tmp_path: Path) -> None:
     assert next_action_payload["producer_command"] == (
         "python3 scripts/refresh_stepfun_kv_artifacts.py"
     )
+
+    rc = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--prompt-artifact",
+            str(prompt),
+            "--resource-artifact",
+            str(resource),
+            "--next-action-available-only",
+            "--output",
+            str(next_action_available_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+    assert json.loads(next_action_available_output.read_text()) is True
 
     rc = main(
         [

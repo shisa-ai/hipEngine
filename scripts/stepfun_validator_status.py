@@ -297,6 +297,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the stable SHA-256 digest of the next action bundle.",
     )
     parser.add_argument(
+        "--next-action-available-only",
+        action="store_true",
+        help="Emit only whether a compact next-action payload is available.",
+    )
+    parser.add_argument(
         "--next-action-artifact-name-only",
         action="store_true",
         help="Emit only the artifact name from the next-action payload, or null.",
@@ -1109,6 +1114,7 @@ def build_validator_status_report(
         ):
             if key in next_blocker:
                 next_action[key] = next_blocker.get(key)
+    next_action_available = isinstance(next_action, dict)
     next_action_validator_summary = (
         next_action.get("validator_summary") if isinstance(next_action, dict) else None
     )
@@ -1412,6 +1418,7 @@ def build_validator_status_report(
         "next_producer_command_sha256": status_mod._stable_json_sha256(
             next_producer_command
         ),
+        "next_action_available": next_action_available,
         "next_action_artifact_name": next_action.get("artifact_name")
         if isinstance(next_action, dict)
         else None,
@@ -1618,6 +1625,7 @@ def build_validator_status_report(
             next_producer_command
         ),
         "next_action": next_action,
+        "next_action_available": summary["next_action_available"],
         "next_action_validator_summary_sha256": summary[
             "next_action_validator_summary_sha256"
         ],
@@ -1800,6 +1808,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.status_only:
         payload: object = report["status"]
+    elif args.next_action_available_only:
+        payload = report["next_action_available"]
     elif args.next_action_validator_summary_sha_only:
         payload = report["next_action_validator_summary_sha256"]
     elif args.next_action_validator_summary_status_only:
