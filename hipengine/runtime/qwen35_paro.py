@@ -4175,6 +4175,9 @@ class Qwen35ParoDecodeState:
         force_per_row_attention_batch_moe: bool = False,
         force_per_row_attention_batch_post_moe: bool = False,
         force_per_row_attention_batch_o_post_moe: bool = False,
+        force_per_row_preqkv_append_batch_context_o_post_moe: bool = False,
+        force_per_row_preqkv_append_context_batch_gate_o_post_moe: bool = False,
+        force_per_row_preqkv_append_context_gate_batch_o_post_moe: bool = False,
         force_per_row_context: bool = False,
         force_per_row_context_only: bool = False,
         force_per_row_dense_context_only: bool = False,
@@ -4240,6 +4243,9 @@ class Qwen35ParoDecodeState:
             force_per_row_attention_batch_moe
             or force_per_row_attention_batch_post_moe
             or force_per_row_attention_batch_o_post_moe
+            or force_per_row_preqkv_append_batch_context_o_post_moe
+            or force_per_row_preqkv_append_context_batch_gate_o_post_moe
+            or force_per_row_preqkv_append_context_gate_batch_o_post_moe
         ) and tokens > 1:
             if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
                 raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
@@ -4312,32 +4318,79 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
-                if not _requires_full_attention_split_decode(row_decode_spans):
-                    row_gated = self.decode_full_attention_context_gate_fp16(
-                        row_scratch,
-                        key_cache=row_key_cache,
-                        value_cache=row_value_cache,
-                        spans=row_decode_spans,
-                        gate=row_gate,
-                        block_size=block_size,
-                        library=library,
-                        stream=stream,
-                    )
-                else:
+                if not force_per_row_preqkv_append_batch_context_o_post_moe:
+                    if not _requires_full_attention_split_decode(row_decode_spans):
+                        row_gated = self.decode_full_attention_context_gate_fp16(
+                            row_scratch,
+                            key_cache=row_key_cache,
+                            value_cache=row_value_cache,
+                            spans=row_decode_spans,
+                            gate=row_gate,
+                            block_size=block_size,
+                            library=library,
+                            stream=stream,
+                        )
+                    else:
+                        raise NotImplementedError(
+                            "per-row attention / batch-MoE diagnostic does not cover split-K full-attention decode"
+                        )
+                    if force_per_row_preqkv_append_context_batch_gate_o_post_moe:
+                        row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                        (self.runtime or get_hip_runtime()).memcpy_async(
+                            row_context.ptr,
+                            attention_scratch.attn_out.ptr,
+                            self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    elif not (
+                        force_per_row_attention_batch_o_post_moe
+                        or force_per_row_preqkv_append_context_gate_batch_o_post_moe
+                    ):
+                        self.project_full_attention_o_fp16(
+                            row_gated,
+                            row_scratch,
+                            tokens=1,
+                            group_size=group_size,
+                            library=library,
+                            stream=stream,
+                        )
+            if force_per_row_preqkv_append_batch_context_o_post_moe:
+                if _requires_full_attention_split_decode(decode_spans):
                     raise NotImplementedError(
-                        "per-row attention / batch-MoE diagnostic does not cover split-K full-attention decode"
+                        "per-row pre-QKV/append + batch context diagnostic does not cover split-K full-attention decode"
                     )
-                if not force_per_row_attention_batch_o_post_moe:
-                    self.project_full_attention_o_fp16(
-                        row_gated,
-                        row_scratch,
-                        tokens=1,
-                        group_size=group_size,
-                        library=library,
-                        stream=stream,
-                    )
-            attn_out = (
-                self.project_full_attention_o_fp16(
+                gated = self.decode_full_attention_context_gate_fp16_batch(
+                    attention_scratch,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    spans=decode_spans,
+                    rows=tokens,
+                    gate=attention_scratch.gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                attn_out = self.project_full_attention_o_fp16(
+                    gated,
+                    attention_scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    force_pack8_gemv=force_batch_gemv_output,
+                    library=library,
+                    stream=stream,
+                )
+            elif force_per_row_preqkv_append_context_batch_gate_o_post_moe:
+                qwen35_full_attn_gate_mul_fp16(
+                    attention_scratch.query_raw.ptr,
+                    attention_scratch.gate.ptr,
+                    attention_scratch.gated_attn.ptr,
+                    tokens * self.config.num_attention_heads * self.config.head_dim,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                attn_out = self.project_full_attention_o_fp16(
                     attention_scratch.gated_attn,
                     attention_scratch,
                     tokens=tokens,
@@ -4346,12 +4399,32 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
-                if force_per_row_attention_batch_o_post_moe
-                else attention_scratch.o_proj
-            )
+            else:
+                attn_out = (
+                    self.project_full_attention_o_fp16(
+                        attention_scratch.gated_attn,
+                        attention_scratch,
+                        tokens=tokens,
+                        group_size=group_size,
+                        force_pack8_gemv=force_batch_gemv_output,
+                        library=library,
+                        stream=stream,
+                    )
+                    if (
+                        force_per_row_attention_batch_o_post_moe
+                        or force_per_row_preqkv_append_context_gate_batch_o_post_moe
+                    )
+                    else attention_scratch.o_proj
+                )
             post_attention_fn = (
                 self.post_attention_add_rmsnorm_fp16
-                if (force_per_row_attention_batch_post_moe or force_per_row_attention_batch_o_post_moe)
+                if (
+                    force_per_row_attention_batch_post_moe
+                    or force_per_row_attention_batch_o_post_moe
+                    or force_per_row_preqkv_append_batch_context_o_post_moe
+                    or force_per_row_preqkv_append_context_batch_gate_o_post_moe
+                    or force_per_row_preqkv_append_context_gate_batch_o_post_moe
+                )
                 else self.post_attention_add_rmsnorm_fp16_per_row
             )
             mlp_input, residual = post_attention_fn(

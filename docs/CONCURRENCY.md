@@ -3320,16 +3320,20 @@ roll-up/status view.
       `per_row_attn_batch_o_post_moe` split keeps batch O projection, batch
       post-attention, and grouped compact MoE, replaying only the pre-O
       full-attention sequence per row, and is also hidden/token green. The
-      blocker therefore narrows to native pre-O full-attention row ordering
-      (input/QKV/append/context/gate sequence) before batch O/post/MoE, not O
-      projection, post-attention, c1 MoE replay, or independent scratch
-      allocation
+      context/gate split shows `per_row_preqkv_append_context_gate_batch_o_post_moe`
+      (per-row context+gate, batch O/post/MoE) is hidden/token green, while the
+      same pre-QKV+append sequence with batch context/gate and the per-row
+      context + batch-gate split are hidden-red. The blocker therefore narrows
+      to native context/gate row ordering after per-row pre-QKV/append and
+      before batch O/post/MoE, not O projection, post-attention, c1 MoE replay,
+      or independent scratch allocation
       (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-scratch-semantics-397/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-true-preqkv-context-398/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-batch-view-layer-scratch-399/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-moe-400/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-post-moe-401/summary.json`,
-      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-o-post-moe-402/summary.json`).
+      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-o-post-moe-402/summary.json`,
+      `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-context-gate-split-403/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
