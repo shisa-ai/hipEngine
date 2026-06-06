@@ -584,6 +584,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the stable SHA-256 digest of the oracle evidence-gap list.",
     )
     parser.add_argument(
+        "--next-action-oracle-evidence-gap-summary-only",
+        action="store_true",
+        help="Print only the compact next-action oracle evidence-gap summary.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-evidence-gap-summary-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the oracle evidence-gap summary.",
+    )
+    parser.add_argument(
         "--next-action-oracle-evidence-gaps-joined-only",
         action="store_true",
         help="Print only the pipe-joined next-action oracle evidence-gap list.",
@@ -1448,6 +1458,28 @@ def build_validator_status_report(
         )
         else None
     )
+    next_action_oracle_evidence_gap_summary = (
+        {
+            "schema_version": 1,
+            "artifact_name": next_action.get("artifact_name")
+            if isinstance(next_action, dict)
+            else None,
+            "readiness_gate": next_action.get("readiness_gate")
+            if isinstance(next_action, dict)
+            else None,
+            "gap_count": next_action_oracle_evidence_gap_count,
+            "gaps_present": next_action_oracle_evidence_gaps_present,
+            "gap_names": next_action_oracle_evidence_gaps,
+            "gap_names_sha256": status_mod._stable_json_sha256(
+                next_action_oracle_evidence_gaps
+            ),
+            "gap_names_joined": next_action_oracle_evidence_gaps_joined,
+            "first_gap": next_action_first_oracle_evidence_gap,
+            "last_gap": next_action_last_oracle_evidence_gap,
+        }
+        if isinstance(next_action_oracle_evidence_gaps, list)
+        else None
+    )
     next_action_partial_output_handoff = _next_action_partial_output_handoff(
         next_action
     )
@@ -1738,6 +1770,12 @@ def build_validator_status_report(
         "next_action_oracle_evidence_gaps_sha256": status_mod._stable_json_sha256(
             next_action_oracle_evidence_gaps
         ),
+        "next_action_oracle_evidence_gap_summary": (
+            next_action_oracle_evidence_gap_summary
+        ),
+        "next_action_oracle_evidence_gap_summary_sha256": (
+            status_mod._stable_json_sha256(next_action_oracle_evidence_gap_summary)
+        ),
         "next_action_oracle_evidence_gaps_joined": (
             next_action_oracle_evidence_gaps_joined
         ),
@@ -1995,6 +2033,12 @@ def build_validator_status_report(
         "next_action_oracle_evidence_gaps_sha256": summary[
             "next_action_oracle_evidence_gaps_sha256"
         ],
+        "next_action_oracle_evidence_gap_summary": summary[
+            "next_action_oracle_evidence_gap_summary"
+        ],
+        "next_action_oracle_evidence_gap_summary_sha256": summary[
+            "next_action_oracle_evidence_gap_summary_sha256"
+        ],
         "next_action_oracle_evidence_gaps_joined": summary[
             "next_action_oracle_evidence_gaps_joined"
         ],
@@ -2205,6 +2249,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_oracle_evidence_gap_count"]
     elif args.next_action_oracle_evidence_gaps_sha_only:
         payload = report["next_action_oracle_evidence_gaps_sha256"]
+    elif args.next_action_oracle_evidence_gap_summary_sha_only:
+        payload = report["next_action_oracle_evidence_gap_summary_sha256"]
+    elif args.next_action_oracle_evidence_gap_summary_only:
+        payload = report["next_action_oracle_evidence_gap_summary"]
     elif args.next_action_oracle_evidence_gaps_joined_only:
         payload = report["next_action_oracle_evidence_gaps_joined"]
     elif args.next_action_oracle_evidence_gaps_present_only:

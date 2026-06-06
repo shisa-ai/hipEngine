@@ -359,6 +359,13 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_oracle_evidence_gaps_sha256"] == report[
         "next_action_oracle_evidence_gaps_sha256"
     ]
+    assert summary["next_action_oracle_evidence_gap_summary"] is None
+    assert summary["next_action_oracle_evidence_gap_summary"] == report[
+        "next_action_oracle_evidence_gap_summary"
+    ]
+    assert summary["next_action_oracle_evidence_gap_summary_sha256"] == report[
+        "next_action_oracle_evidence_gap_summary_sha256"
+    ]
     assert summary["next_action_oracle_evidence_gaps_joined"] is None
     assert summary["next_action_oracle_evidence_gaps_joined"] == report[
         "next_action_oracle_evidence_gaps_joined"
@@ -760,6 +767,30 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     )
     assert summary["next_action_oracle_evidence_gaps_sha256"] == report[
         "next_action_oracle_evidence_gaps_sha256"
+    ]
+    expected_oracle_evidence_gap_summary = {
+        "schema_version": 1,
+        "artifact_name": "kv_kernel_trace_artifact",
+        "readiness_gate": "kv_backed_decode",
+        "gap_count": 0,
+        "gaps_present": False,
+        "gap_names": [],
+        "gap_names_sha256": status_mod._stable_json_sha256([]),
+        "gap_names_joined": "",
+        "first_gap": None,
+        "last_gap": None,
+    }
+    assert summary["next_action_oracle_evidence_gap_summary"] == (
+        expected_oracle_evidence_gap_summary
+    )
+    assert summary["next_action_oracle_evidence_gap_summary"] == report[
+        "next_action_oracle_evidence_gap_summary"
+    ]
+    assert summary["next_action_oracle_evidence_gap_summary_sha256"] == (
+        status_mod._stable_json_sha256(expected_oracle_evidence_gap_summary)
+    )
+    assert summary["next_action_oracle_evidence_gap_summary_sha256"] == report[
+        "next_action_oracle_evidence_gap_summary_sha256"
     ]
     assert summary["next_action_oracle_evidence_gaps_joined"] == ""
     assert summary["next_action_oracle_evidence_gaps_joined"] == report[
@@ -1256,6 +1287,32 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     )
     assert summary["next_action_oracle_evidence_gaps_sha256"] == report[
         "next_action_oracle_evidence_gaps_sha256"
+    ]
+    expected_oracle_evidence_gap_summary = {
+        "schema_version": 1,
+        "artifact_name": "llama_cpp_oracle_success_artifact",
+        "readiness_gate": "oracle_parity",
+        "gap_count": 5,
+        "gaps_present": True,
+        "gap_names": expected_oracle_evidence_gaps,
+        "gap_names_sha256": status_mod._stable_json_sha256(
+            expected_oracle_evidence_gaps
+        ),
+        "gap_names_joined": "|".join(expected_oracle_evidence_gaps),
+        "first_gap": expected_oracle_evidence_gaps[0],
+        "last_gap": expected_oracle_evidence_gaps[-1],
+    }
+    assert summary["next_action_oracle_evidence_gap_summary"] == (
+        expected_oracle_evidence_gap_summary
+    )
+    assert summary["next_action_oracle_evidence_gap_summary"] == report[
+        "next_action_oracle_evidence_gap_summary"
+    ]
+    assert summary["next_action_oracle_evidence_gap_summary_sha256"] == (
+        status_mod._stable_json_sha256(expected_oracle_evidence_gap_summary)
+    )
+    assert summary["next_action_oracle_evidence_gap_summary_sha256"] == report[
+        "next_action_oracle_evidence_gap_summary_sha256"
     ]
     assert summary["next_action_oracle_evidence_gaps_joined"] == "|".join(
         expected_oracle_evidence_gaps
@@ -2922,6 +2979,30 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
         oracle_evidence_gaps
+    )
+
+    expected_oracle_evidence_gap_summary = {
+        "schema_version": 1,
+        "artifact_name": "llama_cpp_oracle_success_artifact",
+        "readiness_gate": "oracle_parity",
+        "gap_count": 5,
+        "gaps_present": True,
+        "gap_names": oracle_evidence_gaps,
+        "gap_names_sha256": status_mod._stable_json_sha256(oracle_evidence_gaps),
+        "gap_names_joined": "|".join(oracle_evidence_gaps),
+        "first_gap": oracle_evidence_gaps[0],
+        "last_gap": oracle_evidence_gaps[-1],
+    }
+    rc = main([*args, "--next-action-oracle-evidence-gap-summary-only", "--pretty"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == expected_oracle_evidence_gap_summary
+
+    rc = main([*args, "--next-action-oracle-evidence-gap-summary-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        expected_oracle_evidence_gap_summary
     )
 
     rc = main([*args, "--next-action-oracle-evidence-gaps-joined-only"])

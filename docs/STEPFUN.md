@@ -733,6 +733,8 @@ reporting.
   `--next-action-oracle-evidence-gap-count-only` /
   `--next-action-oracle-evidence-gaps-only` /
   `--next-action-oracle-evidence-gaps-sha-only` /
+  `--next-action-oracle-evidence-gap-summary-only` /
+  `--next-action-oracle-evidence-gap-summary-sha-only` /
   `--next-action-oracle-evidence-gaps-joined-only` /
   `--next-action-oracle-evidence-gaps-present-only` /
   `--next-action-first-oracle-evidence-gap-only` /
@@ -751,7 +753,7 @@ reporting.
   `--next-action-generated-text-matches-target-missing-only` /
   `--next-action-generated-text-nonempty-missing-only` expose just its
   missing-evidence list/digest/count/oracle-gap-count/oracle-gap list+digest+
-  pipe-joined sequence+presence+first/last oracle gap/presence/pipe-joined sequence/sorted list+digest/sorted
+  summary+summary digest/pipe-joined sequence+presence+first/last oracle gap/presence/pipe-joined sequence/sorted list+digest/sorted
   pipe-joined sequence/leading or trailing item/retained-artifact missing flag/
   oracle-timeout return-status/return-code/no-timeout flags/generated-text
   target/nonempty flags (including `artifact_file_present` for missing retained files),
@@ -759,7 +761,7 @@ reporting.
   validator-summary digest, status/oracle routing fields, expected-token,
   generated-text, artifact-provenance, and artifact-presence bundles, no-claim
   policy booleans, plus missing-evidence list/count/oracle-gap-count/oracle-gap
-  list/oracle-gap-joined/oracle-gap-present/oracle-gap-first/oracle-gap-last/present/joined/sorted/sorted-joined/first-item/last-item/
+  list/oracle-gap-summary/oracle-gap-summary-digest/oracle-gap-joined/oracle-gap-present/oracle-gap-first/oracle-gap-last/present/joined/sorted/sorted-joined/first-item/last-item/
   artifact-file-present, oracle-success-status, oracle-returncode-zero,
   no-timeout-or-oracle-blocker, generated-text-target,
   and generated-text-nonempty flags/digest for drift polling; with the
