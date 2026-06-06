@@ -402,6 +402,31 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the oracle_blocker_kind field from the next-action validator summary.",
     )
     parser.add_argument(
+        "--next-action-oracle-expected-token-only",
+        action="store_true",
+        help="Print only the oracle expected-token bundle from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-oracle-expected-token-sha-only",
+        action="store_true",
+        help="Print only the stable SHA-256 digest of the next-action oracle expected-token bundle.",
+    )
+    parser.add_argument(
+        "--next-action-expected-next-token-id-only",
+        action="store_true",
+        help="Print only the expected next-token id from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-expected-next-token-text-only",
+        action="store_true",
+        help="Print only the expected next-token text from the next-action validator summary.",
+    )
+    parser.add_argument(
+        "--next-action-expected-next-token-logit-only",
+        action="store_true",
+        help="Print only the expected next-token logit from the next-action validator summary.",
+    )
+    parser.add_argument(
         "--next-action-no-claim-policy-only",
         action="store_true",
         help="Print only the no-claim policy from the next-action validator summary.",
@@ -715,6 +740,21 @@ def _next_action_partial_output_handoff(
     return handoff
 
 
+def _next_action_oracle_expected_token(
+    validator_summary: object,
+) -> dict[str, object] | None:
+    if not isinstance(validator_summary, dict):
+        return None
+    expected_token = {
+        "expected_next_token_id": validator_summary.get("expected_next_token_id"),
+        "expected_next_token_text": validator_summary.get("expected_next_token_text"),
+        "expected_next_token_logit": validator_summary.get("expected_next_token_logit"),
+    }
+    if not any(value is not None and value != "" for value in expected_token.values()):
+        return None
+    return expected_token
+
+
 def _unique_preserving_order(values: Sequence[object]) -> list[object]:
     seen: set[str] = set()
     result: list[object] = []
@@ -966,6 +1006,21 @@ def build_validator_status_report(
         next_action_no_claim_policy,
         "performance_claim_allowed",
     )
+    next_action_oracle_expected_token = _next_action_oracle_expected_token(
+        next_action_validator_summary
+    )
+    next_action_expected_next_token_id = _summary_field(
+        next_action_oracle_expected_token,
+        "expected_next_token_id",
+    )
+    next_action_expected_next_token_text = _summary_field(
+        next_action_oracle_expected_token,
+        "expected_next_token_text",
+    )
+    next_action_expected_next_token_logit = _summary_field(
+        next_action_oracle_expected_token,
+        "expected_next_token_logit",
+    )
     next_action_missing_evidence = None
     if isinstance(next_action, dict):
         next_action_missing_evidence = next_action.get("validator_missing_evidence")
@@ -1211,6 +1266,13 @@ def build_validator_status_report(
         "next_action_validator_summary_oracle_blocker_kind": (
             next_action_validator_summary_oracle_blocker_kind
         ),
+        "next_action_oracle_expected_token": next_action_oracle_expected_token,
+        "next_action_oracle_expected_token_sha256": status_mod._stable_json_sha256(
+            next_action_oracle_expected_token
+        ),
+        "next_action_expected_next_token_id": next_action_expected_next_token_id,
+        "next_action_expected_next_token_text": next_action_expected_next_token_text,
+        "next_action_expected_next_token_logit": next_action_expected_next_token_logit,
         "next_action_no_claim_policy": next_action_no_claim_policy,
         "next_action_no_claim_policy_sha256": status_mod._stable_json_sha256(
             next_action_no_claim_policy
@@ -1348,6 +1410,21 @@ def build_validator_status_report(
         "next_action_validator_summary_oracle_blocker_kind": summary[
             "next_action_validator_summary_oracle_blocker_kind"
         ],
+        "next_action_oracle_expected_token": summary[
+            "next_action_oracle_expected_token"
+        ],
+        "next_action_oracle_expected_token_sha256": summary[
+            "next_action_oracle_expected_token_sha256"
+        ],
+        "next_action_expected_next_token_id": summary[
+            "next_action_expected_next_token_id"
+        ],
+        "next_action_expected_next_token_text": summary[
+            "next_action_expected_next_token_text"
+        ],
+        "next_action_expected_next_token_logit": summary[
+            "next_action_expected_next_token_logit"
+        ],
         "next_action_no_claim_policy": summary["next_action_no_claim_policy"],
         "next_action_no_claim_policy_sha256": summary[
             "next_action_no_claim_policy_sha256"
@@ -1461,6 +1538,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_validator_summary_oracle_status"]
     elif args.next_action_validator_summary_oracle_blocker_kind_only:
         payload = report["next_action_validator_summary_oracle_blocker_kind"]
+    elif args.next_action_oracle_expected_token_sha_only:
+        payload = report["next_action_oracle_expected_token_sha256"]
+    elif args.next_action_oracle_expected_token_only:
+        payload = report["next_action_oracle_expected_token"]
+    elif args.next_action_expected_next_token_id_only:
+        payload = report["next_action_expected_next_token_id"]
+    elif args.next_action_expected_next_token_text_only:
+        payload = report["next_action_expected_next_token_text"]
+    elif args.next_action_expected_next_token_logit_only:
+        payload = report["next_action_expected_next_token_logit"]
     elif args.next_action_no_claim_policy_sha_only:
         payload = report["next_action_no_claim_policy_sha256"]
     elif args.next_action_no_claim_policy_only:

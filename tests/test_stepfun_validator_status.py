@@ -392,6 +392,25 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_validator_summary_oracle_blocker_kind"] == report[
         "next_action_validator_summary_oracle_blocker_kind"
     ]
+    assert summary["next_action_oracle_expected_token"] is None
+    assert summary["next_action_oracle_expected_token"] == report[
+        "next_action_oracle_expected_token"
+    ]
+    assert summary["next_action_oracle_expected_token_sha256"] == report[
+        "next_action_oracle_expected_token_sha256"
+    ]
+    assert summary["next_action_expected_next_token_id"] is None
+    assert summary["next_action_expected_next_token_id"] == report[
+        "next_action_expected_next_token_id"
+    ]
+    assert summary["next_action_expected_next_token_text"] is None
+    assert summary["next_action_expected_next_token_text"] == report[
+        "next_action_expected_next_token_text"
+    ]
+    assert summary["next_action_expected_next_token_logit"] is None
+    assert summary["next_action_expected_next_token_logit"] == report[
+        "next_action_expected_next_token_logit"
+    ]
     assert summary["next_action_sha256"] == report["next_action_sha256"]
     assert summary["next_blocker_sha256"] == report["next_blocker_sha256"]
     assert report["blocked_validator_results"] == []
@@ -836,6 +855,45 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     assert summary["next_action_performance_claim_allowed"] is False
     assert summary["next_action_performance_claim_allowed"] == report[
         "next_action_performance_claim_allowed"
+    ]
+    expected_oracle_token = {
+        "expected_next_token_id": report["next_blocker"]["validator_summary"][
+            "expected_next_token_id"
+        ],
+        "expected_next_token_text": report["next_blocker"]["validator_summary"][
+            "expected_next_token_text"
+        ],
+        "expected_next_token_logit": report["next_blocker"]["validator_summary"][
+            "expected_next_token_logit"
+        ],
+    }
+    assert summary["next_action_oracle_expected_token"] == expected_oracle_token
+    assert summary["next_action_oracle_expected_token"] == report[
+        "next_action_oracle_expected_token"
+    ]
+    assert summary["next_action_oracle_expected_token_sha256"] == (
+        status_mod._stable_json_sha256(expected_oracle_token)
+    )
+    assert summary["next_action_oracle_expected_token_sha256"] == report[
+        "next_action_oracle_expected_token_sha256"
+    ]
+    assert summary["next_action_expected_next_token_id"] == expected_oracle_token[
+        "expected_next_token_id"
+    ]
+    assert summary["next_action_expected_next_token_id"] == report[
+        "next_action_expected_next_token_id"
+    ]
+    assert summary["next_action_expected_next_token_text"] == expected_oracle_token[
+        "expected_next_token_text"
+    ]
+    assert summary["next_action_expected_next_token_text"] == report[
+        "next_action_expected_next_token_text"
+    ]
+    assert summary["next_action_expected_next_token_logit"] == expected_oracle_token[
+        "expected_next_token_logit"
+    ]
+    assert summary["next_action_expected_next_token_logit"] == report[
+        "next_action_expected_next_token_logit"
     ]
     expected_handoff = {
         "producer_writes_partial_output_before_launch": True,
@@ -2195,6 +2253,38 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == "llama_cpp_oracle_timeout"
+
+    rc = main([*args, "--next-action-oracle-expected-token-only", "--pretty"])
+
+    assert rc == 0
+    oracle_expected_token = json.loads(capsys.readouterr().out)
+    assert oracle_expected_token == {
+        "expected_next_token_id": summary["expected_next_token_id"],
+        "expected_next_token_text": summary["expected_next_token_text"],
+        "expected_next_token_logit": summary["expected_next_token_logit"],
+    }
+
+    rc = main([*args, "--next-action-oracle-expected-token-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        oracle_expected_token
+    )
+
+    rc = main([*args, "--next-action-expected-next-token-id-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["expected_next_token_id"]
+
+    rc = main([*args, "--next-action-expected-next-token-text-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["expected_next_token_text"]
+
+    rc = main([*args, "--next-action-expected-next-token-logit-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == summary["expected_next_token_logit"]
 
     rc = main([*args, "--next-action-no-claim-policy-only", "--pretty"])
 
