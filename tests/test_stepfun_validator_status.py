@@ -352,6 +352,13 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_missing_evidence_joined"] == report[
         "next_action_missing_evidence_joined"
     ]
+    assert summary["next_action_missing_evidence_sorted"] is None
+    assert summary["next_action_missing_evidence_sorted"] == report[
+        "next_action_missing_evidence_sorted"
+    ]
+    assert summary["next_action_missing_evidence_sorted_sha256"] == report[
+        "next_action_missing_evidence_sorted_sha256"
+    ]
     assert summary["next_action_first_missing_evidence"] is None
     assert summary["next_action_first_missing_evidence"] == report[
         "next_action_first_missing_evidence"
@@ -700,6 +707,18 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_missing_evidence_joined"] == "artifact_file_present"
     assert summary["next_action_missing_evidence_joined"] == report[
         "next_action_missing_evidence_joined"
+    ]
+    assert summary["next_action_missing_evidence_sorted"] == [
+        "artifact_file_present"
+    ]
+    assert summary["next_action_missing_evidence_sorted"] == report[
+        "next_action_missing_evidence_sorted"
+    ]
+    assert summary["next_action_missing_evidence_sorted_sha256"] == (
+        status_mod._stable_json_sha256(["artifact_file_present"])
+    )
+    assert summary["next_action_missing_evidence_sorted_sha256"] == report[
+        "next_action_missing_evidence_sorted_sha256"
     ]
     assert summary["next_action_first_missing_evidence"] == "artifact_file_present"
     assert summary["next_action_first_missing_evidence"] == report[
@@ -1135,6 +1154,21 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     )
     assert summary["next_action_missing_evidence_joined"] == report[
         "next_action_missing_evidence_joined"
+    ]
+    expected_sorted_missing_evidence = sorted(
+        report["next_blocker"]["validator_missing_evidence"]
+    )
+    assert summary["next_action_missing_evidence_sorted"] == (
+        expected_sorted_missing_evidence
+    )
+    assert summary["next_action_missing_evidence_sorted"] == report[
+        "next_action_missing_evidence_sorted"
+    ]
+    assert summary["next_action_missing_evidence_sorted_sha256"] == (
+        status_mod._stable_json_sha256(expected_sorted_missing_evidence)
+    )
+    assert summary["next_action_missing_evidence_sorted_sha256"] == report[
+        "next_action_missing_evidence_sorted_sha256"
     ]
     assert summary["next_action_first_missing_evidence"] == "oracle_success_status"
     assert summary["next_action_first_missing_evidence"] == report[
@@ -2729,6 +2763,19 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == "|".join(missing_evidence)
+
+    rc = main([*args, "--next-action-missing-evidence-sorted-only", "--pretty"])
+
+    assert rc == 0
+    sorted_missing_evidence = json.loads(capsys.readouterr().out)
+    assert sorted_missing_evidence == sorted(missing_evidence)
+
+    rc = main([*args, "--next-action-missing-evidence-sorted-sha-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == status_mod._stable_json_sha256(
+        sorted_missing_evidence
+    )
 
     rc = main([*args, "--next-action-first-missing-evidence-only"])
 
