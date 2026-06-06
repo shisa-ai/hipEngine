@@ -1,0 +1,367 @@
+{
+  "active_verify": {
+    "decode": {
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_kv_append_decode_path": "native_batch",
+      "full_attention_scratch_decode_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_state_path": "native_segments",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true
+    },
+    "equality": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ]
+    },
+    "raw_json": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "sha256": "34e8e376c5688d3c4573acf36aac26846591099f1b2013bdb3e6bd121a91597b",
+      "size_bytes": 138415
+    },
+    "raw_log": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+      "sha256": "34e8e376c5688d3c4573acf36aac26846591099f1b2013bdb3e6bd121a91597b",
+      "size_bytes": 138415
+    },
+    "sampler": {
+      "blockers": [],
+      "mode": "serial_lm_head",
+      "native_row_aware_lm_head": false,
+      "requested_mode": "serial_lm_head"
+    },
+    "status": "blocked"
+  },
+  "artifacts": {
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-interleave-405/compact-runs.json",
+      "sha256": "52c6fcbcb9722e77a1ebe4a7e47c2f7875b1f9cf81f6aff0cf0a19564a89988b",
+      "size_bytes": 15875
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-interleave-405/summary.json"
+    }
+  },
+  "code_change": "No runtime code change. This iteration uses existing diagnostics to isolate whether batch pre-QKV can remain active when KV append and context/gate are interleaved per row before batch O/post/MoE.",
+  "commands": {
+    "active_verify": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "batch_preqkv_interleaved_append_context_gate_green": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --hidden-atol 4e-3 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-output-path batch_gemv --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-attn-append-context-order interleaved --json /tmp/hipengine-hidden-bisect-iter405-L8-c2-batch-preqkv-interleaved-append-context-gate-batch-o-post-moe-atol4e-3-focus1269.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "interleaved_preqkv_positive_green": "same base control plus --batch-decode-attn-scratch-path per_row_preqkv_append_context_gate_batch_o_post_moe",
+    "red_contrasts": "iter404 phase-separated per-row input/QKV/append/context and batch-preQKV/per-row-context artifacts reused for contrast"
+  },
+  "conclusion": "Batch pre-QKV with interleaved per-row KV append + context/gate is hidden/token green on the L8 c2 selected-projection/native-state/batch-GEMV-output control while keeping batch O projection, batch post-attention, and grouped_compact MoE. The iter404 phase-separated per-row variants are hidden-red. Therefore pre-QKV need not be row-interleaved; the C2.3 green boundary narrows to append+context/gate row interleaving before batch O/post/MoE. No runtime default or throughput/scaling claim is made.",
+  "created_at": "2026-06-06T00:38:00.956156+00:00",
+  "git_commit_before_commit": "3044baf5d4285bcbbf60ee1f56109d155b30e514",
+  "guard": {
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      }
+    ]
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 405,
+  "kind": "c2_append_context_interleave_diagnostic",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused C2.3 full-attention blocker is narrowed with concrete artifact evidence. Batch pre-QKV + interleaved per-row append/context/gate is hidden/token green while phase-separated per-row variants are hidden-red; active c2 verify is [137,137] and no throughput claim is made.",
+    "passed": true
+  },
+  "result": {
+    "batch_preqkv_interleaved_append_context_gate_green": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 0,
+          "hidden_failure_rows": [],
+          "layer_limits": [
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 0,
+          "strict_hidden_bit_drift_rows": [],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": true,
+        "decode_full_context_oracle_passed": true,
+        "decode_full_kv_sample_passed": true,
+        "decode_linear_stage_passed": true,
+        "decode_linear_state_passed": true,
+        "hidden_failure_rows": [],
+        "hidden_passed": true,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_attention_append_context_order": "interleaved",
+        "batch_decode_attention_context_path": "per_row",
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "batch",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_moe_path": "grouped_compact",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_post_attention_path": "batch"
+      }
+    },
+    "iter404_batch_preqkv_append_perrow_context_gate_red_raw": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": false,
+        "decode_full_context_oracle_passed": false,
+        "decode_full_kv_sample_passed": false,
+        "decode_linear_stage_passed": false,
+        "decode_linear_state_passed": false,
+        "hidden_failure_rows": [
+          0,
+          1
+        ],
+        "hidden_passed": false,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "per_row_paged_context_only",
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "batch",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "batch",
+        "batch_decode_full_attention_moe_path": "grouped_compact",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_post_attention_path": "batch"
+      }
+    },
+    "iter404_phase_separated_perrow_input_qkv_append_context_gate_red_raw": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": false,
+        "decode_full_context_oracle_passed": false,
+        "decode_full_kv_sample_passed": false,
+        "decode_linear_stage_passed": false,
+        "decode_linear_state_passed": false,
+        "hidden_failure_rows": [
+          0,
+          1
+        ],
+        "hidden_passed": false,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "per_row_paged_context_only",
+        "batch_decode_attention_input_path": "per_row",
+        "batch_decode_attention_qkv_path": "per_row",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_moe_path": "grouped_compact",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_post_attention_path": "batch"
+      }
+    },
+    "perrow_preqkv_append_context_gate_positive_green": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 0,
+          "hidden_failure_rows": [],
+          "layer_limits": [
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 0,
+          "strict_hidden_bit_drift_rows": [],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": true,
+        "decode_full_context_oracle_passed": false,
+        "decode_full_kv_sample_passed": true,
+        "decode_linear_stage_passed": true,
+        "decode_linear_state_passed": true,
+        "hidden_failure_rows": [],
+        "hidden_passed": true,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "batch",
+        "batch_decode_attention_scratch_path": "per_row_preqkv_append_context_gate_batch_o_post_moe",
+        "batch_decode_full_attention_kv_append_path": "batch",
+        "batch_decode_full_attention_moe_path": "grouped_compact",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_post_attention_path": "batch"
+      }
+    }
+  },
+  "schema": 1
+}
