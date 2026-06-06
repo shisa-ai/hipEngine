@@ -66924,3 +66924,12 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Active default c2 512/128 verify printed `137` with `[137,137]`, `native_caware_decode=true`, and `serial_lm_head`.
 - Artifact: `benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-phase-isolation-409/summary.json` plus `compact-runs.json`; raw JSON/log paths and hashes are recorded there.
 - Validation: guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes as a focused C2.3 full-attention hidden blocker green extension with concrete artifact evidence. No retained throughput/scaling claim is made.
+
+## 2026-06-06 — concurrency-e2e/native-c2-e2e iter410 rowchunk1 call-order isolation
+- No runtime behavior changed. Added focused runtime/code evidence explaining why native rowchunk1 is not equivalent to the append+context interleaving fallback.
+- Fresh L8 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX: direct retained-default per-row KV append + per-row context + interleaved ordering is hidden/token green; rowchunk1 with the same per-row append/context flags remains token-green/hidden-red.
+- Code evidence in the artifact records that the rowchunk branch slices chunks to `tokens=1` before calling `run_full_attention_moe_decode_batch_layer_fp16`; inside `run_full_attention_moe_decode_batch_layer_fp16`, the per-row append+context branch is guarded by `tokens > 1`, so rowchunk1 falls through to the batch append/context path with rows=1 instead of the slot-cache append immediately followed by row-local context/gate.
+- Conclusion: the next native fix should reproduce true row-local append+context ordering (or a batch-kernel equivalent) before batch O/post/MoE; native rowchunk1 alone is not the retained repair.
+- Active default c2 512/128 verify printed `137` with `[137,137]`, `native_caware_decode=true`, and `serial_lm_head`.
+- Artifact: `benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-callorder-410/summary.json` plus `compact-runs-and-code.json`.
+- Validation: guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes as focused C2.3 full-attention runtime evidence with a fresh green direct-interleaved artifact plus a red rowchunk1 contrast. No retained throughput/scaling claim is made.
