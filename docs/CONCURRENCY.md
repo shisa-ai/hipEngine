@@ -3328,10 +3328,12 @@ roll-up/status view.
       hidden-red; adding per-row append, per-row QKV+append, and even
       phase-separated per-row input+QKV+append+context/gate remain hidden-red.
       However batch pre-QKV with interleaved per-row append+context/gate is
-      hidden/token green. The blocker therefore narrows to append+context/gate
-      interleaving before batch O/post/MoE, not batch pre-QKV, not merely which
-      subkernels are per-row, and not O projection, post-attention, c1 MoE
-      replay, or independent scratch allocation
+      hidden/token green, and a follow-up L8+L40 hidden-bisect keeps that
+      diagnostic green through all 40 layers on the short decode workload. The
+      blocker therefore narrows to append+context/gate interleaving before batch
+      O/post/MoE, not batch pre-QKV, not merely which subkernels are per-row,
+      and not O projection, post-attention, c1 MoE replay, or independent
+      scratch allocation
       (`benchmarks/results/2026-06-05-hipengine-qwen35-c2-scratch-semantics-397/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-true-preqkv-context-398/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-batch-view-layer-scratch-399/summary.json`,
@@ -3340,7 +3342,8 @@ roll-up/status view.
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-attn-batch-o-post-moe-402/summary.json`,
       `benchmarks/results/2026-06-05-hipengine-qwen35-c2-perrow-context-gate-split-403/summary.json`,
       `benchmarks/results/2026-06-06-hipengine-qwen35-c2-preqkv-append-context-order-404/summary.json`,
-      `benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-interleave-405/summary.json`).
+      `benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-interleave-405/summary.json`,
+      `benchmarks/results/2026-06-06-hipengine-qwen35-c2-l40-append-context-interleave-406/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or

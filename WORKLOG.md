@@ -66891,3 +66891,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Active c2 512/128 verify printed `137` with `[137,137]`, `native_caware_decode=true`, and `serial_lm_head` sampler. No runtime default changed and no throughput/scaling claim is made.
 - Compact artifact: `benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-interleave-405/summary.json` plus `compact-runs.json`; raw hidden-bisect JSON/logs remain under `/tmp/hipengine-hidden-bisect-iter405-*` with hashes recorded.
 - Validation: guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because the iteration records focused C2.3 evidence with a hidden/token-green append+context interleaving boundary and red phase-separated contrasts.
+
+## 2026-06-06 — concurrency-e2e/native-c2-e2e iter406 L40 append/context interleave validation
+- No runtime code changed. Extended the iter405 append+context interleaving diagnostic from first failing layer evidence to L8+L40 hidden-bisect coverage.
+- Fresh L8+L40 c2 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX: batch pre-QKV with interleaved per-row KV append + context/gate before batch O/post/MoE is hidden/token green at both layer limits (`status=eq_ok`; no hidden/token failure rows). L40 keeps batch O projection, batch post-attention, and grouped compact MoE.
+- This moves the C2.3 focused evidence from L8 parity to all-40-layer hidden parity for the append/context interleaving diagnostic. Iter404 phase-separated per-row variants remain the red contrast.
+- Active c2 512/128 verify printed `137` with `[137,137]`, `native_caware_decode=true`, and `serial_lm_head` sampler. No runtime default changed and no throughput/scaling claim is made.
+- Compact artifact: `benchmarks/results/2026-06-06-hipengine-qwen35-c2-l40-append-context-interleave-406/summary.json` plus `compact-runs.json`; raw hidden-bisect JSON/logs remain under `/tmp/hipengine-hidden-bisect-iter406-*` with hashes recorded.
+- Validation: guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because a focused C2.3 full-attention hidden blocker is green at L8 and L40 with concrete artifact evidence.
