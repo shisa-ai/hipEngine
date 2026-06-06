@@ -3344,6 +3344,14 @@ roll-up/status view.
       `benchmarks/results/2026-06-06-hipengine-qwen35-c2-preqkv-append-context-order-404/summary.json`,
       `benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-interleave-405/summary.json`,
       `benchmarks/results/2026-06-06-hipengine-qwen35-c2-l40-append-context-interleave-406/summary.json`).
+      Bridging that green diagnostic into the full 512/128 retained bench keeps
+      generated-token equality green at `[137,137]`, but only with per-row
+      KV-append/context/interleave blockers and `native_caware_decode=false`; the
+      no-flag retained bench is also generated-token green and native, while
+      no-flag, batch-temp-context, and compact-cache-context hidden-bisect
+      contrasts remain hidden-red. The interleaving fallback is therefore
+      correctness evidence, not a retained/native fix
+      (`benchmarks/results/2026-06-06-hipengine-qwen35-c2-retained-interleave-bridge-407/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
