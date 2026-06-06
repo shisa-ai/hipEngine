@@ -66933,3 +66933,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Active default c2 512/128 verify printed `137` with `[137,137]`, `native_caware_decode=true`, and `serial_lm_head`.
 - Artifact: `benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-callorder-410/summary.json` plus `compact-runs-and-code.json`.
 - Validation: guard passed compileall, targeted pytest, and primitive c2/c8 GPU correctness on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes as focused C2.3 full-attention runtime evidence with a fresh green direct-interleaved artifact plus a red rowchunk1 contrast. No retained throughput/scaling claim is made.
+
+## 2026-06-06 — concurrency-e2e/native-c2-e2e iter411 token-1 append/context interleave fix
+- Runtime diagnostic change: `hipengine/runtime/qwen35_paro.py` now validates and runs `force_per_row_append_context` for token-1 chunks as well as `tokens>1`, instead of silently falling through to the batch append/context path when rowchunk1 slices the batch to `tokens=1`.
+- Fresh rowchunk1 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with `--batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-attn-append-context-order interleaved` is `eq_ok`, hidden/token green at L8 and L40. Before the change, the same rowchunk1+flags control was token-green/hidden-red.
+- Active default c2 512/128 verify printed `137` with `[137,137]`, `native_caware_decode=true`, and `serial_lm_head`; the default no-flag path is unchanged.
+- Artifact: `benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-interleave-fix-411/summary.json` plus `compact-runs-and-diff.json` with the code diff and before/after hidden artifacts.
+- Validation: compileall, targeted pytest, and primitive c2/c8 GPU correctness passed on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX. Prompt verifier passes because a focused C2.3 hidden/full-attention blocker moved from red to green with concrete artifact evidence. No retained throughput/scaling claim is made; the green path still uses diagnostic per-row append/context flags.

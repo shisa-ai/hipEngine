@@ -4614,9 +4614,9 @@ class Qwen35ParoDecodeState:
                     stream,
                 )
             return moe_scratch.moe_out
-        if force_per_row_append_context and tokens > 1 and not (force_per_row_kv_append and force_per_row_context):
+        if force_per_row_append_context and not (force_per_row_kv_append and force_per_row_context):
             raise ValueError("per-row append+context interleave requires per-row KV append and context diagnostics")
-        if force_per_row_append_context and tokens > 1:
+        if force_per_row_append_context:
             if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
                 raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
             if per_row_contexts is None or len(per_row_contexts) != tokens:
