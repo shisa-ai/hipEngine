@@ -589,6 +589,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Print only the pipe-joined next-action oracle evidence-gap list.",
     )
     parser.add_argument(
+        "--next-action-oracle-evidence-gaps-present-only",
+        action="store_true",
+        help="Print only whether the next-action oracle evidence-gap list is non-empty.",
+    )
+    parser.add_argument(
         "--next-action-missing-evidence-present-only",
         action="store_true",
         help="Print only whether the next-action missing-evidence list is non-empty.",
@@ -1412,6 +1417,11 @@ def build_validator_status_report(
         if isinstance(next_action_oracle_evidence_gaps, list)
         else None
     )
+    next_action_oracle_evidence_gaps_present = (
+        bool(next_action_oracle_evidence_gaps)
+        if isinstance(next_action_oracle_evidence_gaps, list)
+        else None
+    )
     next_action_partial_output_handoff = _next_action_partial_output_handoff(
         next_action
     )
@@ -1705,6 +1715,9 @@ def build_validator_status_report(
         "next_action_oracle_evidence_gaps_joined": (
             next_action_oracle_evidence_gaps_joined
         ),
+        "next_action_oracle_evidence_gaps_present": (
+            next_action_oracle_evidence_gaps_present
+        ),
         "next_action_oracle_evidence_gap_count": (
             next_action_oracle_evidence_gap_count
         ),
@@ -1953,6 +1966,9 @@ def build_validator_status_report(
         "next_action_oracle_evidence_gaps_joined": summary[
             "next_action_oracle_evidence_gaps_joined"
         ],
+        "next_action_oracle_evidence_gaps_present": summary[
+            "next_action_oracle_evidence_gaps_present"
+        ],
         "next_action_oracle_evidence_gap_count": summary[
             "next_action_oracle_evidence_gap_count"
         ],
@@ -2153,6 +2169,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["next_action_oracle_evidence_gaps_sha256"]
     elif args.next_action_oracle_evidence_gaps_joined_only:
         payload = report["next_action_oracle_evidence_gaps_joined"]
+    elif args.next_action_oracle_evidence_gaps_present_only:
+        payload = report["next_action_oracle_evidence_gaps_present"]
     elif args.next_action_oracle_evidence_gaps_only:
         payload = report["next_action_oracle_evidence_gaps"]
     elif args.next_action_missing_evidence_present_only:

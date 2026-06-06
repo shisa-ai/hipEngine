@@ -37308,3 +37308,35 @@ git diff --check
 ```
 
 Results: targeted validator-status tests passed (`5` tests); the new compact CLI emitted `"oracle_success_status|oracle_returncode_zero|no_timeout_or_oracle_blocker|generated_text_nonempty|generated_text_matches_target"` and top-level report field matched `validator_status_summary`; persisted handoff/status/manifest verification commands returned `"match"`; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Refreshed artifact hashes include correctness-status file SHA `e8e2ec41256bdb3597d0a54c963d031689cb896352100d431790424d9b1ab857`, `source_artifacts_sha256=3f196c78a98456a50a54e0ec1ffa567a42cb18992e8558433044fd69f6d6fb11`, final-blocker file SHA `74d65a30951b63f8eb8d72e518cb43b6c274e6a3d2967b72656cd635d562d562`, `status_provenance_sha256=0e9c55f63733318b75dd4f636cf8e44444edc2f18cd38d3c8fe6f08ba2648d0e`, handoff file SHA `c7059ff6bf15dbd7f9aca8e2ee34e44e3e0eb1205de56ba65bc68f605ff28aeb`, and handoff `digest_summary_sha256=a3b2feb54e95464b1b6b157d13e904a83a93324c2fc3d55dd3667f636f99e1ee`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
+
+## 2026-06-06 — StepFun next-action oracle evidence-gap presence telemetry
+
+Surfaced compact next-action oracle evidence-gap presence telemetry in `scripts/stepfun_validator_status.py`: `next_action_oracle_evidence_gaps_present` now appears in the top-level report and `validator_status_summary`, and `--next-action-oracle-evidence-gaps-present-only` prints a boolean for pollers that need to distinguish oracle-specific evidence blockers without parsing/counting the retained oracle-gap list. Against the retained final-blocker manifest, the compact CLI emitted `true` and the top-level field matched the aggregate validator summary field.
+
+Updated `tests/test_stepfun_validator_status.py` to cover all-passed (`null`), missing-artifact (`false`), oracle-timeout (`true`), and compact CLI cases. Updated `docs/STEPFUN.md` P11 to document the mode, and refreshed correctness-status, final-blocker, and handoff artifacts for the updated docs/source hashes. This is blocker observability only: `oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`, and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-present-only
+python3 - <<'PY'
+from scripts import stepfun_correctness_status as status_mod
+from scripts.stepfun_validator_status import _load_manifest, build_validator_status_report
+m=_load_manifest(None, prompt_artifact=status_mod.DEFAULT_PROMPT_ARTIFACT, oracle_artifact=status_mod.DEFAULT_ORACLE_ARTIFACT, resource_artifact=status_mod.DEFAULT_RESOURCE_ARTIFACT, docs=status_mod.DEFAULT_DOCS_PATH)
+r=build_validator_status_report(m, prompt_artifact=status_mod.DEFAULT_PROMPT_ARTIFACT, resource_artifact=status_mod.DEFAULT_RESOURCE_ARTIFACT)
+s=r['validator_status_summary']
+print('next_action_oracle_evidence_gaps_present', r['next_action_oracle_evidence_gaps_present'], s['next_action_oracle_evidence_gaps_present'], r['next_action_oracle_evidence_gaps_present'] == s['next_action_oracle_evidence_gaps_present'])
+PY
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_validator_status.py scripts/stepfun_correctness_status.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_llamacpp_oracle.py scripts/stepfun_handoff_check.py scripts/stepfun_oracle_artifact_check.py scripts/stepfun_kv_trace_check.py scripts/stepfun_kv_next_token_check.py || true
+git diff -U0 -- docs/STEPFUN.md scripts/stepfun_validator_status.py tests/test_stepfun_validator_status.py benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|performance claims|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|making token or performance claims\|without making.*performance claims\|claims separate\|throughput/performance claim\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+git diff --check
+```
+
+Results: the compact CLI emitted `true`; top-level report field matched `validator_status_summary`; persisted handoff/status/manifest verification commands returned `"match"`; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`294` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.

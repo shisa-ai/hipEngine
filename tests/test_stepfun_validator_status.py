@@ -363,6 +363,10 @@ def test_stepfun_validator_status_reports_all_passed(tmp_path: Path) -> None:
     assert summary["next_action_oracle_evidence_gaps_joined"] == report[
         "next_action_oracle_evidence_gaps_joined"
     ]
+    assert summary["next_action_oracle_evidence_gaps_present"] is None
+    assert summary["next_action_oracle_evidence_gaps_present"] == report[
+        "next_action_oracle_evidence_gaps_present"
+    ]
     assert summary["next_action_missing_evidence_present"] is None
     assert summary["next_action_missing_evidence_present"] == report[
         "next_action_missing_evidence_present"
@@ -752,6 +756,10 @@ def test_stepfun_validator_status_reports_missing_artifact(tmp_path: Path) -> No
     assert summary["next_action_oracle_evidence_gaps_joined"] == ""
     assert summary["next_action_oracle_evidence_gaps_joined"] == report[
         "next_action_oracle_evidence_gaps_joined"
+    ]
+    assert summary["next_action_oracle_evidence_gaps_present"] is False
+    assert summary["next_action_oracle_evidence_gaps_present"] == report[
+        "next_action_oracle_evidence_gaps_present"
     ]
     assert summary["next_action_missing_evidence_present"] is True
     assert summary["next_action_missing_evidence_present"] == report[
@@ -1238,6 +1246,10 @@ def test_stepfun_validator_status_next_action_includes_oracle_partial_output_han
     )
     assert summary["next_action_oracle_evidence_gaps_joined"] == report[
         "next_action_oracle_evidence_gaps_joined"
+    ]
+    assert summary["next_action_oracle_evidence_gaps_present"] is True
+    assert summary["next_action_oracle_evidence_gaps_present"] == report[
+        "next_action_oracle_evidence_gaps_present"
     ]
     assert summary["next_action_missing_evidence_present"] is True
     assert summary["next_action_missing_evidence_present"] == report[
@@ -2888,6 +2900,11 @@ def test_stepfun_validator_status_cli_next_action_validator_summary_modes(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == "|".join(oracle_evidence_gaps)
+
+    rc = main([*args, "--next-action-oracle-evidence-gaps-present-only"])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) is True
 
     rc = main([*args, "--next-action-missing-evidence-present-only"])
 
