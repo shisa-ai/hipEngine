@@ -3362,14 +3362,20 @@ roll-up/status view.
       path rather than the `tokens>1` append+context interleave branch. The
       diagnostic branch now honors append+context interleaving for token-1
       chunks too; after that runtime diagnostic fix, rowchunk1 + the same
-      per-row append/context flags is hidden/token green at L8+L40. The
-      interleaving fallback is therefore correctness evidence and a row-bounded
-      diagnostic path, not yet a retained/native fix
+      per-row append/context flags is hidden/token green at L8+L40 and stays
+      hidden/token green through L40 warmup8+decode112. The full retained 512/128
+      bench with the same rowchunk1 diagnostic flags is still deterministically
+      token-red at `[137,104]` while the no-flag active default remains green;
+      that narrows the remaining rowchunk1 diagnostic gap away from traced
+      hidden/full-attention parity and toward full E2E/sampler or post-hidden
+      feedback. The interleaving fallback is therefore correctness evidence and
+      a row-bounded diagnostic path, not yet a retained/native fix
       (`benchmarks/results/2026-06-06-hipengine-qwen35-c2-retained-interleave-bridge-407/summary.json`,
       `benchmarks/results/2026-06-06-hipengine-qwen35-c2-retained-default-interleave-hidden-408/summary.json`,
       `benchmarks/results/2026-06-06-hipengine-qwen35-c2-append-context-phase-isolation-409/summary.json`,
       `benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-callorder-410/summary.json`,
-      `benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-interleave-fix-411/summary.json`).
+      `benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-interleave-fix-411/summary.json`,
+      `benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-retained-bridge-412/summary.json`).
       The next target is retained projection/output/full-attention parity without
       diagnostic flags; do not change paged-KV writer code yet. Do not re-open
       row setup, native linear segment metadata, output trace/copy semantics, or
