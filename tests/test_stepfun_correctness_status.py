@@ -1735,6 +1735,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_safety_summary_sha_only": (
             "oracle_partial_output_handoff.safety_summary.sha256"
         ),
+        "oracle_partial_output_safety_summary_key_count_only": (
+            "len(oracle_partial_output_handoff.safety_summary.keys)"
+        ),
+        "oracle_partial_output_safety_summary_key_count_sha_only": (
+            "len(oracle_partial_output_handoff.safety_summary.keys).sha256"
+        ),
         "oracle_partial_output_integrity_checks_only": (
             "oracle_partial_output_handoff.integrity_checks"
         ),
@@ -6686,6 +6692,8 @@ def test_stepfun_correctness_status_oracle_partial_output_safety_summary_outputs
     resource = tmp_path / "resource.json"
     summary_output = tmp_path / "oracle-partial-output-safety-summary.json"
     sha_output = tmp_path / "oracle-partial-output-safety-summary-sha.json"
+    key_count_output = tmp_path / "oracle-partial-output-safety-summary-key-count.json"
+    key_count_sha_output = tmp_path / "oracle-partial-output-safety-summary-key-count-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -6704,6 +6712,7 @@ def test_stepfun_correctness_status_oracle_partial_output_safety_summary_outputs
         ],
         "command_record_safe": handoff["command_record_safe"],
     }
+    safety_summary_key_count = len(safety_summary.keys())
     calls = [
         (
             summary_output,
@@ -6714,6 +6723,16 @@ def test_stepfun_correctness_status_oracle_partial_output_safety_summary_outputs
             sha_output,
             "--oracle-partial-output-safety-summary-sha-only",
             _stable_json_sha256(safety_summary),
+        ),
+        (
+            key_count_output,
+            "--oracle-partial-output-safety-summary-key-count-only",
+            safety_summary_key_count,
+        ),
+        (
+            key_count_sha_output,
+            "--oracle-partial-output-safety-summary-key-count-sha-only",
+            _stable_json_sha256(safety_summary_key_count),
         ),
     ]
     for output, mode, expected in calls:
@@ -6747,12 +6766,19 @@ def test_stepfun_correctness_status_oracle_partial_output_safety_summary_outputs
         "supervisor_signal_contract_safe": True,
         "command_record_safe": True,
     }
+    assert safety_summary_key_count == 5
     compact_modes = status["handoff_summary"]["compact_output_modes"]
     assert compact_modes["oracle_partial_output_safety_summary_only"] == (
         "oracle_partial_output_handoff.safety_summary"
     )
     assert compact_modes["oracle_partial_output_safety_summary_sha_only"] == (
         "oracle_partial_output_handoff.safety_summary.sha256"
+    )
+    assert compact_modes["oracle_partial_output_safety_summary_key_count_only"] == (
+        "len(oracle_partial_output_handoff.safety_summary.keys)"
+    )
+    assert compact_modes["oracle_partial_output_safety_summary_key_count_sha_only"] == (
+        "len(oracle_partial_output_handoff.safety_summary.keys).sha256"
     )
 
 
@@ -9733,6 +9759,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_safety_summary_sha_only": (
             "oracle_partial_output_handoff.safety_summary.sha256"
+        ),
+        "oracle_partial_output_safety_summary_key_count_only": (
+            "len(oracle_partial_output_handoff.safety_summary.keys)"
+        ),
+        "oracle_partial_output_safety_summary_key_count_sha_only": (
+            "len(oracle_partial_output_handoff.safety_summary.keys).sha256"
         ),
         "oracle_partial_output_integrity_checks_only": (
             "oracle_partial_output_handoff.integrity_checks"
