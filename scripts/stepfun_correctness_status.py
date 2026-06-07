@@ -169,6 +169,38 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocked-gate-only",
+        action="store_true",
+        help=(
+            "Emit only the first blocked readiness gate for compact readiness-gate routing. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocked-gate-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the first blocked readiness gate for "
+            "readiness-gate drift polling. Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--last-blocked-gate-only",
+        action="store_true",
+        help=(
+            "Emit only the last blocked readiness gate for compact readiness-gate routing. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--last-blocked-gate-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the last blocked readiness gate for "
+            "readiness-gate drift polling. Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--remaining-blockers-report-only",
         action="store_true",
         help=(
@@ -2127,6 +2159,14 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "blocked_gates.count"
             and compact_output_modes.get("blocked_gates_count_sha_only")
             == "blocked_gates.count.sha256"
+            and compact_output_modes.get("first_blocked_gate_only")
+            == "blocked_gates.first"
+            and compact_output_modes.get("first_blocked_gate_sha_only")
+            == "blocked_gates.first.sha256"
+            and compact_output_modes.get("last_blocked_gate_only")
+            == "blocked_gates.last"
+            and compact_output_modes.get("last_blocked_gate_sha_only")
+            == "blocked_gates.last.sha256"
             and compact_output_modes.get("blocker_kinds_only") == "blocker_kinds"
             and compact_output_modes.get("blocker_kinds_sha_only")
             == "blocker_kinds_sha256"
@@ -4948,6 +4988,10 @@ def _handoff_summary(
             "blocked_gates_sha_only": "blocked_gates_sha256",
             "blocked_gates_count_only": "blocked_gates.count",
             "blocked_gates_count_sha_only": "blocked_gates.count.sha256",
+            "first_blocked_gate_only": "blocked_gates.first",
+            "first_blocked_gate_sha_only": "blocked_gates.first.sha256",
+            "last_blocked_gate_only": "blocked_gates.last",
+            "last_blocked_gate_sha_only": "blocked_gates.last.sha256",
             "remaining_blockers_report_only": "remaining_blockers_report",
             "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
             "first_remaining_blocker_report_only": "first_remaining_blocker_report",
@@ -5943,6 +5987,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = _stable_json_sha256(len(status["blocked_gates"]))
     elif args.blocked_gates_count_only:
         result = len(status["blocked_gates"])
+    elif args.first_blocked_gate_sha_only:
+        result = _stable_json_sha256(
+            status["blocked_gates"][0] if status["blocked_gates"] else None
+        )
+    elif args.first_blocked_gate_only:
+        result = status["blocked_gates"][0] if status["blocked_gates"] else None
+    elif args.last_blocked_gate_sha_only:
+        result = _stable_json_sha256(
+            status["blocked_gates"][-1] if status["blocked_gates"] else None
+        )
+    elif args.last_blocked_gate_only:
+        result = status["blocked_gates"][-1] if status["blocked_gates"] else None
     elif args.blocked_gates_only:
         result = status["blocked_gates"]
     elif args.kv_streaming_loop_next_action_sha_only:

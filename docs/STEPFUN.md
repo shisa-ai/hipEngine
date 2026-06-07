@@ -599,10 +599,13 @@ reporting.
   `--readiness-status-only` / `--readiness-status-sha-only`,
   `--open-blocker-count-only` / `--open-blocker-count-sha-only`,
   `--blocker-work-queue-count-only` / `--blocker-work-queue-count-sha-only`,
-  `--blocked-gates-count-only` / `--blocked-gates-count-sha-only`, and
+  `--blocked-gates-count-only` / `--blocked-gates-count-sha-only`,
+  `--first-blocked-gate-only` / `--first-blocked-gate-sha-only`,
+  `--last-blocked-gate-only` / `--last-blocked-gate-sha-only`, and
   `--blocker-kinds-count-only` / `--blocker-kinds-count-sha-only`
-  expose the current blocked/ready state and blocker/queue/gate counts without
-  fetching the full readiness summary or gate/kind arrays. Status integrity verifies
+  expose the current blocked/ready state plus blocker/queue/gate counts and
+  first/last blocked gate route without fetching the full readiness summary or
+  gate/kind arrays. Status integrity verifies
   the readiness/blocker compact output-mode mappings, `--docs-checklist-only` /
   `--docs-checklist-sha-only` expose the exact P0-P12 open/partial checklist payload
   and digest used by the loop metric, `--docs-open-partial-count-only` emits just

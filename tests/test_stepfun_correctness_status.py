@@ -1700,6 +1700,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "blocked_gates_count_only": "blocked_gates.count",
         "blocked_gates_count_sha_only": "blocked_gates.count.sha256",
+        "first_blocked_gate_only": "blocked_gates.first",
+        "first_blocked_gate_sha_only": "blocked_gates.first.sha256",
+        "last_blocked_gate_only": "blocked_gates.last",
+        "last_blocked_gate_sha_only": "blocked_gates.last.sha256",
         "remaining_blockers_report_only": "remaining_blockers_report",
         "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
         "first_remaining_blocker_report_only": "first_remaining_blocker_report",
@@ -5019,6 +5023,73 @@ def test_stepfun_correctness_status_kv_streaming_loop_next_action_sha_only(
     assert payload == _stable_json_sha256(expected["next_action"])
 
 
+def test_stepfun_correctness_status_first_and_last_blocked_gate_modes(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    first_output = tmp_path / "first-blocked-gate.json"
+    first_sha_output = tmp_path / "first-blocked-gate-sha.json"
+    last_output = tmp_path / "last-blocked-gate.json"
+    last_sha_output = tmp_path / "last-blocked-gate-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    blocked_gates = status["blocked_gates"]
+    calls = [
+        (first_output, "--first-blocked-gate-only", blocked_gates[0]),
+        (
+            first_sha_output,
+            "--first-blocked-gate-sha-only",
+            _stable_json_sha256(blocked_gates[0]),
+        ),
+        (last_output, "--last-blocked-gate-only", blocked_gates[-1]),
+        (
+            last_sha_output,
+            "--last-blocked-gate-sha-only",
+            _stable_json_sha256(blocked_gates[-1]),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--readiness-summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert blocked_gates[0]
+    assert blocked_gates[-1]
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["first_blocked_gate_only"] == "blocked_gates.first"
+    assert compact_modes["first_blocked_gate_sha_only"] == "blocked_gates.first.sha256"
+    assert compact_modes["last_blocked_gate_only"] == "blocked_gates.last"
+    assert compact_modes["last_blocked_gate_sha_only"] == "blocked_gates.last.sha256"
+
+
 def test_stepfun_correctness_status_blocked_gate_and_blocker_kind_count_modes(
     capsys,
     tmp_path: Path,
@@ -6267,6 +6338,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "blocked_gates_count_only": "blocked_gates.count",
         "blocked_gates_count_sha_only": "blocked_gates.count.sha256",
+        "first_blocked_gate_only": "blocked_gates.first",
+        "first_blocked_gate_sha_only": "blocked_gates.first.sha256",
+        "last_blocked_gate_only": "blocked_gates.last",
+        "last_blocked_gate_sha_only": "blocked_gates.last.sha256",
         "remaining_blockers_report_only": "remaining_blockers_report",
         "remaining_blockers_report_sha_only": "remaining_blockers_report_sha256",
         "first_remaining_blocker_report_only": "first_remaining_blocker_report",
