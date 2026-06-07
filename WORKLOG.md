@@ -67369,3 +67369,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Status nuance: the retained-bench top-level status remains `blocked` because retained performance/profiler/baseline artifact requirements are not met; this is not a generated-token equality failure, and no performance/scaling claim is made.
 - Required guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-recovery-470/summary.json` and `compact-runs.json`. Continue preserving exact active c2 metric values in loop records; treat the `61` as transient unless it repeats.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter471 c4 rowchunk2 drop11 equality green
+- No runtime/source code changed. Ran c4 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with rowchunk2 on layers `3,7,15` (dropping layer11 from the iter468 c4 auto set `3,7,11,15` while keeping layer15 rowchunked).
+- Result: dropping layer11 is **green** for c4. `correctness.generated_token_equality.passed=true`, `min_equal_prefix_tokens=137`, `prefix_lengths=[137,137,137,137]`, all mismatch indices are `null`, and mismatch count is `0`. Layer11 runs native batch in this probe; layers 3/7/15 use rowchunk2.
+- Interpretation: the c4 rowchunk2 selected layer set can narrow from `3,7,11,15` to `3,7,15`. Layer15 remains required from iter469. Next focused step can update c4 auto defaults and validate c4 auto equality, or test layer7 before changing defaults.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop11-equality-471/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
