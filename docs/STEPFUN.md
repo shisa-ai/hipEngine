@@ -918,11 +918,15 @@ reporting.
   as one pipe-joined scalar for shell pollers, while
   `--kv-streaming-blocker-count-only` / `--kv-streaming-blockers-present-only`
   expose count/presence scalars for empty-vs-blocked checks. Compact
-  `--kv-first-streaming-blocker-only` / `--kv-first-streaming-blocker-sha-only`
-  and `--kv-last-streaming-blocker-only` / `--kv-last-streaming-blocker-sha-only`
-  outputs expose the current first/tail source-level runner blockers
-  (`streaming_decode_loop_not_wired` / `kv_backed_next_token_artifact_missing`) and
-  their persisted digests directly for KV implementation handoff. The runtime `kv_decode_launch_schedule` and
+  `--kv-first-streaming-blocker-only` / `--kv-first-streaming-blocker-sha-only`,
+  `--kv-last-streaming-blocker-only` / `--kv-last-streaming-blocker-sha-only`,
+  and `--kv-kernel-trace-streaming-blocker-only` /
+  `--kv-kernel-trace-streaming-blocker-sha-only` /
+  `--kv-kernel-trace-streaming-blocker-present-only` outputs expose the current
+  first/tail source-level runner blockers plus the middle kernel-trace artifact
+  blocker (`streaming_decode_loop_not_wired`, `kv_backed_next_token_artifact_missing`,
+  and `kv_kernel_trace_artifact_missing`) and their persisted digests/presence
+  directly for KV implementation handoff. The runtime `kv_decode_launch_schedule` and
   `kv_decode_run_plan` now emit the same first-blocker digest at the metadata
   source, and `kv_decode_run_plan.streaming_decode_loop_blueprint` records the
   metadata-only upload/order/stage contract for the future KV loop without
