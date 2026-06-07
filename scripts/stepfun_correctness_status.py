@@ -1346,6 +1346,23 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-command-available-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.command_available for "
+            "compact immediate-blocker runnable-action polling. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-command-available-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of handoff_summary.first_blocker_work_item."
+            "command_available for immediate-blocker runnable-action drift polling. "
+            "Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--first-blocker-recommended-command-only",
         action="store_true",
         help=(
@@ -2749,6 +2766,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "handoff_summary.first_blocker_work_item_sha256"
             and compact_output_modes.get("first_blocker_only")
             == "handoff_summary.first_blocker_work_item"
+            and compact_output_modes.get("first_blocker_command_available_only")
+            == "handoff_summary.first_blocker_work_item.command_available"
+            and compact_output_modes.get("first_blocker_command_available_sha_only")
+            == "handoff_summary.first_blocker_work_item.command_available.sha256"
             and compact_output_modes.get("first_blocker_recommended_command_only")
             == "handoff_summary.first_blocker_work_item.recommended_command"
             and compact_output_modes.get("first_blocker_recommended_command_sha_only")
@@ -5522,6 +5543,12 @@ def _handoff_summary(
             ),
             "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
             "first_blocker_only": "handoff_summary.first_blocker_work_item",
+            "first_blocker_command_available_only": (
+                "handoff_summary.first_blocker_work_item.command_available"
+            ),
+            "first_blocker_command_available_sha_only": (
+                "handoff_summary.first_blocker_work_item.command_available.sha256"
+            ),
             "first_blocker_recommended_command_only": (
                 "handoff_summary.first_blocker_work_item.recommended_command"
             ),
@@ -6119,7 +6146,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.docs,
         resource_artifact=args.resource_artifact,
     )
-    if args.first_blocker_recommended_command_sha_only:
+    if args.first_blocker_command_available_sha_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            _stable_json_sha256(first_blocker_work_item.get("command_available"))
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_command_available_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("command_available")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_recommended_command_sha_only:
         first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
         result = (
             first_blocker_work_item.get("recommended_command_sha256")
