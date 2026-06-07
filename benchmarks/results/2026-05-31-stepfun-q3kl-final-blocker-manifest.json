@@ -758,17 +758,17 @@
   "schema_version": 1,
   "status": "blocked",
   "status_provenance": {
-    "handoff_summary_sha256": "32fa67ac70c4884e19e7fb5323594c643f8344076444b41efcab8c89d1ff4982",
+    "handoff_summary_sha256": "0f29a4d4c492354d71bfacae38ab8b443276e5e2c7404475279cd3867379dd92",
     "next_action_commands_sha256": "dd508e6e3a62c886cf3b6d3308fce62b268309b0419def678383f4e0071e2c0a",
     "oracle_partial_output_handoff_sha256": "bd0628cadd439eee98a671e02d58b8508e634ff94adbe9e633db10edb1072477",
     "oracle_progress_sha256": "3bcd3b8b73a49ca26a9639378342b22327382870ddf9fc0964569b56c31c6e2c",
-    "readiness_summary_sha256": "a37230200053fc7ee32b5e7d8129fba0f2e304077a5ae69c8aeb9fcbdd9b663d",
+    "readiness_summary_sha256": "34cd9f3930baca36d21406c03d896335cc60618da385c7f2ba4d4ef74595fabc",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "4b1c4cf63c6710ef0d797b6186600147a21b7ea6fff635a79838df1fdf4d1880",
-        "size_bytes": 90276
+        "sha256": "68ca974366c1e845dd929dc94132286e2c051b20e9a33c35938855788cf48705",
+        "size_bytes": 90401
       },
       "oracle": {
         "exists": true,
@@ -795,10 +795,10 @@
         "size_bytes": 178045
       }
     },
-    "source_artifacts_sha256": "a58569841b5268c1f97c752b592f18baddd50905a514f8f0b9221080b7cccb8f",
+    "source_artifacts_sha256": "e3793d6209e4f3e79506dcd9dcf9a95a977c9cc7ad41067dd0ac142a4778b010",
     "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
   },
-  "status_provenance_sha256": "db9fda10f94dc853c19a4172fb83480345580bda4f9b431aff70acf8cfdc6c07",
+  "status_provenance_sha256": "c7c16933bd14b08724c65330cf591b8c7e52da8b9efce15147b7dc838a310503",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",
