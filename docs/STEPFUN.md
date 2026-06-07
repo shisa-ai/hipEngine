@@ -605,6 +605,8 @@ reporting.
   `--docs-open-partial-state-counts-sha-only` expose open-vs-partial blocker
   counts, `--docs-open-partial-lines-only` /
   `--docs-open-partial-lines-sha-only` expose direct checklist line numbers,
+  `--docs-open-partial-texts-only` /
+  `--docs-open-partial-texts-sha-only` expose checklist item text labels,
   and `--docs-first-open-partial-item-only` /
   `--docs-first-open-partial-item-sha-only` /
   `--docs-last-open-partial-item-only` /
