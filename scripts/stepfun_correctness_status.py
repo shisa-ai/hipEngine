@@ -1772,6 +1772,25 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-mirror-prelaunch-write-flag-count-only",
+        action="store_true",
+        help=(
+            "Emit only len(oracle_partial_output_handoff."
+            "mirror_records[].writes_partial_output_before_launch) for compact supervised "
+            "oracle-rerun mirror-prelaunch-write count polling. Overrides readiness/queue "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-mirror-prelaunch-write-flag-count-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of len(oracle_partial_output_handoff."
+            "mirror_records[].writes_partial_output_before_launch) for supervised oracle-rerun "
+            "mirror-prelaunch-write count drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-mirror-queue-indices-only",
         action="store_true",
         help=(
@@ -3533,6 +3552,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch"
             and compact_output_modes.get("oracle_partial_output_mirror_prelaunch_write_flags_sha_only")
             == "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch.sha256"
+            and compact_output_modes.get("oracle_partial_output_mirror_prelaunch_write_flag_count_only")
+            == "len(oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch)"
+            and compact_output_modes.get("oracle_partial_output_mirror_prelaunch_write_flag_count_sha_only")
+            == "len(oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch).sha256"
             and compact_output_modes.get("oracle_partial_output_mirror_queue_indices_only")
             == "oracle_partial_output_handoff.mirror_records[].queue_index"
             and compact_output_modes.get("oracle_partial_output_mirror_queue_indices_sha_only")
@@ -6461,6 +6484,12 @@ def _handoff_summary(
             "oracle_partial_output_mirror_prelaunch_write_flags_sha_only": (
                 "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch.sha256"
             ),
+            "oracle_partial_output_mirror_prelaunch_write_flag_count_only": (
+                "len(oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch)"
+            ),
+            "oracle_partial_output_mirror_prelaunch_write_flag_count_sha_only": (
+                "len(oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch).sha256"
+            ),
             "oracle_partial_output_mirror_queue_indices_only": (
                 "oracle_partial_output_handoff.mirror_records[].queue_index"
             ),
@@ -7871,6 +7900,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             "mirror_records", []
         )
         result = [record.get("writes_partial_output_before_launch") for record in mirror_records]
+    elif args.oracle_partial_output_mirror_prelaunch_write_flag_count_sha_only:
+        mirror_records = status["oracle_partial_output_handoff"].get(
+            "mirror_records", []
+        )
+        result = _stable_json_sha256(
+            len([record.get("writes_partial_output_before_launch") for record in mirror_records])
+        )
+    elif args.oracle_partial_output_mirror_prelaunch_write_flag_count_only:
+        mirror_records = status["oracle_partial_output_handoff"].get(
+            "mirror_records", []
+        )
+        result = len([record.get("writes_partial_output_before_launch") for record in mirror_records])
     elif args.oracle_partial_output_mirror_queue_indices_sha_only:
         mirror_records = status["oracle_partial_output_handoff"].get(
             "mirror_records", []
