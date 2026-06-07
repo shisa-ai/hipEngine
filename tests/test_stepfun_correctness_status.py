@@ -1700,6 +1700,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "blocked_gates_count_only": "blocked_gates.count",
         "blocked_gates_count_sha_only": "blocked_gates.count.sha256",
+        "blocked_gates_joined_only": "blocked_gates.joined",
+        "blocked_gates_joined_sha_only": "blocked_gates.joined.sha256",
         "first_blocked_gate_only": "blocked_gates.first",
         "first_blocked_gate_sha_only": "blocked_gates.first.sha256",
         "last_blocked_gate_only": "blocked_gates.last",
@@ -1725,6 +1727,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "blocker_kinds_count_only": "blocker_kinds.count",
         "blocker_kinds_count_sha_only": "blocker_kinds.count.sha256",
+        "blocker_kinds_joined_only": "blocker_kinds.joined",
+        "blocker_kinds_joined_sha_only": "blocker_kinds.joined.sha256",
         "first_blocker_kind_route_only": "blocker_kinds.first",
         "first_blocker_kind_route_sha_only": "blocker_kinds.first.sha256",
         "last_blocker_kind_route_only": "blocker_kinds.last",
@@ -5027,6 +5031,78 @@ def test_stepfun_correctness_status_kv_streaming_loop_next_action_sha_only(
     assert payload == _stable_json_sha256(expected["next_action"])
 
 
+def test_stepfun_correctness_status_joined_blocked_gate_and_blocker_kind_modes(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    blocked_output = tmp_path / "blocked-gates-joined.json"
+    blocked_sha_output = tmp_path / "blocked-gates-joined-sha.json"
+    kinds_output = tmp_path / "blocker-kinds-joined.json"
+    kinds_sha_output = tmp_path / "blocker-kinds-joined-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    blocked_joined = "|".join(status["blocked_gates"])
+    kinds_joined = "|".join(status["blocker_kinds"])
+    calls = [
+        (blocked_output, "--blocked-gates-joined-only", blocked_joined),
+        (
+            blocked_sha_output,
+            "--blocked-gates-joined-sha-only",
+            _stable_json_sha256(blocked_joined),
+        ),
+        (kinds_output, "--blocker-kinds-joined-only", kinds_joined),
+        (
+            kinds_sha_output,
+            "--blocker-kinds-joined-sha-only",
+            _stable_json_sha256(kinds_joined),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--readiness-summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert blocked_joined == "oracle_parity|kv_backed_decode|e2e_inference"
+    assert kinds_joined == "oracle_parity_blocked|kv_backed_decode_not_wired"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["blocked_gates_joined_only"] == "blocked_gates.joined"
+    assert compact_modes["blocked_gates_joined_sha_only"] == (
+        "blocked_gates.joined.sha256"
+    )
+    assert compact_modes["blocker_kinds_joined_only"] == "blocker_kinds.joined"
+    assert compact_modes["blocker_kinds_joined_sha_only"] == (
+        "blocker_kinds.joined.sha256"
+    )
+
+
 def test_stepfun_correctness_status_first_and_last_blocked_gate_modes(
     capsys,
     tmp_path: Path,
@@ -6413,6 +6489,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocked_gates_sha_only": "blocked_gates_sha256",
         "blocked_gates_count_only": "blocked_gates.count",
         "blocked_gates_count_sha_only": "blocked_gates.count.sha256",
+        "blocked_gates_joined_only": "blocked_gates.joined",
+        "blocked_gates_joined_sha_only": "blocked_gates.joined.sha256",
         "first_blocked_gate_only": "blocked_gates.first",
         "first_blocked_gate_sha_only": "blocked_gates.first.sha256",
         "last_blocked_gate_only": "blocked_gates.last",
@@ -6438,6 +6516,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "blocker_kinds_count_only": "blocker_kinds.count",
         "blocker_kinds_count_sha_only": "blocker_kinds.count.sha256",
+        "blocker_kinds_joined_only": "blocker_kinds.joined",
+        "blocker_kinds_joined_sha_only": "blocker_kinds.joined.sha256",
         "first_blocker_kind_route_only": "blocker_kinds.first",
         "first_blocker_kind_route_sha_only": "blocker_kinds.first.sha256",
         "last_blocker_kind_route_only": "blocker_kinds.last",

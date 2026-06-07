@@ -169,6 +169,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--blocked-gates-joined-only",
+        action="store_true",
+        help=(
+            "Emit only the pipe-joined blocked_gates route for compact readiness route polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocked-gates-joined-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the pipe-joined blocked_gates route for "
+            "readiness route drift polling. Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--first-blocked-gate-only",
         action="store_true",
         help=(
@@ -607,6 +623,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Emit only the SHA-256 digest of len(blocker_kinds) for blocker-kind "
             "count drift polling. Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-kinds-joined-only",
+        action="store_true",
+        help=(
+            "Emit only the pipe-joined blocker_kinds route for compact blocker-kind route polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-kinds-joined-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the pipe-joined blocker_kinds route for "
+            "blocker-kind route drift polling. Overrides --summary-only and readiness compact-output modes."
         ),
     )
     parser.add_argument(
@@ -2191,6 +2223,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "blocked_gates.count"
             and compact_output_modes.get("blocked_gates_count_sha_only")
             == "blocked_gates.count.sha256"
+            and compact_output_modes.get("blocked_gates_joined_only")
+            == "blocked_gates.joined"
+            and compact_output_modes.get("blocked_gates_joined_sha_only")
+            == "blocked_gates.joined.sha256"
             and compact_output_modes.get("first_blocked_gate_only")
             == "blocked_gates.first"
             and compact_output_modes.get("first_blocked_gate_sha_only")
@@ -2206,6 +2242,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "blocker_kinds.count"
             and compact_output_modes.get("blocker_kinds_count_sha_only")
             == "blocker_kinds.count.sha256"
+            and compact_output_modes.get("blocker_kinds_joined_only")
+            == "blocker_kinds.joined"
+            and compact_output_modes.get("blocker_kinds_joined_sha_only")
+            == "blocker_kinds.joined.sha256"
             and compact_output_modes.get("first_blocker_kind_route_only")
             == "blocker_kinds.first"
             and compact_output_modes.get("first_blocker_kind_route_sha_only")
@@ -5028,6 +5068,8 @@ def _handoff_summary(
             "blocked_gates_sha_only": "blocked_gates_sha256",
             "blocked_gates_count_only": "blocked_gates.count",
             "blocked_gates_count_sha_only": "blocked_gates.count.sha256",
+            "blocked_gates_joined_only": "blocked_gates.joined",
+            "blocked_gates_joined_sha_only": "blocked_gates.joined.sha256",
             "first_blocked_gate_only": "blocked_gates.first",
             "first_blocked_gate_sha_only": "blocked_gates.first.sha256",
             "last_blocked_gate_only": "blocked_gates.last",
@@ -5053,6 +5095,8 @@ def _handoff_summary(
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "blocker_kinds_count_only": "blocker_kinds.count",
             "blocker_kinds_count_sha_only": "blocker_kinds.count.sha256",
+            "blocker_kinds_joined_only": "blocker_kinds.joined",
+            "blocker_kinds_joined_sha_only": "blocker_kinds.joined.sha256",
             "first_blocker_kind_route_only": "blocker_kinds.first",
             "first_blocker_kind_route_sha_only": "blocker_kinds.first.sha256",
             "last_blocker_kind_route_only": "blocker_kinds.last",
@@ -6015,6 +6059,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = _stable_json_sha256(len(status["blocker_kinds"]))
     elif args.blocker_kinds_count_only:
         result = len(status["blocker_kinds"])
+    elif args.blocker_kinds_joined_sha_only:
+        result = _stable_json_sha256("|".join(status["blocker_kinds"]))
+    elif args.blocker_kinds_joined_only:
+        result = "|".join(status["blocker_kinds"])
     elif args.first_blocker_kind_route_sha_only:
         result = _stable_json_sha256(
             status["blocker_kinds"][0] if status["blocker_kinds"] else None
@@ -6043,6 +6091,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = _stable_json_sha256(len(status["blocked_gates"]))
     elif args.blocked_gates_count_only:
         result = len(status["blocked_gates"])
+    elif args.blocked_gates_joined_sha_only:
+        result = _stable_json_sha256("|".join(status["blocked_gates"]))
+    elif args.blocked_gates_joined_only:
+        result = "|".join(status["blocked_gates"])
     elif args.first_blocked_gate_sha_only:
         result = _stable_json_sha256(
             status["blocked_gates"][0] if status["blocked_gates"] else None
