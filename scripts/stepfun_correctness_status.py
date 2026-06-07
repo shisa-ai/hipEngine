@@ -529,6 +529,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-streaming-blocker-count-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.streaming_runner_blocker_count. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-streaming-blockers-present-only",
+        action="store_true",
+        help=(
+            "Emit only whether the KV streaming blocker-name sequence is non-empty. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--kv-streaming-blocker-records-only",
         action="store_true",
         help=(
@@ -1073,6 +1089,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     )
     kv_streaming_blocker_names_joined_sha256 = (
         kv_gap_report.get("streaming_runner_blocker_names_joined_sha256")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_streaming_blocker_count = (
+        kv_gap_report.get("streaming_runner_blocker_count")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_streaming_blockers_present = (
+        kv_gap_report.get("streaming_runner_blockers_present")
         if isinstance(kv_gap_report, dict)
         else None
     )
@@ -1835,6 +1861,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "kv_backed_decode_gap_report.streaming_runner_blocker_names_joined"
             and compact_output_modes.get("kv_streaming_blockers_joined_sha_only")
             == "kv_backed_decode_gap_report.streaming_runner_blocker_names_joined_sha256"
+            and compact_output_modes.get("kv_streaming_blocker_count_only")
+            == "kv_backed_decode_gap_report.streaming_runner_blocker_count"
+            and compact_output_modes.get("kv_streaming_blockers_present_only")
+            == "kv_backed_decode_gap_report.streaming_runner_blockers_present"
             and compact_output_modes.get("kv_streaming_blocker_records_only")
             == "kv_backed_decode_gap_report.streaming_runner_blockers"
             and compact_output_modes.get("kv_streaming_blocker_records_sha_only")
@@ -1967,6 +1997,11 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "|".join(kv_streaming_blocker_names)
             and kv_streaming_blocker_names_joined_sha256
             == _stable_json_sha256(kv_streaming_blocker_names_joined)
+        ),
+        "kv_streaming_runner_blocker_count_present": (
+            isinstance(kv_streaming_blocker_names, list)
+            and kv_streaming_blocker_count == len(kv_streaming_blocker_names)
+            and kv_streaming_blockers_present == bool(kv_streaming_blocker_names)
         ),
         "kv_streaming_runner_blocker_mirrors": kv_streaming_runner_blocker_mirrors,
         "kv_streaming_runner_blockers_sha256": kv_streaming_runner_blockers_sha256_match,
@@ -2766,6 +2801,7 @@ def _kv_backed_decode_gap_report(
     streaming_runner_blocker_count = run_plan.get(
         "streaming_runner_blocker_count"
     ) or launch_schedule.get("streaming_runner_blocker_count")
+    streaming_runner_blockers_present = bool(streaming_runner_blocker_names)
     preconditions = [
         {
             "name": "dispatch_keys_registered",
@@ -2866,6 +2902,7 @@ def _kv_backed_decode_gap_report(
                 ),
                 "run_plan_streaming_runner_ready": run_plan.get("streaming_runner_ready"),
                 "streaming_runner_blocker_count": streaming_runner_blocker_count,
+                "streaming_runner_blockers_present": streaming_runner_blockers_present,
                 "streaming_runner_blocker_names": streaming_runner_blocker_names,
                 "streaming_runner_blocker_names_sha256": streaming_runner_blocker_names_sha256,
                 "computed_streaming_runner_blocker_names_sha256": computed_streaming_runner_blocker_names_sha256,
@@ -3059,6 +3096,7 @@ def _kv_backed_decode_gap_report(
         "kv_decode_blocker_summary_recorded": bool(kv_decode_blocker_summary),
         "kv_decode_blocker_summary_mirrors_run_plan": kv_decode_blocker_summary_mirrors_run_plan,
         "streaming_runner_blocker_count": streaming_runner_blocker_count,
+        "streaming_runner_blockers_present": streaming_runner_blockers_present,
         "streaming_runner_blocker_names": streaming_runner_blocker_names,
         "streaming_runner_blocker_names_sha256": streaming_runner_blocker_names_sha256,
         "computed_streaming_runner_blocker_names_sha256": computed_streaming_runner_blocker_names_sha256,
@@ -4466,6 +4504,12 @@ def _handoff_summary(
             "kv_streaming_blockers_joined_sha_only": (
                 "kv_backed_decode_gap_report.streaming_runner_blocker_names_joined_sha256"
             ),
+            "kv_streaming_blocker_count_only": (
+                "kv_backed_decode_gap_report.streaming_runner_blocker_count"
+            ),
+            "kv_streaming_blockers_present_only": (
+                "kv_backed_decode_gap_report.streaming_runner_blockers_present"
+            ),
             "kv_streaming_blocker_records_only": (
                 "kv_backed_decode_gap_report.streaming_runner_blockers"
             ),
@@ -5335,6 +5379,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.kv_streaming_blockers_joined_only:
         result = status["kv_backed_decode_gap_report"].get(
             "streaming_runner_blocker_names_joined"
+        )
+    elif args.kv_streaming_blocker_count_only:
+        result = status["kv_backed_decode_gap_report"].get(
+            "streaming_runner_blocker_count"
+        )
+    elif args.kv_streaming_blockers_present_only:
+        result = status["kv_backed_decode_gap_report"].get(
+            "streaming_runner_blockers_present"
         )
     elif args.kv_streaming_blockers_only:
         result = status["kv_backed_decode_gap_report"].get("streaming_runner_blocker_names")

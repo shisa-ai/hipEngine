@@ -915,7 +915,9 @@ reporting.
   and verifies that digest with compact `--kv-streaming-blockers-only` /
   `--kv-streaming-blockers-sha-only` outputs; `--kv-streaming-blockers-joined-only` /
   `--kv-streaming-blockers-joined-sha-only` expose the same blocker-name sequence
-  as one pipe-joined scalar for shell pollers. Compact
+  as one pipe-joined scalar for shell pollers, while
+  `--kv-streaming-blocker-count-only` / `--kv-streaming-blockers-present-only`
+  expose count/presence scalars for empty-vs-blocked checks. Compact
   `--kv-first-streaming-blocker-only` / `--kv-first-streaming-blocker-sha-only`
   outputs expose the current first source-level runner blocker
   (`streaming_decode_loop_not_wired`) and its persisted digest directly for KV

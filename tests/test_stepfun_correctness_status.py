@@ -1435,6 +1435,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "streaming_decode_launch_trace_summary_sha256"
     ] == _streaming_decode_launch_trace_summary_sha256()
     assert gap_report["streaming_runner_blocker_count"] == 3
+    assert gap_report["streaming_runner_blockers_present"] is True
     assert gap_report["streaming_runner_blocker_names"] == _streaming_runner_blocker_names()
     assert gap_report["streaming_runner_blocker_names_sha256"] == _streaming_runner_blocker_names_sha256()
     assert gap_report["computed_streaming_runner_blocker_names_sha256"] == _streaming_runner_blocker_names_sha256()
@@ -1453,6 +1454,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_streaming_runner_blocker_count": 3,
         "run_plan_streaming_runner_ready": False,
         "streaming_runner_blocker_count": 3,
+        "streaming_runner_blockers_present": True,
         "streaming_runner_blocker_names": _streaming_runner_blocker_names(),
         "streaming_runner_blocker_names_sha256": _streaming_runner_blocker_names_sha256(),
         "computed_streaming_runner_blocker_names_sha256": _streaming_runner_blocker_names_sha256(),
@@ -1673,6 +1675,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ),
         "kv_streaming_blockers_joined_sha_only": (
             "kv_backed_decode_gap_report.streaming_runner_blocker_names_joined_sha256"
+        ),
+        "kv_streaming_blocker_count_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blocker_count"
+        ),
+        "kv_streaming_blockers_present_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blockers_present"
         ),
         "kv_streaming_blocker_records_only": (
             "kv_backed_decode_gap_report.streaming_runner_blockers"
@@ -3779,6 +3787,8 @@ def test_stepfun_correctness_status_kv_streaming_blockers_only(
     output = tmp_path / "kv-streaming-blockers.json"
     joined_output = tmp_path / "kv-streaming-blockers-joined.json"
     joined_sha_output = tmp_path / "kv-streaming-blockers-joined-sha.json"
+    count_output = tmp_path / "kv-streaming-blocker-count.json"
+    present_output = tmp_path / "kv-streaming-blockers-present.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -3819,6 +3829,12 @@ def test_stepfun_correctness_status_kv_streaming_blockers_only(
     assert status["kv_backed_decode_gap_report"][
         "streaming_runner_blocker_names_joined_sha256"
     ] == _stable_json_sha256(expected_joined)
+    assert status["kv_backed_decode_gap_report"][
+        "streaming_runner_blocker_count"
+    ] == len(_streaming_runner_blocker_names())
+    assert status["kv_backed_decode_gap_report"][
+        "streaming_runner_blockers_present"
+    ] is True
 
     rc = main(
         [
@@ -3875,6 +3891,62 @@ def test_stepfun_correctness_status_kv_streaming_blockers_only(
     assert status["handoff_summary"]["compact_output_modes"][
         "kv_streaming_blockers_joined_sha_only"
     ] == "kv_backed_decode_gap_report.streaming_runner_blocker_names_joined_sha256"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(count_output),
+            "--summary-only",
+            "--kv-streaming-blocker-count-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(count_output.read_text()) == len(
+        _streaming_runner_blocker_names()
+    )
+    assert status["handoff_summary"]["compact_output_modes"][
+        "kv_streaming_blocker_count_only"
+    ] == "kv_backed_decode_gap_report.streaming_runner_blocker_count"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(present_output),
+            "--summary-only",
+            "--kv-streaming-blockers-present-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(present_output.read_text()) is True
+    assert status["handoff_summary"]["compact_output_modes"][
+        "kv_streaming_blockers_present_only"
+    ] == "kv_backed_decode_gap_report.streaming_runner_blockers_present"
 
 
 def test_stepfun_correctness_status_kv_streaming_blocker_records_only(
@@ -4806,6 +4878,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "blocked_gates_mirror_remaining_report": True,
             "kv_streaming_runner_blocker_names_sha256": True,
             "kv_streaming_runner_blocker_names_joined_sha256": True,
+            "kv_streaming_runner_blocker_count_present": True,
             "kv_streaming_runner_blocker_mirrors": True,
             "kv_streaming_runner_blockers_sha256": True,
             "kv_streaming_runner_blocker_records_mirrors": True,
@@ -5717,6 +5790,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "kv_streaming_blockers_joined_sha_only": (
             "kv_backed_decode_gap_report.streaming_runner_blocker_names_joined_sha256"
+        ),
+        "kv_streaming_blocker_count_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blocker_count"
+        ),
+        "kv_streaming_blockers_present_only": (
+            "kv_backed_decode_gap_report.streaming_runner_blockers_present"
         ),
         "kv_streaming_blocker_records_only": (
             "kv_backed_decode_gap_report.streaming_runner_blockers"
@@ -7456,6 +7535,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "blocked_gates_mirror_remaining_report": True,
             "kv_streaming_runner_blocker_names_sha256": True,
             "kv_streaming_runner_blocker_names_joined_sha256": True,
+            "kv_streaming_runner_blocker_count_present": True,
             "kv_streaming_runner_blocker_mirrors": True,
             "kv_streaming_runner_blockers_sha256": True,
             "kv_streaming_runner_blocker_records_mirrors": True,
@@ -9558,6 +9638,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_names_joined_sha256": True,
+        "kv_streaming_runner_blocker_count_present": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
         "kv_streaming_runner_blocker_records_mirrors": True,
@@ -9684,6 +9765,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": False,
         "kv_streaming_runner_blocker_names_joined_sha256": True,
+        "kv_streaming_runner_blocker_count_present": True,
         "kv_streaming_runner_blocker_mirrors": False,
         "kv_streaming_runner_blockers_sha256": True,
         "kv_streaming_runner_blocker_records_mirrors": True,
@@ -9942,6 +10024,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_names_joined_sha256": True,
+        "kv_streaming_runner_blocker_count_present": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
         "kv_streaming_runner_blocker_records_mirrors": True,
@@ -10507,6 +10590,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_names_joined_sha256": True,
+        "kv_streaming_runner_blocker_count_present": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
         "kv_streaming_runner_blocker_records_mirrors": True,
@@ -10632,6 +10716,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_statu
         "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_names_joined_sha256": True,
+        "kv_streaming_runner_blocker_count_present": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
         "kv_streaming_runner_blocker_records_mirrors": True,
@@ -10758,6 +10843,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_loop_next_
         "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_names_joined_sha256": True,
+        "kv_streaming_runner_blocker_count_present": True,
         "kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_runner_blockers_sha256": True,
         "kv_streaming_runner_blocker_records_mirrors": True,
@@ -10883,6 +10969,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "blocked_gates_mirror_remaining_report": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_names_joined_sha256": True,
+        "kv_streaming_runner_blocker_count_present": True,
         "kv_streaming_runner_blocker_mirrors": False,
         "kv_streaming_runner_blockers_sha256": True,
         "kv_streaming_runner_blocker_records_mirrors": True,
