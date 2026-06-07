@@ -237,7 +237,7 @@
       "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
     },
     "last_open_or_partial_item_p0_p12": {
-      "line": 827,
+      "line": 832,
       "state": "partial",
       "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
     },
@@ -249,25 +249,25 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 827,
+        "line": 832,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ],
-    "open_or_partial_line_texts_joined_p0_p12": "510:Add a Step GGUF runner that streams one-token decode for short prompts with|827:Compare greedy next tokens and/or logits against llama.cpp for a small set",
-    "open_or_partial_line_texts_joined_p0_p12_sha256": "42116993822fda8af1ddc310a72ef27491c4c45c810b68dd1a03e3e6a8298f42",
+    "open_or_partial_line_texts_joined_p0_p12": "510:Add a Step GGUF runner that streams one-token decode for short prompts with|832:Compare greedy next tokens and/or logits against llama.cpp for a small set",
+    "open_or_partial_line_texts_joined_p0_p12_sha256": "3fef300ad6b54a578b5609078c4474c11e514103e966bf1db64d0106bbe71a31",
     "open_or_partial_lines_p0_p12": [
       510,
-      827
+      832
     ],
-    "open_or_partial_lines_p0_p12_sha256": "f5af055aa1384b8c65049735b23010d78f3d9cdda8aa94a76f128007b5b1f0d6",
+    "open_or_partial_lines_p0_p12_sha256": "548f7406baf1710f923104433cb7d70f1ab374d6ae68c9ae0eca1c8c520ddd9f",
     "open_or_partial_state_counts_p0_p12": {
       "open": 0,
       "partial": 2
     },
     "open_or_partial_state_counts_p0_p12_sha256": "995e50559fe26e4a28b8c464feeae0e3147ae574bd85914c845c659f7ab8a814",
-    "open_or_partial_state_line_texts_joined_p0_p12": "partial:510:Add a Step GGUF runner that streams one-token decode for short prompts with|partial:827:Compare greedy next tokens and/or logits against llama.cpp for a small set",
-    "open_or_partial_state_line_texts_joined_p0_p12_sha256": "9f59ead9bd5292e64cf6ea8f2e186a211f2a034a189ffa4092c2b1b45213646e",
+    "open_or_partial_state_line_texts_joined_p0_p12": "partial:510:Add a Step GGUF runner that streams one-token decode for short prompts with|partial:832:Compare greedy next tokens and/or logits against llama.cpp for a small set",
+    "open_or_partial_state_line_texts_joined_p0_p12_sha256": "e6714e3af815a8ca0152d1fce4df7a8fe4707b7abf10f590944c82046a6bae26",
     "open_or_partial_summary_p0_p12": {
       "docs_path": "docs/STEPFUN.md",
       "first_open_or_partial_item_p0_p12": {
@@ -277,27 +277,27 @@
       },
       "first_open_or_partial_item_sha256": "7469b252ed966e84f59120a0c6ae8015512266df0967f3c83c9d34a2ec815daf",
       "last_open_or_partial_item_p0_p12": {
-        "line": 827,
+        "line": 832,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       },
-      "last_open_or_partial_item_sha256": "310a128dc8e1e2680d40dc6b590a45915776ff0bd6fd0fa6205a1aed8dc8f3ac",
+      "last_open_or_partial_item_sha256": "747f9523fb3e900fdf2ed9c9a3530fe8fd5f22ee8a2d5768c583ae730a6bea52",
       "open_or_partial_count_p0_p12": 2,
-      "open_or_partial_items_sha256": "3d4272f56e4ad3c7118a535db002545b925453dbf22fa33dd3f17e2039ba7d6b",
-      "open_or_partial_line_texts_joined": "510:Add a Step GGUF runner that streams one-token decode for short prompts with|827:Compare greedy next tokens and/or logits against llama.cpp for a small set",
-      "open_or_partial_line_texts_joined_sha256": "42116993822fda8af1ddc310a72ef27491c4c45c810b68dd1a03e3e6a8298f42",
+      "open_or_partial_items_sha256": "d54480fd04080f0667b65c32328403e70253dd8896ef339c0f8e52864c5059bc",
+      "open_or_partial_line_texts_joined": "510:Add a Step GGUF runner that streams one-token decode for short prompts with|832:Compare greedy next tokens and/or logits against llama.cpp for a small set",
+      "open_or_partial_line_texts_joined_sha256": "3fef300ad6b54a578b5609078c4474c11e514103e966bf1db64d0106bbe71a31",
       "open_or_partial_lines": [
         510,
-        827
+        832
       ],
-      "open_or_partial_lines_sha256": "f5af055aa1384b8c65049735b23010d78f3d9cdda8aa94a76f128007b5b1f0d6",
+      "open_or_partial_lines_sha256": "548f7406baf1710f923104433cb7d70f1ab374d6ae68c9ae0eca1c8c520ddd9f",
       "open_or_partial_state_counts": {
         "open": 0,
         "partial": 2
       },
       "open_or_partial_state_counts_sha256": "995e50559fe26e4a28b8c464feeae0e3147ae574bd85914c845c659f7ab8a814",
-      "open_or_partial_state_line_texts_joined": "partial:510:Add a Step GGUF runner that streams one-token decode for short prompts with|partial:827:Compare greedy next tokens and/or logits against llama.cpp for a small set",
-      "open_or_partial_state_line_texts_joined_sha256": "9f59ead9bd5292e64cf6ea8f2e186a211f2a034a189ffa4092c2b1b45213646e",
+      "open_or_partial_state_line_texts_joined": "partial:510:Add a Step GGUF runner that streams one-token decode for short prompts with|partial:832:Compare greedy next tokens and/or logits against llama.cpp for a small set",
+      "open_or_partial_state_line_texts_joined_sha256": "e6714e3af815a8ca0152d1fce4df7a8fe4707b7abf10f590944c82046a6bae26",
       "open_or_partial_states": [
         "partial",
         "partial"
@@ -311,7 +311,7 @@
       "open_or_partial_texts_sha256": "3b91874e9412125b5785c69901d88d4d62de2c32dd6c95c9b9868b11f08afe22",
       "schema_version": 1
     },
-    "open_or_partial_summary_p0_p12_sha256": "d3dabc9ce1e28d118fc4ae6be8ee28f364469a53a1647e7e208714687e5e552b",
+    "open_or_partial_summary_p0_p12_sha256": "a6ed8f23d313dbf763bfe6dbf4cd2327e9b4bf3d4e8335ea5f6d681661723646",
     "open_or_partial_texts_joined_p0_p12": "Add a Step GGUF runner that streams one-token decode for short prompts with|Compare greedy next tokens and/or logits against llama.cpp for a small set",
     "open_or_partial_texts_joined_p0_p12_sha256": "9a21f7a7ade63f4d0b62380dedb332b44a1cccb1b43e0ce35bb00667fb453c4a",
     "open_or_partial_texts_p0_p12": [
@@ -320,7 +320,7 @@
     ],
     "open_or_partial_texts_p0_p12_sha256": "3b91874e9412125b5785c69901d88d4d62de2c32dd6c95c9b9868b11f08afe22"
   },
-  "docs_checklist_sha256": "7d3cad0fb0763eb6631254f91a488d891dda74fb2a0e9319628c7518fc748be9",
+  "docs_checklist_sha256": "2be5d5f6ff619a1ae75ea0ca400c96fd87c672e418dd5b797f9d0db022d13617",
   "e2e_inference_ready": false,
   "first_remaining_blocker_report": {
     "blocked_gates": [
@@ -604,6 +604,8 @@
       "blocker_kinds_sha_only": "blocker_kinds_sha256",
       "blocker_recommended_commands_only": "handoff_summary.blocker_recommended_commands",
       "blocker_recommended_commands_sha_only": "handoff_summary.blocker_recommended_commands_sha256",
+      "blocker_work_queue_count_only": "readiness_summary.blocker_work_queue_count",
+      "blocker_work_queue_count_sha_only": "readiness_summary.blocker_work_queue_count.sha256",
       "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
       "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
       "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -679,6 +681,8 @@
       "kv_streaming_loop_status_sha_only": "kv_backed_decode_gap_report.streaming_decode_loop_status_sha256",
       "next_action_commands_only": "next_action_commands",
       "next_action_commands_sha_only": "next_action_commands_sha256",
+      "open_blocker_count_only": "readiness_summary.open_blocker_count",
+      "open_blocker_count_sha_only": "readiness_summary.open_blocker_count.sha256",
       "oracle_blocker_kind_only": "oracle_blocker_kind",
       "oracle_blocker_kind_sha_only": "oracle_blocker_kind.sha256",
       "oracle_helper_command_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command",
@@ -698,6 +702,8 @@
       "persisted_status_integrity_only": "persisted_status_integrity",
       "readiness_gates_only": "readiness_gates",
       "readiness_gates_sha_only": "readiness_gates_sha256",
+      "readiness_status_only": "readiness_summary.status",
+      "readiness_status_sha_only": "readiness_summary.status.sha256",
       "readiness_summary_only": "readiness_summary",
       "readiness_summary_sha_only": "readiness_summary_sha256",
       "remaining_blockers_report_only": "remaining_blockers_report",
@@ -952,7 +958,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "978e6d1ffd876e262341db44f4fcf5ff5fbc0bea1bcf8bdcd15c82d9c3675e0d",
+  "handoff_summary_sha256": "ede40345ded8b3694a5cdb19dac9d4f66c0bf373343129123d1f09b680faa349",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -17578,7 +17584,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "cdce891d55004276b8a52378bc1163f4df6f659df7031cdadcffac91ecceab98",
-    "handoff_summary_sha256": "978e6d1ffd876e262341db44f4fcf5ff5fbc0bea1bcf8bdcd15c82d9c3675e0d",
+    "handoff_summary_sha256": "ede40345ded8b3694a5cdb19dac9d4f66c0bf373343129123d1f09b680faa349",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "dd508e6e3a62c886cf3b6d3308fce62b268309b0419def678383f4e0071e2c0a",
@@ -17588,10 +17594,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "a425a8d9198e90c159dc71eb208bfd54068412b5367d464447f4e31574d66f05",
     "schema_version": 1,
-    "source_artifacts_sha256": "e629163baf9ea306f1c34454d478d838996d34553a13b032d9b2f57b9d20642c",
+    "source_artifacts_sha256": "ea44b381c41182fa5707ce0b3024ed287f439c2bb527993d30fbcc23438618f3",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "0463d3419c478484ba9eff15ec3e8688e1ebd76b78cf58c9a832ebbe98d0e07c",
+  "readiness_summary_sha256": "6d5c254991f9075f7d605dd769df4c1147c317de763278f6609f582239c26922",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -17716,8 +17722,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "0cb8641e9269f0cc6fff803d450d5f838f5cd0da11269cf12fb97f54994fa74d",
-      "size_bytes": 84743
+      "sha256": "a12c77e9001667b155310149352f47518304ea7c3b9eae1103e5145096dfd7fc",
+      "size_bytes": 85070
     },
     "oracle": {
       "exists": true,
@@ -17744,7 +17750,7 @@
       "size_bytes": 178045
     }
   },
-  "source_artifacts_sha256": "e629163baf9ea306f1c34454d478d838996d34553a13b032d9b2f57b9d20642c",
+  "source_artifacts_sha256": "ea44b381c41182fa5707ce0b3024ed287f439c2bb527993d30fbcc23438618f3",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

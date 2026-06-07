@@ -1688,6 +1688,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ),
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "readiness_status_only": "readiness_summary.status",
+        "readiness_status_sha_only": "readiness_summary.status.sha256",
+        "open_blocker_count_only": "readiness_summary.open_blocker_count",
+        "open_blocker_count_sha_only": "readiness_summary.open_blocker_count.sha256",
+        "blocker_work_queue_count_only": "readiness_summary.blocker_work_queue_count",
+        "blocker_work_queue_count_sha_only": "readiness_summary.blocker_work_queue_count.sha256",
         "readiness_gates_only": "readiness_gates",
         "readiness_gates_sha_only": "readiness_gates_sha256",
         "blocked_gates_only": "blocked_gates",
@@ -3469,6 +3475,102 @@ def test_stepfun_correctness_status_readiness_summary_sha_only(capsys, tmp_path:
     payload = json.loads(output.read_text())
     assert payload == status["readiness_summary_sha256"]
     assert payload == _stable_json_sha256(status["readiness_summary"])
+
+
+def test_stepfun_correctness_status_readiness_scalar_compact_modes(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "readiness-status.json"
+    status_sha_output = tmp_path / "readiness-status-sha.json"
+    open_count_output = tmp_path / "open-blocker-count.json"
+    open_count_sha_output = tmp_path / "open-blocker-count-sha.json"
+    queue_count_output = tmp_path / "blocker-work-queue-count.json"
+    queue_count_sha_output = tmp_path / "blocker-work-queue-count-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    readiness_summary = status["readiness_summary"]
+    calls = [
+        (status_output, "--readiness-status-only", readiness_summary["status"]),
+        (
+            status_sha_output,
+            "--readiness-status-sha-only",
+            _stable_json_sha256(readiness_summary["status"]),
+        ),
+        (
+            open_count_output,
+            "--open-blocker-count-only",
+            readiness_summary["open_blocker_count"],
+        ),
+        (
+            open_count_sha_output,
+            "--open-blocker-count-sha-only",
+            _stable_json_sha256(readiness_summary["open_blocker_count"]),
+        ),
+        (
+            queue_count_output,
+            "--blocker-work-queue-count-only",
+            readiness_summary["blocker_work_queue_count"],
+        ),
+        (
+            queue_count_sha_output,
+            "--blocker-work-queue-count-sha-only",
+            _stable_json_sha256(readiness_summary["blocker_work_queue_count"]),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--readiness-summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert readiness_summary["status"] == "blocked"
+    assert readiness_summary["open_blocker_count"] == 2
+    assert readiness_summary["blocker_work_queue_count"] == 2
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["readiness_status_only"] == "readiness_summary.status"
+    assert compact_modes["readiness_status_sha_only"] == (
+        "readiness_summary.status.sha256"
+    )
+    assert compact_modes["open_blocker_count_only"] == (
+        "readiness_summary.open_blocker_count"
+    )
+    assert compact_modes["open_blocker_count_sha_only"] == (
+        "readiness_summary.open_blocker_count.sha256"
+    )
+    assert compact_modes["blocker_work_queue_count_only"] == (
+        "readiness_summary.blocker_work_queue_count"
+    )
+    assert compact_modes["blocker_work_queue_count_sha_only"] == (
+        "readiness_summary.blocker_work_queue_count.sha256"
+    )
 
 
 def test_stepfun_correctness_status_readiness_gates_sha_only(capsys, tmp_path: Path) -> None:
@@ -6079,6 +6181,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "readiness_status_only": "readiness_summary.status",
+        "readiness_status_sha_only": "readiness_summary.status.sha256",
+        "open_blocker_count_only": "readiness_summary.open_blocker_count",
+        "open_blocker_count_sha_only": "readiness_summary.open_blocker_count.sha256",
+        "blocker_work_queue_count_only": "readiness_summary.blocker_work_queue_count",
+        "blocker_work_queue_count_sha_only": "readiness_summary.blocker_work_queue_count.sha256",
         "readiness_gates_only": "readiness_gates",
         "readiness_gates_sha_only": "readiness_gates_sha256",
         "blocked_gates_only": "blocked_gates",

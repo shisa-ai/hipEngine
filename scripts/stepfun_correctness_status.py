@@ -73,6 +73,54 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--readiness-status-only",
+        action="store_true",
+        help=(
+            "Emit only readiness_summary.status for compact blocked/ready polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--readiness-status-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of readiness_summary.status for blocked/ready "
+            "drift polling. Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--open-blocker-count-only",
+        action="store_true",
+        help=(
+            "Emit only readiness_summary.open_blocker_count for compact blocker-count polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--open-blocker-count-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of readiness_summary.open_blocker_count for "
+            "blocker-count drift polling. Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-work-queue-count-only",
+        action="store_true",
+        help=(
+            "Emit only readiness_summary.blocker_work_queue_count for compact handoff queue-size polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-work-queue-count-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of readiness_summary.blocker_work_queue_count for "
+            "handoff queue-size drift polling. Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--readiness-gates-only",
         action="store_true",
         help=(
@@ -2025,6 +2073,18 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "readiness_summary"
             and compact_output_modes.get("readiness_summary_sha_only")
             == "readiness_summary_sha256"
+            and compact_output_modes.get("readiness_status_only")
+            == "readiness_summary.status"
+            and compact_output_modes.get("readiness_status_sha_only")
+            == "readiness_summary.status.sha256"
+            and compact_output_modes.get("open_blocker_count_only")
+            == "readiness_summary.open_blocker_count"
+            and compact_output_modes.get("open_blocker_count_sha_only")
+            == "readiness_summary.open_blocker_count.sha256"
+            and compact_output_modes.get("blocker_work_queue_count_only")
+            == "readiness_summary.blocker_work_queue_count"
+            and compact_output_modes.get("blocker_work_queue_count_sha_only")
+            == "readiness_summary.blocker_work_queue_count.sha256"
             and compact_output_modes.get("readiness_gates_only") == "readiness_gates"
             and compact_output_modes.get("readiness_gates_sha_only")
             == "readiness_gates_sha256"
@@ -4836,6 +4896,12 @@ def _handoff_summary(
             ),
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
+            "readiness_status_only": "readiness_summary.status",
+            "readiness_status_sha_only": "readiness_summary.status.sha256",
+            "open_blocker_count_only": "readiness_summary.open_blocker_count",
+            "open_blocker_count_sha_only": "readiness_summary.open_blocker_count.sha256",
+            "blocker_work_queue_count_only": "readiness_summary.blocker_work_queue_count",
+            "blocker_work_queue_count_sha_only": "readiness_summary.blocker_work_queue_count.sha256",
             "readiness_gates_only": "readiness_gates",
             "readiness_gates_sha_only": "readiness_gates_sha256",
             "blocked_gates_only": "blocked_gates",
@@ -6033,6 +6099,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["handoff_summary_sha256"]
     elif args.readiness_summary_sha_only:
         result = status["readiness_summary_sha256"]
+    elif args.readiness_status_sha_only:
+        result = _stable_json_sha256(status["readiness_summary"].get("status"))
+    elif args.readiness_status_only:
+        result = status["readiness_summary"].get("status")
+    elif args.open_blocker_count_sha_only:
+        result = _stable_json_sha256(
+            status["readiness_summary"].get("open_blocker_count")
+        )
+    elif args.open_blocker_count_only:
+        result = status["readiness_summary"].get("open_blocker_count")
+    elif args.blocker_work_queue_count_sha_only:
+        result = _stable_json_sha256(
+            status["readiness_summary"].get("blocker_work_queue_count")
+        )
+    elif args.blocker_work_queue_count_only:
+        result = status["readiness_summary"].get("blocker_work_queue_count")
     elif args.readiness_summary_only:
         result = status["readiness_summary"]
     elif args.blocker_recommended_commands_sha_only:
