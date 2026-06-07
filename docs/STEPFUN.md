@@ -601,10 +601,12 @@ reporting.
   `--blocker-work-queue-count-only` / `--blocker-work-queue-count-sha-only`,
   `--blocked-gates-count-only` / `--blocked-gates-count-sha-only`,
   `--first-blocked-gate-only` / `--first-blocked-gate-sha-only`,
-  `--last-blocked-gate-only` / `--last-blocked-gate-sha-only`, and
-  `--blocker-kinds-count-only` / `--blocker-kinds-count-sha-only`
+  `--last-blocked-gate-only` / `--last-blocked-gate-sha-only`,
+  `--blocker-kinds-count-only` / `--blocker-kinds-count-sha-only`, and
+  `--first-blocker-kind-route-only` / `--first-blocker-kind-route-sha-only` plus
+  `--last-blocker-kind-route-only` / `--last-blocker-kind-route-sha-only`
   expose the current blocked/ready state plus blocker/queue/gate counts and
-  first/last blocked gate route without fetching the full readiness summary or
+  first/last blocked gate and blocker-kind routes without fetching the full readiness summary or
   gate/kind arrays. Status integrity verifies
   the readiness/blocker compact output-mode mappings, `--docs-checklist-only` /
   `--docs-checklist-sha-only` expose the exact P0-P12 open/partial checklist payload

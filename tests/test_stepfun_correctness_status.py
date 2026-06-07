@@ -1725,6 +1725,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "blocker_kinds_count_only": "blocker_kinds.count",
         "blocker_kinds_count_sha_only": "blocker_kinds.count.sha256",
+        "first_blocker_kind_route_only": "blocker_kinds.first",
+        "first_blocker_kind_route_sha_only": "blocker_kinds.first.sha256",
+        "last_blocker_kind_route_only": "blocker_kinds.last",
+        "last_blocker_kind_route_sha_only": "blocker_kinds.last.sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
         "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
         "kv_streaming_blockers_joined_only": (
@@ -5090,6 +5094,77 @@ def test_stepfun_correctness_status_first_and_last_blocked_gate_modes(
     assert compact_modes["last_blocked_gate_sha_only"] == "blocked_gates.last.sha256"
 
 
+def test_stepfun_correctness_status_first_and_last_blocker_kind_route_modes(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    first_output = tmp_path / "first-blocker-kind-route.json"
+    first_sha_output = tmp_path / "first-blocker-kind-route-sha.json"
+    last_output = tmp_path / "last-blocker-kind-route.json"
+    last_sha_output = tmp_path / "last-blocker-kind-route-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    blocker_kinds = status["blocker_kinds"]
+    calls = [
+        (first_output, "--first-blocker-kind-route-only", blocker_kinds[0]),
+        (
+            first_sha_output,
+            "--first-blocker-kind-route-sha-only",
+            _stable_json_sha256(blocker_kinds[0]),
+        ),
+        (last_output, "--last-blocker-kind-route-only", blocker_kinds[-1]),
+        (
+            last_sha_output,
+            "--last-blocker-kind-route-sha-only",
+            _stable_json_sha256(blocker_kinds[-1]),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--readiness-summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert blocker_kinds[0] == "oracle_parity_blocked"
+    assert blocker_kinds[-1] == "kv_backed_decode_not_wired"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["first_blocker_kind_route_only"] == "blocker_kinds.first"
+    assert compact_modes["first_blocker_kind_route_sha_only"] == (
+        "blocker_kinds.first.sha256"
+    )
+    assert compact_modes["last_blocker_kind_route_only"] == "blocker_kinds.last"
+    assert compact_modes["last_blocker_kind_route_sha_only"] == (
+        "blocker_kinds.last.sha256"
+    )
+
+
 def test_stepfun_correctness_status_blocked_gate_and_blocker_kind_count_modes(
     capsys,
     tmp_path: Path,
@@ -6363,6 +6438,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "blocker_kinds_count_only": "blocker_kinds.count",
         "blocker_kinds_count_sha_only": "blocker_kinds.count.sha256",
+        "first_blocker_kind_route_only": "blocker_kinds.first",
+        "first_blocker_kind_route_sha_only": "blocker_kinds.first.sha256",
+        "last_blocker_kind_route_only": "blocker_kinds.last",
+        "last_blocker_kind_route_sha_only": "blocker_kinds.last.sha256",
         "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
         "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
         "kv_streaming_blockers_joined_only": (

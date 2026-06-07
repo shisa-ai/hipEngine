@@ -610,6 +610,38 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-kind-route-only",
+        action="store_true",
+        help=(
+            "Emit only the first blocker_kinds entry for compact blocker-kind route polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-kind-route-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the first blocker_kinds entry for "
+            "blocker-kind route drift polling. Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--last-blocker-kind-route-only",
+        action="store_true",
+        help=(
+            "Emit only the last blocker_kinds entry for compact blocker-kind route polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--last-blocker-kind-route-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the last blocker_kinds entry for "
+            "blocker-kind route drift polling. Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--kv-streaming-blockers-only",
         action="store_true",
         help=(
@@ -2174,6 +2206,14 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "blocker_kinds.count"
             and compact_output_modes.get("blocker_kinds_count_sha_only")
             == "blocker_kinds.count.sha256"
+            and compact_output_modes.get("first_blocker_kind_route_only")
+            == "blocker_kinds.first"
+            and compact_output_modes.get("first_blocker_kind_route_sha_only")
+            == "blocker_kinds.first.sha256"
+            and compact_output_modes.get("last_blocker_kind_route_only")
+            == "blocker_kinds.last"
+            and compact_output_modes.get("last_blocker_kind_route_sha_only")
+            == "blocker_kinds.last.sha256"
         ),
         "docs_checklist_sha256": (
             isinstance(docs_checklist, dict)
@@ -5013,6 +5053,10 @@ def _handoff_summary(
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "blocker_kinds_count_only": "blocker_kinds.count",
             "blocker_kinds_count_sha_only": "blocker_kinds.count.sha256",
+            "first_blocker_kind_route_only": "blocker_kinds.first",
+            "first_blocker_kind_route_sha_only": "blocker_kinds.first.sha256",
+            "last_blocker_kind_route_only": "blocker_kinds.last",
+            "last_blocker_kind_route_sha_only": "blocker_kinds.last.sha256",
             "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
             "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
             "kv_streaming_blockers_joined_only": (
@@ -5971,6 +6015,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = _stable_json_sha256(len(status["blocker_kinds"]))
     elif args.blocker_kinds_count_only:
         result = len(status["blocker_kinds"])
+    elif args.first_blocker_kind_route_sha_only:
+        result = _stable_json_sha256(
+            status["blocker_kinds"][0] if status["blocker_kinds"] else None
+        )
+    elif args.first_blocker_kind_route_only:
+        result = status["blocker_kinds"][0] if status["blocker_kinds"] else None
+    elif args.last_blocker_kind_route_sha_only:
+        result = _stable_json_sha256(
+            status["blocker_kinds"][-1] if status["blocker_kinds"] else None
+        )
+    elif args.last_blocker_kind_route_only:
+        result = status["blocker_kinds"][-1] if status["blocker_kinds"] else None
     elif args.blocker_kinds_only:
         result = status["blocker_kinds"]
     elif args.first_remaining_blocker_report_sha_only:
