@@ -1,0 +1,410 @@
+{
+  "active_c2_verify_runs": [
+    {
+      "correctness_passed": false,
+      "generated_token_equality": {
+        "comparison": "native_batch_vs_independent_c1",
+        "first_mismatch_indices": [
+          null,
+          104
+        ],
+        "gen_tokens_per_request": 128,
+        "min_equal_prefix_tokens": 104,
+        "mismatch_summaries": [
+          {
+            "batch_matches_c1_rows": [],
+            "batch_matches_other_batch_rows": [],
+            "batch_prefixes_by_c1_row": [
+              {
+                "equal_prefix_tokens": 104,
+                "row": 1
+              },
+              {
+                "equal_prefix_tokens": 0,
+                "row": 0
+              }
+            ],
+            "batch_token_at_mismatch": 2713,
+            "batch_window": [
+              198,
+              256,
+              471,
+              561,
+              1483,
+              2713,
+              74988,
+              16,
+              25,
+              16,
+              17
+            ],
+            "c1_token_at_mismatch": 799,
+            "c1_window": [
+              198,
+              256,
+              471,
+              561,
+              1483,
+              799,
+              369,
+              3799,
+              974,
+              25,
+              74988
+            ],
+            "first_mismatch_index": 104,
+            "row": 1
+          }
+        ],
+        "passed": false,
+        "prefix_lengths": [
+          137,
+          104
+        ],
+        "rows": 2,
+        "tokens_per_sequence": 137,
+        "warmup_decode_tokens": 8
+      },
+      "label": "first_required_verify",
+      "metric": 104,
+      "raw_json": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "2244e3341ac9d638c4aee3ccf73734d39129cf0e34a6d7d06760784fce869ada",
+        "size_bytes": 144914
+      },
+      "status": "rejected_correctness"
+    },
+    {
+      "correctness_passed": false,
+      "generated_token_equality": {
+        "comparison": "native_batch_vs_independent_c1",
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "gen_tokens_per_request": 128,
+        "min_equal_prefix_tokens": 137,
+        "mismatch_summaries": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "rows": 2,
+        "tokens_per_sequence": 137,
+        "warmup_decode_tokens": 8
+      },
+      "label": "repeat1",
+      "metric": 137,
+      "raw_json": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter416.json",
+        "sha256": "d2bccf2b5288a73919d42af66bad8d23ae969fbcf61933bb8cf28bd6f755351d",
+        "size_bytes": 138497
+      },
+      "status": "blocked"
+    },
+    {
+      "correctness_passed": false,
+      "generated_token_equality": {
+        "comparison": "native_batch_vs_independent_c1",
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "gen_tokens_per_request": 128,
+        "min_equal_prefix_tokens": 137,
+        "mismatch_summaries": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "rows": 2,
+        "tokens_per_sequence": 137,
+        "warmup_decode_tokens": 8
+      },
+      "label": "repeat2",
+      "metric": 137,
+      "raw_json": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat2-iter416.json",
+        "sha256": "f3791ed4fc7645e76bfaa28390d067d21b320ffaf4cbebea5a9b3e701aa35d47",
+        "size_bytes": 138493
+      },
+      "status": "blocked"
+    }
+  ],
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/compact-runs.json",
+      "sha256": "8750a4d4d67cd9e9c69a61519c4c4fe38d94a68e3c546ca306ae9b0dd70657f4",
+      "size_bytes": 10672
+    },
+    "raw": {
+      "active_c2_env": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter416.env",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      "active_c2_verify_104": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "2244e3341ac9d638c4aee3ccf73734d39129cf0e34a6d7d06760784fce869ada",
+        "size_bytes": 144914
+      },
+      "active_c2_verify_104_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "2244e3341ac9d638c4aee3ccf73734d39129cf0e34a6d7d06760784fce869ada",
+        "size_bytes": 144914
+      },
+      "active_c2_verify_repeat2_137": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat2-iter416.json",
+        "sha256": "f3791ed4fc7645e76bfaa28390d067d21b320ffaf4cbebea5a9b3e701aa35d47",
+        "size_bytes": 138493
+      },
+      "active_c2_verify_repeat2_137_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat2-iter416.log",
+        "sha256": "f3791ed4fc7645e76bfaa28390d067d21b320ffaf4cbebea5a9b3e701aa35d47",
+        "size_bytes": 138493
+      },
+      "active_c2_verify_repeat_137": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter416.json",
+        "sha256": "d2bccf2b5288a73919d42af66bad8d23ae969fbcf61933bb8cf28bd6f755351d",
+        "size_bytes": 138497
+      },
+      "active_c2_verify_repeat_137_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-repeat-iter416.log",
+        "sha256": "d2bccf2b5288a73919d42af66bad8d23ae969fbcf61933bb8cf28bd6f755351d",
+        "size_bytes": 138497
+      },
+      "guard_primitive_c2": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      "guard_primitive_c8": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      },
+      "primitive_c8": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/primitive-c8.json",
+        "sha256": "1f9c554ab57c185b6bdd2d7cd1e66dfc9549c3d1675106129f8e966680e8b3e6",
+        "size_bytes": 1396
+      },
+      "primitive_c8_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8-iter416.log",
+        "sha256": "1f9c554ab57c185b6bdd2d7cd1e66dfc9549c3d1675106129f8e966680e8b3e6",
+        "size_bytes": 1396
+      },
+      "retained_c8": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/retained-c8.json",
+        "sha256": "124a2eab1bb3ac1ed0c651de99cbc0185e3b4d6e8a2edadd92a103cb8539afc1",
+        "size_bytes": 401753
+      },
+      "retained_c8_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c8-512-128-iter416.log",
+        "sha256": "124a2eab1bb3ac1ed0c651de99cbc0185e3b4d6e8a2edadd92a103cb8539afc1",
+        "size_bytes": 401753
+      }
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/summary.json"
+    }
+  },
+  "blocked_context": {
+    "correctness_passed": true,
+    "note": "No c8 performance/scaling claim: retained promotion remains blocked because c1/serial scaling baselines and profiler evidence are intentionally absent at this correctness-gate stage.",
+    "profiler": {
+      "cpu_side_bottleneck_shares": {
+        "decode": 0.18939792552654197,
+        "load": 0.7450027737709102,
+        "other": 0.0,
+        "prefill": 0.05268578770512871,
+        "validation": 0.0,
+        "warmup_decode": 0.012913512997419137
+      },
+      "cpu_side_bottlenecks_seconds": {
+        "decode": 5.607444111024961,
+        "load": 22.057060048915446,
+        "other": 0.0,
+        "prefill": 1.559851350961253,
+        "validation": 0.0,
+        "warmup_decode": 0.3823262699879706
+      },
+      "cpu_side_total_seconds": 29.60668178088963,
+      "notes": "E2E retained c>N row; profiler trace not captured in this iteration.",
+      "status": "not_captured"
+    },
+    "retained_status": "blocked",
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "reason": "no artifact path provided; workload concurrency label is missing; prompt token count label is missing; decode token count label is missing",
+        "status": "missing"
+      },
+      "complete": false,
+      "native": {
+        "decode_tok_s_aggregate": 182.6143925334331,
+        "decode_tok_s_per_request": 22.826799066679136
+      },
+      "ratios": {
+        "aggregate_vs_c1": null,
+        "aggregate_vs_serial_bridge": null,
+        "per_request_vs_c1": null,
+        "per_request_vs_serial_bridge": null
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": null,
+        "decode_tok_s_aggregate": null,
+        "decode_tok_s_per_request": null,
+        "reason": "no artifact path provided; workload concurrency label is missing; prompt token count label is missing; decode token count label is missing",
+        "status": "missing"
+      }
+    }
+  },
+  "commands": {
+    "active_verify": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "primitive_c8": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/primitive-c8.json",
+    "retained_c8": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --primitive-correctness-json benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/primitive-c8.json --json benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/retained-c8.json"
+  },
+  "conclusion": "The c8 generated-token equality gate is green at the full 512/128 L40 shape with primitive correctness wired into retained-bench, completing c4/c8 equality evidence. However the active c2 verify is run-to-run unstable between 104 and 137, reproducing the serial/native oracle split in one sample. Next step should stabilize c2 equality determinism before profiler/scaling work.",
+  "created_at": "2026-06-07T03:03:03.292538+00:00",
+  "decode_execution": {
+    "blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+    ],
+    "full_attention_context_decode_path": "native_batch",
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_kv_append_decode_path": "native_batch",
+    "linear_attention_output_path": "batch_gemv",
+    "linear_attention_projection_path": "native_batch",
+    "linear_attention_state_path": "native_segments",
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": false,
+    "sampler_execution": {
+      "argmax_audit_enabled": false,
+      "argmax_mode": "batch",
+      "blockers": [],
+      "c2_equality_green": true,
+      "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+      "equality_rows": 8,
+      "final_cast_elems_fence_elements": 0,
+      "final_cast_elems_fence_enabled": false,
+      "final_cast_path": "batch",
+      "final_cast_temp_fence_enabled": false,
+      "final_cast_tiny_fence_enabled": false,
+      "final_norm_audit_enabled": false,
+      "final_norm_kernel_fence_enabled": false,
+      "final_norm_path": "batch",
+      "final_rmsnorm_kernel_fence_enabled": false,
+      "final_rmsnorm_temp_fence_enabled": false,
+      "lm_head_audit_enabled": false,
+      "lm_head_kernel_fence_enabled": false,
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "rows": 8,
+      "stabilize_cast_elems": 256,
+      "stabilize_cast_elems_enabled": true,
+      "stabilize_cast_elems_fence": {
+        "checked_rows": 1088,
+        "checked_steps": 136,
+        "elements_per_row": 256,
+        "enabled": true,
+        "host_reads": 0,
+        "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+        "last_step": {
+          "elements_per_row": 256,
+          "host_reads": 0,
+          "rows": 8,
+          "step_index": 135
+        },
+        "scratch_nbytes": 512,
+        "scratch_ptr": 139620536807424
+      },
+      "suffix_fence_enabled": false,
+      "suffix_kernel_fence_enabled": false,
+      "sync_fence_enabled": false
+    }
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 416,
+  "kind": "c8_generated_token_equality_green_c2_verify_unstable",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: c8 512/128 generated-token equality vs independent native-batch c1 is green for all eight rows ([137]*8) with primitive c8 loaded/passed on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX. Active c2 verify sampled [104,137,137], so c2 remains unstable and no performance claim is made.",
+    "passed": true
+  },
+  "result": {
+    "active_c2_prefix_lengths_by_run": [
+      [
+        137,
+        104
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "active_c2_unstable": true,
+    "active_c2_verify_measurements": [
+      104,
+      137,
+      137
+    ],
+    "c8_correctness_passed": true,
+    "c8_first_mismatch_indices": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "c8_generated_token_equality_passed": true,
+    "c8_min_equal_prefix_tokens": 137,
+    "c8_prefix_lengths": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "c8_status": "blocked",
+    "c8_tokens_per_sequence": 137,
+    "guard_primitive_c2_passed": true,
+    "guard_primitive_c8_passed": true,
+    "primitive_c8_loaded": true,
+    "primitive_c8_passed": true,
+    "profiler_status": "not_captured",
+    "scaling_complete": false
+  }
+}
