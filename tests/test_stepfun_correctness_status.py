@@ -1741,6 +1741,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_integrity_checks_sha_only": (
             "oracle_partial_output_handoff.integrity_checks.sha256"
         ),
+        "oracle_partial_output_mirror_records_only": (
+            "oracle_partial_output_handoff.mirror_records"
+        ),
+        "oracle_partial_output_mirror_records_sha_only": (
+            "oracle_partial_output_handoff.mirror_records.sha256"
+        ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
         ),
@@ -6672,6 +6678,86 @@ def test_stepfun_correctness_status_oracle_partial_output_integrity_checks_outpu
     )
 
 
+def test_stepfun_correctness_status_oracle_partial_output_mirror_records_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    records_output = tmp_path / "oracle-partial-output-mirror-records.json"
+    sha_output = tmp_path / "oracle-partial-output-mirror-records-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    mirror_records = status["oracle_partial_output_handoff"]["mirror_records"]
+    calls = [
+        (
+            records_output,
+            "--oracle-partial-output-mirror-records-only",
+            mirror_records,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-mirror-records-sha-only",
+            _stable_json_sha256(mirror_records),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert len(mirror_records) == 3
+    assert {record["source"] for record in mirror_records} == {
+        "handoff_summary.blocker_work_queue.oracle_parity_blocked",
+        "remaining_blockers_report.items.oracle_parity_blocked",
+        "first_remaining_blocker_report",
+    }
+    assert all(
+        record["blocker_kind"] == "oracle_parity_blocked" for record in mirror_records
+    )
+    assert all(
+        record["partial_output_blocker_kind"] == "llama_cpp_oracle_in_progress"
+        for record in mirror_records
+    )
+    assert all(record["partial_output_status"] == "running" for record in mirror_records)
+    assert all(
+        record["writes_partial_output_before_launch"] is True
+        for record in mirror_records
+    )
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_mirror_records_only"] == (
+        "oracle_partial_output_handoff.mirror_records"
+    )
+    assert compact_modes["oracle_partial_output_mirror_records_sha_only"] == (
+        "oracle_partial_output_handoff.mirror_records.sha256"
+    )
+
+
 def test_stepfun_correctness_status_oracle_partial_output_all_contracts_safe_outputs(
     capsys,
     tmp_path: Path,
@@ -7958,6 +8044,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_integrity_checks_sha_only": (
             "oracle_partial_output_handoff.integrity_checks.sha256"
+        ),
+        "oracle_partial_output_mirror_records_only": (
+            "oracle_partial_output_handoff.mirror_records"
+        ),
+        "oracle_partial_output_mirror_records_sha_only": (
+            "oracle_partial_output_handoff.mirror_records.sha256"
         ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
