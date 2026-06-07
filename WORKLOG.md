@@ -67301,3 +67301,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: layer19 is required in the current c8 rowchunk2 correctness path. Together with iter459, both layers 19 and 23 are required in the evidence-backed c8 auto set `3,7,11,15,19,23`; do not drop layer19 without a deeper layer19 context repair.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop19-rejected-460/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter461 c8 rowchunk2 drop15 rejected
+- No runtime/source code changed. Ran c8 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with rowchunk2 on layers `3,7,11,19,23` (dropping layer15 from the evidence-backed auto set `3,7,11,15,19,23` while keeping layers 19 and 23 rowchunked).
+- Result: dropping layer15 is **red**. `correctness.generated_token_equality.passed=false`, `min_equal_prefix_tokens=31`, `prefix_lengths=[137,137,137,137,137,31,137,137]`; row5 first mismatch at index `31` (`batch_token=16`, `c1_token=20`). Layer15 runs native batch in this rejected probe; layers 3/7/11/19/23 use rowchunk2.
+- Interpretation: layer15 is required in the current c8 rowchunk2 correctness path. Together with iter459/460, layers 15/19/23 are required in the evidence-backed c8 auto set `3,7,11,15,19,23`; do not drop layer15 without a deeper layer15 context repair.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop15-rejected-461/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
