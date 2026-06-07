@@ -67329,3 +67329,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: layer3 is required in the current c8 rowchunk2 correctness path. Together with iter459-463, every layer in the evidence-backed c8 auto set `3,7,11,15,19,23` has now been independently validated as required by one-layer drop tests. The selected-layer reduction series is complete; next target is rows>=4 full-attention context repair at these required layers (or documentation of the current correctness cap) before profiling/scaling.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop3-rejected-464/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter465 c4 rowchunk2 drop23 equality green
+- No runtime/source code changed. Ran c4 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with rowchunk2 on layers `3,7,11,15,19` (dropping layer23 from the current c4 auto set `3,7,11,15,19,23`).
+- Result: dropping layer23 is **green** for c4. `correctness.generated_token_equality.passed=true`, `min_equal_prefix_tokens=137`, `prefix_lengths=[137,137,137,137]`, all mismatch indices are `null`, and mismatch count is `0`. Layer23 runs native batch in this probe; layers 3/7/11/15/19 use rowchunk2.
+- Interpretation: the c4 rowchunk2 selected layer set can narrow from `3,7,11,15,19,23` to `3,7,11,15,19`. This differs from c8, where iter459 showed layer23 is required. Next focused step can update c4 auto defaults and validate c4 auto equality, or continue one-layer c4 reduction before changing defaults.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop23-equality-465/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
