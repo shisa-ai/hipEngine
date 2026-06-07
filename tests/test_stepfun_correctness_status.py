@@ -1878,6 +1878,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
         "blocker_recommended_commands_only": "handoff_summary.blocker_recommended_commands",
         "blocker_recommended_commands_sha_only": "handoff_summary.blocker_recommended_commands_sha256",
+        "blocker_recommended_command_shas_joined_only": (
+            "handoff_summary.blocker_recommended_commands.recommended_command_sha256.joined"
+        ),
+        "blocker_recommended_command_shas_joined_sha_only": (
+            "handoff_summary.blocker_recommended_commands.recommended_command_sha256.joined.sha256"
+        ),
         "blocker_recommended_command_kinds_joined_only": (
             "handoff_summary.blocker_recommended_commands.recommended_command_kind.joined"
         ),
@@ -6679,6 +6685,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
         "blocker_recommended_commands_only": "handoff_summary.blocker_recommended_commands",
         "blocker_recommended_commands_sha_only": "handoff_summary.blocker_recommended_commands_sha256",
+        "blocker_recommended_command_shas_joined_only": (
+            "handoff_summary.blocker_recommended_commands.recommended_command_sha256.joined"
+        ),
+        "blocker_recommended_command_shas_joined_sha_only": (
+            "handoff_summary.blocker_recommended_commands.recommended_command_sha256.joined.sha256"
+        ),
         "blocker_recommended_command_kinds_joined_only": (
             "handoff_summary.blocker_recommended_commands.recommended_command_kind.joined"
         ),
@@ -7059,6 +7071,79 @@ def test_stepfun_correctness_status_blocker_recommended_commands_only(
     assert payload[0]["recommended_command_kind"] == "oracle_helper_long_timeout_command"
     assert payload[1]["blocker_kind"] == "kv_backed_decode_not_wired"
     assert payload[1]["recommended_command_kind"] == "resource_plan_refresh_command"
+
+
+def test_stepfun_correctness_status_blocker_recommended_command_shas_joined(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    joined_output = tmp_path / "blocker-command-shas-joined.json"
+    sha_output = tmp_path / "blocker-command-shas-joined-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    command_sha_route = "|".join(
+        item["recommended_command_sha256"]
+        for item in status["handoff_summary"]["blocker_recommended_commands"]
+    )
+    queue_command_sha_route = "|".join(
+        item["recommended_command_sha256"]
+        for item in status["handoff_summary"]["blocker_work_queue"]
+    )
+    calls = [
+        (
+            joined_output,
+            "--blocker-recommended-command-shas-joined-only",
+            command_sha_route,
+        ),
+        (
+            sha_output,
+            "--blocker-recommended-command-shas-joined-sha-only",
+            _stable_json_sha256(command_sha_route),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--blocker-work-queue-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert command_sha_route == queue_command_sha_route
+    assert len(command_sha_route.split("|")) == 2
+    assert all(len(part) == 64 for part in command_sha_route.split("|"))
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["blocker_recommended_command_shas_joined_only"] == (
+        "handoff_summary.blocker_recommended_commands.recommended_command_sha256.joined"
+    )
+    assert compact_modes["blocker_recommended_command_shas_joined_sha_only"] == (
+        "handoff_summary.blocker_recommended_commands.recommended_command_sha256.joined.sha256"
+    )
 
 
 def test_stepfun_correctness_status_blocker_recommended_command_kinds_joined(

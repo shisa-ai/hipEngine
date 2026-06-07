@@ -1106,7 +1106,9 @@ reporting.
   blocker-kind and blocked-gate mirrors across the
   compact top-level fields, handoff summary, work queue, and remaining-blocker report,
   the schema-version payload digest, recommended-command list digest, command length/SHA metadata inside the work queue,
-  compact recommended-command records, `--blocker-recommended-command-kinds-joined-only` /
+  compact recommended-command records, `--blocker-recommended-command-shas-joined-only` /
+  `--blocker-recommended-command-shas-joined-sha-only` command-content route outputs,
+  `--blocker-recommended-command-kinds-joined-only` /
   `--blocker-recommended-command-kinds-joined-sha-only` action-plan route outputs,
   `--blocker-first-missing-evidence-joined-only` /
   `--blocker-first-missing-evidence-joined-sha-only` missing-evidence route outputs,
