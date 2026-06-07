@@ -1335,6 +1335,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-command-record-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of oracle_partial_output_handoff.command_record "
+            "for compact supervised oracle-rerun command-record drift polling. Overrides "
+            "readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-source-only",
         action="store_true",
         help=(
@@ -2901,6 +2910,8 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff"
             and compact_output_modes.get("oracle_partial_output_handoff_sha_only")
             == "oracle_partial_output_handoff_sha256"
+            and compact_output_modes.get("oracle_partial_output_command_record_sha_only")
+            == "oracle_partial_output_handoff.command_record.sha256"
             and compact_output_modes.get("oracle_partial_output_source_only")
             == "oracle_partial_output_handoff.command_record.source"
             and compact_output_modes.get("oracle_partial_output_source_sha_only")
@@ -5663,6 +5674,9 @@ def _handoff_summary(
             "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
             "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
             "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
+            "oracle_partial_output_command_record_sha_only": (
+                "oracle_partial_output_handoff.command_record.sha256"
+            ),
             "oracle_partial_output_source_only": (
                 "oracle_partial_output_handoff.command_record.source"
             ),
@@ -6755,6 +6769,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["oracle_partial_output_handoff_sha256"]
     elif args.oracle_partial_output_handoff_only:
         result = status["oracle_partial_output_handoff"]
+    elif args.oracle_partial_output_command_record_sha_only:
+        command_record = status["oracle_partial_output_handoff"].get(
+            "command_record", {}
+        )
+        result = _stable_json_sha256(command_record)
     elif args.oracle_partial_output_source_sha_only:
         source = (
             status["oracle_partial_output_handoff"]
