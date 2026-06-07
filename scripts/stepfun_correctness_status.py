@@ -1057,6 +1057,40 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-current-status-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.current_status "
+            "for compact immediate-blocker state routing. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-current-status-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of handoff_summary.first_blocker_work_item."
+            "current_status for immediate-blocker state drift polling. Overrides queue "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-gap-report-status-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.gap_report_status "
+            "for compact immediate-blocker gate routing. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-gap-report-status-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of handoff_summary.first_blocker_work_item."
+            "gap_report_status for immediate-blocker gate drift polling. Overrides queue "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--verify-source-artifacts",
         type=Path,
         default=None,
@@ -2257,6 +2291,14 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "handoff_summary.first_blocker_work_item.first_missing_evidence"
             and compact_output_modes.get("first_blocker_first_missing_evidence_sha_only")
             == "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
+            and compact_output_modes.get("first_blocker_current_status_only")
+            == "handoff_summary.first_blocker_work_item.current_status"
+            and compact_output_modes.get("first_blocker_current_status_sha_only")
+            == "handoff_summary.first_blocker_work_item.current_status.sha256"
+            and compact_output_modes.get("first_blocker_gap_report_status_only")
+            == "handoff_summary.first_blocker_work_item.gap_report_status"
+            and compact_output_modes.get("first_blocker_gap_report_status_sha_only")
+            == "handoff_summary.first_blocker_work_item.gap_report_status.sha256"
         ),
         "first_blocker_work_item_sha256": first_blocker_work_item_sha256_match,
         "first_blocker_work_item_mirror": first_blocker_work_item_mirror,
@@ -4940,6 +4982,18 @@ def _handoff_summary(
             "first_blocker_first_missing_evidence_sha_only": (
                 "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
             ),
+            "first_blocker_current_status_only": (
+                "handoff_summary.first_blocker_work_item.current_status"
+            ),
+            "first_blocker_current_status_sha_only": (
+                "handoff_summary.first_blocker_work_item.current_status.sha256"
+            ),
+            "first_blocker_gap_report_status_only": (
+                "handoff_summary.first_blocker_work_item.gap_report_status"
+            ),
+            "first_blocker_gap_report_status_sha_only": (
+                "handoff_summary.first_blocker_work_item.gap_report_status.sha256"
+            ),
             "fail_on_blocked_preserves_payload": True,
         },
         "ready_gates": ready_gates,
@@ -5521,6 +5575,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
         result = (
             first_blocker_work_item.get("first_missing_evidence")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_current_status_sha_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            _stable_json_sha256(first_blocker_work_item.get("current_status"))
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_current_status_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("current_status")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_gap_report_status_sha_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            _stable_json_sha256(first_blocker_work_item.get("gap_report_status"))
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_gap_report_status_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("gap_report_status")
             if isinstance(first_blocker_work_item, dict)
             else None
         )

@@ -1876,6 +1876,18 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "first_blocker_first_missing_evidence_sha_only": (
             "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
         ),
+        "first_blocker_current_status_only": (
+            "handoff_summary.first_blocker_work_item.current_status"
+        ),
+        "first_blocker_current_status_sha_only": (
+            "handoff_summary.first_blocker_work_item.current_status.sha256"
+        ),
+        "first_blocker_gap_report_status_only": (
+            "handoff_summary.first_blocker_work_item.gap_report_status"
+        ),
+        "first_blocker_gap_report_status_sha_only": (
+            "handoff_summary.first_blocker_work_item.gap_report_status.sha256"
+        ),
         "fail_on_blocked_preserves_payload": True,
     }
     assert handoff["ready_gates"] == []
@@ -6243,6 +6255,18 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "first_blocker_first_missing_evidence_sha_only": (
             "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
         ),
+        "first_blocker_current_status_only": (
+            "handoff_summary.first_blocker_work_item.current_status"
+        ),
+        "first_blocker_current_status_sha_only": (
+            "handoff_summary.first_blocker_work_item.current_status.sha256"
+        ),
+        "first_blocker_gap_report_status_only": (
+            "handoff_summary.first_blocker_work_item.gap_report_status"
+        ),
+        "first_blocker_gap_report_status_sha_only": (
+            "handoff_summary.first_blocker_work_item.gap_report_status.sha256"
+        ),
         "fail_on_blocked_preserves_payload": True,
     }
     assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
@@ -7923,6 +7947,90 @@ def test_stepfun_correctness_status_first_blocker_routing_scalars(
     )
     assert compact_modes["first_blocker_first_missing_evidence_sha_only"] == (
         "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
+    )
+
+
+def test_stepfun_correctness_status_first_blocker_status_scalars(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    current_output = tmp_path / "first-blocker-current-status.json"
+    current_sha_output = tmp_path / "first-blocker-current-status-sha.json"
+    gap_output = tmp_path / "first-blocker-gap-report-status.json"
+    gap_sha_output = tmp_path / "first-blocker-gap-report-status-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    first_blocker = status["handoff_summary"]["first_blocker_work_item"]
+    calls = [
+        (
+            current_output,
+            "--first-blocker-current-status-only",
+            first_blocker["current_status"],
+        ),
+        (
+            current_sha_output,
+            "--first-blocker-current-status-sha-only",
+            _stable_json_sha256(first_blocker["current_status"]),
+        ),
+        (
+            gap_output,
+            "--first-blocker-gap-report-status-only",
+            first_blocker["gap_report_status"],
+        ),
+        (
+            gap_sha_output,
+            "--first-blocker-gap-report-status-sha-only",
+            _stable_json_sha256(first_blocker["gap_report_status"]),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--blocker-work-queue-only",
+                "--first-blocker-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert first_blocker["current_status"] == status["oracle_status"]
+    assert first_blocker["gap_report_status"] == "blocked"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["first_blocker_current_status_only"] == (
+        "handoff_summary.first_blocker_work_item.current_status"
+    )
+    assert compact_modes["first_blocker_current_status_sha_only"] == (
+        "handoff_summary.first_blocker_work_item.current_status.sha256"
+    )
+    assert compact_modes["first_blocker_gap_report_status_only"] == (
+        "handoff_summary.first_blocker_work_item.gap_report_status"
+    )
+    assert compact_modes["first_blocker_gap_report_status_sha_only"] == (
+        "handoff_summary.first_blocker_work_item.gap_report_status.sha256"
     )
 
 
