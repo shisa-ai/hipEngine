@@ -67376,3 +67376,9 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: the c4 rowchunk2 selected layer set can narrow from `3,7,11,15` to `3,7,15`. Layer15 remains required from iter469. Next focused step can update c4 auto defaults and validate c4 auto equality, or test layer7 before changing defaults.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop11-equality-471/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter472 c4 auto rowchunk default narrowed to 3,7,15
+- Updated the retained-bench c4 auto full-attention rowchunk layer default from `3,7,11,15` to `3,7,15`, backed by iter471 c4 rowchunk2-drop11 equality evidence. Updated the scheduler regression/env tests to expect the narrowed c4 auto layer set.
+- Validation: narrow resolver/env tests passed (`HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontier tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env -q`). c4 512/128 auto retained-bench equality remained **green** with the new default: `prefix_lengths=[137,137,137,137]`, `min_equal_prefix_tokens=137`, all mismatch indices `null`, and workload rowchunk layers `3,7,15`; layer11 now runs native batch by default for c4.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-auto-drop11-equality-472/summary.json` and `compact-runs.json`. This is correctness-path narrowing only; no retained performance/scaling claim is made.
