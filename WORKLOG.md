@@ -67047,3 +67047,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Conclusion: default hidden-bisect with serial c1 is not the right comparator to distinguish c4 row-chunk vs full-native retained correctness. The next useful diagnostic needs a native-batch-c1 or rowchunk-vs-fullnative hidden comparator, not more serial-oracle hidden-bisect windows.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk-hidden-425/summary.json` and `compact-runs.json`; raw hidden JSON/log remain under `/tmp` with hashes recorded.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter426 c4 native-c1 hidden comparator
+- No runtime code changed. Ran a short native-batch-c1 hidden comparator to remove the serial-c1 oracle ambiguity from iter425: `--c1-decode-path native_batch`, `--decode-tokens 8`, `--trace-decode-start 0 --trace-decode-end 8`, `L40`, c4, cached builds on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Row-chunk2 comparator (`--batch-decode-full-attn-row-chunk-size 2`) is fully green vs native-batch c1: `status=eq_ok`, `hidden_passed=true`, `token_passed=true`, no linear-stage bit drift, no full-attention stage failure, no token mismatches.
+- Full-native comparator (`--batch-decode-full-attn-path native_batch` without row chunks) is hidden red immediately while tokens remain green for the short 8-token window: first linear bit drift at decode step 0 / generated index 1, layer4 `attn_input`, row0, max_abs `0.00195`; first full-attention over-atol failure at layer7 `attn_input_pre_qkv`, row0, max_abs `0.0078125`, elements_over_atol `1`.
+- This resolves the comparator ambiguity: c4 row-chunk correctness is not a retained sequence-accounting accident and the full-native blocker is real hidden drift in full-native grouping. The later retained full-native row3 token118 failure is downstream of this early hidden drift.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on the same GPU.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-nativec1-hidden-426/summary.json` and `compact-runs.json`; raw hidden JSON/logs remain under `/tmp` with hashes recorded.
