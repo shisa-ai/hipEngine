@@ -1,0 +1,257 @@
+{
+  "comparison": {
+    "finding": "retained-bench auto defaults c=3..8 to row-chunk2 full-attention diagnostics; explicit c4 native_batch removes row-chunk blockers and improves native aggregate throughput but fails generated-token equality at row3 token 118, so row-chunk default is a correctness workaround.",
+    "rowchunk_default_reference": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-baselines-421/summary.json",
+      "sha256": "21527024987d42877141b07e5fcd35678416e3141c534f1af49e8dcd87f34e30",
+      "size_bytes": 17427
+    }
+  },
+  "conclusion": "C4 full native full-attention is not correctness-safe yet: row3 diverges at generated-token index 118 (batch 4203 vs c1 9781). The c4 row-chunk default remains required for correctness even though it blocks retained throughput eligibility. Next work should run a hidden/full-attention bisect around c4 row3 token118 or port/fix the full native c4 attention path before profiler rollup.",
+  "created_at": "2026-06-07T03:50:07.550646+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 422,
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused c4 full-attention blocker was isolated with a concrete artifact. Explicit native_batch full-attention removes row-chunk path blockers and is faster, but generated-token equality fails at row3 index118; this directly explains why retained c4 remains blocked and what must be fixed before profiler/perf claims.",
+    "passed": true
+  },
+  "result": {
+    "active_c2_prefix_lengths": [
+      137,
+      137
+    ],
+    "active_c2_verify_metric": 137,
+    "full_native_batch_blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "native c>N decode is experimental and blocked until generated-token equality passes"
+    ],
+    "full_native_correctness_passed": false,
+    "full_native_decode_blockers": [],
+    "full_native_decode_path": "native_batch",
+    "full_native_equality_passed": false,
+    "full_native_first_mismatch_indices": [
+      null,
+      null,
+      null,
+      118
+    ],
+    "full_native_min_equal_prefix_tokens": 118,
+    "full_native_mismatch_summaries": [
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 118,
+            "row": 3
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          }
+        ],
+        "batch_token_at_mismatch": 4203,
+        "batch_window": [
+          318,
+          3002,
+          220,
+          16,
+          17,
+          4203,
+          9781,
+          310,
+          328,
+          2078,
+          1
+        ],
+        "c1_token_at_mismatch": 9781,
+        "c1_window": [
+          318,
+          3002,
+          220,
+          16,
+          17,
+          9781,
+          80086,
+          279,
+          1483,
+          11316,
+          310
+        ],
+        "first_mismatch_index": 118,
+        "row": 3
+      }
+    ],
+    "full_native_native_decode_tok_s_aggregate": 153.3376938880541,
+    "full_native_prefix_lengths": [
+      137,
+      137,
+      137,
+      118
+    ],
+    "full_native_ratios": {
+      "aggregate_vs_c1": 1.145153550295813,
+      "aggregate_vs_serial_bridge": 1.359515140177085,
+      "per_request_vs_c1": 0.28628838757395325,
+      "per_request_vs_serial_bridge": 1.359515140177085
+    },
+    "full_native_status": "rejected_correctness",
+    "guard_primitive_c2_passed": true,
+    "guard_primitive_c8_passed": true,
+    "rowchunk_c4_native_decode_tok_s_aggregate": 148.72414570048585,
+    "rowchunk_c4_prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "rowchunk_c4_ratios": {
+      "aggregate_vs_c1": 1.1106987404412205,
+      "aggregate_vs_serial_bridge": 1.3186107255357988,
+      "per_request_vs_c1": 0.27767468511030513,
+      "per_request_vs_serial_bridge": 1.3186107255357988
+    }
+  },
+  "retained_full_native": {
+    "correctness_passed": false,
+    "decision": {
+      "accepted": false,
+      "reason": "batch_execution.throughput_claim_eligible=false; generated-token equality vs independent c=1 did not pass; correctness.generated_token_equality.passed must be true; correctness.generated_token_equality.batch_sequences must equal c1_sequences; correctness.generated_token_equality.mismatches must be empty; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; profiler kernel names must include selected projection_dispatch candidate or variant; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits"
+    },
+    "decode_execution": {
+      "blockers": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_kv_append_decode_path": "native_batch",
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunked_layers": null,
+      "native_caware_decode": true
+    },
+    "generated_token_equality": {
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118
+      ],
+      "min_equal_prefix_tokens": 118,
+      "mismatch_summaries": [
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 118,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            }
+          ],
+          "batch_token_at_mismatch": 4203,
+          "batch_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            4203,
+            9781,
+            310,
+            328,
+            2078,
+            1
+          ],
+          "c1_token_at_mismatch": 9781,
+          "c1_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            9781,
+            80086,
+            279,
+            1483,
+            11316,
+            310
+          ],
+          "first_mismatch_index": 118,
+          "row": 3
+        }
+      ],
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "rows": 4,
+      "tokens_per_sequence": 137
+    },
+    "raw_json": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-full-native-422/retained-c4-full-native.json",
+      "sha256": "e8ae331d7e521749208e0edd76adf430d09801ba4c84284231f827f2c1ce1201",
+      "size_bytes": 222877
+    },
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "decode_tok_s_aggregate": 133.90142644926902,
+        "decode_tok_s_per_request": 133.90142644926902,
+        "gen_tokens_per_request": 128,
+        "prompt_tokens_per_request": 512,
+        "reason": null,
+        "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "run_tag": "qwen35-paro-c1-native-baseline-iter419",
+        "status": "loaded",
+        "workload_concurrency": 1
+      },
+      "complete": true,
+      "native": {
+        "decode_tok_s_aggregate": 153.3376938880541,
+        "decode_tok_s_per_request": 38.334423472013526
+      },
+      "ratios": {
+        "aggregate_vs_c1": 1.145153550295813,
+        "aggregate_vs_serial_bridge": 1.359515140177085,
+        "per_request_vs_c1": 0.28628838757395325,
+        "per_request_vs_serial_bridge": 1.359515140177085
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-baselines-421/c4-serial-bridge-scaling.json",
+        "decode_tok_s_aggregate": 112.78851507904571,
+        "decode_tok_s_per_request": 28.197128769761427,
+        "gen_tokens_per_request": 128,
+        "prompt_tokens_per_request": 512,
+        "reason": null,
+        "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-baselines-421/c4-serial-bridge-scaling.json",
+        "run_tag": "qwen35-paro-c4-scheduler-serial-bridge",
+        "status": "blocked",
+        "workload_concurrency": 4
+      }
+    },
+    "status": "rejected_correctness"
+  }
+}
