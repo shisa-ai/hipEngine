@@ -1940,6 +1940,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "first_blocker_command_available_sha_only": (
             "handoff_summary.first_blocker_work_item.command_available.sha256"
         ),
+        "first_blocker_command_unavailable_only": (
+            "handoff_summary.first_blocker_work_item.command_unavailable"
+        ),
+        "first_blocker_command_unavailable_sha_only": (
+            "handoff_summary.first_blocker_work_item.command_unavailable.sha256"
+        ),
         "first_blocker_recommended_command_only": (
             "handoff_summary.first_blocker_work_item.recommended_command"
         ),
@@ -6795,6 +6801,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "first_blocker_command_available_sha_only": (
             "handoff_summary.first_blocker_work_item.command_available.sha256"
         ),
+        "first_blocker_command_unavailable_only": (
+            "handoff_summary.first_blocker_work_item.command_unavailable"
+        ),
+        "first_blocker_command_unavailable_sha_only": (
+            "handoff_summary.first_blocker_work_item.command_unavailable.sha256"
+        ),
         "first_blocker_recommended_command_only": (
             "handoff_summary.first_blocker_work_item.recommended_command"
         ),
@@ -9029,6 +9041,72 @@ def test_stepfun_correctness_status_first_blocker_command_available(
     )
     assert compact_modes["first_blocker_command_available_sha_only"] == (
         "handoff_summary.first_blocker_work_item.command_available.sha256"
+    )
+
+
+def test_stepfun_correctness_status_first_blocker_command_unavailable(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    unavailable_output = tmp_path / "first-blocker-command-unavailable.json"
+    unavailable_sha_output = tmp_path / "first-blocker-command-unavailable-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    first_blocker = status["handoff_summary"]["first_blocker_work_item"]
+    command_unavailable = first_blocker["command_available"] is not True
+    calls = [
+        (
+            unavailable_output,
+            "--first-blocker-command-unavailable-only",
+            command_unavailable,
+        ),
+        (
+            unavailable_sha_output,
+            "--first-blocker-command-unavailable-sha-only",
+            _stable_json_sha256(command_unavailable),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--blocker-work-queue-only",
+                "--first-blocker-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert command_unavailable is False
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["first_blocker_command_unavailable_only"] == (
+        "handoff_summary.first_blocker_work_item.command_unavailable"
+    )
+    assert compact_modes["first_blocker_command_unavailable_sha_only"] == (
+        "handoff_summary.first_blocker_work_item.command_unavailable.sha256"
     )
 
 
