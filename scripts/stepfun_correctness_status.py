@@ -1809,6 +1809,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-mirror-queue-index-count-only",
+        action="store_true",
+        help=(
+            "Emit only len(oracle_partial_output_handoff.mirror_records[].queue_index) "
+            "for compact supervised oracle-rerun mirror-queue count polling. Overrides "
+            "readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-mirror-queue-index-count-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of len(oracle_partial_output_handoff."
+            "mirror_records[].queue_index) for supervised oracle-rerun mirror-queue count "
+            "drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-all-contracts-safe-only",
         action="store_true",
         help=(
@@ -3560,6 +3578,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff.mirror_records[].queue_index"
             and compact_output_modes.get("oracle_partial_output_mirror_queue_indices_sha_only")
             == "oracle_partial_output_handoff.mirror_records[].queue_index.sha256"
+            and compact_output_modes.get("oracle_partial_output_mirror_queue_index_count_only")
+            == "len(oracle_partial_output_handoff.mirror_records[].queue_index)"
+            and compact_output_modes.get("oracle_partial_output_mirror_queue_index_count_sha_only")
+            == "len(oracle_partial_output_handoff.mirror_records[].queue_index).sha256"
             and compact_output_modes.get("oracle_partial_output_all_contracts_safe_only")
             == "oracle_partial_output_handoff.all_partial_output_contracts_safe"
             and compact_output_modes.get("oracle_partial_output_all_contracts_safe_sha_only")
@@ -6496,6 +6518,12 @@ def _handoff_summary(
             "oracle_partial_output_mirror_queue_indices_sha_only": (
                 "oracle_partial_output_handoff.mirror_records[].queue_index.sha256"
             ),
+            "oracle_partial_output_mirror_queue_index_count_only": (
+                "len(oracle_partial_output_handoff.mirror_records[].queue_index)"
+            ),
+            "oracle_partial_output_mirror_queue_index_count_sha_only": (
+                "len(oracle_partial_output_handoff.mirror_records[].queue_index).sha256"
+            ),
             "oracle_partial_output_all_contracts_safe_only": (
                 "oracle_partial_output_handoff.all_partial_output_contracts_safe"
             ),
@@ -7924,6 +7952,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             "mirror_records", []
         )
         result = [record.get("queue_index") for record in mirror_records]
+    elif args.oracle_partial_output_mirror_queue_index_count_sha_only:
+        mirror_records = status["oracle_partial_output_handoff"].get(
+            "mirror_records", []
+        )
+        result = _stable_json_sha256(
+            len([record.get("queue_index") for record in mirror_records])
+        )
+    elif args.oracle_partial_output_mirror_queue_index_count_only:
+        mirror_records = status["oracle_partial_output_handoff"].get(
+            "mirror_records", []
+        )
+        result = len([record.get("queue_index") for record in mirror_records])
     elif args.oracle_partial_output_all_contracts_safe_sha_only:
         all_contracts_safe = status["oracle_partial_output_handoff"].get(
             "all_partial_output_contracts_safe"

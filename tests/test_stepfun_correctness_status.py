@@ -1879,6 +1879,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_mirror_queue_indices_sha_only": (
             "oracle_partial_output_handoff.mirror_records[].queue_index.sha256"
         ),
+        "oracle_partial_output_mirror_queue_index_count_only": (
+            "len(oracle_partial_output_handoff.mirror_records[].queue_index)"
+        ),
+        "oracle_partial_output_mirror_queue_index_count_sha_only": (
+            "len(oracle_partial_output_handoff.mirror_records[].queue_index).sha256"
+        ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
         ),
@@ -8345,6 +8351,8 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_queue_indices_o
     resource = tmp_path / "resource.json"
     queue_indices_output = tmp_path / "oracle-partial-output-mirror-queue-indices.json"
     sha_output = tmp_path / "oracle-partial-output-mirror-queue-indices-sha.json"
+    count_output = tmp_path / "oracle-partial-output-mirror-queue-index-count.json"
+    count_sha_output = tmp_path / "oracle-partial-output-mirror-queue-index-count-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -8355,6 +8363,7 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_queue_indices_o
         record["queue_index"]
         for record in status["oracle_partial_output_handoff"]["mirror_records"]
     ]
+    mirror_queue_index_count = len(mirror_queue_indices)
     calls = [
         (
             queue_indices_output,
@@ -8365,6 +8374,16 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_queue_indices_o
             sha_output,
             "--oracle-partial-output-mirror-queue-indices-sha-only",
             _stable_json_sha256(mirror_queue_indices),
+        ),
+        (
+            count_output,
+            "--oracle-partial-output-mirror-queue-index-count-only",
+            mirror_queue_index_count,
+        ),
+        (
+            count_sha_output,
+            "--oracle-partial-output-mirror-queue-index-count-sha-only",
+            _stable_json_sha256(mirror_queue_index_count),
         ),
     ]
     for output, mode, expected in calls:
@@ -8392,12 +8411,19 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_queue_indices_o
     assert captured.out == ""
     assert captured.err == ""
     assert mirror_queue_indices == [0, 0, 0]
+    assert mirror_queue_index_count == 3
     compact_modes = status["handoff_summary"]["compact_output_modes"]
     assert compact_modes["oracle_partial_output_mirror_queue_indices_only"] == (
         "oracle_partial_output_handoff.mirror_records[].queue_index"
     )
     assert compact_modes["oracle_partial_output_mirror_queue_indices_sha_only"] == (
         "oracle_partial_output_handoff.mirror_records[].queue_index.sha256"
+    )
+    assert compact_modes["oracle_partial_output_mirror_queue_index_count_only"] == (
+        "len(oracle_partial_output_handoff.mirror_records[].queue_index)"
+    )
+    assert compact_modes["oracle_partial_output_mirror_queue_index_count_sha_only"] == (
+        "len(oracle_partial_output_handoff.mirror_records[].queue_index).sha256"
     )
 
 
@@ -9825,6 +9851,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_mirror_queue_indices_sha_only": (
             "oracle_partial_output_handoff.mirror_records[].queue_index.sha256"
+        ),
+        "oracle_partial_output_mirror_queue_index_count_only": (
+            "len(oracle_partial_output_handoff.mirror_records[].queue_index)"
+        ),
+        "oracle_partial_output_mirror_queue_index_count_sha_only": (
+            "len(oracle_partial_output_handoff.mirror_records[].queue_index).sha256"
         ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
