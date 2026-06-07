@@ -1200,10 +1200,29 @@ surround (≈24 launches/layer → ≈8), in the priority order the budget impli
      M7.C.6 two-single→one-dual merge are the launch-count half (M15.3).
 2. **M15.2 — exact small-batch W4 multi-row pack8 GEMV for the unsafe sites**
    (`shared_gate_up`, `single_full_v`, `single_linear_out`; M14.num.1). This is
-   both the largest *kernel* bucket (6.58 ms) and a launch source. Blocked on
-   matching WMMA/prefill dequant numerics so exact-AR holds. Solving it converts
-   prefill-style projections into read-once-weight multi-row GEMVs — fewer
-   launches *and* less kernel time.
+   both the largest *kernel* bucket (6.58 ms) and a launch source. **Blocked by
+   argmax fragility, not by kernel numerics (2026-06-08).** A bit-exact multi-row
+   Marlin-K GEMV now exists (`gemv_paro_marlin_k_fma_multi_row_fp16`,
+   `tests/test_qwen35_paro_marlin_k_multi_row.py`: each row is byte-identical to
+   single-row Marlin-K, which is what AR uses at rows==1 for these sites). Even
+   so, routing `single_full_v` / `single_linear_out` through it flips top-1 on
+   the fragile `translation` / `summarize` prompts at 64 tokens, while the
+   baseline (`awq_fusedw4_prefill_fp16`) stays exact. Root cause: the verifier's
+   accumulated-chain input to these projections already differs slightly from
+   AR's rows==1 input, and the argmax in degenerate/repetitive regions (the
+   `248045` repeat loop) is on a knife's edge — so *any* numerics change can tip
+   it, even one that matches AR's dequant formula. The default `prefill` path is
+   exact only by coincidence on these prompts. Exact weight-amortization of these
+   sites therefore needs the verifier's *input* to match AR bit-for-bit (a
+   chain-state problem), not just a better projection kernel. The kernel +
+   gate are landed default-off (`HIPENGINE_MARLIN_K_MULTI_ROW_SITES`, empty
+   default site set) as infrastructure and a reproducible fragility probe.
+
+   Side discovery: `chain_attn_mode=decode_batched` is **not** exact-AR on the
+   full 9-prompt suite at 64 tokens — the baseline (no env) already fails
+   `translation` (early token-6 reorder + `248045` repeat). `batched` is exact
+   9/9. This extends M14.book.5 (the c1_loop 64-token drift) to decode_batched
+   and should be tracked before decode_batched is used for suite-wide exactness.
 3. **M15.3 — producer-side rotate/format fusion** (fold `paro_rotate` into the
    producing RMSNorm/SiLU/add, never into the GEMV consumer — that is the
    M13.B.1 redundancy trap). Targets the 190 `paro_rotate` + 173 format/misc

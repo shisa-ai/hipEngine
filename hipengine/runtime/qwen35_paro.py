@@ -110,7 +110,11 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_topk_shared_out_fp16,
     qwen35_router_topk_shared_sigmoid_out_fp16,
 )
-from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import gemv_paro_marlin_k_fma_fp16, marlin_k_default_threads
+from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import (
+    gemv_paro_marlin_k_fma_fp16,
+    gemv_paro_marlin_k_fma_multi_row_fp16,
+    marlin_k_default_threads,
+)
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_dual_fp16,
     awq_fusedw4_prefill_fp16,
@@ -506,10 +510,12 @@ class Qwen35ParoDecodeState:
         scales = self.tensor(f"{prefix}.scales")
         width = x.shape[-1] if in_features is None else in_features
         awq_library = _library_for(library, "awq")
-        if rows == 1 and self.has_tensor(f"{prefix}.qweight_mk"):
+        if (
+            rows == 1 or (rows > 1 and rows <= 8 and _marlin_k_multi_row_site_enabled(prefix))
+        ) and self.has_tensor(f"{prefix}.qweight_mk"):
             qweight_mk = self.tensor(f"{prefix}.qweight_mk")
             out_packed = _out_packed_from_marlin_qweight(qweight_mk)
-            gemv_paro_marlin_k_fma_fp16(
+            marlin_args = (
                 x.ptr,
                 qweight_mk.ptr,
                 self.tensor(f"{prefix}.qzeros_mk").ptr,
@@ -519,11 +525,26 @@ class Qwen35ParoDecodeState:
                 width,
                 out_packed,
                 group_size,
-                threads=marlin_k_default_threads(width, out_packed * 8),
-                stream=stream,
-                library=_library_for(library, "marlin_k"),
-                runtime=self.runtime,
             )
+            if rows == 1:
+                gemv_paro_marlin_k_fma_fp16(
+                    *marlin_args,
+                    threads=marlin_k_default_threads(width, out_packed * 8),
+                    stream=stream,
+                    library=_library_for(library, "marlin_k"),
+                    runtime=self.runtime,
+                )
+            else:
+                # M15.2: weight-amortize across the B+1 verifier rows while
+                # preserving the single-row Marlin-K per-row accumulation order,
+                # so each row is bit-identical to AR's rows==1 Marlin-K output.
+                gemv_paro_marlin_k_fma_multi_row_fp16(
+                    *marlin_args,
+                    threads=marlin_k_default_threads(width, out_packed * 8),
+                    stream=stream,
+                    library=_library_for(library, "marlin_k"),
+                    runtime=self.runtime,
+                )
         elif self.has_tensor(f"{prefix}.qweight"):
             qweight = self.tensor(f"{prefix}.qweight")
             if not qweight.shape:
@@ -7648,6 +7669,44 @@ def _w4_multi_row_small_batch_site_enabled(site: str) -> bool:
         and _w4_multi_row_single_enabled()
         and _w4_multi_row_site_enabled(site)
     )
+
+
+# M15.2: sites where the bit-exact multi-row Marlin-K GEMV (preserves AR's
+# rows==1 per-row accumulation order) weight-amortizes the verifier projection
+# across the B+1 rows in ``project_pack8_fp16``.  This is exact for *every*
+# prompt (unlike the decode-dequant multi-row, which matches AR's dequant
+# formula but reorders the fp32 reduction and flips top-1 on fragile prompts
+# such as ``translation`` for single_full_v/single_linear_out).  A site is added
+# here (default-on) only after exact-AR passes on the 9-prompt suite.
+_MARLIN_K_MULTI_ROW_DEFAULT_SITES: frozenset[str] = frozenset()
+
+
+def _marlin_k_multi_row_site_enabled(prefix: str) -> bool:
+    """M15.2: route the small verifier batch (rows 2..8) for a Marlin-K
+    (``qweight_mk``) projection through the multi-row Marlin-K GEMV.
+
+    The multi-row kernel reads each weight element once and FMAs into all B+1
+    rows in the *same* k-order and reduction the single-row Marlin-K kernel uses,
+    so each verifier row is bit-identical to AR's rows==1 Marlin-K output.
+
+    Gated by ``HIPENGINE_W4_MULTI_ROW_SMALL_BATCH`` (umbrella) plus the site list
+    ``HIPENGINE_MARLIN_K_MULTI_ROW_SITES`` (comma list, ``all`` or ``none``);
+    unset uses the validated default set above.
+    """
+
+    if not _w4_multi_row_small_batch_enabled():
+        return False
+    raw = os.environ.get("HIPENGINE_MARLIN_K_MULTI_ROW_SITES")
+    if raw is None or raw.strip() == "":
+        sites = _MARLIN_K_MULTI_ROW_DEFAULT_SITES
+    else:
+        parts = {p.strip().lower() for p in raw.split(",") if p.strip()}
+        if "none" in parts:
+            return False
+        if "all" in parts:
+            return True
+        sites = parts
+    return _w4_multi_row_single_site(normalize_qwen35_weight_name(prefix)) in sites
 
 
 def _small_batch_decode_threshold() -> int:

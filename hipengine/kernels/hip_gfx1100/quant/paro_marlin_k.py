@@ -12,6 +12,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("paro_marlin_k.hip")
 _OUTPUT_NAME = "paro_marlin_k.so"
 _SYMBOL_FMA_FP16 = "hipengine_gemv_paro_marlin_k_fma_fp16"
+_SYMBOL_FMA_MULTI_ROW_FP16 = "hipengine_gemv_paro_marlin_k_fma_multi_row_fp16"
 _ALLOWED_THREADS = {32, 64, 128}
 
 
@@ -124,6 +125,70 @@ def gemv_paro_marlin_k_fma_fp16(
         raise RuntimeError(f"{_SYMBOL_FMA_FP16} failed with HIP error {err}: {runtime.get_error_string(err)}")
 
 
+def gemv_paro_marlin_k_fma_multi_row_fp16(
+    x_ptr: int,
+    qweight_mk_ptr: int,
+    qzeros_mk_ptr: int,
+    scales_mk_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int = 128,
+    *,
+    threads: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M15.2: weight-amortized multi-row Marlin-K GEMV for ``1 <= rows <= 8``.
+
+    Reads each weight element once and FMAs into all ``rows`` row accumulators in
+    the same k-order and per-row reduction as ``gemv_paro_marlin_k_fma_fp16``, so
+    each row is bit-identical to the single-row kernel.  Same layout contract.
+    """
+
+    if int(rows) < 1 or int(rows) > 8:
+        raise ValueError("multi-row Marlin-K requires 1 <= rows <= 8")
+    if threads is None:
+        threads = marlin_k_default_threads(int(in_features), int(out_packed) * 8)
+    _validate_marlin_k_args(rows, in_features, out_packed, group_size, threads)
+    library = library or build_paro_marlin_k(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_FMA_MULTI_ROW_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_mk_ptr),
+        ctypes.c_void_p(qzeros_mk_ptr),
+        ctypes.c_void_p(scales_mk_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_packed),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if err != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_SYMBOL_FMA_MULTI_ROW_FP16} failed with HIP error {err}: {runtime.get_error_string(err)}"
+        )
+
+
 def register_paro_marlin_k_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
@@ -133,6 +198,16 @@ def register_paro_marlin_k_kernels(*, replace: bool = True) -> None:
             variant="fma_fp16",
         ),
         gemv_paro_marlin_k_fma_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="marlin_k_gemv",
+            quant="w4_paro",
+            variant="fma_multi_row_fp16",
+        ),
+        gemv_paro_marlin_k_fma_multi_row_fp16,
         replace=replace,
     )
 
@@ -158,6 +233,7 @@ register_paro_marlin_k_kernels()
 __all__ = [
     "build_paro_marlin_k",
     "gemv_paro_marlin_k_fma_fp16",
+    "gemv_paro_marlin_k_fma_multi_row_fp16",
     "marlin_k_default_threads",
     "plan_paro_marlin_k_build",
     "register_paro_marlin_k_kernels",

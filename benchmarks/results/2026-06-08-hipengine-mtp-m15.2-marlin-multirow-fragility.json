@@ -1,0 +1,41 @@
+{
+ "schema": 1,
+ "task_id": 39,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "timestamp": "2026-06-08",
+ "date": "2026-06-08",
+ "summary": "M15.2: bit-exact multi-row Marlin-K GEMV lands as infra, but exact weight-amortization of the unsafe W4 verifier sites (single_full_v, single_linear_out) is blocked by argmax fragility, not kernel numerics.",
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100"
+ },
+ "backend": "hip_gfx1100",
+ "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+ "kernel": {
+  "name": "gemv_paro_marlin_k_fma_multi_row_fp16",
+  "property": "reads each weight element once, FMAs into all B+1 rows in the same k-order + per-row reduction as single-row Marlin-K",
+  "bit_exact_test": "tests/test_qwen35_paro_marlin_k_multi_row.py: rows {2,3,4,5,6,8} x threads {64,128} np.array_equal vs per-row single Marlin-K",
+  "gate": "HIPENGINE_MARLIN_K_MULTI_ROW_SITES (default empty -> off)"
+ },
+ "finding": {
+  "baseline_batched_9prompt_64tok": "exact 9/9 (prefill for unsafe sites)",
+  "marlin_on_single_full_v+single_linear_out_batched": "flips translation (token 6 reorder + 248045 loop)",
+  "marlin_on_single_linear_out_alone_batched": "flips summarize (248045 region, token ~57)",
+  "decode_multi_row_on_unsafe_sites": "flips translation (token ~42) -- earlier probe, also non-exact",
+  "root_cause": "verifier accumulated-chain input to out_proj/v_proj differs slightly from AR rows==1; argmax in degenerate 248045-repeat regions is knife-edge, so any numerics change tips it. prefill is exact only by coincidence on these prompts.",
+  "conclusion": "exact weight-amortization of these sites needs verifier input == AR bit-for-bit (chain-state problem), not a better projection kernel. M15.2 blocked; M14.num.1 reframed."
+ },
+ "side_discovery": {
+  "decode_batched_64tok_9prompt": "NOT exact 9/9 baseline: translation fails (token-6 reorder + 248045 loop); summarize fragile too. batched is exact 9/9. Extends M14.book.5 (c1_loop drift) to decode_batched."
+ },
+ "commands": {
+  "bit_exact_test": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_paro_marlin_k_multi_row.py -q",
+  "suite_marlin_on": "HIPENGINE_MARLIN_K_MULTI_ROW_SITES=single_full_v,single_linear_out ... scripts/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --max-tokens 64 --chain-attn-mode batched --graph-mode off",
+  "suite_baseline": "(no env) ... scripts/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --max-tokens 64 --chain-attn-mode batched --graph-mode off"
+ },
+ "notes": [
+  "Kernel is correct + registered + tested; default-off so no behavior change.",
+  "Unsafe-site weight-amortization is an input-equivalence problem, not a kernel problem."
+ ]
+}

@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-08
 
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP M15.2 / W7900 batched 9-prompt 64-tok: added bit-exact multi-row Marlin-K GEMV (byte-identical per-row vs single-row Marlin-K), but routing unsafe sites single_full_v/single_linear_out through it flips top-1 on translation/summarize while baseline prefill stays exact 9/9 -> blocked by argmax fragility (verifier input != AR), not kernel numerics; also decode_batched not exact 9/9 at 64 tok (translation) vs batched 9/9. Default-off HIPENGINE_MARLIN_K_MULTI_ROW_SITES; `benchmarks/results/2026-06-08-hipengine-mtp-m15.2-marlin-multirow-fragility.json`.
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP M15.1 verifier projection / W7900/gfx1100 quicksort B=3/B=5 D32 decode_batched: exact same-session AR; weight-amortize small-batch linear QKV/Z + full Q/K projections via bit-exact `gemv_awq_pack8_multi_row_decode_transposed_fp16`. Rocprof B=3 `w4_single_gemv` family `2.460 -> 1.873 ms/pass` (-23.9%), total kernel `17.05 -> 16.33 ms/pass` (-4.2%), launches/pass unchanged; `verify_ms/cycle` min `35.55 -> 34.71` (-2.4%) B=3, `42.45 -> 40.82` (-3.8%) B=5. Default-on `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH`; artifact `benchmarks/results/2026-06-08-hipengine-mtp-m15.1-verifier-projection-multirow.json`.
 
 ## 2026-06-07

@@ -25650,3 +25650,58 @@ Files: `hipengine/runtime/qwen35_paro.py` (helpers + QKV/Z + full Q/K dispatch),
 `benchmarks/results/2026-06-08-hipengine-mtp-m15.1-verifier-projection-multirow.json`,
 `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/MTP.md` (M15.1a status).
 Default-on; opt out with `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH=0`.
+
+## 2026-06-08 kernel(mtp): M15.2 multi-row Marlin-K GEMV (infra); unsafe W4 sites blocked by argmax fragility
+
+Goal: weight-amortize the biggest verifier kernel bucket (shared_dense_w4,
+6.58 ms/pass) by giving the M12.6 "unsafe" single sites (single_full_v,
+single_linear_out) a multi-row GEMV that is exact vs AR.
+
+Diagnosed the exactness reference: AR's rows==1 path for these sites uses
+`gemv_paro_marlin_k_fma` (Marlin-K), and marlin_k + the row-wise pack8 decode
+dequant share the identical formula `float(q-z)*scale` in fp32 FMA. A first
+probe routed the unsafe sites through the bit-exact-vs-row-wise decode multi-row
+(`gemv_awq_pack8_multi_row_decode_transposed_fp16`) -> flipped `translation`
+top-1 (token ~42). The decode kernel matches AR's dequant *formula* but reorders
+the fp32 reduction, which is enough to flip a fragile prompt.
+
+So I wrote a kernel that preserves AR's per-row accumulation order exactly:
+`gemv_paro_marlin_k_fma_multi_row_fp16` (paro_marlin_k.hip/.py) reads each weight
+element once and FMAs into all B+1 row accumulators in the same k-order +
+per-row shfl/xchg reduction as single-row Marlin-K. RED test
+`tests/test_qwen35_paro_marlin_k_multi_row.py` proves each row is byte-identical
+(np.array_equal) to per-row single Marlin-K for rows {2,3,4,5,6,8} x threads
+{64,128}.
+
+Result (W7900, batched mode, 9-prompt suite, 64 tokens):
+- baseline (prefill for unsafe sites): exact 9/9 (incl. translation).
+- marlin-on single_full_v+single_linear_out: flips `translation` (token-6
+  reorder + 248045 repeat loop).
+- marlin-on single_linear_out alone: flips `summarize` (248045 region, ~token 57).
+
+Conclusion: even a kernel that is bit-exact vs AR's single-row Marlin-K flips
+fragile prompts. Root cause is NOT dequant numerics: the verifier's
+accumulated-chain input to out_proj/v_proj already differs slightly from AR's
+rows==1 input, and the argmax in degenerate 248045-repeat regions is on a
+knife's edge, so any numerics change tips it. The default `prefill` path is
+exact only by coincidence on these prompts. Exact weight-amortization of the
+unsafe sites therefore requires the verifier *input* to match AR bit-for-bit (a
+chain-state problem), not a better projection kernel. M14.num.1 reframed.
+
+Landed default-off as infrastructure + reproducible fragility probe:
+`HIPENGINE_MARLIN_K_MULTI_ROW_SITES` (empty default site set -> inert; quicksort
+smoke + all kernel unit tests stay exact). Kernel is correct/registered for any
+future non-fragile site or once verifier-input equivalence is solved.
+
+Side discovery: `chain_attn_mode=decode_batched` is NOT exact-AR on the full
+9-prompt suite at 64 tokens -- the baseline (no env) already fails `translation`
+(token-6 reorder + 248045 loop) and `summarize` is fragile; `batched` is exact
+9/9. Extends M14.book.5 (c1_loop 64-token drift) to decode_batched. Task #31
+only validated decode_batched on quicksort D8/D32, so its suite-wide exactness
+was untested; this should be tracked before decode_batched is a suite-exact mode.
+
+Files: hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.{hip,py},
+hipengine/runtime/qwen35_paro.py (gate + project_pack8_fp16 dispatch),
+tests/test_qwen35_paro_marlin_k_multi_row.py,
+benchmarks/results/2026-06-08-hipengine-mtp-m15.2-marlin-multirow-fragility.json,
+docs/MTP.md (M15.2 status). No default behavior change.
