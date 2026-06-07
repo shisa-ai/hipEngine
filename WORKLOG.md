@@ -39834,3 +39834,32 @@ sha256sum benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json ben
 ```
 
 Results: targeted correctness-status tests passed (`221` tests); compact oracle partial-output mirror-output-blocker-count CLI emitted `3` and SHA `4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce`; persisted handoff/status/manifest verification commands returned `"match"`; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`360` tests plus CPU-reference fixture checks). Refreshed artifact hashes: correctness-status file SHA `cb532314d156fd2d82e5d2939771238372b50f88e1bbdd71294e6d472fd64878`, `source_artifacts_sha256=34a178d231cec3e59f450903d113b7bae23e41c0125dadb3e61054d60bade7bd`; final-blocker file SHA `0f511b635c4a3bca960927d707cb0c571cb6b8b9190f97fe72501ad53990f200`, `status_provenance_sha256=d20b7aa7cdeebd222a897332afffcb06fe91b2687f17917acbb405a03f5d0786`; handoff file SHA `ab792e56de1d10e2a06bbf2d77d8294d90b921b3de1b0a98544b4ce6d8a43813`, `digest_summary_sha256=1c288b94373202b2020edcc4c94d894454c5f985092406ce0049287839bc3599`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
+
+## 2026-06-07 - StepFun Q3_K_L correctness status: oracle partial-output mirror-overwrite-policy-count compact modes
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 453. Added compact oracle partial-output mirror-overwrite-policy-count outputs to `scripts/stepfun_correctness_status.py`: `--oracle-partial-output-mirror-overwrite-policy-count-only` and `--oracle-partial-output-mirror-overwrite-policy-count-sha-only`, plus oracle compact-mode integrity coverage. Updated `tests/test_stepfun_correctness_status.py`, documented the modes in `docs/STEPFUN.md`, and refreshed the persisted correctness-status/final-blocker/handoff artifacts. This is observability only: `oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`, and no StepFun throughput/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_correctness_status.py tests/test_stepfun_correctness_status.py
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 scripts/stepfun_correctness_status.py --oracle-partial-output-mirror-overwrite-policy-count-only
+python3 scripts/stepfun_correctness_status.py --oracle-partial-output-mirror-overwrite-policy-count-sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+# Prompt-verifier checks:
+git grep -n "import torch" -- hipengine || true
+grep -nE 'if (backend|quant) ==|if .*backend ==|if .*quant ==' scripts/stepfun_correctness_status.py scripts/stepfun_validator_status.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_llamacpp_oracle.py scripts/stepfun_handoff_check.py scripts/stepfun_oracle_artifact_check.py scripts/stepfun_kv_trace_check.py scripts/stepfun_kv_next_token_check.py || true
+git diff -U0 -- docs/STEPFUN.md scripts/stepfun_correctness_status.py tests/test_stepfun_correctness_status.py benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json | grep -nEi '^\+.*(tok/s|throughput|performance claim|performance claims|benchmark result)' | grep -vi 'no.*claim\|not.*performance\|making token or performance claims\|without making.*performance claims\|claims separate\|throughput/performance claim\|throughput claim.*needs\|until.*correctness\|deferred\|not a performance\|performance_claim_allowed.*False\|performance.*claims require' || true
+git diff --check
+sha256sum benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+```
+
+Results: targeted correctness-status tests passed (`222` tests); compact oracle partial-output mirror-overwrite-policy-count CLI emitted `3` and SHA `4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce`; persisted handoff/status/manifest verification commands returned `"match"`; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`361` tests plus CPU-reference fixture checks). Refreshed artifact hashes: correctness-status file SHA `9686c12e9a8a5849f1ad51d8775e4a253cec28c6793384d9163bf7b9001a637f`, `source_artifacts_sha256=5e4643dadba6fbf37aa0528fbdaeba7478d23ba72f921253e7eb3cc153d14211`; final-blocker file SHA `b10329fb7a4b45c7d75d5a67005b4ce8ab25b42de6c2cfaaa36d485979b780f5`, `status_provenance_sha256=1e4c162747cf256716bfd5192bd5e9f43497a2aeea3c970ded65f16d7cd92b4c`; handoff file SHA `72c72d59a7f817aea7bd6663ed114f5f9443f686c4261470536e144b09cfde9d`, `digest_summary_sha256=cc2731494952c69f5fc6f1788065afb10fdc1fb92ecbcd13f5595458adc2a8f6`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
