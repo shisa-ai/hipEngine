@@ -67218,3 +67218,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: together with iter447, the context issue is tied to rows-per-context-launch/order semantics rather than tensor inputs or O projection. Rowchunk4/fullnative use rows>=4 context launches and are red/bit-identical; rowchunk2 uses 2-row launches and is green.
 - Required active c2 verify printed `104` this time (lower than recent `137` without source changes); guard still passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-layer3-context-metadata-448/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter449 c8 layer3-only rowchunk1 green
+- Ran the minimal c8 L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with rowchunk1 forced only on layer3 (`--batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-row-chunk-layers 3`), against the native-batch c1 oracle. No runtime code changed.
+- Result: layer3-only rowchunk1 is green. The diagnostic is `eq_ok`; hidden and token checks pass. All captured layer4 linear stages pass, all full-attention stages pass, and linear/full-attention drift/failure counts are `0/0` with no first mismatch. Runtime metadata shows eight 1-row context launches over slots `[0]` through `[7]`.
+- Interpretation: together with iter445/446/448, the layer3 context frontier is rows-per-context-launch <=2 versus >=4, not exactly-two-row semantics. Rowchunk1 and rowchunk2 are green; rowchunk4 and fullnative are red/bit-identical. A temporary correctness path could cap full-attention decode context launches at 2 rows while a rows>=4 context fix is developed.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk1-layer3-449/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.

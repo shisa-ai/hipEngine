@@ -1,0 +1,313 @@
+{
+  "iteration": 449,
+  "kind": "c8_minimal_layer3_rowchunk1_green",
+  "created_at": "2026-06-07T08:14:36.012277+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "74a078eb976770938be6ecc239ef4c101184aea2",
+  "performance_claim": false,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --warmup-decode-tokens 8 --decode-tokens 1 --max-layers 8 --layer-limits 8 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-row-chunk-layers 3 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter449-L8-c8-rowchunk1-layer3-nativec1-warm8-decode1-trace0-1.json",
+  "result": {
+    "status": "eq_ok",
+    "hidden_passed": true,
+    "token_passed": true,
+    "failure_modes": [],
+    "linear_stage_passed": {
+      "attn_input": true,
+      "qkv": true,
+      "z": true,
+      "conv_out": true,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": true,
+      "output": true
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": true,
+      "attn_input_after_rotate": true,
+      "attn_input_after_project": true,
+      "q_proj_key_after_project": true,
+      "value_after_project": true,
+      "query_raw_after_split": true,
+      "key_raw_after_cast": true,
+      "gate_after_split": true,
+      "query_after_prepare": true,
+      "key_after_prepare": true,
+      "attn_input_after_prepare": true,
+      "attn_input": true,
+      "gate": true,
+      "query": true,
+      "attn_context": true,
+      "gated_attn": true,
+      "o_proj": true,
+      "residual": true,
+      "mlp_input": true,
+      "output": true
+    },
+    "linear_drift_stage_count": 0,
+    "full_attention_failed_stage_count": 0,
+    "first_linear_mismatch": null,
+    "first_full_attention_failure": null,
+    "layer3_execution": {
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 1,
+      "full_attention_output_decode_path": "batch_gemv",
+      "attn_context_trace_source": "attention_scratch.query_raw",
+      "chunk_count": 8,
+      "chunk_rows": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "chunk_slots": [
+        [
+          0
+        ],
+        [
+          1
+        ],
+        [
+          2
+        ],
+        [
+          3
+        ],
+        [
+          4
+        ],
+        [
+          5
+        ],
+        [
+          6
+        ],
+        [
+          7
+        ]
+      ],
+      "chunks": [
+        {
+          "row_start": 0,
+          "rows": 1,
+          "slots": [
+            0
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ]
+        },
+        {
+          "row_start": 1,
+          "rows": 1,
+          "slots": [
+            1
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              4,
+              5,
+              6,
+              7
+            ]
+          ]
+        },
+        {
+          "row_start": 2,
+          "rows": 1,
+          "slots": [
+            2
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              8,
+              9,
+              10,
+              11
+            ]
+          ]
+        },
+        {
+          "row_start": 3,
+          "rows": 1,
+          "slots": [
+            3
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              12,
+              13,
+              14,
+              15
+            ]
+          ]
+        },
+        {
+          "row_start": 4,
+          "rows": 1,
+          "slots": [
+            4
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              16,
+              17,
+              18,
+              19
+            ]
+          ]
+        },
+        {
+          "row_start": 5,
+          "rows": 1,
+          "slots": [
+            5
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              20,
+              21,
+              22,
+              23
+            ]
+          ]
+        },
+        {
+          "row_start": 6,
+          "rows": 1,
+          "slots": [
+            6
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              24,
+              25,
+              26,
+              27
+            ]
+          ]
+        },
+        {
+          "row_start": 7,
+          "rows": 1,
+          "slots": [
+            7
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              28,
+              29,
+              30,
+              31
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "interpretation": {
+    "positive_result": "Layer3-only rowchunk1 makes the minimal c8 L8 decode0 hidden-bisect eq_ok, matching the rowchunk2 green result and contrasting with rowchunk4/fullnative red.",
+    "localized_frontier": "The layer3 context frontier is rows-per-context-launch <=2 versus >=4, not exactly-two-row semantics. Rowchunk1 and rowchunk2 are green; rowchunk4 and fullnative are red/bit-identical.",
+    "next_target": "Inspect/repair the native full-attention context kernel or launch metadata for rows>=4. A temporary correctness path could cap full-attention decode context launches at 2 rows while a rows>=4 context fix is developed."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused hidden/full-attention parity blocker is green; layer3-only rowchunk1 makes minimal c8 L8 hidden-bisect eq_ok and narrows context launch safe row count to <=2. No performance claim."
+  },
+  "conclusion": "Layer3 rowchunk1 is green; c8 layer3 context correctness is safe for <=2 rows per context launch and red for >=4 rows per context launch in this minimal window.",
+  "references": {
+    "raw_hidden_bisect_tmp": {
+      "path": "/tmp/hipengine-hidden-bisect-iter449-L8-c8-rowchunk1-layer3-nativec1-warm8-decode1-trace0-1.json",
+      "sha256": "0302610ef6b694e0dee1b983ae1ed55a2929ebd7f1c138cbf5107b727c913650",
+      "size_bytes": 2299494
+    },
+    "raw_log_tmp": {
+      "path": "/tmp/hipengine-hidden-bisect-iter449-L8-c8-rowchunk1-layer3-nativec1-warm8-decode1-trace0-1.log",
+      "sha256": "0302610ef6b694e0dee1b983ae1ed55a2929ebd7f1c138cbf5107b727c913650",
+      "size_bytes": 2299494
+    },
+    "prior_layer3_rowchunk2_445": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk-layer3-445/summary.json",
+      "sha256": "5018c29390da9a0886aee0f8fe6c5152a7522e705aa366a405a7441e9eddc460",
+      "size_bytes": 5241
+    },
+    "prior_layer3_rowchunk4_446": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk4-layer3-446/summary.json",
+      "sha256": "a4d6aec8c5e3056c2c914e5bc765e1498ceb5751c317fb7f7f9a43a10c64a531",
+      "size_bytes": 5597
+    },
+    "prior_context_metadata_448": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-layer3-context-metadata-448/summary.json",
+      "sha256": "3b6d0535c669dc2ca745f70b23a8f1c290160baad8ec3f633ab584f97260de4c",
+      "size_bytes": 20559
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk1-layer3-449/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk1-layer3-449/compact-runs.json",
+      "sha256": "cb4252101f7efebe7fbb61cc12ab79bd074d710b8d4518ec7d9670bd153b04c0",
+      "size_bytes": 6282
+    }
+  }
+}

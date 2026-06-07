@@ -1,0 +1,274 @@
+{
+  "iteration": 449,
+  "kind": "c8_minimal_layer3_rowchunk1_green",
+  "created_at": "2026-06-07T08:14:36.012277+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "result": {
+    "status": "eq_ok",
+    "hidden_passed": true,
+    "token_passed": true,
+    "failure_modes": [],
+    "linear_stage_passed": {
+      "attn_input": true,
+      "qkv": true,
+      "z": true,
+      "conv_out": true,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": true,
+      "output": true
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": true,
+      "attn_input_after_rotate": true,
+      "attn_input_after_project": true,
+      "q_proj_key_after_project": true,
+      "value_after_project": true,
+      "query_raw_after_split": true,
+      "key_raw_after_cast": true,
+      "gate_after_split": true,
+      "query_after_prepare": true,
+      "key_after_prepare": true,
+      "attn_input_after_prepare": true,
+      "attn_input": true,
+      "gate": true,
+      "query": true,
+      "attn_context": true,
+      "gated_attn": true,
+      "o_proj": true,
+      "residual": true,
+      "mlp_input": true,
+      "output": true
+    },
+    "linear_drift_stage_count": 0,
+    "full_attention_failed_stage_count": 0,
+    "first_linear_mismatch": null,
+    "first_full_attention_failure": null,
+    "layer3_execution": {
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 1,
+      "full_attention_output_decode_path": "batch_gemv",
+      "attn_context_trace_source": "attention_scratch.query_raw",
+      "chunk_count": 8,
+      "chunk_rows": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "chunk_slots": [
+        [
+          0
+        ],
+        [
+          1
+        ],
+        [
+          2
+        ],
+        [
+          3
+        ],
+        [
+          4
+        ],
+        [
+          5
+        ],
+        [
+          6
+        ],
+        [
+          7
+        ]
+      ],
+      "chunks": [
+        {
+          "row_start": 0,
+          "rows": 1,
+          "slots": [
+            0
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ]
+        },
+        {
+          "row_start": 1,
+          "rows": 1,
+          "slots": [
+            1
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              4,
+              5,
+              6,
+              7
+            ]
+          ]
+        },
+        {
+          "row_start": 2,
+          "rows": 1,
+          "slots": [
+            2
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              8,
+              9,
+              10,
+              11
+            ]
+          ]
+        },
+        {
+          "row_start": 3,
+          "rows": 1,
+          "slots": [
+            3
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              12,
+              13,
+              14,
+              15
+            ]
+          ]
+        },
+        {
+          "row_start": 4,
+          "rows": 1,
+          "slots": [
+            4
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              16,
+              17,
+              18,
+              19
+            ]
+          ]
+        },
+        {
+          "row_start": 5,
+          "rows": 1,
+          "slots": [
+            5
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              20,
+              21,
+              22,
+              23
+            ]
+          ]
+        },
+        {
+          "row_start": 6,
+          "rows": 1,
+          "slots": [
+            6
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              24,
+              25,
+              26,
+              27
+            ]
+          ]
+        },
+        {
+          "row_start": 7,
+          "rows": 1,
+          "slots": [
+            7
+          ],
+          "positions": [
+            512
+          ],
+          "decode_live_counts": [
+            513
+          ],
+          "block_table_unique_rows": [
+            [
+              28,
+              29,
+              30,
+              31
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "interpretation": {
+    "positive_result": "Layer3-only rowchunk1 makes the minimal c8 L8 decode0 hidden-bisect eq_ok, matching the rowchunk2 green result and contrasting with rowchunk4/fullnative red.",
+    "localized_frontier": "The layer3 context frontier is rows-per-context-launch <=2 versus >=4, not exactly-two-row semantics. Rowchunk1 and rowchunk2 are green; rowchunk4 and fullnative are red/bit-identical.",
+    "next_target": "Inspect/repair the native full-attention context kernel or launch metadata for rows>=4. A temporary correctness path could cap full-attention decode context launches at 2 rows while a rows>=4 context fix is developed."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused hidden/full-attention parity blocker is green; layer3-only rowchunk1 makes minimal c8 L8 hidden-bisect eq_ok and narrows context launch safe row count to <=2. No performance claim."
+  },
+  "conclusion": "Layer3 rowchunk1 is green; c8 layer3 context correctness is safe for <=2 rows per context launch and red for >=4 rows per context launch in this minimal window."
+}
