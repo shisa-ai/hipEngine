@@ -1076,8 +1076,10 @@ reporting.
   `--first-blocker-command-available-only` /
   `--first-blocker-command-available-sha-only`, and
   `--first-blocker-command-unavailable-only` /
-  `--first-blocker-command-unavailable-sha-only`, expose the rerun
-  command, digest, character count, runnable-action flag, and missing-action flag directly. Compact
+  `--first-blocker-command-unavailable-sha-only`, and
+  `--first-blocker-command-state-only` /
+  `--first-blocker-command-state-sha-only`, expose the rerun
+  command, digest, character count, runnable-action flag, missing-action flag, and command state directly. Compact
   `--first-blocker-recommended-command-reason-only` /
   `--first-blocker-recommended-command-reason-sha-only` and
   `--first-blocker-first-missing-evidence-only` /
