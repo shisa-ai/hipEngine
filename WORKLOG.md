@@ -67183,3 +67183,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: this eliminates layer3→4 layer-copy and O-projection promotion as immediate first-over-atol suspects. Next target should compare layer4 RMSNorm reduction/order/intermediates or test a rowchunk-parity normalization path, rather than more context/O one-off toggles.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-layer4-rmsnorm-direct-443/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter444 c8 per-row linear consumer probe
+- Ran a minimal c8 fullnative/no-rowchunk L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with `--batch-decode-linear-path per_row`, against the native-batch c1 oracle. No runtime code changed.
+- Result: per-row linear consumer replay is **not** a c8 fix. The diagnostic is `mismatch_found`; hidden fails and token remains green in the minimal window. The first linear mismatch remains layer4 `attn_input` (post input-RMSNorm) with `max_abs=0.0078125`, row0 elements_over_atol `5`, and bit_mismatch `491`; layer4 `qkv`, `z`, `conv_out`, and `mlp_input` also fail, while linear input itself remains passed.
+- Interpretation: the native batch linear-attention implementation is not enough as the immediate first-over-atol suspect. Normal per-row/token-1 linear execution still amplifies the upstream under-atol layer3 hidden drift at input RMSNorm, so the useful target is making the layer3 full-attention output bit-identical/rowchunk-equivalent or inspecting RMSNorm scale/intermediate sensitivity.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-linear-perrow-444/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
