@@ -67132,3 +67132,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: c8 grouped/no-rowchunk needs rowchunk semantics or a different grouped full-attention composition fix; simply replaying the attention scratch setup per row is not safe.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-scratch-probe-436/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter437 c8 combined pre-QKV probe
+- Ran a minimal c8 fullnative/no-rowchunk L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with combined `--batch-decode-attn-input-path per_row --batch-decode-attn-qkv-path per_row --batch-decode-attn-scratch-path per_row`, against the native-batch c1 oracle. No runtime code changed.
+- Result: the c2-derived combined pre-QKV split does **not** generalize to c8. The diagnostic is `mismatch_found`; hidden and token checks fail. Failure shape matches scratch-only: layer4 linear `attn_input` bit drift (`max_abs=0.0078125`, `bit_mismatch=765`, elements_over_atol `7`) and large layer3 full-attention `gate` divergence (`max_abs=7.73046875`, elements_over_atol `4096`), with full-attention failed-stage count `20` vs baseline fullnative minimal trace `12`. Rowchunk2 control remains `0`/`0` drift/failure counts.
+- Interpretation: avoid further c8 one-off pre-QKV toggles; the remaining useful route is direct rowchunk-vs-fullnative comparison or a true grouped full-attention numerical/composition change.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-preqkv-probe-437/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
