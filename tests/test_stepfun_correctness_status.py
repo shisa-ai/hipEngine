@@ -1723,6 +1723,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
         "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
         "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
+        "oracle_partial_output_handoff_key_count_only": (
+            "len(oracle_partial_output_handoff.keys)"
+        ),
+        "oracle_partial_output_handoff_key_count_sha_only": (
+            "len(oracle_partial_output_handoff.keys).sha256"
+        ),
         "oracle_partial_output_handoff_status_only": (
             "oracle_partial_output_handoff.status"
         ),
@@ -6523,6 +6529,8 @@ def test_stepfun_correctness_status_oracle_partial_output_handoff_outputs(
     resource = tmp_path / "resource.json"
     output = tmp_path / "oracle-partial-output-handoff.json"
     sha_output = tmp_path / "oracle-partial-output-handoff-sha.json"
+    key_count_output = tmp_path / "oracle-partial-output-handoff-key-count.json"
+    key_count_sha_output = tmp_path / "oracle-partial-output-handoff-key-count-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -6613,6 +6621,50 @@ def test_stepfun_correctness_status_oracle_partial_output_handoff_outputs(
     sha_payload = json.loads(sha_output.read_text())
     assert sha_payload == status["oracle_partial_output_handoff_sha256"]
     assert sha_payload == _stable_json_sha256(status["oracle_partial_output_handoff"])
+
+    handoff_key_count = len(status["oracle_partial_output_handoff"].keys())
+    calls = [
+        (
+            key_count_output,
+            "--oracle-partial-output-handoff-key-count-only",
+            handoff_key_count,
+        ),
+        (
+            key_count_sha_output,
+            "--oracle-partial-output-handoff-key-count-sha-only",
+            _stable_json_sha256(handoff_key_count),
+        ),
+    ]
+    for count_output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(count_output),
+                "--summary-only",
+                "--oracle-partial-output-handoff-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(count_output.read_text()) == expected
+
+    assert handoff_key_count == 10
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_handoff_key_count_only"] == (
+        "len(oracle_partial_output_handoff.keys)"
+    )
+    assert compact_modes["oracle_partial_output_handoff_key_count_sha_only"] == (
+        "len(oracle_partial_output_handoff.keys).sha256"
+    )
 
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -9748,6 +9800,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
         "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
         "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
+        "oracle_partial_output_handoff_key_count_only": (
+            "len(oracle_partial_output_handoff.keys)"
+        ),
+        "oracle_partial_output_handoff_key_count_sha_only": (
+            "len(oracle_partial_output_handoff.keys).sha256"
+        ),
         "oracle_partial_output_handoff_status_only": (
             "oracle_partial_output_handoff.status"
         ),

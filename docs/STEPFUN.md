@@ -1046,7 +1046,9 @@ reporting.
   `--oracle-partial-output-handoff-only` /
   `--oracle-partial-output-handoff-sha-only` outputs expose the supervised oracle
   rerun partial-output contract (command record, queue/report mirrors, source-path
-  match, and safe/drift status), while `--oracle-partial-output-handoff-status-only` /
+  match, and safe/drift status), while `--oracle-partial-output-handoff-key-count-only` /
+  `--oracle-partial-output-handoff-key-count-sha-only`,
+  `--oracle-partial-output-handoff-status-only` /
   `--oracle-partial-output-handoff-status-sha-only`,
   `--oracle-partial-output-safety-summary-only` /
   `--oracle-partial-output-safety-summary-sha-only`,
@@ -1135,7 +1137,7 @@ reporting.
   `--oracle-partial-output-blocker-kind-sha-only`, and
   `--oracle-partial-output-source-match-only` /
   `--oracle-partial-output-source-match-sha-only` expose the current partial-output
-  handoff status, safety summary, safety-summary key count, integrity-check list, integrity-check count, mirror-record list, mirror-record count, mirror-record key list, mirror-record key-count list, mirror-source list, mirror-source count, mirror-status list, mirror-status count, mirror-path list, mirror-path count, mirror-command digest list, mirror-command digest count, mirror-command-kind list, mirror-command-kind count, mirror-prelaunch-write flag list, mirror-prelaunch-write count, mirror-queue-index list, mirror-queue-index count, mirror-blocker list, mirror-blocker count, mirror-output-blocker list, mirror-output-blocker count, mirror-overwrite-policy list, mirror-overwrite-policy count, all-contracts safety flag, mirror-record safety flag, supervisor-signal safety flag, command-record safety flag, command-record digest, command source, command digest, command-kind, execute-command flag, output-path argument flag, prelaunch-write flag, artifact path, overwrite policy, status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
+  handoff status, handoff key count, safety summary, safety-summary key count, integrity-check list, integrity-check count, mirror-record list, mirror-record count, mirror-record key list, mirror-record key-count list, mirror-source list, mirror-source count, mirror-status list, mirror-status count, mirror-path list, mirror-path count, mirror-command digest list, mirror-command digest count, mirror-command-kind list, mirror-command-kind count, mirror-prelaunch-write flag list, mirror-prelaunch-write count, mirror-queue-index list, mirror-queue-index count, mirror-blocker list, mirror-blocker count, mirror-output-blocker list, mirror-output-blocker count, mirror-overwrite-policy list, mirror-overwrite-policy count, all-contracts safety flag, mirror-record safety flag, supervisor-signal safety flag, command-record safety flag, command-record digest, command source, command digest, command-kind, execute-command flag, output-path argument flag, prelaunch-write flag, artifact path, overwrite policy, status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
   integrity verifies the command-level partial-output guarantee, the compact handoff digest/status,
   and that the queue/compact blocker
   reports mirror the same path/status/overwrite fields; oracle-helper tests now
