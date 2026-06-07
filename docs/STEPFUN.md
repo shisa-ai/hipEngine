@@ -1108,6 +1108,8 @@ reporting.
   the schema-version payload digest, recommended-command list digest, command length/SHA metadata inside the work queue,
   compact recommended-command records, `--blocker-recommended-command-shas-joined-only` /
   `--blocker-recommended-command-shas-joined-sha-only` command-content route outputs,
+  `--blocker-recommended-command-nchars-joined-only` /
+  `--blocker-recommended-command-nchars-joined-sha-only` command-character-count route outputs,
   `--blocker-recommended-command-kinds-joined-only` /
   `--blocker-recommended-command-kinds-joined-sha-only` action-plan route outputs,
   `--blocker-recommended-command-reasons-joined-only` /
