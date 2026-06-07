@@ -1,0 +1,220 @@
+{
+  "iteration": 462,
+  "kind": "c8_512x128_rowchunk2_drop11_rejected",
+  "created_at": "2026-06-07T09:27:42.296381+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "result": {
+    "top_level_status": "rejected_correctness",
+    "decision_accepted": false,
+    "generated_token_equality": {
+      "passed": false,
+      "skipped": false,
+      "rows": 8,
+      "tokens_per_sequence": 137,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        72,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 72,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        72,
+        null,
+        null
+      ],
+      "mismatch_count": 1,
+      "mismatch_details": [
+        {
+          "row": 5,
+          "first_mismatch_index": 72,
+          "batch_token": 6761,
+          "c1_token": 9640
+        }
+      ],
+      "mismatch_summaries": [
+        {
+          "row": 5,
+          "first_mismatch_index": 72,
+          "batch_token_at_mismatch": 6761,
+          "c1_token_at_mismatch": 9640,
+          "batch_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            6761,
+            220,
+            20,
+            12,
+            16,
+            19
+          ],
+          "c1_window": [
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            9640,
+            2713,
+            220,
+            20,
+            13,
+            1165
+          ],
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "row": 5,
+              "equal_prefix_tokens": 72
+            },
+            {
+              "row": 3,
+              "equal_prefix_tokens": 11
+            },
+            {
+              "row": 0,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 1,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 2,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 4,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 6,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 7,
+              "equal_prefix_tokens": 0
+            }
+          ]
+        }
+      ]
+    },
+    "decode_execution": {
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "decode_rows": 8,
+      "full_attention_layers": [
+        {
+          "layer_index": 3,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 7,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 11,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 15,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 19,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 23,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 27,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 31,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 35,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 39,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        }
+      ]
+    },
+    "workload_paths": {
+      "batch_decode_full_attention_row_chunk_size": 2,
+      "batch_decode_full_attention_row_chunk_layers": "3,7,15,19,23",
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_full_attention_output_path": "batch_gemv"
+    }
+  },
+  "interpretation": {
+    "negative_result": "Dropping layer11 from the c8 rowchunk2 selected layer set is not correct: row5 diverges at generated-token prefix 72.",
+    "frontier_update": "Layer11 is required in the current c8 rowchunk2 correctness path. With iter459/460/461, layers 11,15,19,23 are required in the evidence-backed c8 auto set 3,7,11,15,19,23.",
+    "next_target": "The next one-layer reduction candidate is layer7, or return to rows>=4 full-attention context repair at required layers 3,7,11,15,19,23."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused c8 equality discriminator rejects dropping layer11 and tightens the evidence-backed selected layer set; no performance claim."
+  },
+  "conclusion": "c8 rowchunk2 drop11 is red; layer11 is required in the selected rowchunk correctness set."
+}
