@@ -950,6 +950,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--blocker-recommended-command-kinds-joined-only",
+        action="store_true",
+        help=(
+            "Emit only the pipe-joined handoff_summary.blocker_recommended_commands[]."
+            "recommended_command_kind route for compact action-plan polling. Overrides "
+            "--summary-only and blocker-work-queue compact modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-recommended-command-kinds-joined-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the pipe-joined blocker recommended-command "
+            "kind route for action-plan drift polling. Overrides --summary-only and "
+            "blocker-work-queue compact modes."
+        ),
+    )
+    parser.add_argument(
         "--status-refresh-command-only",
         action="store_true",
         help=(
@@ -2529,6 +2547,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "handoff_summary.blocker_recommended_commands"
             and compact_output_modes.get("blocker_recommended_commands_sha_only")
             == "handoff_summary.blocker_recommended_commands_sha256"
+            and compact_output_modes.get("blocker_recommended_command_kinds_joined_only")
+            == "handoff_summary.blocker_recommended_commands.recommended_command_kind.joined"
+            and compact_output_modes.get("blocker_recommended_command_kinds_joined_sha_only")
+            == "handoff_summary.blocker_recommended_commands.recommended_command_kind.joined.sha256"
             and compact_output_modes.get("first_blocker_sha_only")
             == "handoff_summary.first_blocker_work_item_sha256"
             and compact_output_modes.get("first_blocker_only")
@@ -5246,6 +5268,12 @@ def _handoff_summary(
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
             "blocker_recommended_commands_only": "handoff_summary.blocker_recommended_commands",
             "blocker_recommended_commands_sha_only": "handoff_summary.blocker_recommended_commands_sha256",
+            "blocker_recommended_command_kinds_joined_only": (
+                "handoff_summary.blocker_recommended_commands.recommended_command_kind.joined"
+            ),
+            "blocker_recommended_command_kinds_joined_sha_only": (
+                "handoff_summary.blocker_recommended_commands.recommended_command_kind.joined.sha256"
+            ),
             "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
             "first_blocker_only": "handoff_summary.first_blocker_work_item",
             "first_blocker_recommended_command_only": (
@@ -6335,6 +6363,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["readiness_summary"]
     elif args.blocker_recommended_commands_sha_only:
         result = status["handoff_summary"]["blocker_recommended_commands_sha256"]
+    elif args.blocker_recommended_command_kinds_joined_sha_only:
+        command_kind_route = "|".join(
+            str(item.get("recommended_command_kind"))
+            for item in status["handoff_summary"]["blocker_recommended_commands"]
+            if isinstance(item, dict)
+        )
+        result = _stable_json_sha256(command_kind_route)
+    elif args.blocker_recommended_command_kinds_joined_only:
+        result = "|".join(
+            str(item.get("recommended_command_kind"))
+            for item in status["handoff_summary"]["blocker_recommended_commands"]
+            if isinstance(item, dict)
+        )
     elif args.blocker_recommended_commands_only:
         result = status["handoff_summary"]["blocker_recommended_commands"]
     elif args.blocker_work_queue_sha_only:
