@@ -1058,6 +1058,8 @@ reporting.
   `--oracle-partial-output-mirror-record-count-sha-only`,
   `--oracle-partial-output-mirror-record-keys-only` /
   `--oracle-partial-output-mirror-record-keys-sha-only`,
+  `--oracle-partial-output-mirror-record-key-counts-only` /
+  `--oracle-partial-output-mirror-record-key-counts-sha-only`,
   `--oracle-partial-output-mirror-sources-only` /
   `--oracle-partial-output-mirror-sources-sha-only`,
   `--oracle-partial-output-mirror-statuses-only` /
@@ -1109,7 +1111,7 @@ reporting.
   `--oracle-partial-output-blocker-kind-sha-only`, and
   `--oracle-partial-output-source-match-only` /
   `--oracle-partial-output-source-match-sha-only` expose the current partial-output
-  handoff status, safety summary, integrity-check list, mirror-record list, mirror-record count, mirror-record key list, mirror-source list, mirror-status list, mirror-path list, mirror-command digest list, mirror-command-kind list, mirror-prelaunch-write flag list, mirror-queue-index list, mirror-blocker list, mirror-output-blocker list, mirror-overwrite-policy list, all-contracts safety flag, mirror-record safety flag, supervisor-signal safety flag, command-record safety flag, command-record digest, command source, command digest, command-kind, execute-command flag, output-path argument flag, prelaunch-write flag, artifact path, overwrite policy, status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
+  handoff status, safety summary, integrity-check list, mirror-record list, mirror-record count, mirror-record key list, mirror-record key-count list, mirror-source list, mirror-status list, mirror-path list, mirror-command digest list, mirror-command-kind list, mirror-prelaunch-write flag list, mirror-queue-index list, mirror-blocker list, mirror-output-blocker list, mirror-overwrite-policy list, all-contracts safety flag, mirror-record safety flag, supervisor-signal safety flag, command-record safety flag, command-record digest, command source, command digest, command-kind, execute-command flag, output-path argument flag, prelaunch-write flag, artifact path, overwrite policy, status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
   integrity verifies the command-level partial-output guarantee, the compact handoff digest/status,
   and that the queue/compact blocker
   reports mirror the same path/status/overwrite fields; oracle-helper tests now
