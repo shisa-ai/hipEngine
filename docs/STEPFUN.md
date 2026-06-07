@@ -1068,6 +1068,8 @@ reporting.
   `--oracle-partial-output-mirror-output-blocker-kinds-sha-only`,
   `--oracle-partial-output-mirror-overwrite-policies-only` /
   `--oracle-partial-output-mirror-overwrite-policies-sha-only`,
+  `--oracle-partial-output-mirror-command-kinds-only` /
+  `--oracle-partial-output-mirror-command-kinds-sha-only`,
   `--oracle-partial-output-all-contracts-safe-only` /
   `--oracle-partial-output-all-contracts-safe-sha-only`,
   `--oracle-partial-output-mirror-records-safe-only` /
@@ -1099,7 +1101,7 @@ reporting.
   `--oracle-partial-output-blocker-kind-sha-only`, and
   `--oracle-partial-output-source-match-only` /
   `--oracle-partial-output-source-match-sha-only` expose the current partial-output
-  handoff status, safety summary, integrity-check list, mirror-record list, mirror-source list, mirror-status list, mirror-path list, mirror-command digest list, mirror-blocker list, mirror-output-blocker list, mirror-overwrite-policy list, all-contracts safety flag, mirror-record safety flag, supervisor-signal safety flag, command-record safety flag, command-record digest, command source, command digest, command-kind, execute-command flag, output-path argument flag, prelaunch-write flag, artifact path, overwrite policy, status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
+  handoff status, safety summary, integrity-check list, mirror-record list, mirror-source list, mirror-status list, mirror-path list, mirror-command digest list, mirror-command-kind list, mirror-blocker list, mirror-output-blocker list, mirror-overwrite-policy list, all-contracts safety flag, mirror-record safety flag, supervisor-signal safety flag, command-record safety flag, command-record digest, command source, command digest, command-kind, execute-command flag, output-path argument flag, prelaunch-write flag, artifact path, overwrite policy, status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
   integrity verifies the command-level partial-output guarantee, the compact handoff digest/status,
   and that the queue/compact blocker
   reports mirror the same path/status/overwrite fields; oracle-helper tests now
