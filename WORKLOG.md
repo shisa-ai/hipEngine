@@ -67093,3 +67093,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Existing hidden-bisect artifacts do not store raw stage tensors (`decode_stage_records` / `trace_records` absent), only pass/fail summaries, first failures, row sets, and mismatch counts. Therefore they cannot compute a direct rowchunk-vs-fullnative tensor delta from saved JSON alone.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-stage-summary-431/summary.json` and `compact-runs.json`. Next implementation/debug step should be a lightweight purpose-built stage comparator that records/directly compares layer4 `attn_input` and layer7 `attn_input_pre_qkv` for rowchunk vs fullnative at decode_step0.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter432 c8 proxy rowchunk-vs-fullnative stage deltas
+- No runtime code changed. Used native-batch c1 as a proxy to quantify the c8 rowchunk-vs-fullnative split from existing hidden-bisect summaries: rowchunk2 is bit-exact vs native-batch c1 for the target stages, so fullnative-vs-native-c1 deltas equal effective fullnative-vs-rowchunk deltas at those stages.
+- Proxy validation: c8 rowchunk2 L40 decode_step0 layer4 `attn_input` and layer7 `attn_input_pre_qkv` have max_abs `0.0`, elements_over_atol `0`, passed for all 8 rows vs native-batch c1.
+- Effective c8 fullnative-vs-rowchunk deltas from the minimal fullnative L8/decode1 comparator: layer4 linear `attn_input` max_abs `0.0078125`, row0 over atol, total elements_over_atol `1`; layer7 full-attention `attn_input_pre_qkv` max_abs `0.015625`, all rows over atol, total elements_over_atol `12`.
+- This gives a concrete first fix target: fullnative batch grouping perturbs layer4 `attn_input` before layer7 full-attention, while rowchunk2 remains exact to native-batch c1. The retained c8 fullnative token failures remain `[137,137,137,118,45,31,68,137]` from iter429.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-proxy-stage-delta-432/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
