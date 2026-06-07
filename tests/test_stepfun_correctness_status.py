@@ -482,6 +482,13 @@ def _kv_decode_blocker_summary() -> dict[str, object]:
         "first_blocker": _streaming_runner_blockers()[0],
         "first_blocker_name": _first_streaming_runner_blocker(),
         "first_blocker_sha256": _stable_json_sha256(_streaming_runner_blockers()[0]),
+        "last_blocker": _streaming_runner_blockers()[-1],
+        "last_blocker_name": _last_streaming_runner_blocker(),
+        "last_blocker_sha256": _stable_json_sha256(_streaming_runner_blockers()[-1]),
+        "kernel_trace_blocker": _streaming_runner_blockers()[1],
+        "kernel_trace_blocker_name": _kernel_trace_streaming_runner_blocker(),
+        "kernel_trace_blocker_sha256": _stable_json_sha256(_streaming_runner_blockers()[1]),
+        "kernel_trace_blocker_present": True,
         "upload_plan_ready": True,
         "upload_entry_count": 6,
         "upload_total_nbytes": 484,
@@ -1054,6 +1061,11 @@ def _write_resource_artifact(path: Path) -> None:
                     "streaming_runner_blocker_names_sha256": _streaming_runner_blocker_names_sha256(),
                     "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
                     "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
+                    "last_streaming_runner_blocker": _last_streaming_runner_blocker(),
+                    "last_streaming_runner_blocker_sha256": _last_streaming_runner_blocker_sha256(),
+                    "kernel_trace_streaming_runner_blocker": _kernel_trace_streaming_runner_blocker(),
+                    "kernel_trace_streaming_runner_blocker_sha256": _kernel_trace_streaming_runner_blocker_sha256(),
+                    "kernel_trace_streaming_runner_blocker_present": True,
                     "streaming_runner_blockers": _streaming_runner_blockers(),
                 },
             }
@@ -4685,6 +4697,11 @@ def test_stepfun_correctness_status_kv_decode_blocker_summary_outputs(
     assert summary == _kv_decode_blocker_summary()
     assert summary["status"] == "blocked"
     assert summary["first_blocker_name"] == "streaming_decode_loop_not_wired"
+    assert summary["last_blocker_name"] == _last_streaming_runner_blocker()
+    assert summary["kernel_trace_blocker_name"] == _kernel_trace_streaming_runner_blocker()
+    assert summary["kernel_trace_blocker_present"] is True
+    assert summary["last_blocker"] == _streaming_runner_blockers()[-1]
+    assert summary["kernel_trace_blocker"] == _streaming_runner_blockers()[1]
     assert summary["upload_plan_ready"] is True
     assert summary["artifact_count"] == 2
     assert status["kv_backed_decode_gap_report"][

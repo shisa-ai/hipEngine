@@ -157,6 +157,21 @@
         },
         "first_blocker_name": "streaming_decode_loop_not_wired",
         "first_blocker_sha256": "bf84270b5778a93b79a2db04da1c932c7a05c9f224f5811de5280fe5bfb0d1b4",
+        "kernel_trace_blocker": {
+          "name": "kv_kernel_trace_artifact_missing",
+          "ready": false,
+          "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+        },
+        "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+        "kernel_trace_blocker_present": true,
+        "kernel_trace_blocker_sha256": "8623da2907a2892d8210e7df9c640acdef31e84c7968b321ab5043c3f14d2521",
+        "last_blocker": {
+          "name": "kv_backed_next_token_artifact_missing",
+          "ready": false,
+          "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+        },
+        "last_blocker_name": "kv_backed_next_token_artifact_missing",
+        "last_blocker_sha256": "1a376f18429d9661d5e47b73c9aa7c8a79a7d28ffa48cf6be592b9b9dc0f8061",
         "launch_blueprint_ready": true,
         "launch_operation_count": 135,
         "launch_stage_count": 4,
@@ -180,7 +195,7 @@
         "upload_plan_ready": true,
         "upload_total_nbytes": 484
       },
-      "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
+      "kv_decode_blocker_summary_sha256": "9f429a229444bd49f1e4796302253615471d33523b941159e29206d63c6e96b9",
       "kv_decode_dispatch_ready": true,
       "last_streaming_runner_blocker": "kv_backed_next_token_artifact_missing",
       "last_streaming_runner_blocker_sha256": "6bee450b7a8db2842e2a1b8320614c7c4859b19450526eca6d9d943f6b873099",
@@ -962,6 +977,21 @@
       },
       "first_blocker_name": "streaming_decode_loop_not_wired",
       "first_blocker_sha256": "bf84270b5778a93b79a2db04da1c932c7a05c9f224f5811de5280fe5bfb0d1b4",
+      "kernel_trace_blocker": {
+        "name": "kv_kernel_trace_artifact_missing",
+        "ready": false,
+        "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+      },
+      "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+      "kernel_trace_blocker_present": true,
+      "kernel_trace_blocker_sha256": "8623da2907a2892d8210e7df9c640acdef31e84c7968b321ab5043c3f14d2521",
+      "last_blocker": {
+        "name": "kv_backed_next_token_artifact_missing",
+        "ready": false,
+        "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+      },
+      "last_blocker_name": "kv_backed_next_token_artifact_missing",
+      "last_blocker_sha256": "1a376f18429d9661d5e47b73c9aa7c8a79a7d28ffa48cf6be592b9b9dc0f8061",
       "launch_blueprint_ready": true,
       "launch_operation_count": 135,
       "launch_stage_count": 4,
@@ -987,7 +1017,7 @@
     },
     "kv_decode_blocker_summary_mirrors_run_plan": true,
     "kv_decode_blocker_summary_recorded": true,
-    "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
+    "kv_decode_blocker_summary_sha256": "9f429a229444bd49f1e4796302253615471d33523b941159e29206d63c6e96b9",
     "last_streaming_runner_blocker": "kv_backed_next_token_artifact_missing",
     "last_streaming_runner_blocker_sha256": "6bee450b7a8db2842e2a1b8320614c7c4859b19450526eca6d9d943f6b873099",
     "missing_evidence": [
@@ -4880,6 +4910,21 @@
       },
       "first_blocker_name": "streaming_decode_loop_not_wired",
       "first_blocker_sha256": "bf84270b5778a93b79a2db04da1c932c7a05c9f224f5811de5280fe5bfb0d1b4",
+      "kernel_trace_blocker": {
+        "name": "kv_kernel_trace_artifact_missing",
+        "ready": false,
+        "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+      },
+      "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+      "kernel_trace_blocker_present": true,
+      "kernel_trace_blocker_sha256": "8623da2907a2892d8210e7df9c640acdef31e84c7968b321ab5043c3f14d2521",
+      "last_blocker": {
+        "name": "kv_backed_next_token_artifact_missing",
+        "ready": false,
+        "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+      },
+      "last_blocker_name": "kv_backed_next_token_artifact_missing",
+      "last_blocker_sha256": "1a376f18429d9661d5e47b73c9aa7c8a79a7d28ffa48cf6be592b9b9dc0f8061",
       "launch_blueprint_ready": true,
       "launch_operation_count": 135,
       "launch_stage_count": 4,
@@ -4904,7 +4949,7 @@
       "upload_total_nbytes": 484
     },
     "kv_decode_blocker_summary_recorded": true,
-    "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
+    "kv_decode_blocker_summary_sha256": "9f429a229444bd49f1e4796302253615471d33523b941159e29206d63c6e96b9",
     "kv_storage_dtype": "bf16",
     "launch_schedule": {
       "all_stage_dispatch_ready": true,
@@ -5167,6 +5212,9 @@
       "input_ids_dtype": "int32",
       "input_ids_nbytes": 92,
       "input_ids_sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
+      "kernel_trace_streaming_runner_blocker": "kv_kernel_trace_artifact_missing",
+      "kernel_trace_streaming_runner_blocker_present": true,
+      "kernel_trace_streaming_runner_blocker_sha256": "4caf40a4fcedab0392b9e282668fafad6ddf14651986a77a22c8d80100d599a9",
       "kv_decode_blocker_summary": {
         "artifact_count": 2,
         "artifacts_needed": [
@@ -5197,6 +5245,21 @@
         },
         "first_blocker_name": "streaming_decode_loop_not_wired",
         "first_blocker_sha256": "bf84270b5778a93b79a2db04da1c932c7a05c9f224f5811de5280fe5bfb0d1b4",
+        "kernel_trace_blocker": {
+          "name": "kv_kernel_trace_artifact_missing",
+          "ready": false,
+          "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+        },
+        "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+        "kernel_trace_blocker_present": true,
+        "kernel_trace_blocker_sha256": "8623da2907a2892d8210e7df9c640acdef31e84c7968b321ab5043c3f14d2521",
+        "last_blocker": {
+          "name": "kv_backed_next_token_artifact_missing",
+          "ready": false,
+          "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+        },
+        "last_blocker_name": "kv_backed_next_token_artifact_missing",
+        "last_blocker_sha256": "1a376f18429d9661d5e47b73c9aa7c8a79a7d28ffa48cf6be592b9b9dc0f8061",
         "launch_blueprint_ready": true,
         "launch_operation_count": 135,
         "launch_stage_count": 4,
@@ -5246,6 +5309,8 @@
           "variant": "mixed_bf16_prompt_spans"
         }
       },
+      "last_streaming_runner_blocker": "kv_backed_next_token_artifact_missing",
+      "last_streaming_runner_blocker_sha256": "6bee450b7a8db2842e2a1b8320614c7c4859b19450526eca6d9d943f6b873099",
       "max_context": 512,
       "max_new_tokens": 1,
       "max_prompt_rows": 511,
@@ -13515,6 +13580,21 @@
           },
           "first_blocker_name": "streaming_decode_loop_not_wired",
           "first_blocker_sha256": "bf84270b5778a93b79a2db04da1c932c7a05c9f224f5811de5280fe5bfb0d1b4",
+          "kernel_trace_blocker": {
+            "name": "kv_kernel_trace_artifact_missing",
+            "ready": false,
+            "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+          },
+          "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+          "kernel_trace_blocker_present": true,
+          "kernel_trace_blocker_sha256": "8623da2907a2892d8210e7df9c640acdef31e84c7968b321ab5043c3f14d2521",
+          "last_blocker": {
+            "name": "kv_backed_next_token_artifact_missing",
+            "ready": false,
+            "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+          },
+          "last_blocker_name": "kv_backed_next_token_artifact_missing",
+          "last_blocker_sha256": "1a376f18429d9661d5e47b73c9aa7c8a79a7d28ffa48cf6be592b9b9dc0f8061",
           "launch_blueprint_ready": true,
           "launch_operation_count": 135,
           "launch_stage_count": 4,
@@ -13540,7 +13620,7 @@
         },
         "kv_decode_blocker_summary_mirrors_run_plan": true,
         "kv_decode_blocker_summary_recorded": true,
-        "kv_decode_blocker_summary_sha256": "f8aeda20429d1878a960a37cad52187fd37dca011719239339f56b69ceefc9bb",
+        "kv_decode_blocker_summary_sha256": "9f429a229444bd49f1e4796302253615471d33523b941159e29206d63c6e96b9",
         "last_streaming_runner_blocker": "kv_backed_next_token_artifact_missing",
         "last_streaming_runner_blocker_sha256": "6bee450b7a8db2842e2a1b8320614c7c4859b19450526eca6d9d943f6b873099",
         "missing_evidence": [
@@ -17472,7 +17552,7 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
-  "readiness_gates_sha256": "229359d65617759b03d89024d4931ad9ec435fe5aeae76150b39f6bea73c20b2",
+  "readiness_gates_sha256": "a425a8d9198e90c159dc71eb208bfd54068412b5367d464447f4e31574d66f05",
   "readiness_summary": {
     "blocked_gates_sha256": "5442237ae2416bd189f0635665bf630d6061793d9f5e1c52e038ae4d86804120",
     "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
@@ -17491,12 +17571,12 @@
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
-    "readiness_gates_sha256": "229359d65617759b03d89024d4931ad9ec435fe5aeae76150b39f6bea73c20b2",
+    "readiness_gates_sha256": "a425a8d9198e90c159dc71eb208bfd54068412b5367d464447f4e31574d66f05",
     "schema_version": 1,
-    "source_artifacts_sha256": "c908d3131a4d46d3de989395ba715485911d3be691c27d5adc17405c0a682971",
+    "source_artifacts_sha256": "f0d5f7b80f666d8fea61c066f51ccd92c4c96bb347de1b7318c2edccaac25633",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "58034253495dc7c4aa8dbeec0a4f2bbed7bdbfbd4ebac20155067e10726afb70",
+  "readiness_summary_sha256": "5490ff7b772ad5bda5c6ab2be67ca8f14facf7d895b383ad27dd1ee84bfce092",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -17621,8 +17701,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "b60f8ca726a42b2a5ae4b980f7149060f24e2cf5f8810c8027c3b4c195a23e76",
-      "size_bytes": 83600
+      "sha256": "0dd6ada1bbf1447b9fdcb4ff6bd54f29e720389ad7cb571608ef2ecc4d4bd106",
+      "size_bytes": 83710
     },
     "oracle": {
       "exists": true,
@@ -17645,11 +17725,11 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "9bd82a28686650097ce895f3db066f7b0d69836706bdb69254c1af0e2c76d499",
-      "size_bytes": 176642
+      "sha256": "04c1de2291dc42ddab11c3b0296b8383b0d870c5a3f77533cbcbf6f367a7d142",
+      "size_bytes": 178045
     }
   },
-  "source_artifacts_sha256": "c908d3131a4d46d3de989395ba715485911d3be691c27d5adc17405c0a682971",
+  "source_artifacts_sha256": "f0d5f7b80f666d8fea61c066f51ccd92c4c96bb347de1b7318c2edccaac25633",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,

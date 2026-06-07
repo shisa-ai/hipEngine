@@ -1123,6 +1123,19 @@ class StepFunKVDecodeRunPlan:
         blocker_names = [str(blocker["name"]) for blocker in streaming_runner_blockers]
         first_blocker = streaming_runner_blockers[0] if streaming_runner_blockers else None
         first_blocker_name = str(first_blocker["name"]) if first_blocker else None
+        last_blocker = streaming_runner_blockers[-1] if streaming_runner_blockers else None
+        last_blocker_name = str(last_blocker["name"]) if last_blocker else None
+        kernel_trace_blocker = next(
+            (
+                blocker
+                for blocker in streaming_runner_blockers
+                if blocker.get("name") == "kv_kernel_trace_artifact_missing"
+            ),
+            None,
+        )
+        kernel_trace_blocker_name = (
+            str(kernel_trace_blocker["name"]) if kernel_trace_blocker else None
+        )
         artifacts_needed = [
             {
                 "name": "kv_kernel_trace_artifact",
@@ -1156,6 +1169,17 @@ class StepFunKVDecodeRunPlan:
             "first_blocker_sha256": _stable_json_sha256(first_blocker)
             if first_blocker is not None
             else None,
+            "last_blocker": last_blocker,
+            "last_blocker_name": last_blocker_name,
+            "last_blocker_sha256": _stable_json_sha256(last_blocker)
+            if last_blocker is not None
+            else None,
+            "kernel_trace_blocker": kernel_trace_blocker,
+            "kernel_trace_blocker_name": kernel_trace_blocker_name,
+            "kernel_trace_blocker_sha256": _stable_json_sha256(kernel_trace_blocker)
+            if kernel_trace_blocker is not None
+            else None,
+            "kernel_trace_blocker_present": kernel_trace_blocker is not None,
             "upload_plan_ready": bool(upload_plan["all_consistency_checks_passed"]),
             "upload_entry_count": int(upload_plan["entry_count"]),
             "upload_total_nbytes": int(upload_plan["total_nbytes"]),
@@ -1187,6 +1211,24 @@ class StepFunKVDecodeRunPlan:
         first_streaming_runner_blocker_sha256 = (
             _stable_json_sha256(first_streaming_runner_blocker)
             if first_streaming_runner_blocker is not None
+            else None
+        )
+        last_streaming_runner_blocker = (
+            streaming_runner_blocker_names[-1] if streaming_runner_blocker_names else None
+        )
+        last_streaming_runner_blocker_sha256 = (
+            _stable_json_sha256(last_streaming_runner_blocker)
+            if last_streaming_runner_blocker is not None
+            else None
+        )
+        kernel_trace_streaming_runner_blocker = (
+            "kv_kernel_trace_artifact_missing"
+            if "kv_kernel_trace_artifact_missing" in streaming_runner_blocker_names
+            else None
+        )
+        kernel_trace_streaming_runner_blocker_sha256 = (
+            _stable_json_sha256(kernel_trace_streaming_runner_blocker)
+            if kernel_trace_streaming_runner_blocker is not None
             else None
         )
         return {
@@ -1234,6 +1276,13 @@ class StepFunKVDecodeRunPlan:
             ),
             "first_streaming_runner_blocker": first_streaming_runner_blocker,
             "first_streaming_runner_blocker_sha256": first_streaming_runner_blocker_sha256,
+            "last_streaming_runner_blocker": last_streaming_runner_blocker,
+            "last_streaming_runner_blocker_sha256": last_streaming_runner_blocker_sha256,
+            "kernel_trace_streaming_runner_blocker": kernel_trace_streaming_runner_blocker,
+            "kernel_trace_streaming_runner_blocker_sha256": kernel_trace_streaming_runner_blocker_sha256,
+            "kernel_trace_streaming_runner_blocker_present": (
+                kernel_trace_streaming_runner_blocker is not None
+            ),
             "streaming_runner_blockers": streaming_runner_blockers,
             "note": (
                 "Metadata-only prompt/resource binding for the future StepFun KV-backed decode runner. "

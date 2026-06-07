@@ -417,6 +417,27 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert payload["streaming_runner_blocker_names_sha256"] == expected_streaming_blockers_sha
     assert payload["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
     assert payload["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
+    expected_last_streaming_blocker_sha = hashlib.sha256(
+        json.dumps(
+            "kv_backed_next_token_artifact_missing",
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    expected_kernel_trace_streaming_blocker_sha = hashlib.sha256(
+        json.dumps(
+            "kv_kernel_trace_artifact_missing",
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    assert payload["last_streaming_runner_blocker"] == "kv_backed_next_token_artifact_missing"
+    assert payload["last_streaming_runner_blocker_sha256"] == expected_last_streaming_blocker_sha
+    assert payload["kernel_trace_streaming_runner_blocker"] == "kv_kernel_trace_artifact_missing"
+    assert payload["kernel_trace_streaming_runner_blocker_sha256"] == (
+        expected_kernel_trace_streaming_blocker_sha
+    )
+    assert payload["kernel_trace_streaming_runner_blocker_present"] is True
     assert [blocker["name"] for blocker in payload["streaming_runner_blockers"]] == expected_streaming_blockers
     assert all(blocker["ready"] is False for blocker in payload["streaming_runner_blockers"])
     blueprint = payload["streaming_decode_loop_blueprint"]
@@ -582,6 +603,25 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
                 separators=(",", ":"),
             ).encode()
         ).hexdigest(),
+        "last_blocker": payload["streaming_runner_blockers"][-1],
+        "last_blocker_name": "kv_backed_next_token_artifact_missing",
+        "last_blocker_sha256": hashlib.sha256(
+            json.dumps(
+                payload["streaming_runner_blockers"][-1],
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+        "kernel_trace_blocker": payload["streaming_runner_blockers"][1],
+        "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+        "kernel_trace_blocker_sha256": hashlib.sha256(
+            json.dumps(
+                payload["streaming_runner_blockers"][1],
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+        "kernel_trace_blocker_present": True,
         "upload_plan_ready": True,
         "upload_entry_count": 6,
         "upload_total_nbytes": 484,

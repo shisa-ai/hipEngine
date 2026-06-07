@@ -172,6 +172,9 @@
     "input_ids_dtype": "int32",
     "input_ids_nbytes": 92,
     "input_ids_sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
+    "kernel_trace_streaming_runner_blocker": "kv_kernel_trace_artifact_missing",
+    "kernel_trace_streaming_runner_blocker_present": true,
+    "kernel_trace_streaming_runner_blocker_sha256": "4caf40a4fcedab0392b9e282668fafad6ddf14651986a77a22c8d80100d599a9",
     "kv_decode_blocker_summary": {
       "artifact_count": 2,
       "artifacts_needed": [
@@ -202,6 +205,21 @@
       },
       "first_blocker_name": "streaming_decode_loop_not_wired",
       "first_blocker_sha256": "bf84270b5778a93b79a2db04da1c932c7a05c9f224f5811de5280fe5bfb0d1b4",
+      "kernel_trace_blocker": {
+        "name": "kv_kernel_trace_artifact_missing",
+        "ready": false,
+        "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+      },
+      "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+      "kernel_trace_blocker_present": true,
+      "kernel_trace_blocker_sha256": "8623da2907a2892d8210e7df9c640acdef31e84c7968b321ab5043c3f14d2521",
+      "last_blocker": {
+        "name": "kv_backed_next_token_artifact_missing",
+        "ready": false,
+        "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+      },
+      "last_blocker_name": "kv_backed_next_token_artifact_missing",
+      "last_blocker_sha256": "1a376f18429d9661d5e47b73c9aa7c8a79a7d28ffa48cf6be592b9b9dc0f8061",
       "launch_blueprint_ready": true,
       "launch_operation_count": 135,
       "launch_stage_count": 4,
@@ -251,6 +269,8 @@
         "variant": "mixed_bf16_prompt_spans"
       }
     },
+    "last_streaming_runner_blocker": "kv_backed_next_token_artifact_missing",
+    "last_streaming_runner_blocker_sha256": "6bee450b7a8db2842e2a1b8320614c7c4859b19450526eca6d9d943f6b873099",
     "max_context": 512,
     "max_new_tokens": 1,
     "max_prompt_rows": 511,

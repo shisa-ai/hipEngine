@@ -583,7 +583,7 @@ reporting.
   positions, rendered prompt SHA-256, input-token/span-input device-upload helpers
   and a metadata-only combined upload plan with cleanup order, decode position/live-count,
   stop IDs, KV dispatch keys, resource-fit booleans, and a `kv_decode_blocker_summary`
-  that names the first runtime blocker, validated upload/launch prerequisites, required
+  that names the first/kernel-trace/last runtime blockers, validated upload/launch prerequisites, required
   trace/next-token artifacts, and the no-oracle/no-performance-claim policy), plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
   planned operations plus source-level `streaming_runner_blockers` naming the still-missing
@@ -954,6 +954,7 @@ reporting.
   target and its persisted digest. Compact `--kv-decode-blocker-summary-only` /
   `--kv-decode-blocker-summary-sha-only` outputs expose the resource artifact's
   `kv_decode_blocker_summary` directly through the correctness-status gap report,
+  including the mirrored first/kernel-trace/last blocker names and blocker-record digests,
   and `--kv-streaming-blocker-records-only` /
   `--kv-streaming-blocker-records-sha-only` expose the full KV streaming blocker
   records plus digest, so KV automation can poll the first runtime blocker,

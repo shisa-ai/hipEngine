@@ -267,6 +267,23 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert run_plan["streaming_runner_blocker_count"] == 3
     assert run_plan["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
     assert run_plan["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
+    assert run_plan["last_streaming_runner_blocker"] == "kv_backed_next_token_artifact_missing"
+    assert run_plan["last_streaming_runner_blocker_sha256"] == hashlib.sha256(
+        json.dumps(
+            "kv_backed_next_token_artifact_missing",
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    assert run_plan["kernel_trace_streaming_runner_blocker"] == "kv_kernel_trace_artifact_missing"
+    assert run_plan["kernel_trace_streaming_runner_blocker_sha256"] == hashlib.sha256(
+        json.dumps(
+            "kv_kernel_trace_artifact_missing",
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    assert run_plan["kernel_trace_streaming_runner_blocker_present"] is True
     expected_blockers = [
         "streaming_decode_loop_not_wired",
         "kv_kernel_trace_artifact_missing",
@@ -300,6 +317,11 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert blocker_summary["executable"] is False
     assert blocker_summary["blocker_names"] == expected_blockers
     assert blocker_summary["first_blocker_name"] == "streaming_decode_loop_not_wired"
+    assert blocker_summary["last_blocker_name"] == "kv_backed_next_token_artifact_missing"
+    assert blocker_summary["kernel_trace_blocker_name"] == "kv_kernel_trace_artifact_missing"
+    assert blocker_summary["kernel_trace_blocker_present"] is True
+    assert blocker_summary["last_blocker"] == run_plan["streaming_runner_blockers"][-1]
+    assert blocker_summary["kernel_trace_blocker"] == run_plan["streaming_runner_blockers"][1]
     assert blocker_summary["upload_plan_ready"] is True
     assert blocker_summary["launch_operation_count"] == 135
     assert blocker_summary["artifact_count"] == 2

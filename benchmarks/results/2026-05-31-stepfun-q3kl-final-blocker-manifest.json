@@ -762,13 +762,13 @@
     "next_action_commands_sha256": "dd508e6e3a62c886cf3b6d3308fce62b268309b0419def678383f4e0071e2c0a",
     "oracle_partial_output_handoff_sha256": "bd0628cadd439eee98a671e02d58b8508e634ff94adbe9e633db10edb1072477",
     "oracle_progress_sha256": "3bcd3b8b73a49ca26a9639378342b22327382870ddf9fc0964569b56c31c6e2c",
-    "readiness_summary_sha256": "58034253495dc7c4aa8dbeec0a4f2bbed7bdbfbd4ebac20155067e10726afb70",
+    "readiness_summary_sha256": "5490ff7b772ad5bda5c6ab2be67ca8f14facf7d895b383ad27dd1ee84bfce092",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "b60f8ca726a42b2a5ae4b980f7149060f24e2cf5f8810c8027c3b4c195a23e76",
-        "size_bytes": 83600
+        "sha256": "0dd6ada1bbf1447b9fdcb4ff6bd54f29e720389ad7cb571608ef2ecc4d4bd106",
+        "size_bytes": 83710
       },
       "oracle": {
         "exists": true,
@@ -791,14 +791,14 @@
       "text_resource": {
         "exists": true,
         "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-        "sha256": "9bd82a28686650097ce895f3db066f7b0d69836706bdb69254c1af0e2c76d499",
-        "size_bytes": 176642
+        "sha256": "04c1de2291dc42ddab11c3b0296b8383b0d870c5a3f77533cbcbf6f367a7d142",
+        "size_bytes": 178045
       }
     },
-    "source_artifacts_sha256": "c908d3131a4d46d3de989395ba715485911d3be691c27d5adc17405c0a682971",
+    "source_artifacts_sha256": "f0d5f7b80f666d8fea61c066f51ccd92c4c96bb347de1b7318c2edccaac25633",
     "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
   },
-  "status_provenance_sha256": "1011bcd1564b8cab5b9cb93ed572580590e04c9073377f2950c43c6abc3344d3",
+  "status_provenance_sha256": "49f9ef9a9f042932a5c3cfa4ff557f3db1d10a9be3b169b24715a4a2d8f2de48",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",

@@ -1483,6 +1483,12 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         and kv_decode_blocker_summary.get("first_blocker")
         == first_kv_streaming_runner_blocker_record
         and first_kv_streaming_runner_blocker_record_sha256_match
+        and kv_decode_blocker_summary.get("last_blocker_name")
+        == last_kv_streaming_blocker
+        and kv_decode_blocker_summary.get("kernel_trace_blocker_name")
+        == kernel_trace_kv_streaming_blocker
+        and kv_decode_blocker_summary.get("kernel_trace_blocker_present")
+        == kernel_trace_kv_streaming_blocker_present
         and kv_decode_blocker_summary.get("upload_plan_ready")
         == ("decode_input_upload_plan_consistent" in kv_validated_preconditions)
         and kv_decode_blocker_summary.get("launch_operation_count")
