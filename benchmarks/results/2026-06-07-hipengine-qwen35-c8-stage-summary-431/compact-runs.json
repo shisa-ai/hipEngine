@@ -1,0 +1,109 @@
+{
+  "conclusion": "Existing hidden-bisect artifacts are enough to prove rowchunk vs native-c1 is all-stage green and minimal full-native has immediate all-row stage drift, but not enough to compute a direct rowchunk-vs-fullnative tensor delta. To fix the blocker, add/run a lightweight comparator that records stage tensors (or direct deltas) for layer4 attn_input and layer7 pre-QKV at decode_step0.",
+  "created_at": "2026-06-07T06:21:20.749246+00:00",
+  "full_native_l8_stage_snapshot": {
+    "full_failed_stage_count": 12,
+    "full_first_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 7,
+      "layer_limit": 8,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "linear_drift_stage_count": 9,
+    "linear_first_bit_drift": {
+      "bit_mismatch": 491,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 8,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "passed_under_atol": false,
+      "row": 0,
+      "stage": "attn_input"
+    }
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 431,
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused comparator-design artifact confirms existing c8 hidden summaries already show rowchunk all-stage green and full-native all-row layer4/7 drift, but raw stage tensors are not stored, so a purpose-built stage comparator is required for direct rowchunk-vs-fullnative deltas.",
+    "passed": true
+  },
+  "result": {
+    "direct_rowchunk_vs_fullnative_delta_computable_from_existing_json": false,
+    "full_native_l8_first_full_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 7,
+      "layer_limit": 8,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "full_native_l8_first_linear_bit_drift": {
+      "bit_mismatch": 491,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 8,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "passed_under_atol": false,
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "full_native_l8_full_failed_stage_count": 12,
+    "full_native_l8_hidden_passed": true,
+    "full_native_l8_linear_drift_stage_count": 9,
+    "full_native_l8_status": "eq_ok",
+    "full_native_l8_token_passed": true,
+    "raw_stage_tensors_available": false,
+    "rowchunk_full_failed_stage_count": 0,
+    "rowchunk_hidden_passed": true,
+    "rowchunk_linear_drift_stage_count": 0,
+    "rowchunk_status": "eq_ok",
+    "rowchunk_token_passed": true
+  },
+  "rowchunk_stage_snapshot": {
+    "full_failed_stage_count": 0,
+    "full_first_failure": null,
+    "linear_drift_stage_count": 0,
+    "linear_first_bit_drift": null
+  },
+  "schema_observation": {
+    "available_data": "per-stage pass/fail, first failure/drift, row sets, mismatch counts; no raw tensor values for direct rowchunk-vs-fullnative delta",
+    "has_decode_stage_records": false,
+    "has_raw_stage_values": false,
+    "has_trace_records": false
+  }
+}
