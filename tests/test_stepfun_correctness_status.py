@@ -1753,6 +1753,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_mirror_record_count_sha_only": (
             "len(oracle_partial_output_handoff.mirror_records).sha256"
         ),
+        "oracle_partial_output_mirror_record_keys_only": (
+            "sorted(oracle_partial_output_handoff.mirror_records[].keys)"
+        ),
+        "oracle_partial_output_mirror_record_keys_sha_only": (
+            "sorted(oracle_partial_output_handoff.mirror_records[].keys).sha256"
+        ),
         "oracle_partial_output_mirror_sources_only": (
             "oracle_partial_output_handoff.mirror_records[].source"
         ),
@@ -6889,6 +6895,84 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_record_count_ou
     )
 
 
+def test_stepfun_correctness_status_oracle_partial_output_mirror_record_keys_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    keys_output = tmp_path / "oracle-partial-output-mirror-record-keys.json"
+    sha_output = tmp_path / "oracle-partial-output-mirror-record-keys-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    mirror_record_keys = [
+        sorted(record.keys())
+        for record in status["oracle_partial_output_handoff"]["mirror_records"]
+    ]
+    calls = [
+        (
+            keys_output,
+            "--oracle-partial-output-mirror-record-keys-only",
+            mirror_record_keys,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-mirror-record-keys-sha-only",
+            _stable_json_sha256(mirror_record_keys),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    expected_keys = [
+        "blocker_kind",
+        "partial_output_blocker_kind",
+        "partial_output_overwrite_policy",
+        "partial_output_path",
+        "partial_output_status",
+        "queue_index",
+        "recommended_command_kind",
+        "recommended_command_sha256",
+        "source",
+        "writes_partial_output_before_launch",
+    ]
+    assert mirror_record_keys == [expected_keys, expected_keys, expected_keys]
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_mirror_record_keys_only"] == (
+        "sorted(oracle_partial_output_handoff.mirror_records[].keys)"
+    )
+    assert compact_modes["oracle_partial_output_mirror_record_keys_sha_only"] == (
+        "sorted(oracle_partial_output_handoff.mirror_records[].keys).sha256"
+    )
+
+
 def test_stepfun_correctness_status_oracle_partial_output_mirror_sources_outputs(
     capsys,
     tmp_path: Path,
@@ -8877,6 +8961,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_mirror_record_count_sha_only": (
             "len(oracle_partial_output_handoff.mirror_records).sha256"
+        ),
+        "oracle_partial_output_mirror_record_keys_only": (
+            "sorted(oracle_partial_output_handoff.mirror_records[].keys)"
+        ),
+        "oracle_partial_output_mirror_record_keys_sha_only": (
+            "sorted(oracle_partial_output_handoff.mirror_records[].keys).sha256"
         ),
         "oracle_partial_output_mirror_sources_only": (
             "oracle_partial_output_handoff.mirror_records[].source"
