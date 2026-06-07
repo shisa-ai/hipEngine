@@ -1110,6 +1110,8 @@ reporting.
   `--blocker-recommended-command-shas-joined-sha-only` command-content route outputs,
   `--blocker-recommended-command-kinds-joined-only` /
   `--blocker-recommended-command-kinds-joined-sha-only` action-plan route outputs,
+  `--blocker-recommended-command-reasons-joined-only` /
+  `--blocker-recommended-command-reasons-joined-sha-only` action-rationale route outputs,
   `--blocker-first-missing-evidence-joined-only` /
   `--blocker-first-missing-evidence-joined-sha-only` missing-evidence route outputs,
   handoff-integrity verification commands and their compact output-mode mappings,
