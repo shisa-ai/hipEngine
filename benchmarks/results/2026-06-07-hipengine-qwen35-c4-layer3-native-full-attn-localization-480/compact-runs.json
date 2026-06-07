@@ -1,0 +1,296 @@
+{
+  "iteration": 480,
+  "kind": "c4_layer3_native_full_attention_localization",
+  "created_at": "2026-06-07T11:35:51.679056+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "localization": {
+    "green_control": {
+      "case": "full_attention_per_row_control",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "path": "all full-attention layers use per_row_context_fallback",
+      "interpretation": "The c4 workload and independent-c1 comparison remain sound; a broad per-row full-attention replay restores equality."
+    },
+    "native_layer3_negative_control": {
+      "case": "baseline",
+      "prefix_lengths": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        82,
+        null,
+        null,
+        null
+      ],
+      "interpretation": "Layer3 selected native batch with only layer15 rowchunked fails row0 at token 82, matching iter475."
+    },
+    "subpath_findings": [
+      "Per-row KV append fallback and per-row output fallback do not move the layer3-native failure: row0 still diverges at token 82.",
+      "Context-only and layer3-scoped dense-context/batch-gate fallback engage and move the first failure to row1 at token 104, but do not restore equality.",
+      "Therefore the remaining blocker is in the selected native full-attention/context/gating semantics for layer3 rather than a simple KV append or O-projection-only issue."
+    ],
+    "next_target": "Investigate selected native full-attention context/gating row semantics around layer3; keep c4 auto rowchunk layers at 3,15 until a native layer3 fix makes the layer3-native probe green."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused c4 full-attention parity evidence includes a green per-row full-attention control for the same c4 512/128 workload, plus concrete red subpath diagnostics localizing layer3 selected-native failure; no performance claim."
+  },
+  "conclusion": "Layer3 selected native full attention remains blocked for c4, but the full-attention per-row control is green; KV append and O-projection fallbacks are not sufficient, while context/gate fallback changes the failure row without restoring equality.",
+  "case_overview": [
+    {
+      "case": "baseline",
+      "passed": false,
+      "prefix_lengths": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        82,
+        null,
+        null,
+        null
+      ],
+      "layer3": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": null,
+        "row_chunk_source": null,
+        "native_caware_decode": true,
+        "max_context": 648
+      },
+      "layer15": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": 2,
+        "row_chunk_source": "env",
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "note": "negative control: layer3 native batch, layer15 rowchunk2; reproduces iter475 drop3 failure"
+    },
+    {
+      "case": "per_row_context_only",
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        104,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        104,
+        null,
+        null
+      ],
+      "layer3": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_context_decode_path": "per_row_context_only_fallback",
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": null,
+        "row_chunk_source": null,
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "layer15": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_context_decode_path": "per_row_context_only_fallback",
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": 2,
+        "row_chunk_source": "env",
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "note": "global per-row context-only fallback engages but moves failure from row0@82 to row1@104 rather than restoring equality"
+    },
+    {
+      "case": "layer3_dense_context_batch_gate",
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        104,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        104,
+        null,
+        null
+      ],
+      "layer3": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": null,
+        "row_chunk_source": null,
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "layer15": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": 2,
+        "row_chunk_source": "env",
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "note": "layer3-scoped dense-context/batch-gate fallback engages for layer3 only; still fails at row1@104"
+    },
+    {
+      "case": "per_row_kv_append",
+      "passed": false,
+      "prefix_lengths": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        82,
+        null,
+        null,
+        null
+      ],
+      "layer3": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": "per_row_kv_append_fallback",
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": null,
+        "row_chunk_source": null,
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "layer15": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": "per_row_kv_append_fallback",
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "batch_gemv",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": 2,
+        "row_chunk_source": "env",
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "note": "per-row KV append fallback engages but leaves row0@82 failure unchanged"
+    },
+    {
+      "case": "per_row_output",
+      "passed": false,
+      "prefix_lengths": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        82,
+        null,
+        null,
+        null
+      ],
+      "layer3": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "per_row_o_projection_fallback",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": null,
+        "row_chunk_source": null,
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "layer15": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": "per_row_o_projection_fallback",
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": 2,
+        "row_chunk_source": "env",
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "note": "per-row full-attention output fallback engages but leaves row0@82 failure unchanged"
+    },
+    {
+      "case": "full_attention_per_row_control",
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "layer3": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": null,
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": null,
+        "row_chunk_source": null,
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "layer15": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_context_decode_path": null,
+        "full_attention_kv_append_decode_path": null,
+        "full_attention_gate_decode_path": null,
+        "full_attention_output_decode_path": null,
+        "attn_context_trace_source": null,
+        "full_attention_row_chunk_size": null,
+        "row_chunk_source": null,
+        "native_caware_decode": false,
+        "max_context": 648
+      },
+      "note": "green diagnostic control: full-attention per-row fallback restores equality for the same c4 workload"
+    }
+  ]
+}
