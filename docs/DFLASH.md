@@ -536,6 +536,33 @@ These are worth porting or preserving:
    not the main bottleneck, but the memory discipline is required for graph
    capture and fixed-address native execution.
 
+### llama.cpp PR #21845 follow-up: small-row verifier projections
+
+[`ggml-org/llama.cpp#21845`](https://github.com/ggml-org/llama.cpp/pull/21845)
+adds a SYCL MTP verifier path that handles multiple RHS columns (`ncols <= 8`)
+in one quantized mat-vec kernel.  The direct code is not a DFlash port target,
+but the same small-row rule applies to DFlash's root+candidate verifier rows:
+when `rows=B+1` is in the 2..8 range, projection kernels should share each
+quantized weight stream across rows whenever that preserves exact target-AR
+outputs.
+
+Carry these checks into the next DFlash verifier profile pass:
+
+- Re-audit `rows == 1` / `tokens == 1` gates in verifier-hot projection paths;
+  a small verifier batch should not fall back to row-wise GEMV just because the
+  optimized-layout gate was written for single-token decode.
+- For B=1/2/4/8 DFlash chain/tree rows, record which W4/W8 projections use
+  multi-row/read-once-weight kernels and which still use prefill or row-loop
+  fallbacks.  Keep this as a callsite-marked rocprof table, not an inference
+  from kernel names alone.
+- Treat MTP M12.2 (W8A16 LM-head weight sharing) and M12.6 (gated W4 pack8
+  multi-row sites) as the local precedent.  Extend coverage only when exact
+  same-session AR rows remain green; otherwise keep the site default-off and log
+  the numerical mismatch.
+- Do not chase a standalone SYCL-style port.  The deliverable is a DFlash/MTP
+  shared verifier dispatch audit plus exact multi-row coverage for the remaining
+  profitable sites, especially W4 down/full/linear projections with `rows<=8`.
+
 ### What did not move the wall-clock enough
 
 - More adaptive path/hybrid policy before chain DFlash wins.

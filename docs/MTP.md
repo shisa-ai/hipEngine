@@ -738,6 +738,43 @@ Based on the 32 optimization iterations on `dflash`, the orchestration/Python si
 | M12.7 | **GPU-resident proposer loop** | Proposer's 3 AR steps take ~9.6 ms due to serial c=1 advances with host top1 copies and `device_synchronize`. Graph-capture the proposer loop or fuse into one C++ step to drop to ~3 ms. Gate: exact accepted-token provenance unchanged. | Pending |
 | M12.8 | **Adaptive B / fallback policy** | After kernel/graph work drops `C_3` below 2.0, add policy to dynamically choose B=1 or pure AR fallback based on proposer confidence to rescue low-acceptance cycles. | Pending |
 
+### llama.cpp PR #21845 follow-up: small-column verifier GEMV audit (2026-06-07)
+
+Review note: [`ggml-org/llama.cpp#21845`](https://github.com/ggml-org/llama.cpp/pull/21845)
+optimizes SYCL MTP verifier mat-vec by handling several RHS columns in one
+kernel (`ncols <= 8`) instead of launching one quantized GEMV per verifier
+column and rereading weights each time.  Treat this as a **checklist**, not a
+code port: hipEngine's HIP/gfx1100 kernels, PARO layouts, and exact-AR gates are
+different, and the useful invariant is the shape (`small rows share one weight
+stream`) rather than the SYCL implementation.
+
+Action items to double-check before the next M12/M13 perf push:
+
+1. **Audit single-row gates.** Search every verifier-hot `rows == 1`,
+   `tokens == 1`, `ncols == 1`, and optimized-layout/reorder eligibility gate.
+   For MTP/DFlash verifier shapes, the default question should be whether the
+   exact path can support `2 <= rows <= 8`, not whether the path is single-row.
+2. **Trace dispatch coverage for `rows=B+1`.** For B=1/2/3/5/7, confirm which
+   QKV/O, linear-attention, selected/shared/dense MoE, and LM-head projections
+   hit read-once-weight multi-row kernels versus row-wise or prefill fallback
+   kernels.  Add callsite markers for the W4 projection bucket before assigning
+   a profile row to shared-expert, dense, or full-attention work.
+3. **Finish exact W4 multi-row coverage deliberately.** M12.6 already proved the
+   weight-sharing idea but only the prompt-suite-safe site mask is enabled by
+   default.  Revisit the unsafe sites (`shared_gate_up`, `single_full_v`,
+   `single_linear_out`) only with a WMMA/prefill-numerics-compatible or otherwise
+   exact-dequant path, and keep `HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all` as an
+   experiment until the 9-prompt exact suite is green.
+4. **Keep LM-head as the reference success pattern.** M12.2 is the local analog
+   of the llama.cpp PR: one verifier LM-head launch streams W8A16 weights once
+   for all small rows and feeds the existing top-1 reduction.  New projection
+   work should match that evidence standard: exact final top1 rows, reduced
+   launches/weight traffic, and a retained rocprof/economics artifact.
+5. **Do not promote a pure launch win.** The 2026-06-07 family rollup still shows
+   host/launch/D2H residual plus W4 projection time as the wall.  A retained
+   change must reduce verifier ms/cycle or `C_B`, not just move launches between
+   buckets.
+
 Promotion rule: no MTP speed row is accepted until the economics artifact shows
 `avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens > 1.0` on the same
 prompt/workload, with exact AR equality and accepted-token provenance preserved.

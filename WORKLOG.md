@@ -25445,3 +25445,12 @@ Retained artifact and rollup updates:
 - `benchmarks/results/2026-06-07-hipengine-mtp-verifier-rocprof-family-rollup.json`
 - `benchmarks/README.md`
 - `benchmarks/CHANGELOG.md`
+
+## 2026-06-07 docs(mtp/dflash): record llama.cpp PR #21845 small-row GEMV audit
+
+Added a docs-only follow-up from `ggml-org/llama.cpp#21845` to `docs/MTP.md`
+and `docs/DFLASH.md`.  The recommendation is not to port the SYCL code, but to
+use its MTP verifier shape as a checklist: audit `rows == 1` / `tokens == 1`
+optimized-layout gates, trace B+1 verifier projection dispatch for rows 2..8,
+finish exact W4 multi-row coverage only behind exact-AR gates, and use M12.2
+LM-head weight sharing as the local success standard.  No GPU work was run.
