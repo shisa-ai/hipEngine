@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-07
+
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed shared verifier / W7900/gfx1100 quicksort D32: refreshed same-session economics before further kernel work; exact `4/4`; MTP `C_B` B=3/B=5 = `5.46/6.83`, DFlash B=4/B=8 = `5.56/6.65`, target-verify seconds `0.505/0.511/0.646/0.783`, rows/output `1.625/2.000/2.531/4.531`, external peak VRAM MTP/DFlash `22.38/20.41 GiB`; no priority-order change because larger budgets remain verifier-cost limited; artifact `benchmarks/results/2026-06-07-hipengine-verifier-economics-mtp-dflash-baseline.json`.
+
 ## 2026-06-03
 
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP / W7900/gfx1100 B=3 decode4 verifier: exact MTP smoke and one-prompt DFlash smoke pass; verifier kernel calls/pass `1019.00 -> 989.33` (-2.9%) and kernel time/pass `15.369 -> 14.949 ms` (-2.7%) by defaulting selected verifier GEMVs to 64 threads and enabling staged selected SiLU/down-rotate + ids-tensor down GEMV for `tokens>1`; diagnostic/default-on verifier-window speed work, not a full throughput claim; artifact `benchmarks/results/2026-06-03-hipengine-mtp-selected-moe-down-staged-default.json`.

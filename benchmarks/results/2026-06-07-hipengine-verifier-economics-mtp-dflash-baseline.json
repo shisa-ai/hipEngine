@@ -1,0 +1,511 @@
+{
+  "commands": {
+    "create_prompt_tokens": "python3 - <<'PY'\nimport json\nfrom pathlib import Path\nfor line in Path('fixtures/dflash/stable_prompts.jsonl').read_text().splitlines():\n    row = json.loads(line)\n    if row.get('id') == 'code:quicksort_prefix':\n        Path('/tmp/quicksort-prompt-tokens.txt').write_text(','.join(map(str, row['prompt_ids'])))\n        break\nPY",
+    "dflash": "python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --max-prompts 1 --decode-tokens 32 --draft-budgets 4,8 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --verifier-graph off --tree-mode chain --canonical-commit-mode branch_copy --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-task28/dflash_b4_b8.json",
+    "mtp": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3,5 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-task28/mtp_raw --out /tmp/hipengine-task28/mtp_economics_b3_b5.json",
+    "vram_wrapper": "python3 /tmp/run_with_vram.py --card card0 --interval 0.5 --out <metrics.json> -- <benchmark command>"
+  },
+  "correctness": {
+    "all_rows_exact_same_session_ar": true,
+    "dflash_exact_rows": 2,
+    "mtp_exact_rows": 2,
+    "rows": 4
+  },
+  "decision_reason": "Correctness passed for all retained rows, but every measured cycle_cost_ar_tokens remains far above the ~2 AR-token-equivalent MTP target and larger DFlash budget worsens row cost; priority remains target verifier row/cycle cost, not budget expansion or graph replay.",
+  "external_peak_vram": {
+    "dflash": {
+      "base_used_bytes": 27971584,
+      "card": "card0",
+      "peak_delta_bytes": 21884624896,
+      "peak_used_bytes": 21912596480,
+      "samples": 88,
+      "total_bytes": 48301604864,
+      "valid_samples": 88,
+      "wall_seconds": 50.63298845291138
+    },
+    "mtp": {
+      "base_used_bytes": 27971584,
+      "card": "card0",
+      "peak_delta_bytes": 24000749568,
+      "peak_used_bytes": 24028721152,
+      "samples": 167,
+      "total_bytes": 48301604864,
+      "valid_samples": 167,
+      "wall_seconds": 96.9193685054779
+    }
+  },
+  "external_peak_vram_gib": {
+    "dflash_peak_delta_gib": 20.38164520263672,
+    "dflash_peak_used_gib": 20.407695770263672,
+    "mtp_peak_delta_gib": 22.352439880371094,
+    "mtp_peak_used_gib": 22.378490447998047
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0"
+  },
+  "measurements": {
+    "dflash": [
+      {
+        "acceptance_rate": 0.23809523809523808,
+        "accepted_depth_histogram": {
+          "0": 9,
+          "2": 6,
+          "3": 1
+        },
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3
+        ],
+        "ar_decode_tok_s": 111.60740868677837,
+        "avg_accepted_per_cycle": 0.9375,
+        "avg_visible_tokens_per_cycle": 1.9375,
+        "budget": 4,
+        "commit_ms_per_cycle": 0.16654828505124897,
+        "cycle_cost_ar_tokens": 5.562611470514408,
+        "cycle_wall_ms_per_cycle": 49.84088006312959,
+        "cycles": 16,
+        "d2h": {
+          "full_logits_readbacks": 0,
+          "notes": [
+            "draft and verifier finite checks read compact top-k ids/values only; full logits are not copied"
+          ],
+          "scalar_reads": 113,
+          "scalar_values": 113,
+          "vector_reads": 64,
+          "vector_values": 288
+        },
+        "decode_tokens": 32,
+        "draft_ms_per_cycle": 9.24397171183955,
+        "graph": {
+          "drafter_fallback_reason": "drafter graph mode is off",
+          "drafter_replay_steps": 0,
+          "drafter_status": "not_captured",
+          "drafter_validation_passed": null,
+          "verifier": {
+            "last": {
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "off",
+              "replayed": false,
+              "status": "disabled",
+              "validation_passed": null
+            },
+            "mode": "off",
+            "status_counts": {
+              "disabled": 16
+            },
+            "validation_passed": null
+          }
+        },
+        "memory": {
+          "allocated_after_load_bytes": null,
+          "allocated_after_load_gib": null,
+          "hip_used_peak_sampled_bytes": 0,
+          "hip_used_peak_sampled_gib": 0.0,
+          "peak_allocated_bytes": 20977577282,
+          "peak_allocated_gib": 19.536891283467412,
+          "peak_reserved_bytes": 0,
+          "peak_reserved_gib": 0.0
+        },
+        "prompt": {
+          "category": "code_promotion",
+          "dataset": "stable/code",
+          "id": "code:quicksort_prefix",
+          "prompt_ids_sha256": "2ba223914682b46ea36884732bc2a2662803658086d2d48add5ce0b50f6d707f",
+          "prompt_preview": "def quicksort(values):     \"\"\"Return a sorted copy of values.\"\"\"     if len(values) <= 1:         return values     pivot = values[len(values) // 2]     left = ",
+          "prompt_text_sha256": "63a277f0ad18e8889af6e5d7395e91008d191c5c59393e77d0b1a7952a022ca6",
+          "prompt_tokens": 90,
+          "representative": true
+        },
+        "provider": "dflash",
+        "same_session_ar_exact": true,
+        "spec_decode_tok_s": 40.127702349291475,
+        "speedup_vs_ar": 0.3595433566772277,
+        "target_verify_cost_ar_tokens": 4.506151095413051,
+        "target_verify_ms_per_cycle": 40.37501764832996,
+        "target_verify_rows": 81,
+        "target_verify_rows_per_output_token": 2.53125,
+        "target_verify_seconds": 0.6460002823732793
+      },
+      {
+        "acceptance_rate": 0.1271186440677966,
+        "accepted_depth_histogram": {
+          "0": 9,
+          "2": 6,
+          "3": 1
+        },
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3
+        ],
+        "ar_decode_tok_s": 108.65462804223584,
+        "avg_accepted_per_cycle": 0.9375,
+        "avg_visible_tokens_per_cycle": 1.9375,
+        "budget": 8,
+        "commit_ms_per_cycle": 0.16288393817376345,
+        "cycle_cost_ar_tokens": 6.648725364663192,
+        "cycle_wall_ms_per_cycle": 61.191368324216455,
+        "cycles": 16,
+        "d2h": {
+          "full_logits_readbacks": 0,
+          "notes": [
+            "draft and verifier finite checks read compact top-k ids/values only; full logits are not copied"
+          ],
+          "scalar_reads": 113,
+          "scalar_values": 113,
+          "vector_reads": 64,
+          "vector_values": 544
+        },
+        "decode_tokens": 32,
+        "draft_ms_per_cycle": 12.042321468470618,
+        "graph": {
+          "drafter_fallback_reason": "drafter graph mode is off",
+          "drafter_replay_steps": 0,
+          "drafter_status": "not_captured",
+          "drafter_validation_passed": null,
+          "verifier": {
+            "last": {
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "off",
+              "replayed": false,
+              "status": "disabled",
+              "validation_passed": null
+            },
+            "mode": "off",
+            "status_counts": {
+              "disabled": 16
+            },
+            "validation_passed": null
+          }
+        },
+        "memory": {
+          "allocated_after_load_bytes": null,
+          "allocated_after_load_gib": null,
+          "hip_used_peak_sampled_bytes": 0,
+          "hip_used_peak_sampled_gib": 0.0,
+          "peak_allocated_bytes": 21602512934,
+          "peak_allocated_gib": 20.118907963857055,
+          "peak_reserved_bytes": 0,
+          "peak_reserved_gib": 0.0
+        },
+        "prompt": {
+          "category": "code_promotion",
+          "dataset": "stable/code",
+          "id": "code:quicksort_prefix",
+          "prompt_ids_sha256": "2ba223914682b46ea36884732bc2a2662803658086d2d48add5ce0b50f6d707f",
+          "prompt_preview": "def quicksort(values):     \"\"\"Return a sorted copy of values.\"\"\"     if len(values) <= 1:         return values     pivot = values[len(values) // 2]     left = ",
+          "prompt_text_sha256": "63a277f0ad18e8889af6e5d7395e91008d191c5c59393e77d0b1a7952a022ca6",
+          "prompt_tokens": 90,
+          "representative": true
+        },
+        "provider": "dflash",
+        "same_session_ar_exact": true,
+        "spec_decode_tok_s": 32.684348377424676,
+        "speedup_vs_ar": 0.3008095372128993,
+        "target_verify_cost_ar_tokens": 5.316394804811744,
+        "target_verify_ms_per_cycle": 48.92929919878952,
+        "target_verify_rows": 145,
+        "target_verify_rows_per_output_token": 4.53125,
+        "target_verify_seconds": 0.7828687871806324
+      }
+    ],
+    "mtp": [
+      {
+        "acceptance_rate": 0.46153846153846156,
+        "accepted_depth_histogram": {
+          "0": 5,
+          "1": 1,
+          "2": 4,
+          "3": 3
+        },
+        "accepted_lengths": [
+          3,
+          3,
+          2,
+          0,
+          2,
+          0,
+          0,
+          1,
+          3,
+          0,
+          2,
+          0,
+          2
+        ],
+        "active_budgets": [
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ],
+        "ar_decode_tok_s": 111.82001152477363,
+        "avg_accepted_per_cycle": 1.3846153846153846,
+        "avg_visible_tokens_per_cycle": 2.3846153846153846,
+        "budget": 3,
+        "cycle_cost_ar_tokens": 5.46450473009826,
+        "cycle_wall_ms_per_cycle": 48.86875484615384,
+        "cycles": 13,
+        "d2h": {
+          "full_logits_readbacks": 0,
+          "instrumentation": "inferred_exact_from_current NativeMtpChainProposer and verify_chain_bulk_and_commit callsites; mtp_verifier_economics does not emit D2H counters",
+          "notes": [
+            "proposer vector values assume Qwen MoE top_k=8: topk ids + topk values per MTP advance; lm-head argmax id/value are scalar readbacks"
+          ],
+          "proposer_candidate_advances": 26,
+          "proposer_decode_advances": 42,
+          "proposer_scalar_reads": 84,
+          "proposer_scalar_values": 84,
+          "proposer_update_advances": 16,
+          "proposer_vector_reads": 84,
+          "proposer_vector_values": 672,
+          "scalar_reads_total_estimated": 175,
+          "scalar_values_total_estimated": 175,
+          "target_accept_payload_scalar_reads": 91,
+          "target_accept_payload_scalar_values": 91,
+          "vector_reads_total_estimated": 84,
+          "vector_values_total_estimated": 672
+        },
+        "decode_tokens": 32,
+        "graph": {
+          "mode": "off",
+          "status": "disabled",
+          "validation_passed": null,
+          "verify_status_counts": {
+            "disabled": 13
+          }
+        },
+        "perfect_accept_speedup_ceiling_vs_ar": 0.7319968043889082,
+        "prompt": {
+          "benchmark_group": "code_promotion",
+          "dataset": "stable/code",
+          "id": "code:quicksort_prefix",
+          "name": "quicksort_prefix",
+          "prompt_ids_sha256": "2ba223914682b46ea36884732bc2a2662803658086d2d48add5ce0b50f6d707f",
+          "prompt_preview": "def quicksort(values):     \"\"\"Return a sorted copy of values.\"\"\"     if len(values) <= 1:         return values     pivot = values[len(values) // 2]     left = ",
+          "prompt_text_sha256": "63a277f0ad18e8889af6e5d7395e91008d191c5c59393e77d0b1a7952a022ca6",
+          "prompt_tokens": 90
+        },
+        "proposal_update_ms_per_cycle": 3.9209570162571388,
+        "provider": "mtp",
+        "required_acceptance_rate_for_1x": 1.4881682433660866,
+        "same_session_ar_exact": true,
+        "source_json": "/tmp/hipengine-task28/mtp_raw/mtp-economics-B3-run1.json",
+        "spec_decode_tok_s": 49.64138135036288,
+        "speedup_vs_ar": 0.4439400485964435,
+        "target_verify_cost_ar_tokens": 4.344370502032354,
+        "target_verify_ms_per_cycle": 38.85145818528075,
+        "target_verify_rows": 52,
+        "target_verify_rows_per_output_token": 1.625,
+        "target_verify_seconds": 0.5050689564086498
+      },
+      {
+        "acceptance_rate": 0.38461538461538464,
+        "accepted_depth_histogram": {
+          "0": 4,
+          "1": 1,
+          "2": 3,
+          "4": 2,
+          "5": 1
+        },
+        "accepted_lengths": [
+          5,
+          4,
+          0,
+          2,
+          0,
+          0,
+          1,
+          4,
+          2,
+          0,
+          2
+        ],
+        "active_budgets": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          4,
+          3
+        ],
+        "ar_decode_tok_s": 111.5447028056525,
+        "avg_accepted_per_cycle": 1.8181818181818181,
+        "avg_visible_tokens_per_cycle": 2.8181818181818183,
+        "budget": 5,
+        "cycle_cost_ar_tokens": 6.830958315801916,
+        "cycle_wall_ms_per_cycle": 61.239647818181815,
+        "cycles": 11,
+        "d2h": {
+          "full_logits_readbacks": 0,
+          "instrumentation": "inferred_exact_from_current NativeMtpChainProposer and verify_chain_bulk_and_commit callsites; mtp_verifier_economics does not emit D2H counters",
+          "notes": [
+            "proposer vector values assume Qwen MoE top_k=8: topk ids + topk values per MTP advance; lm-head argmax id/value are scalar readbacks"
+          ],
+          "proposer_candidate_advances": 41,
+          "proposer_decode_advances": 53,
+          "proposer_scalar_reads": 106,
+          "proposer_scalar_values": 106,
+          "proposer_update_advances": 12,
+          "proposer_vector_reads": 106,
+          "proposer_vector_values": 848,
+          "scalar_reads_total_estimated": 183,
+          "scalar_values_total_estimated": 183,
+          "target_accept_payload_scalar_reads": 77,
+          "target_accept_payload_scalar_values": 77,
+          "vector_reads_total_estimated": 106,
+          "vector_values_total_estimated": 848
+        },
+        "decode_tokens": 32,
+        "graph": {
+          "mode": "off",
+          "status": "disabled",
+          "validation_passed": null,
+          "verify_status_counts": {
+            "disabled": 11
+          }
+        },
+        "perfect_accept_speedup_ceiling_vs_ar": 0.8783540643368183,
+        "prompt": {
+          "benchmark_group": "code_promotion",
+          "dataset": "stable/code",
+          "id": "code:quicksort_prefix",
+          "name": "quicksort_prefix",
+          "prompt_ids_sha256": "2ba223914682b46ea36884732bc2a2662803658086d2d48add5ce0b50f6d707f",
+          "prompt_preview": "def quicksort(values):     \"\"\"Return a sorted copy of values.\"\"\"     if len(values) <= 1:         return values     pivot = values[len(values) // 2]     left = ",
+          "prompt_text_sha256": "63a277f0ad18e8889af6e5d7395e91008d191c5c59393e77d0b1a7952a022ca6",
+          "prompt_tokens": 90
+        },
+        "proposal_update_ms_per_cycle": 3.487379565327005,
+        "provider": "mtp",
+        "required_acceptance_rate_for_1x": 1.233471951419636,
+        "same_session_ar_exact": true,
+        "source_json": "/tmp/hipengine-task28/mtp_raw/mtp-economics-B5-run1.json",
+        "spec_decode_tok_s": 46.86556489476651,
+        "speedup_vs_ar": 0.420150520069265,
+        "target_verify_cost_ar_tokens": 5.180672565599305,
+        "target_verify_ms_per_cycle": 46.4448103342544,
+        "target_verify_rows": 64,
+        "target_verify_rows_per_output_token": 2.0,
+        "target_verify_seconds": 0.5108929136767985
+      }
+    ]
+  },
+  "models": {
+    "dflash_drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+    "target": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
+  },
+  "notes": [
+    "MTP rows use the DFlash stable quicksort prompt ids, not the mtp_verifier_economics one-token default.",
+    "The MTP harness does not currently emit D2H or memory counters; D2H counts in MTP rows are inferred from the current persistent-device proposer and GPU accept-summary code path, while peak VRAM is externally sampled with rocm-smi.",
+    "DFlash rows use branch_copy commit to measure the native shared verifier without c=1 canonical replay inflation; still diagnostic/non-promoted."
+  ],
+  "performance_claim": false,
+  "rollup": {
+    "dflash_b4_cycle_cost_ar_tokens": 5.562611470514408,
+    "dflash_b8_cycle_cost_ar_tokens": 6.648725364663192,
+    "mtp_b3_cycle_cost_ar_tokens": 5.46450473009826,
+    "mtp_b5_cycle_cost_ar_tokens": 6.830958315801916,
+    "priority_changed": false,
+    "priority_note": "No priority-order change: keep M12/MTP and DFlash work focused on target verifier row/cycle cost and exact low-cost commit; graph is off/disabled in this baseline and budget growth alone is not attractive."
+  },
+  "schema": 1,
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipcc_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "95e95f3609e18cc5ac30aa562a12fa93e1ef47dd",
+    "hipengine_dirty": true,
+    "hipengine_status_porcelain": "?? .handoff/\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev2.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-graphauto.json",
+    "platform": "Linux-7.0.10-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "status": "diagnostic_retained",
+  "summary": "Same-session shared target-verifier economics baseline for MTP B=3/B=5 and DFlash B=4/B=8 on W7900 before additional kernel changes.",
+  "task_id": 28,
+  "timestamp": "2026-06-07T00:32:14.662253+00:00",
+  "workload": {
+    "decode_tokens": 32,
+    "dflash": {
+      "canonical_commit_mode": "branch_copy",
+      "draft_budgets": [
+        4,
+        8
+      ],
+      "full_attn_chain_mode": "batched",
+      "runs_per_budget": 1,
+      "tree_mode": "chain",
+      "verifier_graph": "off",
+      "verifier_mode": "native_bulk_bplus1"
+    },
+    "mtp": {
+      "candidate_budgets": [
+        3,
+        5
+      ],
+      "chain_attn_mode": "batched",
+      "graph_mode": "off",
+      "proposal_impl": "persistent_device",
+      "runs_per_budget": 1
+    },
+    "prompt": {
+      "benchmark_group": "code_promotion",
+      "dataset": "stable/code",
+      "id": "code:quicksort_prefix",
+      "name": "quicksort_prefix",
+      "prompt_ids_sha256": "2ba223914682b46ea36884732bc2a2662803658086d2d48add5ce0b50f6d707f",
+      "prompt_preview": "def quicksort(values):     \"\"\"Return a sorted copy of values.\"\"\"     if len(values) <= 1:         return values     pivot = values[len(values) // 2]     left = ",
+      "prompt_text_sha256": "63a277f0ad18e8889af6e5d7395e91008d191c5c59393e77d0b1a7952a022ca6",
+      "prompt_tokens": 90
+    }
+  }
+}

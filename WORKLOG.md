@@ -25307,3 +25307,78 @@ caller wants the absolute lowest kernel time before graph/launch amortization.
 The selected gate/up staged rotate path from the previous entry remains
 default-off because it still regresses kernel time.  Benchmark artifact:
 `benchmarks/results/2026-06-03-hipengine-mtp-selected-moe-down-staged-default.json`.
+
+## 2026-06-07 bench(spec): shared verifier economics baseline for Task #28
+
+Collected the requested same-session verifier economics baseline before further
+kernel changes, using the shared packed PARO target on W7900/gfx1100 and the
+stable DFlash quicksort prompt (`code:quicksort_prefix`, 90 prompt tokens,
+`prompt_ids_sha256=2ba223914682b46ea36884732bc2a2662803658086d2d48add5ce0b50f6d707f`).
+All retained rows are exact same-session AR matches and finite; this remains a
+diagnostic baseline, not a throughput claim.
+
+Commands:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+for line in Path('fixtures/dflash/stable_prompts.jsonl').read_text().splitlines():
+    row = json.loads(line)
+    if row.get('id') == 'code:quicksort_prefix':
+        Path('/tmp/quicksort-prompt-tokens.txt').write_text(','.join(map(str, row['prompt_ids'])))
+        break
+PY
+
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 --candidate-budgets 3,5 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode off \
+  --raw-root /tmp/hipengine-task28/mtp_raw \
+  --out /tmp/hipengine-task28/mtp_economics_b3_b5.json
+
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --max-prompts 1 --decode-tokens 32 --draft-budgets 4,8 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --verifier-graph off --tree-mode chain --canonical-commit-mode branch_copy \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-task28/dflash_b4_b8.json
+```
+
+Both commands were wrapped with `/tmp/run_with_vram.py` polling
+`rocm-smi --showmeminfo vram --json` every 0.5s on card0 for external peak VRAM.
+
+Results:
+
+| Provider | Budget | AR tok/s | Spec tok/s | vs AR | `C_B` AR-tok | target verify s | rows/output | accept hist | D2H | Graph | Peak VRAM |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | ---: |
+| MTP | 3 | 111.82 | 49.64 | 0.444x | 5.46 | 0.505 | 1.625 | `{0:5,1:1,2:4,3:3}` | inferred target+proposer: scalar 175, vector 84, full logits 0 | verify disabled/off | 22.38 GiB |
+| MTP | 5 | 111.54 | 46.87 | 0.420x | 6.83 | 0.511 | 2.000 | `{0:4,1:1,2:3,4:2,5:1}` | inferred target+proposer: scalar 183, vector 106, full logits 0 | verify disabled/off | 22.38 GiB |
+| DFlash | 4 | 111.61 | 40.13 | 0.360x | 5.56 | 0.646 | 2.531 | `{0:9,2:6,3:1}` | scalar 113, vector 64, full logits 0 | drafter not captured, verifier disabled/off | 20.41 GiB |
+| DFlash | 8 | 108.65 | 32.68 | 0.301x | 6.65 | 0.783 | 4.531 | `{0:9,2:6,3:1}` | scalar 113, vector 64, full logits 0 | drafter not captured, verifier disabled/off | 20.41 GiB |
+
+Interpretation / priority:
+
+- No priority-order change.  The refreshed rows still show the same wall:
+  verifier cycle cost is far above the `~2` AR-token-equivalent MTP target.
+- MTP B=5 increases visible tokens/cycle but not enough to pay the larger
+  verifier cycle (`C_5=6.83`, perfect-accept ceiling `<1x`).
+- DFlash B=8 has the same accept histogram as B=4 on this prompt but nearly
+  doubles rows/output, so budget growth alone is unattractive.
+- Keep M12/DFlash priority on target verifier row/cycle cost and exact low-cost
+  commit/canonicalization; graph remains off/disabled in this baseline.
+
+Retained artifact and rollup updates:
+
+- `benchmarks/results/2026-06-07-hipengine-verifier-economics-mtp-dflash-baseline.json`
+- `benchmarks/README.md`
+- `benchmarks/CHANGELOG.md`
