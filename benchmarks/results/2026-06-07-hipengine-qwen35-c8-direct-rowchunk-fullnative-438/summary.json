@@ -1,0 +1,4349 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-direct-rowchunk-fullnative-438/compact-runs.json",
+      "sha256": "53d7953e797817520877f5a9abfbd6c76f6db1f3594a21dd58283cc3a5f09699",
+      "size_bytes": 5110
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-direct-rowchunk-fullnative-438/summary.json"
+    }
+  },
+  "commands": {
+    "fullnative": [
+      "--model",
+      "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "--fixture",
+      "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "--prompt-length",
+      "512",
+      "--batch-size",
+      "8",
+      "--warmup-decode-tokens",
+      "8",
+      "--decode-tokens",
+      "1",
+      "--max-layers",
+      "8",
+      "--layer-limits",
+      "8",
+      "--trace-decode-start",
+      "0",
+      "--trace-decode-end",
+      "1",
+      "--max-sequence-length",
+      "1024",
+      "--c1-decode-path",
+      "native_batch",
+      "--batch-decode-full-attn-path",
+      "native_batch",
+      "--compiler-version-file",
+      "/tmp/hipengine-retained/hipcc-version.txt",
+      "--require-cached-build",
+      "--batch-decode-full-attn-row-chunk-size",
+      "0"
+    ],
+    "rowchunk2": [
+      "--model",
+      "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "--fixture",
+      "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "--prompt-length",
+      "512",
+      "--batch-size",
+      "8",
+      "--warmup-decode-tokens",
+      "8",
+      "--decode-tokens",
+      "1",
+      "--max-layers",
+      "8",
+      "--layer-limits",
+      "8",
+      "--trace-decode-start",
+      "0",
+      "--trace-decode-end",
+      "1",
+      "--max-sequence-length",
+      "1024",
+      "--c1-decode-path",
+      "native_batch",
+      "--batch-decode-full-attn-path",
+      "native_batch",
+      "--compiler-version-file",
+      "/tmp/hipengine-retained/hipcc-version.txt",
+      "--require-cached-build",
+      "--batch-decode-full-attn-row-chunk-size",
+      "2"
+    ]
+  },
+  "conclusion": "Direct rowchunk2-vs-fullnative c8 stage deltas are now quantified in a compact artifact. The rowchunk/fullnative split is real at the target stages, not just inferred through c1 proxy summaries.",
+  "created_at": "2026-06-07T07:07:33.380967+00:00",
+  "git_commit_before_commit": "4f4cb99ea13ba1658a938e6162d3aeabf69ad88c",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "direct_delta": "The direct in-memory comparator confirms the proxy result without relying on c1 as an intermediary: fullnative and rowchunk2 differ at layer3 full-attention output, layer4 linear attn_input, and layer7 pre-QKV/context in the same minimal decode0 window.",
+    "next_target": "Use this direct comparator path for future narrow deltas; do not add raw tensor dumps. The fix target remains grouped full-attention numerical/composition vs rowchunk semantics."
+  },
+  "iteration": 438,
+  "kind": "c8_direct_rowchunk2_vs_fullnative_stage_delta",
+  "method": "Imported scripts.qwen35_batch_hidden_bisect, monkeypatched _run_batch_hidden to capture raw HiddenRun arrays, ran two minimal L8 c8 batch paths (fullnative no-rowchunk and rowchunk2) with the same native-batch c1 oracle command shape, and compared only selected decode_step0 arrays in memory. No raw tensors are stored in repo artifacts.",
+  "payload_summaries": {
+    "fullnative": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "token_passed": true
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false,
+        "trace_decode_window": [
+          0,
+          1
+        ]
+      }
+    },
+    "rowchunk2": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "token_passed": true
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "trace_decode_window": [
+          0,
+          1
+        ]
+      }
+    }
+  },
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused direct rowchunk2-vs-fullnative stage comparator closes the iter431 tooling gap with compact in-memory deltas and no raw tensor dump; no performance claim.",
+    "passed": true
+  },
+  "references": {
+    "preqkv_probe_437": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-preqkv-probe-437/summary.json",
+      "sha256": "a7da191753025a60f5377b964adb6432149f7972c8301acb24f79f94c94e2d25",
+      "size_bytes": 21966
+    },
+    "proxy_delta_432": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-proxy-stage-delta-432/summary.json",
+      "sha256": "bc4a2041597562d3679dfc9ba604dfbfe51f71b1c6e67595794e7f1d7173908f",
+      "size_bytes": 16509
+    },
+    "upstream_delta_433": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-upstream-stage-delta-433/summary.json",
+      "sha256": "f8fb5b946246a02fb835c7596ca05123742e7d0189f7d8200d72e4494c02ad2c",
+      "size_bytes": 46744
+    }
+  },
+  "result": {
+    "direct_stage_elements_over_atol_total": {
+      "layer3_full_output": 0,
+      "layer4_linear_attn_input": 1,
+      "layer7_full_attn_context": 32,
+      "layer7_full_attn_input_pre_qkv": 12
+    },
+    "direct_stage_failed_rows": {
+      "layer3_full_output": [],
+      "layer4_linear_attn_input": [
+        0
+      ],
+      "layer7_full_attn_context": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "layer7_full_attn_input_pre_qkv": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "direct_stage_max_abs": {
+      "layer3_full_output": 0.0001220703125,
+      "layer4_linear_attn_input": 0.0078125,
+      "layer7_full_attn_context": 0.012756586074829102,
+      "layer7_full_attn_input_pre_qkv": 0.015625
+    },
+    "direct_stage_passed": {
+      "layer3_full_output": true,
+      "layer4_linear_attn_input": false,
+      "layer7_full_attn_context": false,
+      "layer7_full_attn_input_pre_qkv": false
+    },
+    "fullnative_status": "mismatch_found",
+    "rowchunk2_status": "eq_ok"
+  },
+  "stage_deltas": {
+    "layer3_full_output": {
+      "available": true,
+      "bit_mismatch_total": 4303,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "layer": 3,
+      "max_abs": 0.0001220703125,
+      "passed": true,
+      "row_count": 8,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ],
+      "rows": [
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 0.2110595703125,
+            "bit_mismatch": 465,
+            "c1_value_at_max_abs": 0.2109375,
+            "elements_over_atol": 0,
+            "max_abs": 0.0001220703125,
+            "max_abs_flat_index": 100,
+            "max_abs_index": [
+              0,
+              100
+            ],
+            "mean_abs": 1.8512073438614607e-06,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.0001220703125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0001220703125,
+                "batch_bits": 12993,
+                "batch_value": 0.2110595703125,
+                "c1_bits": 12992,
+                "c1_value": 0.2109375,
+                "flat_index": 100,
+                "index": [
+                  0,
+                  100
+                ],
+                "signed_diff": 0.0001220703125
+              },
+              {
+                "abs_diff": 0.0001220703125,
+                "batch_bits": 12672,
+                "batch_value": 0.171875,
+                "c1_bits": 12671,
+                "c1_value": 0.1717529296875,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": 0.0001220703125
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43474,
+                "batch_value": -0.04547119140625,
+                "c1_bits": 43475,
+                "c1_value": -0.045501708984375,
+                "flat_index": 45,
+                "index": [
+                  0,
+                  45
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10259,
+                "batch_value": 0.031829833984375,
+                "c1_bits": 10258,
+                "c1_value": 0.03179931640625,
+                "flat_index": 344,
+                "index": [
+                  0,
+                  344
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43914,
+                "batch_value": -0.05889892578125,
+                "c1_bits": 43913,
+                "c1_value": -0.058868408203125,
+                "flat_index": 515,
+                "index": [
+                  0,
+                  515
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10658,
+                "batch_value": 0.04400634765625,
+                "c1_bits": 10657,
+                "c1_value": 0.043975830078125,
+                "flat_index": 550,
+                "index": [
+                  0,
+                  550
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43431,
+                "batch_value": -0.044158935546875,
+                "c1_bits": 43432,
+                "c1_value": -0.044189453125,
+                "flat_index": 629,
+                "index": [
+                  0,
+                  629
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43237,
+                "batch_value": -0.038238525390625,
+                "c1_bits": 43238,
+                "c1_value": -0.03826904296875,
+                "flat_index": 711,
+                "index": [
+                  0,
+                  711
+                ],
+                "signed_diff": 3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 0
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -0.1395263671875,
+            "bit_mismatch": 700,
+            "c1_value_at_max_abs": -0.139404296875,
+            "elements_over_atol": 0,
+            "max_abs": 0.0001220703125,
+            "max_abs_flat_index": 1560,
+            "max_abs_index": [
+              0,
+              1560
+            ],
+            "mean_abs": 3.0984519980847836e-06,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.0001220703125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0001220703125,
+                "batch_bits": 45175,
+                "batch_value": -0.1395263671875,
+                "c1_bits": 45174,
+                "c1_value": -0.139404296875,
+                "flat_index": 1560,
+                "index": [
+                  0,
+                  1560
+                ],
+                "signed_diff": -0.0001220703125
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 11584,
+                "batch_value": 0.08203125,
+                "c1_bits": 11583,
+                "c1_value": 0.08197021484375,
+                "flat_index": 114,
+                "index": [
+                  0,
+                  114
+                ],
+                "signed_diff": 6.103515625e-05
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44489,
+                "batch_value": -0.09039306640625,
+                "c1_bits": 44488,
+                "c1_value": -0.09033203125,
+                "flat_index": 233,
+                "index": [
+                  0,
+                  233
+                ],
+                "signed_diff": -6.103515625e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43554,
+                "batch_value": -0.04791259765625,
+                "c1_bits": 43553,
+                "c1_value": -0.047882080078125,
+                "flat_index": 27,
+                "index": [
+                  0,
+                  27
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43138,
+                "batch_value": -0.03521728515625,
+                "c1_bits": 43137,
+                "c1_value": -0.035186767578125,
+                "flat_index": 46,
+                "index": [
+                  0,
+                  46
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43248,
+                "batch_value": -0.03857421875,
+                "c1_bits": 43249,
+                "c1_value": -0.038604736328125,
+                "flat_index": 96,
+                "index": [
+                  0,
+                  96
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43554,
+                "batch_value": -0.04791259765625,
+                "c1_bits": 43553,
+                "c1_value": -0.047882080078125,
+                "flat_index": 198,
+                "index": [
+                  0,
+                  198
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43335,
+                "batch_value": -0.041229248046875,
+                "c1_bits": 43336,
+                "c1_value": -0.041259765625,
+                "flat_index": 205,
+                "index": [
+                  0,
+                  205
+                ],
+                "signed_diff": 3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 1
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -0.031402587890625,
+            "bit_mismatch": 158,
+            "c1_value_at_max_abs": -0.0313720703125,
+            "elements_over_atol": 0,
+            "max_abs": 3.0517578125e-05,
+            "max_abs_flat_index": 69,
+            "max_abs_index": [
+              0,
+              69
+            ],
+            "mean_abs": 5.648762453347445e-07,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -3.0517578125e-05,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43013,
+                "batch_value": -0.031402587890625,
+                "c1_bits": 43012,
+                "c1_value": -0.0313720703125,
+                "flat_index": 69,
+                "index": [
+                  0,
+                  69
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43425,
+                "batch_value": -0.043975830078125,
+                "c1_bits": 43426,
+                "c1_value": -0.04400634765625,
+                "flat_index": 364,
+                "index": [
+                  0,
+                  364
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10845,
+                "batch_value": 0.049713134765625,
+                "c1_bits": 10846,
+                "c1_value": 0.04974365234375,
+                "flat_index": 504,
+                "index": [
+                  0,
+                  504
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10510,
+                "batch_value": 0.03948974609375,
+                "c1_bits": 10509,
+                "c1_value": 0.039459228515625,
+                "flat_index": 558,
+                "index": [
+                  0,
+                  558
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43073,
+                "batch_value": -0.033233642578125,
+                "c1_bits": 43074,
+                "c1_value": -0.03326416015625,
+                "flat_index": 675,
+                "index": [
+                  0,
+                  675
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10383,
+                "batch_value": 0.035614013671875,
+                "c1_bits": 10384,
+                "c1_value": 0.03564453125,
+                "flat_index": 999,
+                "index": [
+                  0,
+                  999
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43238,
+                "batch_value": -0.03826904296875,
+                "c1_bits": 43237,
+                "c1_value": -0.038238525390625,
+                "flat_index": 1067,
+                "index": [
+                  0,
+                  1067
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10271,
+                "batch_value": 0.032196044921875,
+                "c1_bits": 10272,
+                "c1_value": 0.0322265625,
+                "flat_index": 1435,
+                "index": [
+                  0,
+                  1435
+                ],
+                "signed_diff": -3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 2
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -0.117431640625,
+            "bit_mismatch": 655,
+            "c1_value_at_max_abs": -0.11737060546875,
+            "elements_over_atol": 0,
+            "max_abs": 6.103515625e-05,
+            "max_abs_flat_index": 565,
+            "max_abs_index": [
+              0,
+              565
+            ],
+            "mean_abs": 2.7792993932962418e-06,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -6.103515625e-05,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44932,
+                "batch_value": -0.117431640625,
+                "c1_bits": 44931,
+                "c1_value": -0.11737060546875,
+                "flat_index": 565,
+                "index": [
+                  0,
+                  565
+                ],
+                "signed_diff": -6.103515625e-05
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 11726,
+                "batch_value": 0.0906982421875,
+                "c1_bits": 11727,
+                "c1_value": 0.09075927734375,
+                "flat_index": 680,
+                "index": [
+                  0,
+                  680
+                ],
+                "signed_diff": -6.103515625e-05
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44143,
+                "batch_value": -0.06927490234375,
+                "c1_bits": 44144,
+                "c1_value": -0.0693359375,
+                "flat_index": 1354,
+                "index": [
+                  0,
+                  1354
+                ],
+                "signed_diff": 6.103515625e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10407,
+                "batch_value": 0.036346435546875,
+                "c1_bits": 10408,
+                "c1_value": 0.036376953125,
+                "flat_index": 197,
+                "index": [
+                  0,
+                  197
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10286,
+                "batch_value": 0.03265380859375,
+                "c1_bits": 10287,
+                "c1_value": 0.032684326171875,
+                "flat_index": 236,
+                "index": [
+                  0,
+                  236
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43093,
+                "batch_value": -0.033843994140625,
+                "c1_bits": 43092,
+                "c1_value": -0.0338134765625,
+                "flat_index": 314,
+                "index": [
+                  0,
+                  314
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10412,
+                "batch_value": 0.0364990234375,
+                "c1_bits": 10411,
+                "c1_value": 0.036468505859375,
+                "flat_index": 338,
+                "index": [
+                  0,
+                  338
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10409,
+                "batch_value": 0.036407470703125,
+                "c1_bits": 10408,
+                "c1_value": 0.036376953125,
+                "flat_index": 416,
+                "index": [
+                  0,
+                  416
+                ],
+                "signed_diff": 3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 3
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 0.17138671875,
+            "bit_mismatch": 586,
+            "c1_value_at_max_abs": 0.1712646484375,
+            "elements_over_atol": 0,
+            "max_abs": 0.0001220703125,
+            "max_abs_flat_index": 955,
+            "max_abs_index": [
+              0,
+              955
+            ],
+            "mean_abs": 2.5999615900218487e-06,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.0001220703125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0001220703125,
+                "batch_bits": 12668,
+                "batch_value": 0.17138671875,
+                "c1_bits": 12667,
+                "c1_value": 0.1712646484375,
+                "flat_index": 955,
+                "index": [
+                  0,
+                  955
+                ],
+                "signed_diff": 0.0001220703125
+              },
+              {
+                "abs_diff": 0.0001220703125,
+                "batch_bits": 12686,
+                "batch_value": 0.173583984375,
+                "c1_bits": 12687,
+                "c1_value": 0.1737060546875,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": -0.0001220703125
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 12008,
+                "batch_value": 0.10791015625,
+                "c1_bits": 12007,
+                "c1_value": 0.10784912109375,
+                "flat_index": 1026,
+                "index": [
+                  0,
+                  1026
+                ],
+                "signed_diff": 6.103515625e-05
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44490,
+                "batch_value": -0.0904541015625,
+                "c1_bits": 44489,
+                "c1_value": -0.09039306640625,
+                "flat_index": 1069,
+                "index": [
+                  0,
+                  1069
+                ],
+                "signed_diff": -6.103515625e-05
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44362,
+                "batch_value": -0.0826416015625,
+                "c1_bits": 44363,
+                "c1_value": -0.08270263671875,
+                "flat_index": 1680,
+                "index": [
+                  0,
+                  1680
+                ],
+                "signed_diff": 6.103515625e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10243,
+                "batch_value": 0.031341552734375,
+                "c1_bits": 10244,
+                "c1_value": 0.0313720703125,
+                "flat_index": 109,
+                "index": [
+                  0,
+                  109
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43397,
+                "batch_value": -0.043121337890625,
+                "c1_bits": 43398,
+                "c1_value": -0.04315185546875,
+                "flat_index": 205,
+                "index": [
+                  0,
+                  205
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10501,
+                "batch_value": 0.039215087890625,
+                "c1_bits": 10500,
+                "c1_value": 0.0391845703125,
+                "flat_index": 268,
+                "index": [
+                  0,
+                  268
+                ],
+                "signed_diff": 3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 4
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -0.0762939453125,
+            "bit_mismatch": 400,
+            "c1_value_at_max_abs": -0.07635498046875,
+            "elements_over_atol": 0,
+            "max_abs": 6.103515625e-05,
+            "max_abs_flat_index": 1116,
+            "max_abs_index": [
+              0,
+              1116
+            ],
+            "mean_abs": 1.44570367410779e-06,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 6.103515625e-05,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44258,
+                "batch_value": -0.0762939453125,
+                "c1_bits": 44259,
+                "c1_value": -0.07635498046875,
+                "flat_index": 1116,
+                "index": [
+                  0,
+                  1116
+                ],
+                "signed_diff": 6.103515625e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10270,
+                "batch_value": 0.03216552734375,
+                "c1_bits": 10269,
+                "c1_value": 0.032135009765625,
+                "flat_index": 296,
+                "index": [
+                  0,
+                  296
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10484,
+                "batch_value": 0.0386962890625,
+                "c1_bits": 10483,
+                "c1_value": 0.038665771484375,
+                "flat_index": 367,
+                "index": [
+                  0,
+                  367
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10266,
+                "batch_value": 0.03204345703125,
+                "c1_bits": 10265,
+                "c1_value": 0.032012939453125,
+                "flat_index": 385,
+                "index": [
+                  0,
+                  385
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43240,
+                "batch_value": -0.038330078125,
+                "c1_bits": 43241,
+                "c1_value": -0.038360595703125,
+                "flat_index": 449,
+                "index": [
+                  0,
+                  449
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10842,
+                "batch_value": 0.04962158203125,
+                "c1_bits": 10841,
+                "c1_value": 0.049591064453125,
+                "flat_index": 504,
+                "index": [
+                  0,
+                  504
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43626,
+                "batch_value": -0.05010986328125,
+                "c1_bits": 43625,
+                "c1_value": -0.050079345703125,
+                "flat_index": 529,
+                "index": [
+                  0,
+                  529
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43032,
+                "batch_value": -0.031982421875,
+                "c1_bits": 43033,
+                "c1_value": -0.032012939453125,
+                "flat_index": 572,
+                "index": [
+                  0,
+                  572
+                ],
+                "signed_diff": 3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 5
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -0.07427978515625,
+            "bit_mismatch": 709,
+            "c1_value_at_max_abs": -0.0743408203125,
+            "elements_over_atol": 0,
+            "max_abs": 6.103515625e-05,
+            "max_abs_flat_index": 542,
+            "max_abs_index": [
+              0,
+              542
+            ],
+            "mean_abs": 3.129447577521205e-06,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 6.103515625e-05,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44225,
+                "batch_value": -0.07427978515625,
+                "c1_bits": 44226,
+                "c1_value": -0.0743408203125,
+                "flat_index": 542,
+                "index": [
+                  0,
+                  542
+                ],
+                "signed_diff": 6.103515625e-05
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44139,
+                "batch_value": -0.06903076171875,
+                "c1_bits": 44140,
+                "c1_value": -0.069091796875,
+                "flat_index": 1509,
+                "index": [
+                  0,
+                  1509
+                ],
+                "signed_diff": 6.103515625e-05
+              },
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44755,
+                "batch_value": -0.10662841796875,
+                "c1_bits": 44754,
+                "c1_value": -0.1065673828125,
+                "flat_index": 1818,
+                "index": [
+                  0,
+                  1818
+                ],
+                "signed_diff": -6.103515625e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10299,
+                "batch_value": 0.033050537109375,
+                "c1_bits": 10300,
+                "c1_value": 0.0330810546875,
+                "flat_index": 170,
+                "index": [
+                  0,
+                  170
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43346,
+                "batch_value": -0.04156494140625,
+                "c1_bits": 43345,
+                "c1_value": -0.041534423828125,
+                "flat_index": 205,
+                "index": [
+                  0,
+                  205
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10620,
+                "batch_value": 0.0428466796875,
+                "c1_bits": 10619,
+                "c1_value": 0.042816162109375,
+                "flat_index": 245,
+                "index": [
+                  0,
+                  245
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10478,
+                "batch_value": 0.03851318359375,
+                "c1_bits": 10479,
+                "c1_value": 0.038543701171875,
+                "flat_index": 268,
+                "index": [
+                  0,
+                  268
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43128,
+                "batch_value": -0.034912109375,
+                "c1_bits": 43127,
+                "c1_value": -0.034881591796875,
+                "flat_index": 318,
+                "index": [
+                  0,
+                  318
+                ],
+                "signed_diff": -3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 6
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -0.07666015625,
+            "bit_mismatch": 630,
+            "c1_value_at_max_abs": -0.07659912109375,
+            "elements_over_atol": 0,
+            "max_abs": 6.103515625e-05,
+            "max_abs_flat_index": 883,
+            "max_abs_index": [
+              0,
+              883
+            ],
+            "mean_abs": 2.6277266442775726e-06,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -6.103515625e-05,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 6.103515625e-05,
+                "batch_bits": 44264,
+                "batch_value": -0.07666015625,
+                "c1_bits": 44263,
+                "c1_value": -0.07659912109375,
+                "flat_index": 883,
+                "index": [
+                  0,
+                  883
+                ],
+                "signed_diff": -6.103515625e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43447,
+                "batch_value": -0.044647216796875,
+                "c1_bits": 43448,
+                "c1_value": -0.044677734375,
+                "flat_index": 122,
+                "index": [
+                  0,
+                  122
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 11036,
+                "batch_value": 0.0555419921875,
+                "c1_bits": 11037,
+                "c1_value": 0.055572509765625,
+                "flat_index": 176,
+                "index": [
+                  0,
+                  176
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 43577,
+                "batch_value": -0.048614501953125,
+                "c1_bits": 43578,
+                "c1_value": -0.04864501953125,
+                "flat_index": 187,
+                "index": [
+                  0,
+                  187
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10267,
+                "batch_value": 0.032073974609375,
+                "c1_bits": 10266,
+                "c1_value": 0.03204345703125,
+                "flat_index": 283,
+                "index": [
+                  0,
+                  283
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10409,
+                "batch_value": 0.036407470703125,
+                "c1_bits": 10408,
+                "c1_value": 0.036376953125,
+                "flat_index": 315,
+                "index": [
+                  0,
+                  315
+                ],
+                "signed_diff": 3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10403,
+                "batch_value": 0.036224365234375,
+                "c1_bits": 10404,
+                "c1_value": 0.0362548828125,
+                "flat_index": 338,
+                "index": [
+                  0,
+                  338
+                ],
+                "signed_diff": -3.0517578125e-05
+              },
+              {
+                "abs_diff": 3.0517578125e-05,
+                "batch_bits": 10249,
+                "batch_value": 0.031524658203125,
+                "c1_bits": 10248,
+                "c1_value": 0.031494140625,
+                "flat_index": 385,
+                "index": [
+                  0,
+                  385
+                ],
+                "signed_diff": 3.0517578125e-05
+              }
+            ]
+          },
+          "passed": true,
+          "row": 7
+        }
+      ],
+      "section": "full",
+      "stage": "output",
+      "step": 0
+    },
+    "layer4_linear_attn_input": {
+      "available": true,
+      "bit_mismatch_total": 4142,
+      "elements_over_atol_total": 1,
+      "failed_rows": [
+        0
+      ],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "layer": 4,
+      "max_abs": 0.0078125,
+      "passed": false,
+      "row_count": 8,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ],
+      "rows": [
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 9.7109375,
+            "bit_mismatch": 491,
+            "c1_value_at_max_abs": 9.71875,
+            "elements_over_atol": 1,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1296,
+            "max_abs_index": [
+              0,
+              1296
+            ],
+            "mean_abs": 6.847316399216652e-05,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.0078125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 18651,
+                "batch_value": 9.7109375,
+                "c1_bits": 18652,
+                "c1_value": 9.71875,
+                "flat_index": 1296,
+                "index": [
+                  0,
+                  1296
+                ],
+                "signed_diff": -0.0078125
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 18122,
+                "batch_value": 6.7890625,
+                "c1_bits": 18121,
+                "c1_value": 6.78515625,
+                "flat_index": 100,
+                "index": [
+                  0,
+                  100
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 18009,
+                "batch_value": 6.34765625,
+                "c1_bits": 18008,
+                "c1_value": 6.34375,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16490,
+                "batch_value": 2.20703125,
+                "c1_bits": 16491,
+                "c1_value": 2.208984375,
+                "flat_index": 1050,
+                "index": [
+                  0,
+                  1050
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 48539,
+                "batch_value": -1.4013671875,
+                "c1_bits": 48537,
+                "c1_value": -1.3994140625,
+                "flat_index": 1821,
+                "index": [
+                  0,
+                  1821
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48350,
+                "batch_value": -1.216796875,
+                "c1_bits": 48351,
+                "c1_value": -1.2177734375,
+                "flat_index": 45,
+                "index": [
+                  0,
+                  45
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48245,
+                "batch_value": -1.1142578125,
+                "c1_bits": 48246,
+                "c1_value": -1.115234375,
+                "flat_index": 96,
+                "index": [
+                  0,
+                  96
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48685,
+                "batch_value": -1.5439453125,
+                "c1_bits": 48686,
+                "c1_value": -1.544921875,
+                "flat_index": 198,
+                "index": [
+                  0,
+                  198
+                ],
+                "signed_diff": 0.0009765625
+              }
+            ]
+          },
+          "passed": false,
+          "row": 0
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 1.23828125,
+            "bit_mismatch": 688,
+            "c1_value_at_max_abs": 1.236328125,
+            "elements_over_atol": 0,
+            "max_abs": 0.001953125,
+            "max_abs_flat_index": 1197,
+            "max_abs_index": [
+              0,
+              1197
+            ],
+            "mean_abs": 9.385356679558754e-05,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.001953125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15604,
+                "batch_value": 1.23828125,
+                "c1_bits": 15602,
+                "c1_value": 1.236328125,
+                "flat_index": 1197,
+                "index": [
+                  0,
+                  1197
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49374,
+                "batch_value": -2.43359375,
+                "c1_bits": 49373,
+                "c1_value": -2.431640625,
+                "flat_index": 1560,
+                "index": [
+                  0,
+                  1560
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48453,
+                "batch_value": -1.3173828125,
+                "c1_bits": 48452,
+                "c1_value": -1.31640625,
+                "flat_index": 27,
+                "index": [
+                  0,
+                  27
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48168,
+                "batch_value": -1.0390625,
+                "c1_bits": 48167,
+                "c1_value": -1.0380859375,
+                "flat_index": 46,
+                "index": [
+                  0,
+                  46
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48240,
+                "batch_value": -1.109375,
+                "c1_bits": 48241,
+                "c1_value": -1.1103515625,
+                "flat_index": 96,
+                "index": [
+                  0,
+                  96
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 16182,
+                "batch_value": 1.802734375,
+                "c1_bits": 16181,
+                "c1_value": 1.8017578125,
+                "flat_index": 114,
+                "index": [
+                  0,
+                  114
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48611,
+                "batch_value": -1.4716796875,
+                "c1_bits": 48610,
+                "c1_value": -1.470703125,
+                "flat_index": 198,
+                "index": [
+                  0,
+                  198
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48554,
+                "batch_value": -1.416015625,
+                "c1_bits": 48555,
+                "c1_value": -1.4169921875,
+                "flat_index": 205,
+                "index": [
+                  0,
+                  205
+                ],
+                "signed_diff": 0.0009765625
+              }
+            ]
+          },
+          "passed": true,
+          "row": 1
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 1.4833984375,
+            "bit_mismatch": 150,
+            "c1_value_at_max_abs": 1.484375,
+            "elements_over_atol": 0,
+            "max_abs": 0.0009765625,
+            "max_abs_flat_index": 504,
+            "max_abs_index": [
+              0,
+              504
+            ],
+            "mean_abs": 1.5842262655496597e-05,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.0009765625,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15855,
+                "batch_value": 1.4833984375,
+                "c1_bits": 15856,
+                "c1_value": 1.484375,
+                "flat_index": 504,
+                "index": [
+                  0,
+                  504
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48073,
+                "batch_value": -0.97314453125,
+                "c1_bits": 48075,
+                "c1_value": -0.97412109375,
+                "flat_index": 675,
+                "index": [
+                  0,
+                  675
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48135,
+                "batch_value": -1.0068359375,
+                "c1_bits": 48134,
+                "c1_value": -1.005859375,
+                "flat_index": 1067,
+                "index": [
+                  0,
+                  1067
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15164,
+                "batch_value": 0.904296875,
+                "c1_bits": 15166,
+                "c1_value": 0.9052734375,
+                "flat_index": 1435,
+                "index": [
+                  0,
+                  1435
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48479,
+                "batch_value": -1.3427734375,
+                "c1_bits": 48478,
+                "c1_value": -1.341796875,
+                "flat_index": 1659,
+                "index": [
+                  0,
+                  1659
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15346,
+                "batch_value": 0.9931640625,
+                "c1_bits": 15344,
+                "c1_value": 0.9921875,
+                "flat_index": 1746,
+                "index": [
+                  0,
+                  1746
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.00048828125,
+                "batch_bits": 14705,
+                "batch_value": 0.68017578125,
+                "c1_bits": 14706,
+                "c1_value": 0.6806640625,
+                "flat_index": 26,
+                "index": [
+                  0,
+                  26
+                ],
+                "signed_diff": -0.00048828125
+              },
+              {
+                "abs_diff": 0.00048828125,
+                "batch_bits": 47662,
+                "batch_value": -0.7724609375,
+                "c1_bits": 47661,
+                "c1_value": -0.77197265625,
+                "flat_index": 69,
+                "index": [
+                  0,
+                  69
+                ],
+                "signed_diff": -0.00048828125
+              }
+            ]
+          },
+          "passed": true,
+          "row": 2
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -2.154296875,
+            "bit_mismatch": 613,
+            "c1_value_at_max_abs": -2.15234375,
+            "elements_over_atol": 0,
+            "max_abs": 0.001953125,
+            "max_abs_flat_index": 565,
+            "max_abs_index": [
+              0,
+              565
+            ],
+            "mean_abs": 8.199922740459442e-05,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.001953125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49231,
+                "batch_value": -2.154296875,
+                "c1_bits": 49230,
+                "c1_value": -2.15234375,
+                "flat_index": 565,
+                "index": [
+                  0,
+                  565
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16909,
+                "batch_value": 3.025390625,
+                "c1_bits": 16910,
+                "c1_value": 3.02734375,
+                "flat_index": 680,
+                "index": [
+                  0,
+                  680
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 48717,
+                "batch_value": -1.5751953125,
+                "c1_bits": 48719,
+                "c1_value": -1.5771484375,
+                "flat_index": 903,
+                "index": [
+                  0,
+                  903
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49028,
+                "batch_value": -1.87890625,
+                "c1_bits": 49030,
+                "c1_value": -1.880859375,
+                "flat_index": 1354,
+                "index": [
+                  0,
+                  1354
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15364,
+                "batch_value": 1.00390625,
+                "c1_bits": 15365,
+                "c1_value": 1.0048828125,
+                "flat_index": 269,
+                "index": [
+                  0,
+                  269
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48160,
+                "batch_value": -1.03125,
+                "c1_bits": 48159,
+                "c1_value": -1.0302734375,
+                "flat_index": 314,
+                "index": [
+                  0,
+                  314
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15728,
+                "batch_value": 1.359375,
+                "c1_bits": 15727,
+                "c1_value": 1.3583984375,
+                "flat_index": 338,
+                "index": [
+                  0,
+                  338
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15247,
+                "batch_value": 0.94482421875,
+                "c1_bits": 15245,
+                "c1_value": 0.94384765625,
+                "flat_index": 416,
+                "index": [
+                  0,
+                  416
+                ],
+                "signed_diff": 0.0009765625
+              }
+            ]
+          },
+          "passed": true,
+          "row": 3
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 6.41015625,
+            "bit_mismatch": 563,
+            "c1_value_at_max_abs": 6.4140625,
+            "elements_over_atol": 0,
+            "max_abs": 0.00390625,
+            "max_abs_flat_index": 1538,
+            "max_abs_index": [
+              0,
+              1538
+            ],
+            "mean_abs": 7.637182716280222e-05,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.00390625,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 18025,
+                "batch_value": 6.41015625,
+                "c1_bits": 18026,
+                "c1_value": 6.4140625,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16778,
+                "batch_value": 2.76953125,
+                "c1_bits": 16777,
+                "c1_value": 2.767578125,
+                "flat_index": 955,
+                "index": [
+                  0,
+                  955
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 17183,
+                "batch_value": 3.560546875,
+                "c1_bits": 17182,
+                "c1_value": 3.55859375,
+                "flat_index": 1026,
+                "index": [
+                  0,
+                  1026
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49673,
+                "batch_value": -3.017578125,
+                "c1_bits": 49672,
+                "c1_value": -3.015625,
+                "flat_index": 1069,
+                "index": [
+                  0,
+                  1069
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 48687,
+                "batch_value": -1.5458984375,
+                "c1_bits": 48689,
+                "c1_value": -1.5478515625,
+                "flat_index": 1680,
+                "index": [
+                  0,
+                  1680
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48621,
+                "batch_value": -1.4814453125,
+                "c1_bits": 48622,
+                "c1_value": -1.482421875,
+                "flat_index": 205,
+                "index": [
+                  0,
+                  205
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15618,
+                "batch_value": 1.251953125,
+                "c1_bits": 15617,
+                "c1_value": 1.2509765625,
+                "flat_index": 268,
+                "index": [
+                  0,
+                  268
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15536,
+                "batch_value": 1.171875,
+                "c1_bits": 15535,
+                "c1_value": 1.1708984375,
+                "flat_index": 348,
+                "index": [
+                  0,
+                  348
+                ],
+                "signed_diff": 0.0009765625
+              }
+            ]
+          },
+          "passed": true,
+          "row": 4
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 1.1376953125,
+            "bit_mismatch": 371,
+            "c1_value_at_max_abs": 1.1357421875,
+            "elements_over_atol": 0,
+            "max_abs": 0.001953125,
+            "max_abs_flat_index": 385,
+            "max_abs_index": [
+              0,
+              385
+            ],
+            "mean_abs": 4.178471863269806e-05,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.001953125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15501,
+                "batch_value": 1.1376953125,
+                "c1_bits": 15499,
+                "c1_value": 1.1357421875,
+                "flat_index": 385,
+                "index": [
+                  0,
+                  385
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15100,
+                "batch_value": 0.873046875,
+                "c1_bits": 15098,
+                "c1_value": 0.8720703125,
+                "flat_index": 296,
+                "index": [
+                  0,
+                  296
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15463,
+                "batch_value": 1.1005859375,
+                "c1_bits": 15462,
+                "c1_value": 1.099609375,
+                "flat_index": 367,
+                "index": [
+                  0,
+                  367
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48365,
+                "batch_value": -1.2314453125,
+                "c1_bits": 48366,
+                "c1_value": -1.232421875,
+                "flat_index": 449,
+                "index": [
+                  0,
+                  449
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15863,
+                "batch_value": 1.4912109375,
+                "c1_bits": 15862,
+                "c1_value": 1.490234375,
+                "flat_index": 504,
+                "index": [
+                  0,
+                  504
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48770,
+                "batch_value": -1.626953125,
+                "c1_bits": 48769,
+                "c1_value": -1.6259765625,
+                "flat_index": 529,
+                "index": [
+                  0,
+                  529
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 47908,
+                "batch_value": -0.892578125,
+                "c1_bits": 47910,
+                "c1_value": -0.8935546875,
+                "flat_index": 572,
+                "index": [
+                  0,
+                  572
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15486,
+                "batch_value": 1.123046875,
+                "c1_bits": 15485,
+                "c1_value": 1.1220703125,
+                "flat_index": 672,
+                "index": [
+                  0,
+                  672
+                ],
+                "signed_diff": 0.0009765625
+              }
+            ]
+          },
+          "passed": true,
+          "row": 5
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 6.74609375,
+            "bit_mismatch": 669,
+            "c1_value_at_max_abs": 6.75,
+            "elements_over_atol": 0,
+            "max_abs": 0.00390625,
+            "max_abs_flat_index": 100,
+            "max_abs_index": [
+              0,
+              100
+            ],
+            "mean_abs": 9.410758502781391e-05,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.00390625,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 18111,
+                "batch_value": 6.74609375,
+                "c1_bits": 18112,
+                "c1_value": 6.75,
+                "flat_index": 100,
+                "index": [
+                  0,
+                  100
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49226,
+                "batch_value": -2.14453125,
+                "c1_bits": 49227,
+                "c1_value": -2.146484375,
+                "flat_index": 565,
+                "index": [
+                  0,
+                  565
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 48684,
+                "batch_value": -1.54296875,
+                "c1_bits": 48686,
+                "c1_value": -1.544921875,
+                "flat_index": 903,
+                "index": [
+                  0,
+                  903
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49082,
+                "batch_value": -1.931640625,
+                "c1_bits": 49084,
+                "c1_value": -1.93359375,
+                "flat_index": 1509,
+                "index": [
+                  0,
+                  1509
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49541,
+                "batch_value": -2.759765625,
+                "c1_bits": 49540,
+                "c1_value": -2.7578125,
+                "flat_index": 1818,
+                "index": [
+                  0,
+                  1818
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49620,
+                "batch_value": -2.9140625,
+                "c1_bits": 49621,
+                "c1_value": -2.916015625,
+                "flat_index": 1902,
+                "index": [
+                  0,
+                  1902
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15137,
+                "batch_value": 0.89111328125,
+                "c1_bits": 15139,
+                "c1_value": 0.89208984375,
+                "flat_index": 170,
+                "index": [
+                  0,
+                  170
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48571,
+                "batch_value": -1.4326171875,
+                "c1_bits": 48570,
+                "c1_value": -1.431640625,
+                "flat_index": 205,
+                "index": [
+                  0,
+                  205
+                ],
+                "signed_diff": -0.0009765625
+              }
+            ]
+          },
+          "passed": true,
+          "row": 6
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -2.0546875,
+            "bit_mismatch": 597,
+            "c1_value_at_max_abs": -2.052734375,
+            "elements_over_atol": 0,
+            "max_abs": 0.001953125,
+            "max_abs_flat_index": 883,
+            "max_abs_index": [
+              0,
+              883
+            ],
+            "mean_abs": 7.711484795436263e-05,
+            "passed": true,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.001953125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49180,
+                "batch_value": -2.0546875,
+                "c1_bits": 49179,
+                "c1_value": -2.052734375,
+                "flat_index": 883,
+                "index": [
+                  0,
+                  883
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49209,
+                "batch_value": -2.111328125,
+                "c1_bits": 49210,
+                "c1_value": -2.11328125,
+                "flat_index": 895,
+                "index": [
+                  0,
+                  895
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48580,
+                "batch_value": -1.44140625,
+                "c1_bits": 48581,
+                "c1_value": -1.4423828125,
+                "flat_index": 122,
+                "index": [
+                  0,
+                  122
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15875,
+                "batch_value": 1.5029296875,
+                "c1_bits": 15876,
+                "c1_value": 1.50390625,
+                "flat_index": 176,
+                "index": [
+                  0,
+                  176
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15155,
+                "batch_value": 0.89990234375,
+                "c1_bits": 15153,
+                "c1_value": 0.89892578125,
+                "flat_index": 283,
+                "index": [
+                  0,
+                  283
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15309,
+                "batch_value": 0.97509765625,
+                "c1_bits": 15307,
+                "c1_value": 0.97412109375,
+                "flat_index": 315,
+                "index": [
+                  0,
+                  315
+                ],
+                "signed_diff": 0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 15715,
+                "batch_value": 1.3466796875,
+                "c1_bits": 15716,
+                "c1_value": 1.34765625,
+                "flat_index": 338,
+                "index": [
+                  0,
+                  338
+                ],
+                "signed_diff": -0.0009765625
+              },
+              {
+                "abs_diff": 0.0009765625,
+                "batch_bits": 48907,
+                "batch_value": -1.7607421875,
+                "c1_bits": 48908,
+                "c1_value": -1.76171875,
+                "flat_index": 375,
+                "index": [
+                  0,
+                  375
+                ],
+                "signed_diff": 0.0009765625
+              }
+            ]
+          },
+          "passed": true,
+          "row": 7
+        }
+      ],
+      "section": "linear",
+      "stage": "attn_input",
+      "step": 0
+    },
+    "layer7_full_attn_context": {
+      "available": true,
+      "bit_mismatch_total": 32766,
+      "elements_over_atol_total": 32,
+      "failed_rows": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "layer": 7,
+      "max_abs": 0.012756586074829102,
+      "passed": false,
+      "row_count": 8,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ],
+      "rows": [
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 3.6317901611328125,
+            "bit_mismatch": 4096,
+            "c1_value_at_max_abs": 3.6356420516967773,
+            "elements_over_atol": 0,
+            "max_abs": 0.0038518905639648438,
+            "max_abs_flat_index": 2812,
+            "max_abs_index": [
+              0,
+              2812
+            ],
+            "mean_abs": 0.00013203310663811862,
+            "passed": true,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": -0.0038518905639648438,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0038518905639648438,
+                "batch_value": 3.6317901611328125,
+                "c1_value": 3.6356420516967773,
+                "flat_index": 2812,
+                "index": [
+                  0,
+                  2812
+                ],
+                "signed_diff": -0.0038518905639648438
+              },
+              {
+                "abs_diff": 0.0036695003509521484,
+                "batch_value": 0.8319135308265686,
+                "c1_value": 0.8282440304756165,
+                "flat_index": 2383,
+                "index": [
+                  0,
+                  2383
+                ],
+                "signed_diff": 0.0036695003509521484
+              },
+              {
+                "abs_diff": 0.0036613941192626953,
+                "batch_value": 3.1424167156219482,
+                "c1_value": 3.146078109741211,
+                "flat_index": 3068,
+                "index": [
+                  0,
+                  3068
+                ],
+                "signed_diff": -0.0036613941192626953
+              },
+              {
+                "abs_diff": 0.003631591796875,
+                "batch_value": 0.619333803653717,
+                "c1_value": 0.615702211856842,
+                "flat_index": 2441,
+                "index": [
+                  0,
+                  2441
+                ],
+                "signed_diff": 0.003631591796875
+              },
+              {
+                "abs_diff": 0.003625214099884033,
+                "batch_value": -0.5877217650413513,
+                "c1_value": -0.5840965509414673,
+                "flat_index": 2310,
+                "index": [
+                  0,
+                  2310
+                ],
+                "signed_diff": -0.003625214099884033
+              },
+              {
+                "abs_diff": 0.0036110877990722656,
+                "batch_value": 0.49747854471206665,
+                "c1_value": 0.4938674569129944,
+                "flat_index": 2458,
+                "index": [
+                  0,
+                  2458
+                ],
+                "signed_diff": 0.0036110877990722656
+              },
+              {
+                "abs_diff": 0.0035753846168518066,
+                "batch_value": -0.47967854142189026,
+                "c1_value": -0.47610315680503845,
+                "flat_index": 2495,
+                "index": [
+                  0,
+                  2495
+                ],
+                "signed_diff": -0.0035753846168518066
+              },
+              {
+                "abs_diff": 0.003354012966156006,
+                "batch_value": -0.4762207865715027,
+                "c1_value": -0.4795747995376587,
+                "flat_index": 2410,
+                "index": [
+                  0,
+                  2410
+                ],
+                "signed_diff": 0.003354012966156006
+              }
+            ]
+          },
+          "passed": true,
+          "row": 0
+        },
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 0.985565721988678,
+            "bit_mismatch": 4096,
+            "c1_value_at_max_abs": 0.9786285161972046,
+            "elements_over_atol": 1,
+            "max_abs": 0.006937205791473389,
+            "max_abs_flat_index": 2396,
+            "max_abs_index": [
+              0,
+              2396
+            ],
+            "mean_abs": 0.00012739788508042693,
+            "passed": false,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": 0.006937205791473389,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.006937205791473389,
+                "batch_value": 0.985565721988678,
+                "c1_value": 0.9786285161972046,
+                "flat_index": 2396,
+                "index": [
+                  0,
+                  2396
+                ],
+                "signed_diff": 0.006937205791473389
+              },
+              {
+                "abs_diff": 0.003987789154052734,
+                "batch_value": 3.5993831157684326,
+                "c1_value": 3.6033709049224854,
+                "flat_index": 2300,
+                "index": [
+                  0,
+                  2300
+                ],
+                "signed_diff": -0.003987789154052734
+              },
+              {
+                "abs_diff": 0.0034828782081604004,
+                "batch_value": 0.8694771528244019,
+                "c1_value": 0.8659942746162415,
+                "flat_index": 2512,
+                "index": [
+                  0,
+                  2512
+                ],
+                "signed_diff": 0.0034828782081604004
+              },
+              {
+                "abs_diff": 0.0034766197204589844,
+                "batch_value": 0.8116811513900757,
+                "c1_value": 0.8082045316696167,
+                "flat_index": 2383,
+                "index": [
+                  0,
+                  2383
+                ],
+                "signed_diff": 0.0034766197204589844
+              },
+              {
+                "abs_diff": 0.0034725069999694824,
+                "batch_value": 0.5200921297073364,
+                "c1_value": 0.5166196227073669,
+                "flat_index": 2328,
+                "index": [
+                  0,
+                  2328
+                ],
+                "signed_diff": 0.0034725069999694824
+              },
+              {
+                "abs_diff": 0.0034655332565307617,
+                "batch_value": 0.5355532169342041,
+                "c1_value": 0.5320876836776733,
+                "flat_index": 2534,
+                "index": [
+                  0,
+                  2534
+                ],
+                "signed_diff": 0.0034655332565307617
+              },
+              {
+                "abs_diff": 0.0034254789352416992,
+                "batch_value": -0.5076401829719543,
+                "c1_value": -0.511065661907196,
+                "flat_index": 2466,
+                "index": [
+                  0,
+                  2466
+                ],
+                "signed_diff": 0.0034254789352416992
+              },
+              {
+                "abs_diff": 0.0034145712852478027,
+                "batch_value": -0.8716453313827515,
+                "c1_value": -0.8750599026679993,
+                "flat_index": 2496,
+                "index": [
+                  0,
+                  2496
+                ],
+                "signed_diff": 0.0034145712852478027
+              }
+            ]
+          },
+          "passed": false,
+          "row": 1
+        },
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -3.9086663722991943,
+            "bit_mismatch": 4095,
+            "c1_value_at_max_abs": -3.8994781970977783,
+            "elements_over_atol": 3,
+            "max_abs": 0.009188175201416016,
+            "max_abs_flat_index": 1248,
+            "max_abs_index": [
+              0,
+              1248
+            ],
+            "mean_abs": 0.0001442363573005423,
+            "passed": false,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": -0.009188175201416016,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.009188175201416016,
+                "batch_value": -3.9086663722991943,
+                "c1_value": -3.8994781970977783,
+                "flat_index": 1248,
+                "index": [
+                  0,
+                  1248
+                ],
+                "signed_diff": -0.009188175201416016
+              },
+              {
+                "abs_diff": 0.006459951400756836,
+                "batch_value": 2.5512919425964355,
+                "c1_value": 2.5448319911956787,
+                "flat_index": 3324,
+                "index": [
+                  0,
+                  3324
+                ],
+                "signed_diff": 0.006459951400756836
+              },
+              {
+                "abs_diff": 0.004066765308380127,
+                "batch_value": -0.49314725399017334,
+                "c1_value": -0.4890804886817932,
+                "flat_index": 3687,
+                "index": [
+                  0,
+                  3687
+                ],
+                "signed_diff": -0.004066765308380127
+              },
+              {
+                "abs_diff": 0.003630995750427246,
+                "batch_value": -0.7924341559410095,
+                "c1_value": -0.7888031601905823,
+                "flat_index": 3678,
+                "index": [
+                  0,
+                  3678
+                ],
+                "signed_diff": -0.003630995750427246
+              },
+              {
+                "abs_diff": 0.0035576820373535156,
+                "batch_value": -0.7612255215644836,
+                "c1_value": -0.7647832036018372,
+                "flat_index": 2366,
+                "index": [
+                  0,
+                  2366
+                ],
+                "signed_diff": 0.0035576820373535156
+              },
+              {
+                "abs_diff": 0.003413677215576172,
+                "batch_value": 0.5673613548278809,
+                "c1_value": 0.5639476776123047,
+                "flat_index": 2485,
+                "index": [
+                  0,
+                  2485
+                ],
+                "signed_diff": 0.003413677215576172
+              },
+              {
+                "abs_diff": 0.002485334873199463,
+                "batch_value": 0.11882428824901581,
+                "c1_value": 0.11633895337581635,
+                "flat_index": 3593,
+                "index": [
+                  0,
+                  3593
+                ],
+                "signed_diff": 0.002485334873199463
+              },
+              {
+                "abs_diff": 0.0024145841598510742,
+                "batch_value": -0.9639959931373596,
+                "c1_value": -0.9615814089775085,
+                "flat_index": 1065,
+                "index": [
+                  0,
+                  1065
+                ],
+                "signed_diff": -0.0024145841598510742
+              }
+            ]
+          },
+          "passed": false,
+          "row": 2
+        },
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 3.866056203842163,
+            "bit_mismatch": 4096,
+            "c1_value_at_max_abs": 3.878812789916992,
+            "elements_over_atol": 4,
+            "max_abs": 0.012756586074829102,
+            "max_abs_flat_index": 2300,
+            "max_abs_index": [
+              0,
+              2300
+            ],
+            "mean_abs": 0.00017280882457271218,
+            "passed": false,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": -0.012756586074829102,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.012756586074829102,
+                "batch_value": 3.866056203842163,
+                "c1_value": 3.878812789916992,
+                "flat_index": 2300,
+                "index": [
+                  0,
+                  2300
+                ],
+                "signed_diff": -0.012756586074829102
+              },
+              {
+                "abs_diff": 0.008641481399536133,
+                "batch_value": 3.6038384437561035,
+                "c1_value": 3.6124799251556396,
+                "flat_index": 2812,
+                "index": [
+                  0,
+                  2812
+                ],
+                "signed_diff": -0.008641481399536133
+              },
+              {
+                "abs_diff": 0.007038235664367676,
+                "batch_value": -1.1905038356781006,
+                "c1_value": -1.1975420713424683,
+                "flat_index": 2314,
+                "index": [
+                  0,
+                  2314
+                ],
+                "signed_diff": 0.007038235664367676
+              },
+              {
+                "abs_diff": 0.004311561584472656,
+                "batch_value": 2.535061836242676,
+                "c1_value": 2.5393733978271484,
+                "flat_index": 3324,
+                "index": [
+                  0,
+                  3324
+                ],
+                "signed_diff": -0.004311561584472656
+              },
+              {
+                "abs_diff": 0.0038815736770629883,
+                "batch_value": 1.5424860715866089,
+                "c1_value": 1.5463676452636719,
+                "flat_index": 3836,
+                "index": [
+                  0,
+                  3836
+                ],
+                "signed_diff": -0.0038815736770629883
+              },
+              {
+                "abs_diff": 0.003820359706878662,
+                "batch_value": 0.5232110619544983,
+                "c1_value": 0.527031421661377,
+                "flat_index": 2344,
+                "index": [
+                  0,
+                  2344
+                ],
+                "signed_diff": -0.003820359706878662
+              },
+              {
+                "abs_diff": 0.0037273168563842773,
+                "batch_value": 0.7757174968719482,
+                "c1_value": 0.7794448137283325,
+                "flat_index": 2347,
+                "index": [
+                  0,
+                  2347
+                ],
+                "signed_diff": -0.0037273168563842773
+              },
+              {
+                "abs_diff": 0.0037047863006591797,
+                "batch_value": 0.4478895962238312,
+                "c1_value": 0.45159438252449036,
+                "flat_index": 2353,
+                "index": [
+                  0,
+                  2353
+                ],
+                "signed_diff": -0.0037047863006591797
+              }
+            ]
+          },
+          "passed": false,
+          "row": 3
+        },
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 3.77596116065979,
+            "bit_mismatch": 4096,
+            "c1_value_at_max_abs": 3.763209581375122,
+            "elements_over_atol": 13,
+            "max_abs": 0.012751579284667969,
+            "max_abs_flat_index": 2300,
+            "max_abs_index": [
+              0,
+              2300
+            ],
+            "mean_abs": 0.0002612988173495978,
+            "passed": false,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": 0.012751579284667969,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.012751579284667969,
+                "batch_value": 3.77596116065979,
+                "c1_value": 3.763209581375122,
+                "flat_index": 2300,
+                "index": [
+                  0,
+                  2300
+                ],
+                "signed_diff": 0.012751579284667969
+              },
+              {
+                "abs_diff": 0.007758796215057373,
+                "batch_value": 0.761618971824646,
+                "c1_value": 0.7538601756095886,
+                "flat_index": 2556,
+                "index": [
+                  0,
+                  2556
+                ],
+                "signed_diff": 0.007758796215057373
+              },
+              {
+                "abs_diff": 0.0069127678871154785,
+                "batch_value": -0.7938017845153809,
+                "c1_value": -0.8007145524024963,
+                "flat_index": 2151,
+                "index": [
+                  0,
+                  2151
+                ],
+                "signed_diff": 0.0069127678871154785
+              },
+              {
+                "abs_diff": 0.006619632244110107,
+                "batch_value": -0.9543262124061584,
+                "c1_value": -0.9609458446502686,
+                "flat_index": 2142,
+                "index": [
+                  0,
+                  2142
+                ],
+                "signed_diff": 0.006619632244110107
+              },
+              {
+                "abs_diff": 0.005434274673461914,
+                "batch_value": -3.740833282470703,
+                "c1_value": -3.746267557144165,
+                "flat_index": 2407,
+                "index": [
+                  0,
+                  2407
+                ],
+                "signed_diff": 0.005434274673461914
+              },
+              {
+                "abs_diff": 0.005103111267089844,
+                "batch_value": -3.708173990249634,
+                "c1_value": -3.7132771015167236,
+                "flat_index": 2398,
+                "index": [
+                  0,
+                  2398
+                ],
+                "signed_diff": 0.005103111267089844
+              },
+              {
+                "abs_diff": 0.004668474197387695,
+                "batch_value": 0.7744782567024231,
+                "c1_value": 0.7791467308998108,
+                "flat_index": 2468,
+                "index": [
+                  0,
+                  2468
+                ],
+                "signed_diff": -0.004668474197387695
+              },
+              {
+                "abs_diff": 0.004316926002502441,
+                "batch_value": 0.6058972477912903,
+                "c1_value": 0.6102141737937927,
+                "flat_index": 2441,
+                "index": [
+                  0,
+                  2441
+                ],
+                "signed_diff": -0.004316926002502441
+              }
+            ]
+          },
+          "passed": false,
+          "row": 4
+        },
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 1.0172048807144165,
+            "bit_mismatch": 4096,
+            "c1_value_at_max_abs": 1.024017572402954,
+            "elements_over_atol": 2,
+            "max_abs": 0.006812691688537598,
+            "max_abs_flat_index": 2500,
+            "max_abs_index": [
+              0,
+              2500
+            ],
+            "mean_abs": 0.0001287069171667099,
+            "passed": false,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": -0.006812691688537598,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.006812691688537598,
+                "batch_value": 1.0172048807144165,
+                "c1_value": 1.024017572402954,
+                "flat_index": 2500,
+                "index": [
+                  0,
+                  2500
+                ],
+                "signed_diff": -0.006812691688537598
+              },
+              {
+                "abs_diff": 0.0043792724609375,
+                "batch_value": 3.7698965072631836,
+                "c1_value": 3.774275779724121,
+                "flat_index": 2300,
+                "index": [
+                  0,
+                  2300
+                ],
+                "signed_diff": -0.0043792724609375
+              },
+              {
+                "abs_diff": 0.0035370588302612305,
+                "batch_value": -0.768907904624939,
+                "c1_value": -0.7653708457946777,
+                "flat_index": 2494,
+                "index": [
+                  0,
+                  2494
+                ],
+                "signed_diff": -0.0035370588302612305
+              },
+              {
+                "abs_diff": 0.0035349130630493164,
+                "batch_value": 0.7132275104522705,
+                "c1_value": 0.7096925973892212,
+                "flat_index": 2422,
+                "index": [
+                  0,
+                  2422
+                ],
+                "signed_diff": 0.0035349130630493164
+              },
+              {
+                "abs_diff": 0.003415614366531372,
+                "batch_value": 0.44761067628860474,
+                "c1_value": 0.4510262906551361,
+                "flat_index": 2490,
+                "index": [
+                  0,
+                  2490
+                ],
+                "signed_diff": -0.003415614366531372
+              },
+              {
+                "abs_diff": 0.003343522548675537,
+                "batch_value": -0.8001459836959839,
+                "c1_value": -0.7968024611473083,
+                "flat_index": 2151,
+                "index": [
+                  0,
+                  2151
+                ],
+                "signed_diff": -0.003343522548675537
+              },
+              {
+                "abs_diff": 0.003080129623413086,
+                "batch_value": -0.9430946707725525,
+                "c1_value": -0.9400145411491394,
+                "flat_index": 2142,
+                "index": [
+                  0,
+                  2142
+                ],
+                "signed_diff": -0.003080129623413086
+              },
+              {
+                "abs_diff": 0.002145528793334961,
+                "batch_value": -3.921020746231079,
+                "c1_value": -3.923166275024414,
+                "flat_index": 1248,
+                "index": [
+                  0,
+                  1248
+                ],
+                "signed_diff": 0.002145528793334961
+              }
+            ]
+          },
+          "passed": false,
+          "row": 5
+        },
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -3.9817557334899902,
+            "bit_mismatch": 4096,
+            "c1_value_at_max_abs": -3.9736173152923584,
+            "elements_over_atol": 5,
+            "max_abs": 0.008138418197631836,
+            "max_abs_flat_index": 1248,
+            "max_abs_index": [
+              0,
+              1248
+            ],
+            "mean_abs": 0.0001863271463662386,
+            "passed": false,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": -0.008138418197631836,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.008138418197631836,
+                "batch_value": -3.9817557334899902,
+                "c1_value": -3.9736173152923584,
+                "flat_index": 1248,
+                "index": [
+                  0,
+                  1248
+                ],
+                "signed_diff": -0.008138418197631836
+              },
+              {
+                "abs_diff": 0.0074253082275390625,
+                "batch_value": -1.0520846843719482,
+                "c1_value": -1.0446593761444092,
+                "flat_index": 2403,
+                "index": [
+                  0,
+                  2403
+                ],
+                "signed_diff": -0.0074253082275390625
+              },
+              {
+                "abs_diff": 0.005257785320281982,
+                "batch_value": -0.7539358735084534,
+                "c1_value": -0.7486780881881714,
+                "flat_index": 2151,
+                "index": [
+                  0,
+                  2151
+                ],
+                "signed_diff": -0.005257785320281982
+              },
+              {
+                "abs_diff": 0.004666388034820557,
+                "batch_value": -0.9013974070549011,
+                "c1_value": -0.8967310190200806,
+                "flat_index": 2142,
+                "index": [
+                  0,
+                  2142
+                ],
+                "signed_diff": -0.004666388034820557
+              },
+              {
+                "abs_diff": 0.004159688949584961,
+                "batch_value": 3.8107569217681885,
+                "c1_value": 3.8149166107177734,
+                "flat_index": 2812,
+                "index": [
+                  0,
+                  2812
+                ],
+                "signed_diff": -0.004159688949584961
+              },
+              {
+                "abs_diff": 0.0037577152252197266,
+                "batch_value": 0.6707648634910583,
+                "c1_value": 0.6670071482658386,
+                "flat_index": 2483,
+                "index": [
+                  0,
+                  2483
+                ],
+                "signed_diff": 0.0037577152252197266
+              },
+              {
+                "abs_diff": 0.003464221954345703,
+                "batch_value": 1.6297576427459717,
+                "c1_value": 1.626293420791626,
+                "flat_index": 3836,
+                "index": [
+                  0,
+                  3836
+                ],
+                "signed_diff": 0.003464221954345703
+              },
+              {
+                "abs_diff": 0.003227412700653076,
+                "batch_value": 0.36828097701072693,
+                "c1_value": 0.36505356431007385,
+                "flat_index": 2057,
+                "index": [
+                  0,
+                  2057
+                ],
+                "signed_diff": 0.003227412700653076
+              }
+            ]
+          },
+          "passed": false,
+          "row": 6
+        },
+        {
+          "comparison_kind": "fp32",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -1.1660118103027344,
+            "bit_mismatch": 4095,
+            "c1_value_at_max_abs": -1.1588001251220703,
+            "elements_over_atol": 4,
+            "max_abs": 0.0072116851806640625,
+            "max_abs_flat_index": 2399,
+            "max_abs_index": [
+              0,
+              2399
+            ],
+            "mean_abs": 0.0001120130909839645,
+            "passed": false,
+            "shape": [
+              1,
+              4096
+            ],
+            "signed_diff_at_max_abs": -0.0072116851806640625,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0072116851806640625,
+                "batch_value": -1.1660118103027344,
+                "c1_value": -1.1588001251220703,
+                "flat_index": 2399,
+                "index": [
+                  0,
+                  2399
+                ],
+                "signed_diff": -0.0072116851806640625
+              },
+              {
+                "abs_diff": 0.006670951843261719,
+                "batch_value": 1.0821198225021362,
+                "c1_value": 1.088790774345398,
+                "flat_index": 2453,
+                "index": [
+                  0,
+                  2453
+                ],
+                "signed_diff": -0.006670951843261719
+              },
+              {
+                "abs_diff": 0.006616830825805664,
+                "batch_value": -1.2631384134292603,
+                "c1_value": -1.269755244255066,
+                "flat_index": 2428,
+                "index": [
+                  0,
+                  2428
+                ],
+                "signed_diff": 0.006616830825805664
+              },
+              {
+                "abs_diff": 0.006573915481567383,
+                "batch_value": -1.4364665746688843,
+                "c1_value": -1.4430404901504517,
+                "flat_index": 2351,
+                "index": [
+                  0,
+                  2351
+                ],
+                "signed_diff": 0.006573915481567383
+              },
+              {
+                "abs_diff": 0.0039730072021484375,
+                "batch_value": 3.7713069915771484,
+                "c1_value": 3.767333984375,
+                "flat_index": 2812,
+                "index": [
+                  0,
+                  2812
+                ],
+                "signed_diff": 0.0039730072021484375
+              },
+              {
+                "abs_diff": 0.003600597381591797,
+                "batch_value": 0.6075199842453003,
+                "c1_value": 0.6039193868637085,
+                "flat_index": 2441,
+                "index": [
+                  0,
+                  2441
+                ],
+                "signed_diff": 0.003600597381591797
+              },
+              {
+                "abs_diff": 0.003559976816177368,
+                "batch_value": 0.4524040222167969,
+                "c1_value": 0.4488440454006195,
+                "flat_index": 2436,
+                "index": [
+                  0,
+                  2436
+                ],
+                "signed_diff": 0.003559976816177368
+              },
+              {
+                "abs_diff": 0.0034008026123046875,
+                "batch_value": -4.119524002075195,
+                "c1_value": -4.1229248046875,
+                "flat_index": 1248,
+                "index": [
+                  0,
+                  1248
+                ],
+                "signed_diff": 0.0034008026123046875
+              }
+            ]
+          },
+          "passed": false,
+          "row": 7
+        }
+      ],
+      "section": "full",
+      "stage": "attn_context",
+      "step": 0
+    },
+    "layer7_full_attn_input_pre_qkv": {
+      "available": true,
+      "bit_mismatch_total": 11339,
+      "elements_over_atol_total": 12,
+      "failed_rows": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "layer": 7,
+      "max_abs": 0.015625,
+      "passed": false,
+      "row_count": 8,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ],
+      "rows": [
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 17.75,
+            "bit_mismatch": 1496,
+            "c1_value_at_max_abs": 17.765625,
+            "elements_over_atol": 1,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1269,
+            "max_abs_index": [
+              0,
+              1269
+            ],
+            "mean_abs": 0.00034552186843939126,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.015625,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.015625,
+                "batch_bits": 19568,
+                "batch_value": 17.75,
+                "c1_bits": 19569,
+                "c1_value": 17.765625,
+                "flat_index": 1269,
+                "index": [
+                  0,
+                  1269
+                ],
+                "signed_diff": -0.015625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 50338,
+                "batch_value": -4.6328125,
+                "c1_bits": 50337,
+                "c1_value": -4.62890625,
+                "flat_index": 1213,
+                "index": [
+                  0,
+                  1213
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 48626,
+                "batch_value": -1.486328125,
+                "c1_bits": 48623,
+                "c1_value": -1.4833984375,
+                "flat_index": 1509,
+                "index": [
+                  0,
+                  1509
+                ],
+                "signed_diff": -0.0029296875
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15410,
+                "batch_value": 1.048828125,
+                "c1_bits": 15412,
+                "c1_value": 1.05078125,
+                "flat_index": 19,
+                "index": [
+                  0,
+                  19
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15918,
+                "batch_value": 1.544921875,
+                "c1_bits": 15920,
+                "c1_value": 1.546875,
+                "flat_index": 114,
+                "index": [
+                  0,
+                  114
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15584,
+                "batch_value": 1.21875,
+                "c1_bits": 15582,
+                "c1_value": 1.216796875,
+                "flat_index": 181,
+                "index": [
+                  0,
+                  181
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 48680,
+                "batch_value": -1.5390625,
+                "c1_bits": 48678,
+                "c1_value": -1.537109375,
+                "flat_index": 206,
+                "index": [
+                  0,
+                  206
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16089,
+                "batch_value": 1.7119140625,
+                "c1_bits": 16091,
+                "c1_value": 1.7138671875,
+                "flat_index": 268,
+                "index": [
+                  0,
+                  268
+                ],
+                "signed_diff": -0.001953125
+              }
+            ]
+          },
+          "passed": false,
+          "row": 0
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -9.2265625,
+            "bit_mismatch": 1404,
+            "c1_value_at_max_abs": -9.234375,
+            "elements_over_atol": 1,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 859,
+            "max_abs_index": [
+              0,
+              859
+            ],
+            "mean_abs": 0.0003081373288296163,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.0078125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 51357,
+                "batch_value": -9.2265625,
+                "c1_bits": 51358,
+                "c1_value": -9.234375,
+                "flat_index": 859,
+                "index": [
+                  0,
+                  859
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 18082,
+                "batch_value": 6.6328125,
+                "c1_bits": 18081,
+                "c1_value": 6.62890625,
+                "flat_index": 100,
+                "index": [
+                  0,
+                  100
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17415,
+                "batch_value": 4.02734375,
+                "c1_bits": 17414,
+                "c1_value": 4.0234375,
+                "flat_index": 750,
+                "index": [
+                  0,
+                  750
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17571,
+                "batch_value": 4.63671875,
+                "c1_bits": 17570,
+                "c1_value": 4.6328125,
+                "flat_index": 952,
+                "index": [
+                  0,
+                  952
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 50316,
+                "batch_value": -4.546875,
+                "c1_bits": 50317,
+                "c1_value": -4.55078125,
+                "flat_index": 1604,
+                "index": [
+                  0,
+                  1604
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17294,
+                "batch_value": 3.77734375,
+                "c1_bits": 17292,
+                "c1_value": 3.7734375,
+                "flat_index": 1658,
+                "index": [
+                  0,
+                  1658
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 48128,
+                "batch_value": -1.0,
+                "c1_bits": 48131,
+                "c1_value": -1.0029296875,
+                "flat_index": 222,
+                "index": [
+                  0,
+                  222
+                ],
+                "signed_diff": 0.0029296875
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49646,
+                "batch_value": -2.96484375,
+                "c1_bits": 49645,
+                "c1_value": -2.962890625,
+                "flat_index": 172,
+                "index": [
+                  0,
+                  172
+                ],
+                "signed_diff": -0.001953125
+              }
+            ]
+          },
+          "passed": false,
+          "row": 1
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 13.6953125,
+            "bit_mismatch": 1341,
+            "c1_value_at_max_abs": 13.6796875,
+            "elements_over_atol": 1,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1538,
+            "max_abs_index": [
+              0,
+              1538
+            ],
+            "mean_abs": 0.0002874234924092889,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.015625,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.015625,
+                "batch_bits": 19161,
+                "batch_value": 13.6953125,
+                "c1_bits": 19159,
+                "c1_value": 13.6796875,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": 0.015625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 49673,
+                "batch_value": -3.017578125,
+                "c1_bits": 49671,
+                "c1_value": -3.013671875,
+                "flat_index": 172,
+                "index": [
+                  0,
+                  172
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17484,
+                "batch_value": 4.296875,
+                "c1_bits": 17485,
+                "c1_value": 4.30078125,
+                "flat_index": 234,
+                "index": [
+                  0,
+                  234
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 49531,
+                "batch_value": -2.740234375,
+                "c1_bits": 49533,
+                "c1_value": -2.744140625,
+                "flat_index": 831,
+                "index": [
+                  0,
+                  831
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 50544,
+                "batch_value": -5.4375,
+                "c1_bits": 50543,
+                "c1_value": -5.43359375,
+                "flat_index": 1823,
+                "index": [
+                  0,
+                  1823
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 48610,
+                "batch_value": -1.470703125,
+                "c1_bits": 48607,
+                "c1_value": -1.4677734375,
+                "flat_index": 1509,
+                "index": [
+                  0,
+                  1509
+                ],
+                "signed_diff": -0.0029296875
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15638,
+                "batch_value": 1.271484375,
+                "c1_bits": 15636,
+                "c1_value": 1.26953125,
+                "flat_index": 99,
+                "index": [
+                  0,
+                  99
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15797,
+                "batch_value": 1.4267578125,
+                "c1_bits": 15799,
+                "c1_value": 1.4287109375,
+                "flat_index": 162,
+                "index": [
+                  0,
+                  162
+                ],
+                "signed_diff": -0.001953125
+              }
+            ]
+          },
+          "passed": false,
+          "row": 2
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -15.3046875,
+            "bit_mismatch": 1365,
+            "c1_value_at_max_abs": -15.3125,
+            "elements_over_atol": 3,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 175,
+            "max_abs_index": [
+              0,
+              175
+            ],
+            "mean_abs": 0.00030696578323841095,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.0078125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 52135,
+                "batch_value": -15.3046875,
+                "c1_bits": 52136,
+                "c1_value": -15.3125,
+                "flat_index": 175,
+                "index": [
+                  0,
+                  175
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 51351,
+                "batch_value": -9.1796875,
+                "c1_bits": 51352,
+                "c1_value": -9.1875,
+                "flat_index": 859,
+                "index": [
+                  0,
+                  859
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 19150,
+                "batch_value": 13.609375,
+                "c1_bits": 19149,
+                "c1_value": 13.6015625,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17484,
+                "batch_value": 4.296875,
+                "c1_bits": 17483,
+                "c1_value": 4.29296875,
+                "flat_index": 234,
+                "index": [
+                  0,
+                  234
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17783,
+                "batch_value": 5.46484375,
+                "c1_bits": 17784,
+                "c1_value": 5.46875,
+                "flat_index": 1197,
+                "index": [
+                  0,
+                  1197
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 49688,
+                "batch_value": -3.046875,
+                "c1_bits": 49686,
+                "c1_value": -3.04296875,
+                "flat_index": 1617,
+                "index": [
+                  0,
+                  1617
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 15692,
+                "batch_value": 1.32421875,
+                "c1_bits": 15695,
+                "c1_value": 1.3271484375,
+                "flat_index": 131,
+                "index": [
+                  0,
+                  131
+                ],
+                "signed_diff": -0.0029296875
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 49046,
+                "batch_value": -1.896484375,
+                "c1_bits": 49043,
+                "c1_value": -1.8935546875,
+                "flat_index": 1573,
+                "index": [
+                  0,
+                  1573
+                ],
+                "signed_diff": -0.0029296875
+              }
+            ]
+          },
+          "passed": false,
+          "row": 3
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -15.4609375,
+            "bit_mismatch": 1493,
+            "c1_value_at_max_abs": -15.453125,
+            "elements_over_atol": 2,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 175,
+            "max_abs_index": [
+              0,
+              175
+            ],
+            "mean_abs": 0.00035146839218214154,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": -0.0078125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 52155,
+                "batch_value": -15.4609375,
+                "c1_bits": 52154,
+                "c1_value": -15.453125,
+                "flat_index": 175,
+                "index": [
+                  0,
+                  175
+                ],
+                "signed_diff": -0.0078125
+              },
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 51354,
+                "batch_value": -9.203125,
+                "c1_bits": 51355,
+                "c1_value": -9.2109375,
+                "flat_index": 859,
+                "index": [
+                  0,
+                  859
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 50039,
+                "batch_value": -3.732421875,
+                "c1_bits": 50037,
+                "c1_value": -3.728515625,
+                "flat_index": 457,
+                "index": [
+                  0,
+                  457
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17351,
+                "batch_value": 3.888671875,
+                "c1_bits": 17349,
+                "c1_value": 3.884765625,
+                "flat_index": 1658,
+                "index": [
+                  0,
+                  1658
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 15664,
+                "batch_value": 1.296875,
+                "c1_bits": 15661,
+                "c1_value": 1.2939453125,
+                "flat_index": 131,
+                "index": [
+                  0,
+                  131
+                ],
+                "signed_diff": 0.0029296875
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 48491,
+                "batch_value": -1.3544921875,
+                "c1_bits": 48494,
+                "c1_value": -1.357421875,
+                "flat_index": 1906,
+                "index": [
+                  0,
+                  1906
+                ],
+                "signed_diff": 0.0029296875
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15925,
+                "batch_value": 1.5517578125,
+                "c1_bits": 15927,
+                "c1_value": 1.5537109375,
+                "flat_index": 114,
+                "index": [
+                  0,
+                  114
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 48349,
+                "batch_value": -1.2158203125,
+                "c1_bits": 48351,
+                "c1_value": -1.2177734375,
+                "flat_index": 198,
+                "index": [
+                  0,
+                  198
+                ],
+                "signed_diff": 0.001953125
+              }
+            ]
+          },
+          "passed": false,
+          "row": 4
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": -15.3828125,
+            "bit_mismatch": 1368,
+            "c1_value_at_max_abs": -15.390625,
+            "elements_over_atol": 1,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 175,
+            "max_abs_index": [
+              0,
+              175
+            ],
+            "mean_abs": 0.00028652092441916466,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.0078125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 52145,
+                "batch_value": -15.3828125,
+                "c1_bits": 52146,
+                "c1_value": -15.390625,
+                "flat_index": 175,
+                "index": [
+                  0,
+                  175
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 50514,
+                "batch_value": -5.3203125,
+                "c1_bits": 50513,
+                "c1_value": -5.31640625,
+                "flat_index": 1823,
+                "index": [
+                  0,
+                  1823
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 15966,
+                "batch_value": 1.591796875,
+                "c1_bits": 15963,
+                "c1_value": 1.5888671875,
+                "flat_index": 310,
+                "index": [
+                  0,
+                  310
+                ],
+                "signed_diff": 0.0029296875
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15544,
+                "batch_value": 1.1796875,
+                "c1_bits": 15546,
+                "c1_value": 1.181640625,
+                "flat_index": 40,
+                "index": [
+                  0,
+                  40
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15649,
+                "batch_value": 1.2822265625,
+                "c1_bits": 15647,
+                "c1_value": 1.2802734375,
+                "flat_index": 99,
+                "index": [
+                  0,
+                  99
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 49686,
+                "batch_value": -3.04296875,
+                "c1_bits": 49685,
+                "c1_value": -3.041015625,
+                "flat_index": 172,
+                "index": [
+                  0,
+                  172
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16921,
+                "batch_value": 3.048828125,
+                "c1_bits": 16922,
+                "c1_value": 3.05078125,
+                "flat_index": 269,
+                "index": [
+                  0,
+                  269
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16020,
+                "batch_value": 1.64453125,
+                "c1_bits": 16018,
+                "c1_value": 1.642578125,
+                "flat_index": 292,
+                "index": [
+                  0,
+                  292
+                ],
+                "signed_diff": 0.001953125
+              }
+            ]
+          },
+          "passed": false,
+          "row": 5
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 9.7890625,
+            "bit_mismatch": 1478,
+            "c1_value_at_max_abs": 9.78125,
+            "elements_over_atol": 2,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1296,
+            "max_abs_index": [
+              0,
+              1296
+            ],
+            "mean_abs": 0.000340144382789731,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.0078125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 18661,
+                "batch_value": 9.7890625,
+                "c1_bits": 18660,
+                "c1_value": 9.78125,
+                "flat_index": 1296,
+                "index": [
+                  0,
+                  1296
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 19158,
+                "batch_value": 13.671875,
+                "c1_bits": 19157,
+                "c1_value": 13.6640625,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 49977,
+                "batch_value": -3.611328125,
+                "c1_bits": 49975,
+                "c1_value": -3.607421875,
+                "flat_index": 457,
+                "index": [
+                  0,
+                  457
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17318,
+                "batch_value": 3.82421875,
+                "c1_bits": 17316,
+                "c1_value": 3.8203125,
+                "flat_index": 1658,
+                "index": [
+                  0,
+                  1658
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15539,
+                "batch_value": 1.1748046875,
+                "c1_bits": 15537,
+                "c1_value": 1.1728515625,
+                "flat_index": 40,
+                "index": [
+                  0,
+                  40
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16130,
+                "batch_value": 1.751953125,
+                "c1_bits": 16128,
+                "c1_value": 1.75,
+                "flat_index": 268,
+                "index": [
+                  0,
+                  268
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 16943,
+                "batch_value": 3.091796875,
+                "c1_bits": 16942,
+                "c1_value": 3.08984375,
+                "flat_index": 269,
+                "index": [
+                  0,
+                  269
+                ],
+                "signed_diff": 0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15470,
+                "batch_value": 1.107421875,
+                "c1_bits": 15468,
+                "c1_value": 1.10546875,
+                "flat_index": 275,
+                "index": [
+                  0,
+                  275
+                ],
+                "signed_diff": 0.001953125
+              }
+            ]
+          },
+          "passed": false,
+          "row": 6
+        },
+        {
+          "comparison_kind": "fp16_bits",
+          "hidden_comparison": {
+            "batch_value_at_max_abs": 13.5703125,
+            "bit_mismatch": 1394,
+            "c1_value_at_max_abs": 13.5625,
+            "elements_over_atol": 1,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1538,
+            "max_abs_index": [
+              0,
+              1538
+            ],
+            "mean_abs": 0.00031866267090663314,
+            "passed": false,
+            "shape": [
+              1,
+              2048
+            ],
+            "signed_diff_at_max_abs": 0.0078125,
+            "top_abs_diffs": [
+              {
+                "abs_diff": 0.0078125,
+                "batch_bits": 19145,
+                "batch_value": 13.5703125,
+                "c1_bits": 19144,
+                "c1_value": 13.5625,
+                "flat_index": 1538,
+                "index": [
+                  0,
+                  1538
+                ],
+                "signed_diff": 0.0078125
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17499,
+                "batch_value": 4.35546875,
+                "c1_bits": 17498,
+                "c1_value": 4.3515625,
+                "flat_index": 680,
+                "index": [
+                  0,
+                  680
+                ],
+                "signed_diff": 0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17417,
+                "batch_value": 4.03515625,
+                "c1_bits": 17418,
+                "c1_value": 4.0390625,
+                "flat_index": 750,
+                "index": [
+                  0,
+                  750
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 17832,
+                "batch_value": 5.65625,
+                "c1_bits": 17833,
+                "c1_value": 5.66015625,
+                "flat_index": 1197,
+                "index": [
+                  0,
+                  1197
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.00390625,
+                "batch_bits": 49636,
+                "batch_value": -2.9453125,
+                "c1_bits": 49634,
+                "c1_value": -2.94140625,
+                "flat_index": 1307,
+                "index": [
+                  0,
+                  1307
+                ],
+                "signed_diff": -0.00390625
+              },
+              {
+                "abs_diff": 0.0029296875,
+                "batch_bits": 49033,
+                "batch_value": -1.8837890625,
+                "c1_bits": 49036,
+                "c1_value": -1.88671875,
+                "flat_index": 1904,
+                "index": [
+                  0,
+                  1904
+                ],
+                "signed_diff": 0.0029296875
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 15361,
+                "batch_value": 1.0009765625,
+                "c1_bits": 15363,
+                "c1_value": 1.0029296875,
+                "flat_index": 19,
+                "index": [
+                  0,
+                  19
+                ],
+                "signed_diff": -0.001953125
+              },
+              {
+                "abs_diff": 0.001953125,
+                "batch_bits": 48546,
+                "batch_value": -1.408203125,
+                "c1_bits": 48544,
+                "c1_value": -1.40625,
+                "flat_index": 164,
+                "index": [
+                  0,
+                  164
+                ],
+                "signed_diff": -0.001953125
+              }
+            ]
+          },
+          "passed": false,
+          "row": 7
+        }
+      ],
+      "section": "full",
+      "stage": "attn_input_pre_qkv",
+      "step": 0
+    }
+  }
+}

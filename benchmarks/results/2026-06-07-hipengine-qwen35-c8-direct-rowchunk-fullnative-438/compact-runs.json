@@ -1,0 +1,200 @@
+{
+  "conclusion": "Direct rowchunk2-vs-fullnative c8 stage deltas are now quantified in a compact artifact. The rowchunk/fullnative split is real at the target stages, not just inferred through c1 proxy summaries.",
+  "created_at": "2026-06-07T07:07:33.380967+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "direct_delta": "The direct in-memory comparator confirms the proxy result without relying on c1 as an intermediary: fullnative and rowchunk2 differ at layer3 full-attention output, layer4 linear attn_input, and layer7 pre-QKV/context in the same minimal decode0 window.",
+    "next_target": "Use this direct comparator path for future narrow deltas; do not add raw tensor dumps. The fix target remains grouped full-attention numerical/composition vs rowchunk semantics."
+  },
+  "iteration": 438,
+  "kind": "c8_direct_rowchunk2_vs_fullnative_stage_delta",
+  "payload_summaries": {
+    "fullnative": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "token_passed": true
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false,
+        "trace_decode_window": [
+          0,
+          1
+        ]
+      }
+    },
+    "rowchunk2": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "token_passed": true
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "trace_decode_window": [
+          0,
+          1
+        ]
+      }
+    }
+  },
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused direct rowchunk2-vs-fullnative stage comparator closes the iter431 tooling gap with compact in-memory deltas and no raw tensor dump; no performance claim.",
+    "passed": true
+  },
+  "result": {
+    "direct_stage_elements_over_atol_total": {
+      "layer3_full_output": 0,
+      "layer4_linear_attn_input": 1,
+      "layer7_full_attn_context": 32,
+      "layer7_full_attn_input_pre_qkv": 12
+    },
+    "direct_stage_failed_rows": {
+      "layer3_full_output": [],
+      "layer4_linear_attn_input": [
+        0
+      ],
+      "layer7_full_attn_context": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "layer7_full_attn_input_pre_qkv": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "direct_stage_max_abs": {
+      "layer3_full_output": 0.0001220703125,
+      "layer4_linear_attn_input": 0.0078125,
+      "layer7_full_attn_context": 0.012756586074829102,
+      "layer7_full_attn_input_pre_qkv": 0.015625
+    },
+    "direct_stage_passed": {
+      "layer3_full_output": true,
+      "layer4_linear_attn_input": false,
+      "layer7_full_attn_context": false,
+      "layer7_full_attn_input_pre_qkv": false
+    },
+    "fullnative_status": "mismatch_found",
+    "rowchunk2_status": "eq_ok"
+  },
+  "stage_deltas": {
+    "layer3_full_output": {
+      "available": true,
+      "bit_mismatch_total": 4303,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "layer": 3,
+      "max_abs": 0.0001220703125,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ],
+      "section": "full",
+      "stage": "output"
+    },
+    "layer4_linear_attn_input": {
+      "available": true,
+      "bit_mismatch_total": 4142,
+      "elements_over_atol_total": 1,
+      "failed_rows": [
+        0
+      ],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "layer": 4,
+      "max_abs": 0.0078125,
+      "passed": false,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ],
+      "section": "linear",
+      "stage": "attn_input"
+    },
+    "layer7_full_attn_context": {
+      "available": true,
+      "bit_mismatch_total": 32766,
+      "elements_over_atol_total": 32,
+      "failed_rows": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "layer": 7,
+      "max_abs": 0.012756586074829102,
+      "passed": false,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ],
+      "section": "full",
+      "stage": "attn_context"
+    },
+    "layer7_full_attn_input_pre_qkv": {
+      "available": true,
+      "bit_mismatch_total": 11339,
+      "elements_over_atol_total": 12,
+      "failed_rows": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "layer": 7,
+      "max_abs": 0.015625,
+      "passed": false,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ],
+      "section": "full",
+      "stage": "attn_input_pre_qkv"
+    }
+  }
+}
