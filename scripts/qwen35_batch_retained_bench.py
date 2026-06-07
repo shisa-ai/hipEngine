@@ -4180,7 +4180,7 @@ def _resolved_batch_decode_full_attn_row_chunk_layers(args: argparse.Namespace) 
     if int(batch_size) == 4:
         return "3,7,11,15,19,23"
     if int(batch_size) == 8:
-        return "3,7,11,15,19,23,35"
+        return "3,7,11,15,19,23"
     return ""
 
 
