@@ -1353,6 +1353,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-overwrite-policy-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_partial_output_handoff.command_record.partial_output_overwrite_policy "
+            "for compact supervised oracle-rerun overwrite-policy polling. Overrides readiness/queue "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-overwrite-policy-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of oracle_partial_output_handoff.command_record."
+            "partial_output_overwrite_policy for supervised oracle-rerun overwrite-policy "
+            "drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-status-only",
         action="store_true",
         help=(
@@ -2779,6 +2797,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff.command_record.partial_output_path"
             and compact_output_modes.get("oracle_partial_output_path_sha_only")
             == "oracle_partial_output_handoff.command_record.partial_output_path.sha256"
+            and compact_output_modes.get("oracle_partial_output_overwrite_policy_only")
+            == "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy"
+            and compact_output_modes.get("oracle_partial_output_overwrite_policy_sha_only")
+            == "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy.sha256"
             and compact_output_modes.get("oracle_partial_output_status_only")
             == "oracle_partial_output_handoff.command_record.partial_output_status"
             and compact_output_modes.get("oracle_partial_output_status_sha_only")
@@ -5515,6 +5537,12 @@ def _handoff_summary(
             "oracle_partial_output_path_sha_only": (
                 "oracle_partial_output_handoff.command_record.partial_output_path.sha256"
             ),
+            "oracle_partial_output_overwrite_policy_only": (
+                "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy"
+            ),
+            "oracle_partial_output_overwrite_policy_sha_only": (
+                "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy.sha256"
+            ),
             "oracle_partial_output_status_only": (
                 "oracle_partial_output_handoff.command_record.partial_output_status"
             ),
@@ -6571,6 +6599,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             status["oracle_partial_output_handoff"]
             .get("command_record", {})
             .get("partial_output_path")
+        )
+    elif args.oracle_partial_output_overwrite_policy_sha_only:
+        overwrite_policy = (
+            status["oracle_partial_output_handoff"]
+            .get("command_record", {})
+            .get("partial_output_overwrite_policy")
+        )
+        result = _stable_json_sha256(overwrite_policy)
+    elif args.oracle_partial_output_overwrite_policy_only:
+        result = (
+            status["oracle_partial_output_handoff"]
+            .get("command_record", {})
+            .get("partial_output_overwrite_policy")
         )
     elif args.oracle_partial_output_status_sha_only:
         partial_status = (

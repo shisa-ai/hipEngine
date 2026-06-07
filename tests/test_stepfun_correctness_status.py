@@ -1729,6 +1729,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_path_sha_only": (
             "oracle_partial_output_handoff.command_record.partial_output_path.sha256"
         ),
+        "oracle_partial_output_overwrite_policy_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy"
+        ),
+        "oracle_partial_output_overwrite_policy_sha_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy.sha256"
+        ),
         "oracle_partial_output_status_only": (
             "oracle_partial_output_handoff.command_record.partial_output_status"
         ),
@@ -6441,6 +6447,71 @@ def test_stepfun_correctness_status_oracle_partial_output_path_outputs(
     )
 
 
+def test_stepfun_correctness_status_oracle_partial_output_overwrite_policy_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    policy_output = tmp_path / "oracle-partial-output-overwrite-policy.json"
+    sha_output = tmp_path / "oracle-partial-output-overwrite-policy-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    overwrite_policy = status["oracle_partial_output_handoff"]["command_record"][
+        "partial_output_overwrite_policy"
+    ]
+    calls = [
+        (
+            policy_output,
+            "--oracle-partial-output-overwrite-policy-only",
+            overwrite_policy,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-overwrite-policy-sha-only",
+            _stable_json_sha256(overwrite_policy),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert overwrite_policy == "overwrite_on_execute_or_timeout"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_overwrite_policy_only"] == (
+        "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy"
+    )
+    assert compact_modes["oracle_partial_output_overwrite_policy_sha_only"] == (
+        "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy.sha256"
+    )
+
+
 def test_stepfun_correctness_status_oracle_partial_output_status_outputs(
     capsys,
     tmp_path: Path,
@@ -6891,6 +6962,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_path_sha_only": (
             "oracle_partial_output_handoff.command_record.partial_output_path.sha256"
+        ),
+        "oracle_partial_output_overwrite_policy_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy"
+        ),
+        "oracle_partial_output_overwrite_policy_sha_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_overwrite_policy.sha256"
         ),
         "oracle_partial_output_status_only": (
             "oracle_partial_output_handoff.command_record.partial_output_status"
