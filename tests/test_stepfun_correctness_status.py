@@ -1795,6 +1795,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_mirror_command_kinds_sha_only": (
             "oracle_partial_output_handoff.mirror_records[].recommended_command_kind.sha256"
         ),
+        "oracle_partial_output_mirror_prelaunch_write_flags_only": (
+            "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch"
+        ),
+        "oracle_partial_output_mirror_prelaunch_write_flags_sha_only": (
+            "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch.sha256"
+        ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
         ),
@@ -7362,6 +7368,74 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_command_kinds_o
     )
 
 
+def test_stepfun_correctness_status_oracle_partial_output_mirror_prelaunch_write_flags_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    prelaunch_flags_output = (
+        tmp_path / "oracle-partial-output-mirror-prelaunch-write-flags.json"
+    )
+    sha_output = tmp_path / "oracle-partial-output-mirror-prelaunch-write-flags-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    mirror_prelaunch_write_flags = [
+        record["writes_partial_output_before_launch"]
+        for record in status["oracle_partial_output_handoff"]["mirror_records"]
+    ]
+    calls = [
+        (
+            prelaunch_flags_output,
+            "--oracle-partial-output-mirror-prelaunch-write-flags-only",
+            mirror_prelaunch_write_flags,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-mirror-prelaunch-write-flags-sha-only",
+            _stable_json_sha256(mirror_prelaunch_write_flags),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert mirror_prelaunch_write_flags == [True, True, True]
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_mirror_prelaunch_write_flags_only"] == (
+        "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch"
+    )
+    assert compact_modes["oracle_partial_output_mirror_prelaunch_write_flags_sha_only"] == (
+        "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch.sha256"
+    )
+
+
 def test_stepfun_correctness_status_oracle_partial_output_all_contracts_safe_outputs(
     capsys,
     tmp_path: Path,
@@ -8702,6 +8776,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_mirror_command_kinds_sha_only": (
             "oracle_partial_output_handoff.mirror_records[].recommended_command_kind.sha256"
+        ),
+        "oracle_partial_output_mirror_prelaunch_write_flags_only": (
+            "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch"
+        ),
+        "oracle_partial_output_mirror_prelaunch_write_flags_sha_only": (
+            "oracle_partial_output_handoff.mirror_records[].writes_partial_output_before_launch.sha256"
         ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
