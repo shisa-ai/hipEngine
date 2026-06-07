@@ -67402,3 +67402,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: layer3 is required in the c4 rowchunk2 selected layer set. Combined with iter469 requiring layer15 and iter474 green auto default, the minimal tested c4 correctness set is `3,15`; do not narrow c4 auto to layer15-only.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop3-rejected-475/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter476 current c2/c4/c8 default equality matrix
+- No runtime/source code changed. Refreshed the current no-flag c2/c4/c8 512/128 retained-bench equality matrix on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX after c4 auto narrowed to `3,15` and c4 drop-layer3 was rejected.
+- Result: generated-token equality vs independent c1 is green for all current defaults: c2 `prefix_lengths=[137,137]`, native c-aware full attention, rowchunk layers `""`; c4 `prefix_lengths=[137,137,137,137]`, rowchunk2 layers `3,15`; c8 `prefix_lengths=[137,137,137,137,137,137,137,137]`, rowchunk2 layers `3,7,11,15,19,23`. All first mismatch indices are `null` and mismatch counts are `0`.
+- Status nuance: retained-bench top-level status remains `blocked` because retained performance/profiler/baseline requirements are not all satisfied; this is not a token-equality failure, and no performance/scaling claim is made.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX (`attn_batch_vs_numpy_max_abs` c2 `2.235e-08`, c8 `5.960e-08`).
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-current-c248-defaults-476/summary.json` and `compact-runs.json`. Continue with c8/full-attention retained blockers only while preserving this current equality matrix.
