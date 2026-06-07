@@ -918,6 +918,30 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-status-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_status for compact current oracle-attempt status polling. "
+            "Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-blocker-kind-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_blocker_kind for compact oracle blocker routing. "
+            "Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-blocker-kind-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of oracle_blocker_kind for compact oracle blocker drift polling. "
+            "Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-handoff-only",
         action="store_true",
         help=(
@@ -2080,6 +2104,9 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256"
             and compact_output_modes.get("oracle_progress_only") == "oracle_progress"
             and compact_output_modes.get("oracle_progress_sha_only") == "oracle_progress_sha256"
+            and compact_output_modes.get("oracle_status_only") == "oracle_status"
+            and compact_output_modes.get("oracle_blocker_kind_only") == "oracle_blocker_kind"
+            and compact_output_modes.get("oracle_blocker_kind_sha_only") == "oracle_blocker_kind.sha256"
             and compact_output_modes.get("oracle_partial_output_handoff_only")
             == "oracle_partial_output_handoff"
             and compact_output_modes.get("oracle_partial_output_handoff_sha_only")
@@ -4833,6 +4860,9 @@ def _handoff_summary(
             ),
             "oracle_progress_only": "oracle_progress",
             "oracle_progress_sha_only": "oracle_progress_sha256",
+            "oracle_status_only": "oracle_status",
+            "oracle_blocker_kind_only": "oracle_blocker_kind",
+            "oracle_blocker_kind_sha_only": "oracle_blocker_kind.sha256",
             "oracle_helper_long_timeout_command_only": (
                 "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
             ),
@@ -5435,6 +5465,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["oracle_progress_sha256"]
     elif args.oracle_progress_only:
         result = status["oracle_progress"]
+    elif args.oracle_status_only:
+        result = status["oracle_status"]
+    elif args.oracle_blocker_kind_sha_only:
+        result = _stable_json_sha256(status["oracle_blocker_kind"])
+    elif args.oracle_blocker_kind_only:
+        result = status["oracle_blocker_kind"]
     elif args.oracle_partial_output_handoff_sha_only:
         result = status["oracle_partial_output_handoff_sha256"]
     elif args.oracle_partial_output_handoff_only:

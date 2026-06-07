@@ -1838,6 +1838,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ),
         "oracle_progress_only": "oracle_progress",
         "oracle_progress_sha_only": "oracle_progress_sha256",
+        "oracle_status_only": "oracle_status",
+        "oracle_blocker_kind_only": "oracle_blocker_kind",
+        "oracle_blocker_kind_sha_only": "oracle_blocker_kind.sha256",
         "oracle_helper_long_timeout_command_only": (
             "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
         ),
@@ -6190,6 +6193,9 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_progress_only": "oracle_progress",
         "oracle_progress_sha_only": "oracle_progress_sha256",
+        "oracle_status_only": "oracle_status",
+        "oracle_blocker_kind_only": "oracle_blocker_kind",
+        "oracle_blocker_kind_sha_only": "oracle_blocker_kind.sha256",
         "oracle_helper_long_timeout_command_only": (
             "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
         ),
@@ -7338,6 +7344,66 @@ def test_stepfun_correctness_status_oracle_progress_outputs(
     assert sha_payload == status["oracle_progress_sha256"]
     assert sha_payload == _stable_json_sha256(status["oracle_progress"])
 
+
+
+def test_stepfun_correctness_status_oracle_status_and_blocker_kind_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "oracle-status.json"
+    blocker_output = tmp_path / "oracle-blocker-kind.json"
+    blocker_sha_output = tmp_path / "oracle-blocker-kind-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    calls = [
+        (status_output, "--oracle-status-only", status["oracle_status"]),
+        (blocker_output, "--oracle-blocker-kind-only", status["oracle_blocker_kind"]),
+        (
+            blocker_sha_output,
+            "--oracle-blocker-kind-sha-only",
+            _stable_json_sha256(status["oracle_blocker_kind"]),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--blocker-work-queue-only",
+                "--readiness-summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert status["oracle_status"] == "executed"
+    assert status["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_status_only"] == "oracle_status"
+    assert compact_modes["oracle_blocker_kind_only"] == "oracle_blocker_kind"
+    assert compact_modes["oracle_blocker_kind_sha_only"] == "oracle_blocker_kind.sha256"
 
 
 def test_stepfun_correctness_status_oracle_helper_long_timeout_command_only(

@@ -880,8 +880,11 @@ reporting.
   the CPU/no-GPU timeout artifact remains the canonical machine-readable oracle
   blocker for now. The consolidated correctness-status artifact surfaces the oracle version,
   elapsed time, stdout/stderr lengths, `oracle_progress` fields, and an `oracle_progress_sha256`
-  digest; compact `--oracle-progress-only` / `--oracle-progress-sha-only` outputs expose that
-  current-attempt payload/digest directly for oracle blocker polling. It also surfaces an `oracle_gap_report`
+  digest; compact `--oracle-progress-only` / `--oracle-progress-sha-only`,
+  `--oracle-status-only`, and `--oracle-blocker-kind-only` /
+  `--oracle-blocker-kind-sha-only` outputs expose the current-attempt
+  payload/digest plus the scalar status and blocker kind directly for oracle
+  blocker polling. It also surfaces an `oracle_gap_report`
   that separates recorded deterministic-target prerequisites from missing run/match evidence
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
   text ` |`, top-5 expected tokens, current timeout 900 s, no comparable
@@ -1055,7 +1058,7 @@ reporting.
   `--first-blocker-recommended-command-only` /
   `--first-blocker-recommended-command-sha-only` outputs expose the rerun
   command/digests directly. Status integrity also verifies the oracle progress
-  digest and oracle compact output-mode mappings, including the progress routes.
+  digest and oracle compact output-mode mappings, including the progress/status/blocker-kind routes.
   The blocker queue also records a compact
   `blocker_recommended_commands` list plus SHA so automation can inspect both
   the front oracle rerun and the queued KV resource refresh without parsing full
