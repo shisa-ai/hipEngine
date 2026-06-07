@@ -1807,6 +1807,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_mirror_status_count_sha_only": (
             "len(oracle_partial_output_handoff.mirror_records[].partial_output_status).sha256"
         ),
+        "oracle_partial_output_mirror_unique_status_count_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].partial_output_status))"
+        ),
+        "oracle_partial_output_mirror_unique_status_count_sha_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].partial_output_status)).sha256"
+        ),
         "oracle_partial_output_mirror_paths_only": (
             "oracle_partial_output_handoff.mirror_records[].partial_output_path"
         ),
@@ -7435,18 +7441,20 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_status_count_ou
     resource = tmp_path / "resource.json"
     count_output = tmp_path / "oracle-partial-output-mirror-status-count.json"
     sha_output = tmp_path / "oracle-partial-output-mirror-status-count-sha.json"
+    unique_count_output = tmp_path / "oracle-partial-output-mirror-unique-status-count.json"
+    unique_count_sha_output = tmp_path / "oracle-partial-output-mirror-unique-status-count-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
     _write_docs(docs)
 
     status = build_status(prompt, oracle, docs, resource_artifact=resource)
-    mirror_status_count = len(
-        [
-            record.get("partial_output_status")
-            for record in status["oracle_partial_output_handoff"]["mirror_records"]
-        ]
-    )
+    mirror_statuses = [
+        record.get("partial_output_status")
+        for record in status["oracle_partial_output_handoff"]["mirror_records"]
+    ]
+    mirror_status_count = len(mirror_statuses)
+    mirror_unique_status_count = len(set(mirror_statuses))
     calls = [
         (
             count_output,
@@ -7457,6 +7465,16 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_status_count_ou
             sha_output,
             "--oracle-partial-output-mirror-status-count-sha-only",
             _stable_json_sha256(mirror_status_count),
+        ),
+        (
+            unique_count_output,
+            "--oracle-partial-output-mirror-unique-status-count-only",
+            mirror_unique_status_count,
+        ),
+        (
+            unique_count_sha_output,
+            "--oracle-partial-output-mirror-unique-status-count-sha-only",
+            _stable_json_sha256(mirror_unique_status_count),
         ),
     ]
     for output, mode, expected in calls:
@@ -7484,12 +7502,19 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_status_count_ou
     assert captured.out == ""
     assert captured.err == ""
     assert mirror_status_count == 3
+    assert mirror_unique_status_count == 1
     compact_modes = status["handoff_summary"]["compact_output_modes"]
     assert compact_modes["oracle_partial_output_mirror_status_count_only"] == (
         "len(oracle_partial_output_handoff.mirror_records[].partial_output_status)"
     )
     assert compact_modes["oracle_partial_output_mirror_status_count_sha_only"] == (
         "len(oracle_partial_output_handoff.mirror_records[].partial_output_status).sha256"
+    )
+    assert compact_modes["oracle_partial_output_mirror_unique_status_count_only"] == (
+        "len(unique(oracle_partial_output_handoff.mirror_records[].partial_output_status))"
+    )
+    assert compact_modes["oracle_partial_output_mirror_unique_status_count_sha_only"] == (
+        "len(unique(oracle_partial_output_handoff.mirror_records[].partial_output_status)).sha256"
     )
 
 
@@ -9958,6 +9983,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_mirror_status_count_sha_only": (
             "len(oracle_partial_output_handoff.mirror_records[].partial_output_status).sha256"
+        ),
+        "oracle_partial_output_mirror_unique_status_count_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].partial_output_status))"
+        ),
+        "oracle_partial_output_mirror_unique_status_count_sha_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].partial_output_status)).sha256"
         ),
         "oracle_partial_output_mirror_paths_only": (
             "oracle_partial_output_handoff.mirror_records[].partial_output_path"
