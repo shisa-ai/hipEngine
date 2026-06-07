@@ -1108,6 +1108,8 @@ reporting.
   the schema-version payload digest, recommended-command list digest, command length/SHA metadata inside the work queue,
   compact recommended-command records, `--blocker-recommended-command-kinds-joined-only` /
   `--blocker-recommended-command-kinds-joined-sha-only` action-plan route outputs,
+  `--blocker-first-missing-evidence-joined-only` /
+  `--blocker-first-missing-evidence-joined-sha-only` missing-evidence route outputs,
   handoff-integrity verification commands and their compact output-mode mappings,
   status/handoff compact output-mode mappings, plus the compact recommended-command
   list mirror against the full work queue. The status artifact now persists `status_integrity` plus
