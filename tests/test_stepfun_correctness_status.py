@@ -1729,6 +1729,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_handoff_status_sha_only": (
             "oracle_partial_output_handoff.status.sha256"
         ),
+        "oracle_partial_output_safety_summary_only": (
+            "oracle_partial_output_handoff.safety_summary"
+        ),
+        "oracle_partial_output_safety_summary_sha_only": (
+            "oracle_partial_output_handoff.safety_summary.sha256"
+        ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
         ),
@@ -6514,6 +6520,86 @@ def test_stepfun_correctness_status_oracle_partial_output_handoff_status_outputs
     )
 
 
+def test_stepfun_correctness_status_oracle_partial_output_safety_summary_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    summary_output = tmp_path / "oracle-partial-output-safety-summary.json"
+    sha_output = tmp_path / "oracle-partial-output-safety-summary-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    handoff = status["oracle_partial_output_handoff"]
+    safety_summary = {
+        "status": handoff["status"],
+        "all_partial_output_contracts_safe": handoff[
+            "all_partial_output_contracts_safe"
+        ],
+        "all_mirror_records_safe": handoff["all_mirror_records_safe"],
+        "supervisor_signal_contract_safe": handoff[
+            "supervisor_signal_contract_safe"
+        ],
+        "command_record_safe": handoff["command_record_safe"],
+    }
+    calls = [
+        (
+            summary_output,
+            "--oracle-partial-output-safety-summary-only",
+            safety_summary,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-safety-summary-sha-only",
+            _stable_json_sha256(safety_summary),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert safety_summary == {
+        "status": "safe",
+        "all_partial_output_contracts_safe": True,
+        "all_mirror_records_safe": True,
+        "supervisor_signal_contract_safe": True,
+        "command_record_safe": True,
+    }
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_safety_summary_only"] == (
+        "oracle_partial_output_handoff.safety_summary"
+    )
+    assert compact_modes["oracle_partial_output_safety_summary_sha_only"] == (
+        "oracle_partial_output_handoff.safety_summary.sha256"
+    )
+
+
 def test_stepfun_correctness_status_oracle_partial_output_all_contracts_safe_outputs(
     capsys,
     tmp_path: Path,
@@ -7788,6 +7874,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_handoff_status_sha_only": (
             "oracle_partial_output_handoff.status.sha256"
+        ),
+        "oracle_partial_output_safety_summary_only": (
+            "oracle_partial_output_handoff.safety_summary"
+        ),
+        "oracle_partial_output_safety_summary_sha_only": (
+            "oracle_partial_output_handoff.safety_summary.sha256"
         ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
