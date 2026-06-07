@@ -1940,6 +1940,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "first_blocker_recommended_command_sha_only": (
             "handoff_summary.first_blocker_work_item.recommended_command_sha256"
         ),
+        "first_blocker_recommended_command_nchars_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_nchars"
+        ),
+        "first_blocker_recommended_command_nchars_sha_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_nchars.sha256"
+        ),
         "first_blocker_recommended_command_reason_only": (
             "handoff_summary.first_blocker_work_item.recommended_command_reason"
         ),
@@ -6783,6 +6789,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "first_blocker_recommended_command_sha_only": (
             "handoff_summary.first_blocker_work_item.recommended_command_sha256"
         ),
+        "first_blocker_recommended_command_nchars_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_nchars"
+        ),
+        "first_blocker_recommended_command_nchars_sha_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_nchars.sha256"
+        ),
         "first_blocker_recommended_command_reason_only": (
             "handoff_summary.first_blocker_work_item.recommended_command_reason"
         ),
@@ -9037,6 +9049,73 @@ def test_stepfun_correctness_status_first_blocker_recommended_command_sha_only(
     ]
     assert payload == hashlib.sha256(expected.encode()).hexdigest()
 
+
+
+def test_stepfun_correctness_status_first_blocker_recommended_command_nchars(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    nchars_output = tmp_path / "first-blocker-command-nchars.json"
+    nchars_sha_output = tmp_path / "first-blocker-command-nchars-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    first_blocker = status["handoff_summary"]["first_blocker_work_item"]
+    calls = [
+        (
+            nchars_output,
+            "--first-blocker-recommended-command-nchars-only",
+            first_blocker["recommended_command_nchars"],
+        ),
+        (
+            nchars_sha_output,
+            "--first-blocker-recommended-command-nchars-sha-only",
+            _stable_json_sha256(first_blocker["recommended_command_nchars"]),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--blocker-work-queue-only",
+                "--first-blocker-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert first_blocker["recommended_command_nchars"] == len(
+        first_blocker["recommended_command"]
+    )
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["first_blocker_recommended_command_nchars_only"] == (
+        "handoff_summary.first_blocker_work_item.recommended_command_nchars"
+    )
+    assert compact_modes["first_blocker_recommended_command_nchars_sha_only"] == (
+        "handoff_summary.first_blocker_work_item.recommended_command_nchars.sha256"
+    )
 
 
 def test_stepfun_correctness_status_first_blocker_routing_scalars(

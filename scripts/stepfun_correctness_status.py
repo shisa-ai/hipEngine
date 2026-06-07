@@ -1362,6 +1362,23 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-recommended-command-nchars-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.recommended_command_nchars "
+            "for compact immediate-blocker command-size polling. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-recommended-command-nchars-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of handoff_summary.first_blocker_work_item."
+            "recommended_command_nchars for immediate-blocker command-size drift polling. "
+            "Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--first-blocker-recommended-command-reason-only",
         action="store_true",
         help=(
@@ -2736,6 +2753,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "handoff_summary.first_blocker_work_item.recommended_command"
             and compact_output_modes.get("first_blocker_recommended_command_sha_only")
             == "handoff_summary.first_blocker_work_item.recommended_command_sha256"
+            and compact_output_modes.get("first_blocker_recommended_command_nchars_only")
+            == "handoff_summary.first_blocker_work_item.recommended_command_nchars"
+            and compact_output_modes.get("first_blocker_recommended_command_nchars_sha_only")
+            == "handoff_summary.first_blocker_work_item.recommended_command_nchars.sha256"
             and compact_output_modes.get("first_blocker_recommended_command_reason_only")
             == "handoff_summary.first_blocker_work_item.recommended_command_reason"
             and compact_output_modes.get("first_blocker_recommended_command_reason_sha_only")
@@ -5507,6 +5528,12 @@ def _handoff_summary(
             "first_blocker_recommended_command_sha_only": (
                 "handoff_summary.first_blocker_work_item.recommended_command_sha256"
             ),
+            "first_blocker_recommended_command_nchars_only": (
+                "handoff_summary.first_blocker_work_item.recommended_command_nchars"
+            ),
+            "first_blocker_recommended_command_nchars_sha_only": (
+                "handoff_summary.first_blocker_work_item.recommended_command_nchars.sha256"
+            ),
             "first_blocker_recommended_command_reason_only": (
                 "handoff_summary.first_blocker_work_item.recommended_command_reason"
             ),
@@ -6096,6 +6123,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
         result = (
             first_blocker_work_item.get("recommended_command_sha256")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_recommended_command_nchars_sha_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            _stable_json_sha256(first_blocker_work_item.get("recommended_command_nchars"))
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_recommended_command_nchars_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("recommended_command_nchars")
             if isinstance(first_blocker_work_item, dict)
             else None
         )

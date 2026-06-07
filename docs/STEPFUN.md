@@ -1070,8 +1070,10 @@ reporting.
   `--oracle-helper-long-timeout-command-only` /
   `--oracle-helper-long-timeout-command-sha-only` and
   `--first-blocker-recommended-command-only` /
-  `--first-blocker-recommended-command-sha-only` outputs expose the rerun
-  command/digests directly. Compact
+  `--first-blocker-recommended-command-sha-only`, plus
+  `--first-blocker-recommended-command-nchars-only` /
+  `--first-blocker-recommended-command-nchars-sha-only`, expose the rerun
+  command, digest, and character count directly. Compact
   `--first-blocker-recommended-command-reason-only` /
   `--first-blocker-recommended-command-reason-sha-only` and
   `--first-blocker-first-missing-evidence-only` /
@@ -1085,7 +1087,7 @@ reporting.
   `--first-blocker-recommended-command-kind-sha-only` outputs expose the current
   first-blocker routing reason (`oracle_timeout_retry_with_longer_timeout`),
   first missing evidence (`oracle_completed_successfully`), current status
-  (`timeout`), gap-report status (`blocked`), blocker kind, and command kind
+  (`timeout`), gap-report status (`blocked`), blocker kind, command kind, and command size
   without fetching the full work item. Status integrity also verifies the oracle progress
   digest and oracle compact output-mode mappings, including the progress/status/blocker-kind routes.
   The blocker queue also records a compact
