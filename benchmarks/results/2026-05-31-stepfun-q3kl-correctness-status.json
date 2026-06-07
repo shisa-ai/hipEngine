@@ -814,6 +814,8 @@
       "oracle_partial_output_mirror_statuses_sha_only": "oracle_partial_output_handoff.mirror_records[].partial_output_status.sha256",
       "oracle_partial_output_mirror_unique_blocker_kind_count_only": "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind))",
       "oracle_partial_output_mirror_unique_blocker_kind_count_sha_only": "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind)).sha256",
+      "oracle_partial_output_mirror_unique_command_kind_count_only": "len(unique(oracle_partial_output_handoff.mirror_records[].recommended_command_kind))",
+      "oracle_partial_output_mirror_unique_command_kind_count_sha_only": "len(unique(oracle_partial_output_handoff.mirror_records[].recommended_command_kind)).sha256",
       "oracle_partial_output_mirror_unique_command_sha_count_only": "len(unique(oracle_partial_output_handoff.mirror_records[].recommended_command_sha256))",
       "oracle_partial_output_mirror_unique_command_sha_count_sha_only": "len(unique(oracle_partial_output_handoff.mirror_records[].recommended_command_sha256)).sha256",
       "oracle_partial_output_mirror_unique_output_blocker_kind_count_only": "len(unique(oracle_partial_output_handoff.mirror_records[].partial_output_blocker_kind))",
@@ -1111,7 +1113,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "30a439f4e126db4875d7fdab5306fb5cca5bcf5e33d97e40aeca23df55d24c45",
+  "handoff_summary_sha256": "ec5c2e7a5fc8cb4d243522552b655384e70f7c2ab031ed5bbd0ab83f7cdb194a",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -17737,7 +17739,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "cdce891d55004276b8a52378bc1163f4df6f659df7031cdadcffac91ecceab98",
-    "handoff_summary_sha256": "30a439f4e126db4875d7fdab5306fb5cca5bcf5e33d97e40aeca23df55d24c45",
+    "handoff_summary_sha256": "ec5c2e7a5fc8cb4d243522552b655384e70f7c2ab031ed5bbd0ab83f7cdb194a",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "dd508e6e3a62c886cf3b6d3308fce62b268309b0419def678383f4e0071e2c0a",
@@ -17747,10 +17749,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "a425a8d9198e90c159dc71eb208bfd54068412b5367d464447f4e31574d66f05",
     "schema_version": 1,
-    "source_artifacts_sha256": "ad1ba21b8a1db99f02e690d56f0682dafb5d5ed836a12d0bfe3f10bdc2a43df1",
+    "source_artifacts_sha256": "bb1d26311816cf587df7ab34521ed7bac22cb42e683850710812053bb280b283",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "8af288616f9f079370cecec927bbc92eb580b6402b126328c66d942e00b561f8",
+  "readiness_summary_sha256": "e8278470592b7b6a3649fce1b94d26567ee956af6148df7d6de07b521b93681b",
   "remaining_blockers_report": {
     "blocked_gates": [
       "oracle_parity",
@@ -17875,8 +17877,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "6f635278f240aa62f2dce5f9cf216a5c2aeb2b92423dd182e142d85a3246138c",
-      "size_bytes": 95214
+      "sha256": "6f6b73c30261ad740091afae370eb768de7633f1a771868dadcee4cf731cb4b1",
+      "size_bytes": 95387
     },
     "oracle": {
       "exists": true,
@@ -17903,7 +17905,7 @@
       "size_bytes": 178045
     }
   },
-  "source_artifacts_sha256": "ad1ba21b8a1db99f02e690d56f0682dafb5d5ed836a12d0bfe3f10bdc2a43df1",
+  "source_artifacts_sha256": "bb1d26311816cf587df7ab34521ed7bac22cb42e683850710812053bb280b283",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
