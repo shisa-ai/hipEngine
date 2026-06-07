@@ -1128,6 +1128,8 @@ reporting.
   `--blocker-command-available-joined-sha-only` runnable-action route outputs,
   `--blocker-command-unavailable-joined-only` /
   `--blocker-command-unavailable-joined-sha-only` missing-action route outputs,
+  `--blocker-command-state-joined-only` /
+  `--blocker-command-state-joined-sha-only` command-state route outputs,
   `--blocker-command-available-count-only` /
   `--blocker-command-available-count-sha-only` runnable-action count outputs,
   `--blocker-command-unavailable-count-only` /
