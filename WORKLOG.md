@@ -67125,3 +67125,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: replaying only the later full-attention input RMSNorm is not a c8 fullnative fix. Continue targeting grouped full-attention output/composition or rowchunk semantics, not larger chunk promotion or an input-norm-only replay.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-input-probe-435/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter436 c8 per-row scratch probe
+- Ran a minimal c8 fullnative/no-rowchunk L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with only `--batch-decode-attn-scratch-path per_row` forced, against the native-batch c1 oracle. No runtime code changed.
+- Result: scratch-only per-row replay does **not** transfer the prior c2 hidden fix to c8. The diagnostic is `mismatch_found`; hidden and token checks fail. It preserves the layer4 linear `attn_input` bit drift (`max_abs=0.0078125`, `bit_mismatch=765`, elements_over_atol `7`) and introduces a large layer3 full-attention `gate` divergence (`max_abs=7.73046875`, elements_over_atol `4096`). Full-attention failed-stage count rises to `20` vs baseline fullnative minimal trace `12`; rowchunk2 control remains `0`/`0` drift/failure counts.
+- Interpretation: c8 grouped/no-rowchunk needs rowchunk semantics or a different grouped full-attention composition fix; simply replaying the attention scratch setup per row is not safe.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-scratch-probe-436/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
