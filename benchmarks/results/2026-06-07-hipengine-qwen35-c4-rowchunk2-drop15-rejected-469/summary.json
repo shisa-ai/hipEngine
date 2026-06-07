@@ -1,0 +1,230 @@
+{
+  "iteration": 469,
+  "kind": "c4_512x128_rowchunk2_drop15_rejected",
+  "created_at": "2026-06-07T10:10:20.172940+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "735e996e3219dbc417dfb5c74c9ef66d1cecef22",
+  "performance_claim": false,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c4-rowchunk2-drop15-512-128.json",
+  "result": {
+    "top_level_status": "rejected_correctness",
+    "decision_accepted": false,
+    "generated_token_equality": {
+      "passed": false,
+      "skipped": false,
+      "rows": 4,
+      "tokens_per_sequence": 137,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "min_equal_prefix_tokens": 118,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118
+      ],
+      "mismatch_count": 1,
+      "mismatch_details": [
+        {
+          "row": 3,
+          "first_mismatch_index": 118,
+          "batch_token": 4203,
+          "c1_token": 9781
+        }
+      ],
+      "mismatch_summaries": [
+        {
+          "row": 3,
+          "first_mismatch_index": 118,
+          "batch_token_at_mismatch": 4203,
+          "c1_token_at_mismatch": 9781,
+          "batch_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            4203,
+            9781,
+            310,
+            328,
+            2078,
+            1
+          ],
+          "c1_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            9781,
+            80086,
+            279,
+            1483,
+            11316,
+            310
+          ],
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "row": 3,
+              "equal_prefix_tokens": 118
+            },
+            {
+              "row": 0,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 1,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 2,
+              "equal_prefix_tokens": 0
+            }
+          ]
+        }
+      ]
+    },
+    "decode_execution": {
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "decode_rows": 4,
+      "full_attention_layers": [
+        {
+          "layer_index": 3,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 7,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 11,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 15,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 19,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 23,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 27,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 31,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 35,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 39,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        }
+      ]
+    },
+    "workload_paths": {
+      "batch_decode_full_attention_row_chunk_size": 2,
+      "batch_decode_full_attention_row_chunk_layers": "3,7,11",
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_full_attention_output_path": "batch_gemv"
+    }
+  },
+  "interpretation": {
+    "negative_result": "Dropping layer15 from the c4 rowchunk2 selected layer set is not correct: row3 diverges at generated-token prefix 118.",
+    "frontier_update": "Layer15 is required in the current c4 rowchunk2 correctness path. The narrowed auto set from iter468, 3,7,11,15, is the current evidence-backed c4 set; do not drop layer15 without a deeper layer15 context repair.",
+    "next_target": "Continue c4 one-layer reduction with layer11, or return to rows>=4 full-attention context repair at required c4 layers."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused c4 equality discriminator rejects dropping layer15 and fixes the current evidence-backed c4 selected layer set; no performance claim."
+  },
+  "conclusion": "c4 rowchunk2 drop15 is red; layer15 is required in the selected rowchunk correctness set.",
+  "references": {
+    "raw_c4_rowchunk2_drop15_json_tmp": {
+      "path": "/tmp/hipengine-e2e-native-c4-rowchunk2-drop15-512-128.json",
+      "sha256": "94dd208533ba44fbea8ae7f5ca4222f391fc1336fa6634414806ba6ee13692bc",
+      "size_bytes": 228991
+    },
+    "raw_c4_rowchunk2_drop15_log_tmp": {
+      "path": "/tmp/hipengine-e2e-native-c4-rowchunk2-drop15-512-128.log",
+      "sha256": "94dd208533ba44fbea8ae7f5ca4222f391fc1336fa6634414806ba6ee13692bc",
+      "size_bytes": 228991
+    },
+    "prior_c4_auto_drop19_468": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-auto-drop19-equality-468/summary.json",
+      "sha256": "bfd19fc5589e0b27070a832419b686117949409a4c04fd4301e067ee432957f2",
+      "size_bytes": 9478
+    },
+    "prior_c4_rowchunk2_drop19_467": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop19-equality-467/summary.json",
+      "sha256": "b3871d6bee2b121983dcf7946c0fce9f15820b2cf6f89108dfe32193c12d52f2",
+      "size_bytes": 7063
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop15-rejected-469/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop15-rejected-469/compact-runs.json",
+      "sha256": "82b0ccfdb56b82ca6edab48a16c8216f728fe8b02e3e1960958b8a348c746f7b",
+      "size_bytes": 6288
+    }
+  }
+}
