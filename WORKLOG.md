@@ -67362,3 +67362,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: layer15 is required in the current c4 rowchunk2 correctness path. The iter468 auto set `3,7,11,15` is the current evidence-backed c4 set; do not drop layer15 without a deeper layer15 context repair. This differs from layer19/layer23, which were safe to run native for c4.
 - Required active c2 verify printed `61` this time (lower than recent `137` without source changes in this diagnostic); guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop15-rejected-469/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter470 active c2 equality recovery
+- No runtime/source code changed. Re-ran the active native c2 512/128 retained-bench verifier after iter469's unexpected active metric `61`.
+- Result: the active c2 verifier recovered to `137`. The retained-bench JSON reports generated-token equality **green**: `prefix_lengths=[137,137]`, `min_equal_prefix_tokens=137`, all mismatch indices `null`, and mismatch count `0`. The iter469 low metric was not reproduced in this run.
+- Status nuance: the retained-bench top-level status remains `blocked` because retained performance/profiler/baseline artifact requirements are not met; this is not a generated-token equality failure, and no performance/scaling claim is made.
+- Required guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-recovery-470/summary.json` and `compact-runs.json`. Continue preserving exact active c2 metric values in loop records; treat the `61` as transient unless it repeats.

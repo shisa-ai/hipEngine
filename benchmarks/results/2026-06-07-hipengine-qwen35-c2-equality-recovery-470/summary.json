@@ -1,0 +1,178 @@
+{
+  "iteration": 470,
+  "kind": "native_c2_512x128_equality_recovery_after_low_metric",
+  "created_at": "2026-06-07T10:17:24.217764+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "63f3e8e4983a30d858192005dcaecf562bcd0167",
+  "performance_claim": false,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+  "result": {
+    "top_level_status": "blocked",
+    "decision_accepted": false,
+    "generated_token_equality": {
+      "passed": true,
+      "skipped": false,
+      "rows": 2,
+      "tokens_per_sequence": 137,
+      "warmup_decode_tokens": 8,
+      "gen_tokens_per_request": 128,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "mismatch_count": 0,
+      "mismatch_summaries": []
+    },
+    "decode_execution": {
+      "path": "scheduler_native_compact_batch",
+      "row_execution": "native_compact_caware_layers",
+      "native_compact_prefill": true,
+      "native_caware_decode": true,
+      "throughput_claim_eligible": true,
+      "blockers": [],
+      "decode_rows": 2,
+      "decode_slots": [
+        0,
+        1
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_context_decode_path": "native_batch",
+      "batch_decode_full_attention_row_chunk_size": 0,
+      "batch_decode_full_attention_row_chunk_layers": "",
+      "full_attention_layers": [
+        {
+          "layer_index": 3,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 7,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 11,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 15,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 19,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 23,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 27,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 31,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 35,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 39,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        }
+      ]
+    }
+  },
+  "interpretation": {
+    "positive_result": "The active c2 512/128 verifier recovered from iter469 metric 61 to metric 137 on immediate re-run. The retained-bench JSON reports generated-token equality green with prefix_lengths=[137,137] and no mismatches.",
+    "status_note": "The top-level retained-bench status remains blocked by retained performance/profiler/baseline artifact requirements, not by generated-token equality. No performance claim is made.",
+    "next_target": "Treat the iter469 61 as a transient active-verifier observation unless it repeats; continue c4/c8 correctness narrowing or rows>=4 context repair, while preserving exact metric values in loop records."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: active native c2 512/128 generated-token equality recovered to prefix_lengths=[137,137] with zero mismatches after the prior low metric; no performance claim."
+  },
+  "conclusion": "Active c2 equality recovered to 137 with generated-token equality green; iter469 metric 61 was not reproduced in this run.",
+  "references": {
+    "raw_c2_verify_json_tmp": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "sha256": "bd79222912204cad03ea7d676f726802cd555b3002b0e9fed00fc8087e991517",
+      "size_bytes": 137985
+    },
+    "raw_c2_verify_log_tmp": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+      "sha256": "bd79222912204cad03ea7d676f726802cd555b3002b0e9fed00fc8087e991517",
+      "size_bytes": 137985
+    },
+    "prior_c2_equality_450": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-gate-450/summary.json",
+      "sha256": "f50fe71ff07baa051f6dbed8ca80ec1b6c6de87ef0c1ff7d50b4505798717579",
+      "size_bytes": 7984
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-recovery-470/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-recovery-470/compact-runs.json",
+      "sha256": "7bd1b24db81a065b2ba73a96758805d70fff3db0d297aeb6c5aed66a51df7ad1",
+      "size_bytes": 5586
+    }
+  }
+}
