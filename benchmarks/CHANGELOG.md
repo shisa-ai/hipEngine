@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-07
 
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP shared verifier / W7900/gfx1100 quicksort B=3 D32 rocprof: exact same-session AR; verify-pass wall split is kernels `18.46 ms/pass` + host/D2H/launch/sync residual `19.42 ms/pass` (`37.88 ms/pass` total), with largest GPU buckets shared+dense W4 projection `6.58 ms/pass`/300 calls, selected MoE `4.98 ms/pass`/400 calls, and linear Conv/GDN `2.73 ms/pass`/60 calls; LM-head/top1 only `1.45 ms/pass`; artifact `benchmarks/results/2026-06-07-hipengine-mtp-verifier-rocprof-family-rollup.json`.
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed shared verifier / W7900/gfx1100 quicksort D32: refreshed same-session economics before further kernel work; exact `4/4`; MTP `C_B` B=3/B=5 = `5.46/6.83`, DFlash B=4/B=8 = `5.56/6.65`, target-verify seconds `0.505/0.511/0.646/0.783`, rows/output `1.625/2.000/2.531/4.531`, external peak VRAM MTP/DFlash `22.38/20.41 GiB`; no priority-order change because larger budgets remain verifier-cost limited; artifact `benchmarks/results/2026-06-07-hipengine-verifier-economics-mtp-dflash-baseline.json`.
 
 ## 2026-06-03

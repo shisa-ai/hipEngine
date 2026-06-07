@@ -25382,3 +25382,66 @@ Retained artifact and rollup updates:
 - `benchmarks/results/2026-06-07-hipengine-verifier-economics-mtp-dflash-baseline.json`
 - `benchmarks/README.md`
 - `benchmarks/CHANGELOG.md`
+
+## 2026-06-07 bench(profile): target verifier kernel-family rocprof for Task #29
+
+Profiled the current shared target-verifier loop on W7900/gfx1100 with
+`rocprofv3 --kernel-trace --marker-trace`, using the same packed PARO MTP target
+and stable quicksort prompt as Task #28.  The profile command filters ROCTX
+`mtp_verify_pass_*` ranges and skips the first two cold verifier cycles; the
+rollup below is per steady-state verify pass over 11 profiled passes.  The smoke
+row stayed exact vs same-session AR with accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched \
+  --steady-state-skip 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-task29/mtp_rocprof_b3_d32 \
+  --out /tmp/hipengine-task29/mtp_verifier_rocprof_b3_d32.json
+```
+
+Profile window: `37.88 ms/pass` host marker wall, `18.46 ms/pass` summed kernel
+time, `971` kernel launches/pass, kernel time share `48.7%` of the verify-pass
+window.  The residual non-kernel bucket (`19.42 ms/pass`) is the largest
+wall-time target; it includes HIP launch gaps, stream synchronization, and the
+GPU-accept payload D2H readback (`7` tiny scalar arrays/pass; no top1/full-logit
+readback).
+
+| Task family | Calls/pass | ms/pass | Verify-window share | Notes |
+| --- | ---: | ---: | ---: | --- |
+| host/D2H/launch/sync residual | 7 D2H reads | 19.42 | 51.3% | Largest wall bucket; computed as marker wall minus kernel durations. |
+| shared+dense W4 projection bucket | 300 | 6.58 | 17.4% | Largest GPU-kernel bucket; kernel names do not distinguish shared-expert, dense MLP, full/linear projection callsites. |
+| selected MoE | 400 | 4.98 | 13.1% | Includes 190 PARO rotate launches/pass plus selected gate/up and staged selected-down kernels. |
+| linear Conv/GDN | 60 | 2.73 | 7.2% | `qwen35_gdn_chain_*` plus chain Conv t-loop kernels. |
+| full-attention verifier attention/KV | 20 | 1.91 | 5.0% | Attention + K/V write only; QKV/O projections are in the W4 bucket. |
+| LM-head/top1 | 3 | 1.45 | 3.8% | W8A16 lm-head row logits plus two argmax stages. |
+| RMSNorm / misc format | 173 | 0.52 | 1.4% | Small elementwise/split/format kernels after subtracting Conv/commit/accept. |
+| commit/copy/accept kernels | 15 | 0.29 | 0.8% | Linear-state commit, decode-position update, runtime copyBuffer, accept-summary kernel. |
+
+Biggest targets:
+
+1. **Host/D2H/launch residual** dominates wall time; reducing launch count and
+   readback/sync points is more important than another sub-ms isolated kernel win.
+2. **W4 projection bucket** is the largest GPU-kernel wall (`6.58 ms/pass`) and
+   launch bucket (`300/pass`) after the residual.  Add callsite markers before
+   calling it shared-expert-only work.
+3. **Selected MoE** remains a launch-count wall (`400/pass`) and costs
+   `4.98 ms/pass`; prior staged gate/up rotate reduced launches but regressed
+   kernel time, so future consolidation needs a cost model that reduces both.
+4. **Linear Conv/GDN** is the next meaningful kernel-time target (`2.73 ms/pass`).
+   LM-head/top1 is only `1.45 ms/pass`; it is not the primary wall on this row.
+
+Retained artifact and rollup updates:
+
+- `benchmarks/results/2026-06-07-hipengine-mtp-verifier-rocprof-family-rollup.json`
+- `benchmarks/README.md`
+- `benchmarks/CHANGELOG.md`
