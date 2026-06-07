@@ -2196,7 +2196,14 @@ class Qwen35ParoDecodeState:
             # the downstream qwen35_split_qgate / attention path reads correct
             # rows.  scratch.q_proj_key (the combined view) is intentionally
             # left inconsistent here; nothing downstream reads it directly.
-            gemv_awq_pack8_transposed_fp16(
+            # M15.1: optionally weight-amortize each single GEMV across the B+1
+            # verifier rows via the bit-exact multi-row decode kernel.
+            small_batch_gemv = (
+                gemv_awq_pack8_multi_row_decode_transposed_fp16
+                if _w4_multi_row_small_batch_site_enabled("full_qk")
+                else gemv_awq_pack8_transposed_fp16
+            )
+            small_batch_gemv(
                 scratch.q_rot.ptr,
                 q_qweight.ptr,
                 self.tensor(f"{q}.qzeros").ptr,
@@ -2210,7 +2217,7 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-            gemv_awq_pack8_transposed_fp16(
+            small_batch_gemv(
                 scratch.k_rot.ptr,
                 k_qweight.ptr,
                 self.tensor(f"{k}.qzeros").ptr,
@@ -3614,8 +3621,15 @@ class Qwen35ParoDecodeState:
             # M7.C.6: two single GEMVs, one for QKV (writes scratch.qkv.ptr)
             # and one for Z (writes scratch.z.ptr).  Direct port of the bf16
             # sibling pattern at project_linear_attention_qkv_z_bf16 line 1090+.
+            # M15.1: optionally weight-amortize each single GEMV across the B+1
+            # verifier rows via the bit-exact multi-row decode kernel.
             awq_library = _library_for(library, "awq")
-            gemv_awq_pack8_transposed_fp16(
+            small_batch_gemv = (
+                gemv_awq_pack8_multi_row_decode_transposed_fp16
+                if _w4_multi_row_small_batch_site_enabled("linear_qkv_z")
+                else gemv_awq_pack8_transposed_fp16
+            )
+            small_batch_gemv(
                 scratch.qkv_rot.ptr,
                 qkv_qweight.ptr,
                 self.tensor(f"{qkv}.qzeros").ptr,
@@ -3629,7 +3643,7 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-            gemv_awq_pack8_transposed_fp16(
+            small_batch_gemv(
                 scratch.z_rot.ptr,
                 z_qweight.ptr,
                 self.tensor(f"{z}.qzeros").ptr,
@@ -7595,6 +7609,44 @@ def _w4_multi_row_dual_site_eligible(site: str, tokens: int, in_features: int, g
         and _w4_multi_row_site_enabled(site)
         and 1 < int(tokens) <= 8
         and int(in_features) % int(group_size) == 0
+    )
+
+
+def _w4_multi_row_small_batch_enabled() -> bool:
+    """M15.1: route the small-batch (``2 <= tokens <= threshold``) verifier
+    projections through the weight-amortized multi-row *decode* GEMV instead of
+    per-row single GEMVs.
+
+    ``gemv_awq_pack8_multi_row_decode_transposed_fp16`` streams each weight tile
+    from HBM exactly once and accumulates all ``B+1`` verifier rows, vs the
+    per-row ``gemv_awq_pack8_transposed_fp16`` whose ``grid=(out_pack, row)``
+    re-streams the tile for every row.  The decode variant is *bit-identical* to
+    the per-row kernel (``tests/test_paro_awq_gemv_multi_row_decode.py``), so
+    exact-AR cannot regress; only throughput is at stake.
+
+    Default-on (2026-06-08): W7900 B=3 verifier rocprof shows the
+    ``w4_single_gemv`` projection family drop ``2.460 -> 1.873 ms/pass``
+    (-23.9%) with launches/pass unchanged (981); economics ``verify_ms/cycle``
+    falls -2.4% at B=3 and -4.0% at B=5 (the win scales with row count, as
+    weight-amortization predicts). Disable via
+    ``HIPENGINE_W4_MULTI_ROW_SMALL_BATCH={0,off,no,false}``.
+    """
+
+    return _env_enabled("HIPENGINE_W4_MULTI_ROW_SMALL_BATCH", default=True)
+
+
+def _w4_multi_row_small_batch_site_enabled(site: str) -> bool:
+    """Per-site gate for the M15.1 small-batch multi-row decode path.
+
+    Reuses the M12.6 umbrella + site mask so experiments can isolate sites, but
+    is independent of the WMMA-numerics safe mask because the decode kernel is
+    bit-exact for every site it covers.
+    """
+
+    return (
+        _w4_multi_row_small_batch_enabled()
+        and _w4_multi_row_single_enabled()
+        and _w4_multi_row_site_enabled(site)
     )
 
 

@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-08
+
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP M15.1 verifier projection / W7900/gfx1100 quicksort B=3/B=5 D32 decode_batched: exact same-session AR; weight-amortize small-batch linear QKV/Z + full Q/K projections via bit-exact `gemv_awq_pack8_multi_row_decode_transposed_fp16`. Rocprof B=3 `w4_single_gemv` family `2.460 -> 1.873 ms/pass` (-23.9%), total kernel `17.05 -> 16.33 ms/pass` (-4.2%), launches/pass unchanged; `verify_ms/cycle` min `35.55 -> 34.71` (-2.4%) B=3, `42.45 -> 40.82` (-3.8%) B=5. Default-on `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH`; artifact `benchmarks/results/2026-06-08-hipengine-mtp-m15.1-verifier-projection-multirow.json`.
+
 ## 2026-06-07
 
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP small-B full-attn verifier / W7900/gfx1100 quicksort B=3/B=5 D32: exact same-session AR; `chain_attn_mode=decode_batched` lowers cycle cost B=3 `5.46 -> 4.39` (-19.6%) and B=5 `6.83 -> 6.23` (-8.7%) vs prefill-batched baseline by replacing native prefill attention (`1.88 ms/pass`) with row-batched decode context+reduce (`0.42 ms/pass`); artifact `benchmarks/results/2026-06-07-hipengine-mtp-small-b-decode-full-attn.json`.

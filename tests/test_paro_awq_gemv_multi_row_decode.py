@@ -87,7 +87,7 @@ def _packed_u4_words(rng: np.random.Generator, shape: tuple[int, ...]) -> np.nda
     return rng.integers(0, 2**32, size=shape, dtype=np.uint32).view(np.int32)
 
 
-@pytest.mark.parametrize("rows", [2, 5, 8])
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 8])
 def test_multi_row_decode_transposed_fp16_matches_rowwise_pack8(_awq_lib, _runtime, rows: int) -> None:
     from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
         gemv_awq_pack8_multi_row_decode_transposed_fp16,

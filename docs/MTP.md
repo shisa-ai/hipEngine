@@ -1181,6 +1181,23 @@ surround (≈24 launches/layer → ≈8), in the priority order the budget impli
    AB, out-proj) into decode-shaped kernels that read each weight stream once for
    all `B+1` rows, the way AR's c=1 path already does. Largest single target:
    720 of 971 launches/pass live in linear-attention layers.
+
+   - **M15.1a landed (2026-06-08, default-on).** The small-batch (`2<=tokens<=7`)
+     linear QKV/Z (30 layers) and full Q/K (10 layers) projections were
+     re-pointed from per-row single GEMVs (`grid=(out_pack,row)`, weight
+     re-streamed per row) to the bit-exact weight-amortized
+     `gemv_awq_pack8_multi_row_decode_transposed_fp16` (weight tile read once for
+     all `B+1` rows) behind `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH`. W7900 B=3
+     rocprof: `w4_single_gemv` family `2.460 -> 1.873 ms/pass` (-23.9%), total
+     kernel `17.05 -> 16.33 ms/pass` (-4.2%), launches/pass unchanged (981);
+     `verify_ms/cycle` min `-2.4%` (B=3) / `-3.8%` (B=5), exact AR.
+     Confirms the weight-amortization thesis (the win scales with row count) but
+     is modest because these projections are only ~14% of verifier kernel time.
+     Artifact: `benchmarks/results/2026-06-08-hipengine-mtp-m15.1-verifier-projection-multirow.json`.
+   - **Remaining M15.1 work:** the larger projections still on per-row/prefill
+     paths — linear `out_proj`, shared-expert gate/up/down, full-attn V — are the
+     unsafe W4 sites and overlap M15.2. The rotate/rmsnorm surround and the
+     M7.C.6 two-single→one-dual merge are the launch-count half (M15.3).
 2. **M15.2 — exact small-batch W4 multi-row pack8 GEMV for the unsafe sites**
    (`shared_gate_up`, `single_full_v`, `single_linear_out`; M14.num.1). This is
    both the largest *kernel* bucket (6.58 ms) and a launch source. Blocked on

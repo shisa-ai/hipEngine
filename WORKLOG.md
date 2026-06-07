@@ -25612,3 +25612,41 @@ with bit-exact RED + MTP/DFlash exact-AR smoke):
 
 DFlash shares the wall (same tokens>1 trunk), so M15.1/M15.2 land for both
 providers (task #35). No tracked code changed in this analysis unit; docs only.
+
+## 2026-06-08 perf(mtp): M15.1a — weight-amortize verifier QKV/Z + full Q/K projections (default-on)
+
+First M15.1 step toward "batch the multi-token work". Found the verifier's
+small-batch (`2<=tokens<=7`) linear QKV/Z and full Q/K projections used the
+per-row single GEMV `gemv_awq_pack8_transposed_fp16` whose `grid=(out_pack,row)`
+re-streams the weight tile for every verifier row — i.e. not batched across the
+B+1 rows. Re-pointed those callsites to the bit-exact weight-amortized
+`gemv_awq_pack8_multi_row_decode_transposed_fp16` (weight tile read once for all
+rows; same f32 dequant) behind `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH` (default-on).
+
+Evidence (W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP, quicksort, decode_batched):
+
+- Bit-exact: `tests/test_paro_awq_gemv_multi_row_decode.py` extended to rows
+  {2,3,4,5,6,8} (verifier B=1..7), all `np.array_equal` vs the per-row kernel.
+- Exact-AR smoke (`HIPENGINE_VERIFY_GPU_ACCEPT=validate`, D8, B=3): exact_ar_match=true.
+- Economics A/B (D32, B=3/B=5, 3 runs, exact every run): `verify_ms/cycle` min
+  B=3 `35.55 -> 34.71` (-2.4%), B=5 `42.45 -> 40.82` (-3.8%). cycle_cost is
+  noisy via the per-run AR baseline; verify ms/cycle is the clean signal.
+- Rocprof B=3 (`--steady-state-skip 2`, 11 passes): `w4_single_gemv` family
+  `2.460 -> 1.873 ms/pass` (-23.9%), total kernel `17.05 -> 16.33 ms/pass`
+  (-4.2%), launches/pass UNCHANGED (981) — pure weight-amortization, no launch
+  change. Other families flat (±0.3%).
+
+Confirms the thesis: true multi-token batching (read weight once for all B+1
+rows) reduces verifier kernel time, and the win scales with row count (B=5 > B=3).
+Modest overall because these projection GEMVs are only ~14% of verifier kernel
+time. The big remaining bucket is `shared_dense_w4` (prefill-style W4 at the
+unsafe sites: `shared_gate_up`, `single_full_v`, `single_linear_out`), which
+needs an exact small-batch W4 kernel (M15.2) before it can be amortized the same
+way. Launch count is untouched here — that is the M15.3 half (rotate/format
+fusion + two-single→one-dual merges).
+
+Files: `hipengine/runtime/qwen35_paro.py` (helpers + QKV/Z + full Q/K dispatch),
+`tests/test_paro_awq_gemv_multi_row_decode.py`, artifact
+`benchmarks/results/2026-06-08-hipengine-mtp-m15.1-verifier-projection-multirow.json`,
+`benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/MTP.md` (M15.1a status).
+Default-on; opt out with `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH=0`.

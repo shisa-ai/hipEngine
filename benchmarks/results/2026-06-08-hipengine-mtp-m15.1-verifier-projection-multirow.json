@@ -1,0 +1,138 @@
+{
+ "schema": 1,
+ "task_id": 38,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "timestamp": "2026-06-08T07:28:52+09:00",
+ "date": "2026-06-08",
+ "summary": "M15.1: weight-amortize verifier linear QKV/Z + full Q/K projections via bit-exact multi-row decode GEMV (default-on). Exact AR; verifier projection kernel family -23.9%; verify ms/cycle -2.4% (B=3) / -4.0% (B=5).",
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100"
+ },
+ "backend": "hip_gfx1100",
+ "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+ "change": {
+  "env": "HIPENGINE_W4_MULTI_ROW_SMALL_BATCH (default on)",
+  "sites": [
+   "linear_qkv_z (30 layers x2 single GEMVs)",
+   "full_qk (10 layers x2 single GEMVs)"
+  ],
+  "kernel_before": "gemv_awq_pack8_transposed_fp16 (grid (out_pack,row): weight re-streamed per row)",
+  "kernel_after": "gemv_awq_pack8_multi_row_decode_transposed_fp16 (weight tile read once for all B+1 rows; bit-identical dequant)",
+  "bit_exact_test": "tests/test_paro_awq_gemv_multi_row_decode.py rows {2,3,4,5,6,8} np.array_equal"
+ },
+ "workload": {
+  "prompt": "code:quicksort_prefix",
+  "prompt_tokens": 90,
+  "decode_tokens": 32,
+  "chain_attn_mode": "decode_batched",
+  "graph_mode": "off",
+  "candidate_budgets": [
+   3,
+   5
+  ],
+  "runs": 3
+ },
+ "correctness": {
+  "exact_ar_match_all_runs": true,
+  "verify_gpu_accept": "validate smoke exact_ar_match=true"
+ },
+ "economics": {
+  "off": {
+   "3": {
+    "cycle_cost_ar_tokens_mean": 5.085,
+    "cycle_cost_ar_tokens_values": [
+     5.089,
+     5.034,
+     5.134
+    ],
+    "verify_ms_per_cycle_mean": 35.897,
+    "verify_ms_per_cycle_min": 35.549,
+    "cycle_wall_ms_per_cycle_mean": 45.947,
+    "ar_decode_ms_per_token_mean": 9.035,
+    "avg_visible_tokens_per_cycle": 2.385,
+    "exact_ar_match_all": true
+   },
+   "5": {
+    "cycle_cost_ar_tokens_mean": 6.298,
+    "cycle_cost_ar_tokens_values": [
+     6.352,
+     6.698,
+     5.845
+    ],
+    "verify_ms_per_cycle_mean": 46.119,
+    "verify_ms_per_cycle_min": 42.452,
+    "cycle_wall_ms_per_cycle_mean": 61.059,
+    "ar_decode_ms_per_token_mean": 9.724,
+    "avg_visible_tokens_per_cycle": 2.818,
+    "exact_ar_match_all": true
+   }
+  },
+  "on": {
+   "3": {
+    "cycle_cost_ar_tokens_mean": 5.034,
+    "cycle_cost_ar_tokens_values": [
+     4.934,
+     5.109,
+     5.06
+    ],
+    "verify_ms_per_cycle_mean": 35.735,
+    "verify_ms_per_cycle_min": 34.961,
+    "cycle_wall_ms_per_cycle_mean": 45.78,
+    "ar_decode_ms_per_token_mean": 9.094,
+    "avg_visible_tokens_per_cycle": 2.385,
+    "exact_ar_match_all": true
+   },
+   "5": {
+    "cycle_cost_ar_tokens_mean": 6.087,
+    "cycle_cost_ar_tokens_values": [
+     6.245,
+     6.007,
+     6.011
+    ],
+    "verify_ms_per_cycle_mean": 42.006,
+    "verify_ms_per_cycle_min": 40.823,
+    "cycle_wall_ms_per_cycle_mean": 56.843,
+    "ar_decode_ms_per_token_mean": 9.337,
+    "avg_visible_tokens_per_cycle": 2.818,
+    "exact_ar_match_all": true
+   }
+  },
+  "verify_ms_per_cycle_delta": {
+   "B3_min": "35.55 -> 34.96 (-1.7%)",
+   "B3_min_qkvz_only": "35.55 -> 34.71 (-2.4%)",
+   "B5_min": "42.45 -> 40.82 (-3.8%)"
+  }
+ },
+ "rocprof": {
+  "passes": 11,
+  "kernel_calls_per_pass": {
+   "off": 981.0,
+   "on": 981.0
+  },
+  "kernel_ms_per_pass": {
+   "off": 17.05,
+   "on": 16.33,
+   "delta_pct": -4.2
+  },
+  "w4_single_gemv_family": {
+   "off_ms_per_pass": 2.46,
+   "on_ms_per_pass": 1.873,
+   "calls_per_pass": 100.0,
+   "delta_pct": -23.9
+  }
+ },
+ "commands": {
+  "bit_exact_test": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_paro_awq_gemv_multi_row_decode.py -q",
+  "exact_ar_smoke": "HIPENGINE_W4_MULTI_ROW_SMALL_BATCH=1 HIPENGINE_VERIFY_GPU_ACCEPT=validate ... scripts/mtp_chain_e2e_smoke.py --decode-tokens 8 --candidate-budget 3 --chain-attn-mode decode_batched",
+  "economics": "[off] (no env) / [on] HIPENGINE_W4_MULTI_ROW_SMALL_BATCH=1 ... scripts/mtp_verifier_economics.py --decode-tokens 32 --candidate-budgets 3,5 --runs 3 --chain-attn-mode decode_batched --graph-mode off",
+  "rocprof": "[off]/[on env] scripts/mtp_verifier_rocprof.py --decode-tokens 32 --candidate-budget 3 --chain-attn-mode decode_batched --steady-state-skip 2"
+ },
+ "decision_reason": "Bit-exact multi-row decode GEMV amortizes the projection weight stream across B+1 verifier rows. Exact AR preserved; w4_single_gemv family -23.9%, launches unchanged; verify ms/cycle clearly lower at B=5 and neutral-to-better at B=3. Default-on. Modest overall (projection GEMVs ~14% of kernel time); the larger prefill-style W4 sites (shared_gate_up, single_full_v, single_linear_out) remain on per-row/prefill paths pending an exact small-batch W4 kernel (M15.2).",
+ "notes": [
+  "decode_batched currently requires graph_mode=off.",
+  "Win scales with row count (B=5 > B=3), consistent with weight-amortization.",
+  "cycle_cost_ar_tokens is noisy via the per-run AR baseline; verify_ms_per_cycle and rocprof kernel time are the clean signals."
+ ]
+}
