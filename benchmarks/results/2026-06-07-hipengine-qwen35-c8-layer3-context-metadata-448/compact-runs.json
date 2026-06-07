@@ -1,0 +1,716 @@
+{
+  "iteration": 448,
+  "kind": "c8_layer3_context_metadata_comparison",
+  "created_at": "2026-06-07T08:10:23.545130+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "result": {
+    "variants": {
+      "fullnative": {
+        "path": "/tmp/hipengine-hidden-bisect-iter448-L8-c8-fullnative-nativec1-warm8-decode1-trace0-1.json",
+        "status": "mismatch_found",
+        "hidden_passed": false,
+        "token_passed": true,
+        "first_linear_mismatch": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 4,
+          "stage": "attn_input",
+          "row": 0,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 1296,
+          "max_abs_index": [
+            0,
+            1296
+          ],
+          "elements_over_atol": 5,
+          "bit_mismatch": 491
+        },
+        "first_full_attention_failure": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 7,
+          "stage": "attn_input_pre_qkv",
+          "row": 0,
+          "max_abs": 0.015625,
+          "max_abs_flat_index": 1269,
+          "max_abs_index": [
+            0,
+            1269
+          ],
+          "elements_over_atol": 39
+        },
+        "layer3_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": "attention_scratch.query_raw",
+          "max_context": 513,
+          "rows": 8,
+          "slots": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "segment_metadata": {
+            "shape": "single_batch",
+            "rows": 8,
+            "slots": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "positions": [
+              512,
+              512,
+              512,
+              512,
+              512,
+              512,
+              512,
+              512
+            ],
+            "decode_live_counts": [
+              513,
+              513,
+              513,
+              513,
+              513,
+              513,
+              513,
+              513
+            ],
+            "append_live_counts": [
+              512,
+              512,
+              512,
+              512,
+              512,
+              512,
+              512,
+              512
+            ],
+            "decode_max_live_count": 513,
+            "block_table_len_per_row": 4,
+            "block_table_unique_rows": [
+              [
+                0,
+                1,
+                2,
+                3
+              ]
+            ],
+            "storage_dtype": "bf16"
+          }
+        }
+      },
+      "layer3_rowchunk4": {
+        "path": "/tmp/hipengine-hidden-bisect-iter446-L8-c8-rowchunk4-layer3-nativec1-warm8-decode1-trace0-1.json",
+        "status": "mismatch_found",
+        "hidden_passed": false,
+        "token_passed": true,
+        "first_linear_mismatch": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 4,
+          "stage": "attn_input",
+          "row": 0,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 1296,
+          "max_abs_index": [
+            0,
+            1296
+          ],
+          "elements_over_atol": 5,
+          "bit_mismatch": 491
+        },
+        "first_full_attention_failure": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 7,
+          "stage": "attn_input_pre_qkv",
+          "row": 0,
+          "max_abs": 0.015625,
+          "max_abs_flat_index": 1269,
+          "max_abs_index": [
+            0,
+            1269
+          ],
+          "elements_over_atol": 39
+        },
+        "layer3_execution": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_row_chunk_size": 4,
+          "full_attention_row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": "attention_scratch.query_raw",
+          "max_context": 513,
+          "rows": 8,
+          "slots": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "segment_metadata": {
+            "shape": "row_chunks",
+            "row_chunk_size": 4,
+            "chunk_count": 2,
+            "chunk_rows": [
+              4,
+              4
+            ],
+            "chunk_slots": [
+              [
+                0,
+                1,
+                2,
+                3
+              ],
+              [
+                4,
+                5,
+                6,
+                7
+              ]
+            ],
+            "chunk_block_table_unique_rows": [
+              [
+                [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  16,
+                  17,
+                  18,
+                  19
+                ]
+              ]
+            ],
+            "chunks": [
+              {
+                "row_start": 0,
+                "rows": 4,
+                "slots": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512,
+                  512
+                ],
+                "output_path": null,
+                "segment_rows": 4,
+                "segment_slots": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513,
+                  513
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512,
+                  512
+                ],
+                "decode_max_live_count": 513,
+                "block_table_len_per_row": 4,
+                "block_table_unique_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              },
+              {
+                "row_start": 4,
+                "rows": 4,
+                "slots": [
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512,
+                  512
+                ],
+                "output_path": null,
+                "segment_rows": 4,
+                "segment_slots": [
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513,
+                  513
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512,
+                  512
+                ],
+                "decode_max_live_count": 513,
+                "block_table_len_per_row": 4,
+                "block_table_unique_rows": [
+                  [
+                    16,
+                    17,
+                    18,
+                    19
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            ]
+          }
+        }
+      },
+      "layer3_rowchunk2": {
+        "path": "/tmp/hipengine-hidden-bisect-iter445-L8-c8-rowchunk-layer3-nativec1-warm8-decode1-trace0-1.json",
+        "status": "eq_ok",
+        "hidden_passed": true,
+        "token_passed": true,
+        "first_linear_mismatch": null,
+        "first_full_attention_failure": null,
+        "layer3_execution": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_row_chunk_size": 2,
+          "full_attention_row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": "attention_scratch.query_raw",
+          "max_context": 513,
+          "rows": 8,
+          "slots": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "segment_metadata": {
+            "shape": "row_chunks",
+            "row_chunk_size": 2,
+            "chunk_count": 4,
+            "chunk_rows": [
+              2,
+              2,
+              2,
+              2
+            ],
+            "chunk_slots": [
+              [
+                0,
+                1
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                4,
+                5
+              ],
+              [
+                6,
+                7
+              ]
+            ],
+            "chunk_block_table_unique_rows": [
+              [
+                [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  8,
+                  9,
+                  10,
+                  11
+                ]
+              ],
+              [
+                [
+                  16,
+                  17,
+                  18,
+                  19
+                ]
+              ],
+              [
+                [
+                  24,
+                  25,
+                  26,
+                  27
+                ]
+              ]
+            ],
+            "chunks": [
+              {
+                "row_start": 0,
+                "rows": 2,
+                "slots": [
+                  0,
+                  1
+                ],
+                "positions": [
+                  512,
+                  512
+                ],
+                "output_path": null,
+                "segment_rows": 2,
+                "segment_slots": [
+                  0,
+                  1
+                ],
+                "decode_live_counts": [
+                  513,
+                  513
+                ],
+                "append_live_counts": [
+                  512,
+                  512
+                ],
+                "decode_max_live_count": 513,
+                "block_table_len_per_row": 4,
+                "block_table_unique_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              },
+              {
+                "row_start": 2,
+                "rows": 2,
+                "slots": [
+                  2,
+                  3
+                ],
+                "positions": [
+                  512,
+                  512
+                ],
+                "output_path": null,
+                "segment_rows": 2,
+                "segment_slots": [
+                  2,
+                  3
+                ],
+                "decode_live_counts": [
+                  513,
+                  513
+                ],
+                "append_live_counts": [
+                  512,
+                  512
+                ],
+                "decode_max_live_count": 513,
+                "block_table_len_per_row": 4,
+                "block_table_unique_rows": [
+                  [
+                    8,
+                    9,
+                    10,
+                    11
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              },
+              {
+                "row_start": 4,
+                "rows": 2,
+                "slots": [
+                  4,
+                  5
+                ],
+                "positions": [
+                  512,
+                  512
+                ],
+                "output_path": null,
+                "segment_rows": 2,
+                "segment_slots": [
+                  4,
+                  5
+                ],
+                "decode_live_counts": [
+                  513,
+                  513
+                ],
+                "append_live_counts": [
+                  512,
+                  512
+                ],
+                "decode_max_live_count": 513,
+                "block_table_len_per_row": 4,
+                "block_table_unique_rows": [
+                  [
+                    16,
+                    17,
+                    18,
+                    19
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              },
+              {
+                "row_start": 6,
+                "rows": 2,
+                "slots": [
+                  6,
+                  7
+                ],
+                "positions": [
+                  512,
+                  512
+                ],
+                "output_path": null,
+                "segment_rows": 2,
+                "segment_slots": [
+                  6,
+                  7
+                ],
+                "decode_live_counts": [
+                  513,
+                  513
+                ],
+                "append_live_counts": [
+                  512,
+                  512
+                ],
+                "decode_max_live_count": 513,
+                "block_table_len_per_row": 4,
+                "block_table_unique_rows": [
+                  [
+                    24,
+                    25,
+                    26,
+                    27
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "metadata_findings": {
+      "green_variant": "layer3_rowchunk2",
+      "red_variants": [
+        "fullnative",
+        "layer3_rowchunk4"
+      ],
+      "context_launch_row_groups": {
+        "fullnative": [
+          8
+        ],
+        "layer3_rowchunk4": [
+          4,
+          4
+        ],
+        "layer3_rowchunk2": [
+          2,
+          2,
+          2,
+          2
+        ]
+      },
+      "context_launch_slot_groups": {
+        "fullnative": [
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        ],
+        "layer3_rowchunk4": [
+          [
+            0,
+            1,
+            2,
+            3
+          ],
+          [
+            4,
+            5,
+            6,
+            7
+          ]
+        ],
+        "layer3_rowchunk2": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            4,
+            5
+          ],
+          [
+            6,
+            7
+          ]
+        ]
+      },
+      "block_table_unique_rows_by_launch": {
+        "fullnative": [
+          [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ]
+        ],
+        "layer3_rowchunk4": [
+          [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          [
+            [
+              16,
+              17,
+              18,
+              19
+            ]
+          ]
+        ],
+        "layer3_rowchunk2": [
+          [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          [
+            [
+              8,
+              9,
+              10,
+              11
+            ]
+          ],
+          [
+            [
+              16,
+              17,
+              18,
+              19
+            ]
+          ],
+          [
+            [
+              24,
+              25,
+              26,
+              27
+            ]
+          ]
+        ]
+      },
+      "shared_fields": {
+        "positions": [
+          512,
+          512,
+          512,
+          512,
+          512,
+          512,
+          512,
+          512
+        ],
+        "decode_live_count": 513,
+        "append_live_count": 512,
+        "storage_dtype": "bf16",
+        "context_trace_source": "attention_scratch.query_raw",
+        "output_projection": "batch_gemv family for all variants"
+      }
+    },
+    "direct_stage_reference": {
+      "source": "iter447 direct comparator",
+      "fullnative_vs_rowchunk4": "bit-identical across all 21 captured layer3 full-attention stages",
+      "fullnative_or_rowchunk4_vs_rowchunk2_first_drift": "layer3 attn_context max_abs=1.9073486328125e-06, elements_over_atol=0, bit_mismatch=29217, all 8 rows"
+    }
+  },
+  "interpretation": {
+    "conclusion": "The green layer3 path is explained by context launch grouping: rowchunk2 issues four 2-row context launches over slot pairs, while rowchunk4 issues two 4-row launches and fullnative issues one 8-row launch. All variants share positions/live counts/storage dtype and use the same context trace source; iter447 proves chunk4 is numerically identical to fullnative, so the remaining context drift is tied to rows-per-context-launch/order rather than tensor inputs or O projection.",
+    "next_target": "Test layer3-only rowchunk1 to distinguish rows<=2 from exactly-two-row context semantics, then inspect/repair the native context kernel or metadata path for rows>=4."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused metadata artifact maps the green c8 layer3 path to 2-row context launch grouping and eliminates tensor input/O metadata differences; no performance claim."
+  },
+  "conclusion": "Layer3 rowchunk2 uses four 2-row context launches and is green; rowchunk4/fullnative use rows>=4 context launches and are red/bit-identical, so the context issue is tied to rows-per-launch/order semantics."
+}
