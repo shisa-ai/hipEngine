@@ -1116,6 +1116,8 @@ reporting.
   `--blocker-recommended-command-reasons-joined-sha-only` action-rationale route outputs,
   `--blocker-first-missing-evidence-joined-only` /
   `--blocker-first-missing-evidence-joined-sha-only` missing-evidence route outputs,
+  `--blocker-command-available-joined-only` /
+  `--blocker-command-available-joined-sha-only` runnable-action route outputs,
   handoff-integrity verification commands and their compact output-mode mappings,
   status/handoff compact output-mode mappings, plus the compact recommended-command
   list mirror against the full work queue. The status artifact now persists `status_integrity` plus
