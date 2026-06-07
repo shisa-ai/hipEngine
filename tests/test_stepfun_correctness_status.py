@@ -1611,6 +1611,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "docs_open_partial_texts_joined_sha_only": (
             "docs_checklist.open_or_partial_texts_joined_p0_p12_sha256"
         ),
+        "docs_open_partial_line_texts_joined_only": (
+            "docs_checklist.open_or_partial_line_texts_joined_p0_p12"
+        ),
+        "docs_open_partial_line_texts_joined_sha_only": (
+            "docs_checklist.open_or_partial_line_texts_joined_p0_p12_sha256"
+        ),
         "docs_first_open_partial_item_only": (
             "docs_checklist.first_open_or_partial_item_p0_p12"
         ),
@@ -2487,6 +2493,8 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     texts_sha_output = tmp_path / "docs-open-partial-texts-sha.json"
     texts_joined_output = tmp_path / "docs-open-partial-texts-joined.json"
     texts_joined_sha_output = tmp_path / "docs-open-partial-texts-joined-sha.json"
+    line_texts_joined_output = tmp_path / "docs-open-partial-line-texts-joined.json"
+    line_texts_joined_sha_output = tmp_path / "docs-open-partial-line-texts-joined-sha.json"
     first_output = tmp_path / "docs-first-open-partial-item.json"
     first_sha_output = tmp_path / "docs-first-open-partial-item-sha.json"
     last_output = tmp_path / "docs-last-open-partial-item.json"
@@ -2545,6 +2553,9 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
         payload["last_open_or_partial_item_p0_p12"]["text"],
     ]
     expected_texts_joined = "|".join(expected_texts)
+    expected_line_texts_joined = "|".join(
+        f"{line}:{text}" for line, text in zip(expected_lines, expected_texts)
+    )
     assert payload["open_or_partial_state_counts_p0_p12"] == expected_state_counts
     assert payload["open_or_partial_state_counts_p0_p12_sha256"] == (
         _stable_json_sha256(expected_state_counts)
@@ -2560,6 +2571,12 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     assert payload["open_or_partial_texts_joined_p0_p12"] == expected_texts_joined
     assert payload["open_or_partial_texts_joined_p0_p12_sha256"] == (
         _stable_json_sha256(expected_texts_joined)
+    )
+    assert payload["open_or_partial_line_texts_joined_p0_p12"] == (
+        expected_line_texts_joined
+    )
+    assert payload["open_or_partial_line_texts_joined_p0_p12_sha256"] == (
+        _stable_json_sha256(expected_line_texts_joined)
     )
     expected_summary = {
         "schema_version": 1,
@@ -2580,6 +2597,10 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
         "open_or_partial_texts_joined": expected_texts_joined,
         "open_or_partial_texts_joined_sha256": _stable_json_sha256(
             expected_texts_joined
+        ),
+        "open_or_partial_line_texts_joined": expected_line_texts_joined,
+        "open_or_partial_line_texts_joined_sha256": _stable_json_sha256(
+            expected_line_texts_joined
         ),
         "first_open_or_partial_item_p0_p12": payload[
             "first_open_or_partial_item_p0_p12"
@@ -2949,6 +2970,64 @@ def test_stepfun_correctness_status_docs_checklist_outputs(capsys, tmp_path: Pat
     assert status["handoff_summary"]["compact_output_modes"][
         "docs_open_partial_texts_joined_sha_only"
     ] == "docs_checklist.open_or_partial_texts_joined_p0_p12_sha256"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(line_texts_joined_output),
+            "--summary-only",
+            "--docs-open-partial-line-texts-joined-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(line_texts_joined_output.read_text()) == status[
+        "docs_checklist"
+    ]["open_or_partial_line_texts_joined_p0_p12"]
+    assert status["handoff_summary"]["compact_output_modes"][
+        "docs_open_partial_line_texts_joined_only"
+    ] == "docs_checklist.open_or_partial_line_texts_joined_p0_p12"
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(line_texts_joined_sha_output),
+            "--summary-only",
+            "--docs-open-partial-line-texts-joined-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(line_texts_joined_sha_output.read_text()) == status[
+        "docs_checklist"
+    ]["open_or_partial_line_texts_joined_p0_p12_sha256"]
+    assert status["handoff_summary"]["compact_output_modes"][
+        "docs_open_partial_line_texts_joined_sha_only"
+    ] == "docs_checklist.open_or_partial_line_texts_joined_p0_p12_sha256"
 
     rc = main(
         [
@@ -5419,6 +5498,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "docs_open_partial_texts_joined_sha_only": (
             "docs_checklist.open_or_partial_texts_joined_p0_p12_sha256"
+        ),
+        "docs_open_partial_line_texts_joined_only": (
+            "docs_checklist.open_or_partial_line_texts_joined_p0_p12"
+        ),
+        "docs_open_partial_line_texts_joined_sha_only": (
+            "docs_checklist.open_or_partial_line_texts_joined_p0_p12_sha256"
         ),
         "docs_first_open_partial_item_only": (
             "docs_checklist.first_open_or_partial_item_p0_p12"

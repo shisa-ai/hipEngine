@@ -609,6 +609,8 @@ reporting.
   `--docs-open-partial-texts-sha-only` expose checklist item text labels,
   `--docs-open-partial-texts-joined-only` /
   `--docs-open-partial-texts-joined-sha-only` expose a pipe-joined scalar form,
+  `--docs-open-partial-line-texts-joined-only` /
+  `--docs-open-partial-line-texts-joined-sha-only` expose a pipe-joined line:text scalar,
   and `--docs-first-open-partial-item-only` /
   `--docs-first-open-partial-item-sha-only` /
   `--docs-last-open-partial-item-only` /

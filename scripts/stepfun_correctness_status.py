@@ -417,6 +417,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--docs-open-partial-line-texts-joined-only",
+        action="store_true",
+        help=(
+            "Emit only pipe-joined line:text labels for P0-P12 open/partial "
+            "checklist blockers. Overrides --summary-only and readiness modes."
+        ),
+    )
+    parser.add_argument(
+        "--docs-open-partial-line-texts-joined-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the stable digest of the pipe-joined line:text P0-P12 "
+            "open/partial checklist labels. Overrides --summary-only and readiness modes."
+        ),
+    )
+    parser.add_argument(
         "--docs-first-open-partial-item-only",
         action="store_true",
         help=(
@@ -1743,6 +1759,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "docs_checklist.open_or_partial_texts_joined_p0_p12"
             and compact_output_modes.get("docs_open_partial_texts_joined_sha_only")
             == "docs_checklist.open_or_partial_texts_joined_p0_p12_sha256"
+            and compact_output_modes.get("docs_open_partial_line_texts_joined_only")
+            == "docs_checklist.open_or_partial_line_texts_joined_p0_p12"
+            and compact_output_modes.get("docs_open_partial_line_texts_joined_sha_only")
+            == "docs_checklist.open_or_partial_line_texts_joined_p0_p12_sha256"
             and compact_output_modes.get("docs_first_open_partial_item_only")
             == "docs_checklist.first_open_or_partial_item_p0_p12"
             and compact_output_modes.get("docs_first_open_partial_item_sha_only")
@@ -2130,6 +2150,9 @@ def _docs_checklist_status(docs_path: Path) -> dict[str, object]:
     item_lines = [int(item["line"]) for item in items]
     item_texts = [str(item["text"]) for item in items]
     item_texts_joined = "|".join(item_texts)
+    item_line_texts_joined = "|".join(
+        f"{line}:{text}" for line, text in zip(item_lines, item_texts)
+    )
     state_counts = {
         "open": sum(1 for state in item_states if state == "open"),
         "partial": sum(1 for state in item_states if state == "partial"),
@@ -2149,6 +2172,10 @@ def _docs_checklist_status(docs_path: Path) -> dict[str, object]:
         "open_or_partial_texts_joined": item_texts_joined,
         "open_or_partial_texts_joined_sha256": _stable_json_sha256(
             item_texts_joined
+        ),
+        "open_or_partial_line_texts_joined": item_line_texts_joined,
+        "open_or_partial_line_texts_joined_sha256": _stable_json_sha256(
+            item_line_texts_joined
         ),
         "first_open_or_partial_item_p0_p12": first_item,
         "first_open_or_partial_item_sha256": _stable_json_sha256(first_item),
@@ -2170,6 +2197,10 @@ def _docs_checklist_status(docs_path: Path) -> dict[str, object]:
         "open_or_partial_texts_joined_p0_p12": item_texts_joined,
         "open_or_partial_texts_joined_p0_p12_sha256": _stable_json_sha256(
             item_texts_joined
+        ),
+        "open_or_partial_line_texts_joined_p0_p12": item_line_texts_joined,
+        "open_or_partial_line_texts_joined_p0_p12_sha256": _stable_json_sha256(
+            item_line_texts_joined
         ),
         "first_open_or_partial_item_p0_p12": first_item,
         "last_open_or_partial_item_p0_p12": last_item,
@@ -4301,6 +4332,12 @@ def _handoff_summary(
             "docs_open_partial_texts_joined_sha_only": (
                 "docs_checklist.open_or_partial_texts_joined_p0_p12_sha256"
             ),
+            "docs_open_partial_line_texts_joined_only": (
+                "docs_checklist.open_or_partial_line_texts_joined_p0_p12"
+            ),
+            "docs_open_partial_line_texts_joined_sha_only": (
+                "docs_checklist.open_or_partial_line_texts_joined_p0_p12_sha256"
+            ),
             "docs_first_open_partial_item_only": (
                 "docs_checklist.first_open_or_partial_item_p0_p12"
             ),
@@ -5071,6 +5108,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.docs_open_partial_texts_joined_only:
         result = status["docs_checklist"].get(
             "open_or_partial_texts_joined_p0_p12"
+        )
+    elif args.docs_open_partial_line_texts_joined_sha_only:
+        result = status["docs_checklist"].get(
+            "open_or_partial_line_texts_joined_p0_p12_sha256"
+        )
+    elif args.docs_open_partial_line_texts_joined_only:
+        result = status["docs_checklist"].get(
+            "open_or_partial_line_texts_joined_p0_p12"
         )
     elif args.docs_first_open_partial_item_sha_only:
         result = _stable_json_sha256(
