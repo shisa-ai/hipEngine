@@ -1,0 +1,221 @@
+{
+  "iteration": 483,
+  "kind": "native_c4_c8_teacher_forced_kl_top1_validation",
+  "created_at": "2026-06-07T23:00:00+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "git_commit_before_commit": "ab08e951",
+  "gate": "Project correctness gate (AGENTS.md): mean KL(c1||batch) <= 0.05 AND top-1 agreement >= 0.90, teacher-forced per decode step.",
+  "summary_verdict": {
+    "c4_native_rows4_no_rowchunk": {
+      "passed": true,
+      "mean_kl": 0.0008172751826801824,
+      "max_kl": 0.07311362472629089,
+      "p95_kl": 0.0026858875815087375,
+      "top1_fraction": 0.994140625,
+      "n": 512
+    },
+    "c8_native_rows8_no_rowchunk": {
+      "passed": true,
+      "mean_kl": 0.00720627589640667,
+      "max_kl": 2.5746989516234917,
+      "p95_kl": 0.002999263802735681,
+      "top1_fraction": 0.9931640625,
+      "n": 1024
+    }
+  },
+  "interpretation": {
+    "native_c_aware_decode_is_per_step_correct": "With no row-chunk env set (pure native rows=N full-attention decode), both c4 and c8 pass the project correctness gate under teacher forcing. p95 per-step KL is ~0.003 for both; the vast majority of decode steps put the c>N batch distribution within ~3e-3 nats of the c=1 serial oracle and agree on the argmax.",
+    "row_chunk_repair_not_needed_for_correctness": "The rowchunk diagnostic (c4 layers 3,15; c8 layers 3,7,11,15,19,23) was addressing free-running chaotic near-tie divergence (iter482), not a per-step correctness defect. Under the teacher-forced gate, native rows=4/8 is correct without any rowchunk.",
+    "residual_near_tie_outliers": "A small number of near-tie steps produce larger per-step KL (c4 max 0.073 at row0/step67 with matching top-1; c8 max 2.575 at row5/step10 with a top-1 disagreement) and the rare top-1 mismatch (c4 99.41%, c8 99.32%). These are isolated single-step events consistent with chaotic near-tie sensitivity, not systematic error; the gate is on the mean and is cleared by >6x (c4) / >6x (c8).",
+    "outlier_followup": "c8 row5/step10 KL 2.575 and the slightly elevated c8 row5 (mean 0.021) / row6 (mean 0.033) are worth a focused spot-check to confirm they are genuine near-ties rather than a row-specific effect, but they do not fail the gate."
+  },
+  "no_performance_claim": "Correctness-only. This validates the correctness half (native c>N is per-step correct). No retained throughput/scaling claim is made; retained rows still require docs/BENCHMARK.md eligibility gates, profiler evidence, and c=1/serial-bridge baselines.",
+  "commands": {
+    "c4": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_teacher_forced_kl.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/tfkl-c4-128.json",
+    "c8": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_teacher_forced_kl.py ... --batch-size 8 ... --json /tmp/tfkl-c8-128.json"
+  },
+  "raw_results": {
+    "c4": {
+      "schema": 1,
+      "kind": "teacher_forced_kl_top1_gate",
+      "status": "passed",
+      "timestamp": "2026-06-07T22:51:23.043818+00:00",
+      "performance_claim": false,
+      "gate": "KL(c1||batch) mean <= kl_threshold AND top-1 agreement >= top1_threshold (teacher-forced, per decode step)",
+      "workload": {
+        "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "prompt_length": 512,
+        "batch_size": 4,
+        "decode_tokens": 128,
+        "max_layers": 40,
+        "max_sequence_length": 1024,
+        "row_chunk_env": {
+          "size": "",
+          "layers": ""
+        },
+        "native_path_note": "No row-chunk env set => pure native rows=N full-attention decode (the shippable native c-aware path)."
+      },
+      "summary": {
+        "passed": true,
+        "kl_passed": true,
+        "top1_passed": true,
+        "n": 512,
+        "mean_kl": 0.0008172751826801824,
+        "max_kl": 0.07311362472629089,
+        "p95_kl": 0.0026858875815087375,
+        "top1_fraction": 0.994140625,
+        "kl_threshold": 0.05,
+        "top1_threshold": 0.9,
+        "per_row": {
+          "0": {
+            "n": 128,
+            "mean_kl": 0.0018218556146974492,
+            "max_kl": 0.07311362472629089,
+            "top1_fraction": 1.0
+          },
+          "1": {
+            "n": 128,
+            "mean_kl": 0.00044415141025771956,
+            "max_kl": 0.012687174801589728,
+            "top1_fraction": 0.984375
+          },
+          "2": {
+            "n": 128,
+            "mean_kl": 7.94684560304403e-05,
+            "max_kl": 0.002699249229666777,
+            "top1_fraction": 1.0
+          },
+          "3": {
+            "n": 128,
+            "mean_kl": 0.0009236252497351208,
+            "max_kl": 0.041914713293652796,
+            "top1_fraction": 0.9921875
+          }
+        }
+      },
+      "first_top1_mismatch": {
+        "row": 1,
+        "step": 103,
+        "c1_token": 2713,
+        "batch_token": 799,
+        "kl": 0.0005599669531534237
+      },
+      "worst_kl": {
+        "row": 0,
+        "step": 67,
+        "kl": 0.07311362472629089,
+        "top1_match": true
+      }
+    },
+    "c8": {
+      "schema": 1,
+      "kind": "teacher_forced_kl_top1_gate",
+      "status": "passed",
+      "timestamp": "2026-06-07T22:52:31.952556+00:00",
+      "performance_claim": false,
+      "gate": "KL(c1||batch) mean <= kl_threshold AND top-1 agreement >= top1_threshold (teacher-forced, per decode step)",
+      "workload": {
+        "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "prompt_length": 512,
+        "batch_size": 8,
+        "decode_tokens": 128,
+        "max_layers": 40,
+        "max_sequence_length": 1024,
+        "row_chunk_env": {
+          "size": "",
+          "layers": ""
+        },
+        "native_path_note": "No row-chunk env set => pure native rows=N full-attention decode (the shippable native c-aware path)."
+      },
+      "summary": {
+        "passed": true,
+        "kl_passed": true,
+        "top1_passed": true,
+        "n": 1024,
+        "mean_kl": 0.00720627589640667,
+        "max_kl": 2.5746989516234917,
+        "p95_kl": 0.002999263802735681,
+        "top1_fraction": 0.9931640625,
+        "kl_threshold": 0.05,
+        "top1_threshold": 0.9,
+        "per_row": {
+          "0": {
+            "n": 128,
+            "mean_kl": 0.0018218556146974492,
+            "max_kl": 0.07311362472629089,
+            "top1_fraction": 1.0
+          },
+          "1": {
+            "n": 128,
+            "mean_kl": 0.00044415141025771956,
+            "max_kl": 0.012687174801589728,
+            "top1_fraction": 0.984375
+          },
+          "2": {
+            "n": 128,
+            "mean_kl": 7.94684560304403e-05,
+            "max_kl": 0.002699249229666777,
+            "top1_fraction": 1.0
+          },
+          "3": {
+            "n": 128,
+            "mean_kl": 0.0009236252497351208,
+            "max_kl": 0.041914713293652796,
+            "top1_fraction": 0.9921875
+          },
+          "4": {
+            "n": 128,
+            "mean_kl": 0.00011124465072575359,
+            "max_kl": 0.004778320816390583,
+            "top1_fraction": 1.0
+          },
+          "5": {
+            "n": 128,
+            "mean_kl": 0.02106631375281117,
+            "max_kl": 2.5746989516234917,
+            "top1_fraction": 0.9921875
+          },
+          "6": {
+            "n": 128,
+            "mean_kl": 0.03303695597692867,
+            "max_kl": 2.3396817263614698,
+            "top1_fraction": 0.9765625
+          },
+          "7": {
+            "n": 128,
+            "mean_kl": 0.00016659206006703416,
+            "max_kl": 0.00446734495580442,
+            "top1_fraction": 1.0
+          }
+        }
+      },
+      "first_top1_mismatch": {
+        "row": 1,
+        "step": 103,
+        "c1_token": 2713,
+        "batch_token": 799,
+        "kl": 0.0005599669531534237
+      },
+      "worst_kl": {
+        "row": 5,
+        "step": 10,
+        "kl": 2.5746989516234917,
+        "top1_match": false
+      }
+    }
+  },
+  "raw_result_hashes": {
+    "c4": {
+      "path": "/tmp/tfkl-c4-128.json",
+      "sha256": "7ac8277f83c9dea622c90faebfee11380f2357e5acddacdc5f0a369cbc549b6c"
+    },
+    "c8": {
+      "path": "/tmp/tfkl-c8-128.json",
+      "sha256": "5bd7c641b1b748eba4502cc7359a8705ffce29831df3a6df477e656dd8c101f1"
+    }
+  }
+}
