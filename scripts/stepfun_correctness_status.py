@@ -1371,6 +1371,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-source-match-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_partial_output_handoff.command_record."
+            "partial_output_matches_oracle_source_path for compact supervised oracle-rerun "
+            "source-path polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-source-match-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of oracle_partial_output_handoff.command_record."
+            "partial_output_matches_oracle_source_path for supervised oracle-rerun "
+            "source-path drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-helper-long-timeout-command-only",
         action="store_true",
         help=(
@@ -2747,6 +2765,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff.command_record.partial_output_blocker_kind"
             and compact_output_modes.get("oracle_partial_output_blocker_kind_sha_only")
             == "oracle_partial_output_handoff.command_record.partial_output_blocker_kind.sha256"
+            and compact_output_modes.get("oracle_partial_output_source_match_only")
+            == "oracle_partial_output_handoff.command_record.partial_output_matches_oracle_source_path"
+            and compact_output_modes.get("oracle_partial_output_source_match_sha_only")
+            == "oracle_partial_output_handoff.command_record.partial_output_matches_oracle_source_path.sha256"
             and compact_output_modes.get("oracle_helper_long_timeout_command_only")
             == "next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command"
             and compact_output_modes.get("oracle_helper_long_timeout_command_sha_only")
@@ -5477,6 +5499,12 @@ def _handoff_summary(
             "oracle_partial_output_blocker_kind_sha_only": (
                 "oracle_partial_output_handoff.command_record.partial_output_blocker_kind.sha256"
             ),
+            "oracle_partial_output_source_match_only": (
+                "oracle_partial_output_handoff.command_record.partial_output_matches_oracle_source_path"
+            ),
+            "oracle_partial_output_source_match_sha_only": (
+                "oracle_partial_output_handoff.command_record.partial_output_matches_oracle_source_path.sha256"
+            ),
             "blocker_kinds_only": "blocker_kinds",
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "blocker_kinds_count_only": "blocker_kinds.count",
@@ -6528,6 +6556,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             status["oracle_partial_output_handoff"]
             .get("command_record", {})
             .get("partial_output_blocker_kind")
+        )
+    elif args.oracle_partial_output_source_match_sha_only:
+        source_match = (
+            status["oracle_partial_output_handoff"]
+            .get("command_record", {})
+            .get("partial_output_matches_oracle_source_path")
+        )
+        result = _stable_json_sha256(source_match)
+    elif args.oracle_partial_output_source_match_only:
+        result = (
+            status["oracle_partial_output_handoff"]
+            .get("command_record", {})
+            .get("partial_output_matches_oracle_source_path")
         )
     elif args.oracle_helper_long_timeout_command_sha_only:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(

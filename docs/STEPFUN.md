@@ -1049,8 +1049,10 @@ reporting.
   match, and safe/drift status), while `--oracle-partial-output-status-only` /
   `--oracle-partial-output-status-sha-only` and
   `--oracle-partial-output-blocker-kind-only` /
-  `--oracle-partial-output-blocker-kind-sha-only` expose the current partial-output
-  status and blocker-kind scalars without requiring the full status artifact. Status
+  `--oracle-partial-output-blocker-kind-sha-only`, and
+  `--oracle-partial-output-source-match-only` /
+  `--oracle-partial-output-source-match-sha-only` expose the current partial-output
+  status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
   integrity verifies the command-level partial-output guarantee, the compact handoff digest/status,
   and that the queue/compact blocker
   reports mirror the same path/status/overwrite fields; oracle-helper tests now
