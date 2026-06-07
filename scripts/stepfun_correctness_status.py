@@ -1096,6 +1096,25 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--blocker-command-state-counts-only",
+        action="store_true",
+        help=(
+            "Emit only the available/unavailable count mapping derived from "
+            "handoff_summary.blocker_work_queue[].command_available for compact "
+            "command-state count polling. Overrides --summary-only and blocker-work-queue "
+            "compact modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-command-state-counts-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the blocker command-state count mapping "
+            "for command-state count drift polling. Overrides --summary-only and "
+            "blocker-work-queue compact modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-command-available-count-only",
         action="store_true",
         help=(
@@ -2812,6 +2831,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "handoff_summary.blocker_work_queue.command_state.joined"
             and compact_output_modes.get("blocker_command_state_joined_sha_only")
             == "handoff_summary.blocker_work_queue.command_state.joined.sha256"
+            and compact_output_modes.get("blocker_command_state_counts_only")
+            == "handoff_summary.blocker_work_queue.command_state.counts"
+            and compact_output_modes.get("blocker_command_state_counts_sha_only")
+            == "handoff_summary.blocker_work_queue.command_state.counts.sha256"
             and compact_output_modes.get("blocker_command_available_count_only")
             == "handoff_summary.blocker_work_queue.command_available.count"
             and compact_output_modes.get("blocker_command_available_count_sha_only")
@@ -5601,6 +5624,12 @@ def _handoff_summary(
             "blocker_command_state_joined_sha_only": (
                 "handoff_summary.blocker_work_queue.command_state.joined.sha256"
             ),
+            "blocker_command_state_counts_only": (
+                "handoff_summary.blocker_work_queue.command_state.counts"
+            ),
+            "blocker_command_state_counts_sha_only": (
+                "handoff_summary.blocker_work_queue.command_state.counts.sha256"
+            ),
             "blocker_command_available_count_only": (
                 "handoff_summary.blocker_work_queue.command_available.count"
             ),
@@ -6888,6 +6917,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             for item in status["handoff_summary"]["blocker_work_queue"]
             if isinstance(item, dict)
         )
+    elif args.blocker_command_state_counts_sha_only:
+        command_state_counts = {"available": 0, "unavailable": 0}
+        for item in status["handoff_summary"]["blocker_work_queue"]:
+            if isinstance(item, dict) and item.get("command_available") is True:
+                command_state_counts["available"] += 1
+            elif isinstance(item, dict):
+                command_state_counts["unavailable"] += 1
+        result = _stable_json_sha256(command_state_counts)
+    elif args.blocker_command_state_counts_only:
+        result = {"available": 0, "unavailable": 0}
+        for item in status["handoff_summary"]["blocker_work_queue"]:
+            if isinstance(item, dict) and item.get("command_available") is True:
+                result["available"] += 1
+            elif isinstance(item, dict):
+                result["unavailable"] += 1
     elif args.blocker_command_available_count_sha_only:
         command_available_count = sum(
             1
