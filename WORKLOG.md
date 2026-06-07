@@ -67274,3 +67274,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: for the rowchunk1 selected-layer correctness path, the required c8 rowchunk set narrows from `3,7,11,15,19,23,35` to `3,7,11,15,19,23`. This is a correctness-only finding and does not yet prove the rowchunk2 auto default can drop layer35; a matching rowchunk2 drop35 probe should be run before changing auto defaults.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk1-drop35-equality-456/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter457 c8 rowchunk2 drop35 equality green
+- No runtime/source code changed. Ran c8 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with the current auto rowchunk size `2` but only layers `3,7,11,15,19,23` (dropping layer35 from the current c8 auto rowchunk set).
+- Result: c8 generated-token equality vs independent c1 is still **green**. `correctness.generated_token_equality.passed=true`, `prefix_lengths=[137,137,137,137,137,137,137,137]`, `min_equal_prefix_tokens=137`, `tokens_per_sequence=137`, all `first_mismatch_indices` are `null`, and mismatch count is `0`. Layers 27/31/35/39 run native batch with batch-GEMV output; layers 3/7/11/15/19/23 use rowchunk2.
+- Interpretation: this matches iter456 rowchunk1 drop35 and proves the current rowchunk2 auto selected layer set can be narrowed from `3,7,11,15,19,23,35` to `3,7,11,15,19,23` for c8 correctness. A narrow code/test update can now remove layer35 from the retained-bench c8 auto rowchunk default.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop35-equality-457/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
