@@ -15,7 +15,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
-- **Kernel R&D lives in `~/amd-gpu-tuning/`**, not here. hipEngine ingests *stable* kernels via port; micro-tuning, `rocprofv3` iteration loops, and the device-code gotcha catalog stay in the parent workspace.
+- **Kernel work happens in this tree.** hipEngine is not a thin port of `~/amd-gpu-tuning/`; it is substantively different (torch-free runtime, four-axis registry, `KVLiveSpans` ABI, verifier-shaped kernels). New kernels, fused variants, small-batch/verifier-shaped kernels, micro-tuning, and `rocprofv3` iteration loops all live here under `kernels/<backend>/` with a bit-exact RED test plus the correctness gate. `~/amd-gpu-tuning/` and `nano-vllm-amd` remain read-only *references* for kernel lineage, prior evidence, and the device-code gotcha catalog — cite source file + commit when porting an idea, but do the development and measurement in-tree.
 - **Kernel catalog must stay current.** Before any kernel port, check `docs/KERNELS.md` and run `scripts/check_lineage.py`; update the catalog/path map if parent kernels or dispatch changed.
 
 ## Architectural Invariants
@@ -151,7 +151,7 @@ Working tree is shared state. Other agents or the human may be editing concurren
 
 Read-only peers under `/home/lhl/`. Do not edit as part of a hipEngine task. When porting, record source file + commit in the commit message. If an external reference disagrees with `docs/PLAN.md`, `docs/PLAN.md` wins unless we explicitly decide the reference is correct and update `docs/PLAN.md`.
 
-- `~/amd-gpu-tuning/` — parent workspace; **kernel R&D home**, benchmark history, `LESSONS-LEARNED.md`.
+- `~/amd-gpu-tuning/` — parent workspace; kernel lineage reference, benchmark history, `LESSONS-LEARNED.md`. Read-only; kernel development now happens in this tree.
 - `~/amd-gpu-tuning/nano-vllm-amd/` — kernel source of truth for the Phase-0 port.
 - `~/FastDMS/` — DMS reference (Phase 4).
 - `~/FastKMS/` — DFlash speculative decode reference.
@@ -166,7 +166,7 @@ Read-only peers under `/home/lhl/`. Do not edit as part of a hipEngine task. Whe
 | `rocprofv3` reports unexpected kernel | Registry / dispatch bug, not a kernel bug. Check `fusion.plan()` output before touching the kernel. |
 | Math change lacks an oracle/test | Stop and add a CPU-reference/golden fixture first, or record an explicit no-RED rationale in `WORKLOG.md`. |
 | KL / top-1 regression after a kernel edit | Revert, add a correctness fixture that captures the failure, then re-try. Never land a perf win that regresses correctness. |
-| Kernel micro-opt shows neutral / negative results | Re-run the pre-optimization audit in `~/amd-gpu-tuning/`; do not keep tweaking. |
+| Kernel micro-opt shows neutral / negative results | Re-audit the rocprof kernel-family / launch breakdown in-tree (e.g. `scripts/mtp_verifier_rocprof.py`) before more tweaks; consult `~/amd-gpu-tuning/` evidence for context, but do not keep tweaking blindly. |
 | Merge conflict in a high-conflict file | Stop and coordinate. Do not force-stage or revert. |
 | Unclear whether a change crosses a plugin-registry boundary | Check `docs/PLAN.md` "Extensibility Design" first; if still unclear, ask the human lead. |
 | Unrelated files changed in the worktree | Leave them. Another agent or the human owns them. |

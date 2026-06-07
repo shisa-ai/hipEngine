@@ -1,8 +1,8 @@
 # hipEngine Kernel Catalog and Port Playbook
 
-This doc is both the live kernel catalog and the mechanics for landing a kernel in hipEngine — porting from `~/amd-gpu-tuning/nano-vllm-amd/`, the JIT build layer, gotchas specific to this repo, and the correctness gate a port must pass.
+This doc is both the live kernel catalog and the mechanics for landing a kernel in hipEngine — writing/porting kernels under `kernels/<backend>/`, the JIT build layer, gotchas specific to this repo, and the correctness gate a kernel must pass.
 
-**Kernel R&D does not live here.** Micro-tuning iteration loops (`rocprofv3 --kernel-trace` ranking, VGPR/occupancy hunting, `__launch_bounds__` sweeps, fusion experiments, the device-code gotcha catalog) belong in `~/amd-gpu-tuning/`. hipEngine receives *stable* kernels via the port pipeline below. If you find yourself opening a profiler inside the hipEngine tree, stop and move the experiment to the parent workspace.
+**Kernel work happens in this tree.** hipEngine is substantively different from `~/amd-gpu-tuning/` (torch-free runtime, four-axis registry, `KVLiveSpans` ABI, verifier/small-batch-shaped kernels), so new kernels, fused variants, micro-tuning, `rocprofv3 --kernel-trace` iteration, VGPR/occupancy and `__launch_bounds__` sweeps, and fusion experiments all live here. `~/amd-gpu-tuning/nano-vllm-amd/` and the parent docs remain read-only *lineage references*: cite source file + commit when porting an idea, reuse prior evidence, but do the development and profiling in-tree. Profiling inside the hipEngine tree is expected — prebuild the `.so` and use a precomputed compiler-version file + `require_cached` so the profiled process does not spawn `hipcc` (see the JIT/rocprof notes below).
 
 See also:
 - `docs/PLAN.md` "Kernel Port Strategy" — authoritative source inventory, split plan, per-family targets.
@@ -19,7 +19,7 @@ See also:
 | **hipEngine landed** | Source lives in this repo, is registered or runnable through hipEngine, and has this repo's tests/smokes. |
 | **CPU reference landed** | Torch-free NumPy oracle lives in `hipengine/kernels/cpu_reference/`; it is correctness infrastructure, not a HIP port. |
 | **Lineage green** | Implemented/validated in `~/amd-gpu-tuning/nano-vllm-amd/`; source for hipEngine's copy+partition+retype port, but not yet landed here. |
-| **Lineage dirty / experimental** | Observed in the parent checkout's uncommitted worktree or R&D notes. Do not make a default hipEngine path from it until it is promoted in `~/amd-gpu-tuning/`. |
+| **Lineage dirty / experimental** | Observed in the parent checkout's uncommitted worktree or R&D notes. Treat as a lineage reference only; promote to a default hipEngine path via in-tree implementation + bit-exact RED test + the correctness gate, not by waiting on the parent. |
 | **Planned** | Architecture path is decided, but no hipEngine implementation yet. |
 
 ## hipEngine-landed kernels and oracles
