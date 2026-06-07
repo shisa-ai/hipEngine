@@ -1,0 +1,516 @@
+{
+  "iteration": 481,
+  "kind": "c4_layer3_selected_native_row_semantics_inspection",
+  "created_at": "2026-06-07T15:06:22.184834+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "c99366d47c4f4d0f9e52bb1f795a037e9feca7c6",
+  "performance_claim": false,
+  "retained_ready": false,
+  "source_inspection": [
+    {
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "line_start": 3847,
+      "line_end": 3892,
+      "label": "_batch_full_spans encodes row-relative block table offsets intentionally",
+      "snippet": [
+        "3847:     def _batch_full_spans(",
+        "3848:         self,",
+        "3849:         layer_id: int,",
+        "3850:         *,",
+        "3851:         rows: int,",
+        "3852:         positions: tuple[int, ...],",
+        "3853:         slots: tuple[int, ...],",
+        "3854:     ) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:",
+        "3855:         _ = layer_id",
+        "3856:         # BF16 batch append/decode kernels run compact active rows and add an",
+        "3857:         # active-row base internally.  Encode physical slot ids as row-relative",
+        "3858:         # block-table offsets so row ``r`` can address slot ``slots[r]`` without",
+        "3859:         # moving retained KV cache pages after reclaim/compaction.",
+        "3860:         logical_blocks = np.arange(self.blocks, dtype=np.int32)",
+        "3861:         block_rows = np.empty((rows, self.blocks), dtype=np.int32)",
+        "3862:         for row, slot in enumerate(slots):",
+        "3863:             delta_blocks = (int(slot) - row) * self.blocks",
+        "3864:             if delta_blocks < 0:",
+        "3865:                 raise ValueError(\"batch full-attention slots must be in physical-slot order\")",
+        "3866:             block_rows[row] = logical_blocks + np.int32(delta_blocks)",
+        "3867:         copy_host_to_device(",
+        "3868:             self.prefill_block_table_buf,",
+        "3869:             host_array_ptr(block_rows),",
+        "3870:             block_rows.nbytes,",
+        "3871:             runtime=self.runtime,",
+        "3872:         )",
+        "3873:         block_table = Tensor.from_handle(",
+        "3874:             self.prefill_block_table_buf.ptr,",
+        "3875:             (rows, self.blocks),",
+        "3876:             DType.INT32,",
+        "3877:             self.device,",
+        "3878:         )",
+        "3879:         position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)",
+        "3880:         context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)",
+        "3881:         append_live_counts = [int(position) for position in positions]",
+        "3882:         decode_live_counts = [int(position) + 1 for position in positions]",
+        "3883:         append_spans = KVLiveSpans.paged_uniform(",
+        "3884:             block_table=block_table,",
+        "3885:             live_counts=position_tensor,",
+        "3886:             max_live_count=max(append_live_counts),",
+        "3887:             storage_dtype=self.kv_storage_dtype,",
+        "3888:         )",
+        "3889:         decode_spans = KVLiveSpans.paged_uniform(",
+        "3890:             block_table=block_table,",
+        "3891:             live_counts=context_tensor,",
+        "3892:             max_live_count=max(decode_live_counts),"
+      ],
+      "file_sha256": "dc4ea6a6737adf2d2e217b8030b839a1273148ded833806fcc3fc95d24e97528"
+    },
+    {
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "line_start": 4640,
+      "line_end": 4662,
+      "label": "rowchunk branch slices rows/slots/positions before span construction",
+      "snippet": [
+        "4640:                         if layer_force_full_attention_row_chunks:",
+        "4641:                             chunk_records: list[dict[str, Any]] = []",
+        "4642:                             chunk_size = int(full_attention_row_chunk_size)",
+        "4643:                             if key_cache is None or value_cache is None:",
+        "4644:                                 key_cache, value_cache = self._full_cache_all_slots(layer_id)",
+        "4645:                             for chunk_start in range(0, rows, chunk_size):",
+        "4646:                                 chunk_end = min(rows, chunk_start + chunk_size)",
+        "4647:                                 chunk_rows = int(chunk_end - chunk_start)",
+        "4648:                                 chunk_slots = tuple(int(slot) for slot in slots[chunk_start:chunk_end])",
+        "4649:                                 chunk_positions = tuple(int(position) for position in positions[chunk_start:chunk_end])",
+        "4650:                                 chunk_hidden = Tensor.from_handle(",
+        "4651:                                     hidden.ptr + chunk_start * self.hidden_nbytes,",
+        "4652:                                     (chunk_rows, self.config.hidden_size),",
+        "4653:                                     hidden.dtype,",
+        "4654:                                     hidden.device,",
+        "4655:                                 )",
+        "4656:                                 chunk_position_tensor, chunk_append_spans, chunk_decode_spans = self._batch_full_spans(",
+        "4657:                                     layer_id,",
+        "4658:                                     rows=chunk_rows,",
+        "4659:                                     positions=chunk_positions,",
+        "4660:                                     slots=chunk_slots,",
+        "4661:                                 )",
+        "4662:                                 chunk_metadata = getattr(self, \"_last_batch_full_spans_metadata\", None)"
+      ],
+      "file_sha256": "dc4ea6a6737adf2d2e217b8030b839a1273148ded833806fcc3fc95d24e97528"
+    },
+    {
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "line_start": 4760,
+      "line_end": 4805,
+      "label": "rowchunk branch calls the same full-attention batch layer with smaller token count and row-aware O path",
+      "snippet": [
+        "4760:                                     # context/MoE work, but use the row-aware GEMV",
+        "4761:                                     # O projection that matches c=1 numerics.  Two-",
+        "4762:                                     # row chunks inherit the accepted rows=2",
+        "4763:                                     # batch_gemv_auto default; larger chunks remain",
+        "4764:                                     # an explicit rowchunk O repair until covered by",
+        "4765:                                     # equality evidence.  A dedicated diagnostic env",
+        "4766:                                     # may temporarily bypass this to re-test native",
+        "4767:                                     # row-chunk O with artifact evidence.",
+        "4768:                                     chunk_force_batch_gemv_output = True",
+        "4769:                                     if chunk_rows == 2:",
+        "4770:                                         layer_row_chunk_auto_batch_gemv_full_attention_output = True",
+        "4771:                                         row_chunk_auto_batch_gemv_full_attention_output = True",
+        "4772:                                         chunk_records[-1][\"full_attention_output_decode_path\"] = \"batch_gemv_auto_row_chunk\"",
+        "4773:                                     else:",
+        "4774:                                         layer_row_chunk_batch_gemv_full_attention_output = True",
+        "4775:                                         row_chunk_batch_gemv_full_attention_output = True",
+        "4776:                                         chunk_records[-1][\"full_attention_output_decode_path\"] = \"batch_gemv_row_chunk\"",
+        "4777:                                 chunk_out = state.run_full_attention_moe_decode_batch_layer_fp16(",
+        "4778:                                     chunk_hidden,",
+        "4779:                                     key_cache=key_cache,",
+        "4780:                                     value_cache=value_cache,",
+        "4781:                                     append_spans=chunk_append_spans,",
+        "4782:                                     decode_spans=chunk_decode_spans,",
+        "4783:                                     cos_table=self.cos,",
+        "4784:                                     sin_table=self.sin,",
+        "4785:                                     positions=chunk_position_tensor,",
+        "4786:                                     max_positions=self.max_sequence_length,",
+        "4787:                                     attention_scratch=chunk_attention_scratch,",
+        "4788:                                     moe_scratch=chunk_moe_scratch,",
+        "4789:                                     tokens=chunk_rows,",
+        "4790:                                     force_selected_c1_moe=force_selected_c1_moe,",
+        "4791:                                     force_per_row_input_rmsnorm=force_per_row_full_attention_input,",
+        "4792:                                     force_per_row_qkv_scratch=force_per_row_full_attention_qkv,",
+        "4793:                                     force_per_row_layer_scratch=force_per_row_full_attention_scratch,",
+        "4794:                                     force_per_row_layer_batch_scratch=force_per_row_full_attention_batch_scratch,",
+        "4795:                                     force_per_row_attention_batch_moe=force_per_row_full_attention_attn_batch_moe,",
+        "4796:                                     force_per_row_attention_batch_post_moe=force_per_row_full_attention_attn_batch_post_moe,",
+        "4797:                                     force_per_row_attention_batch_o_post_moe=force_per_row_full_attention_attn_batch_o_post_moe,",
+        "4798:                                     force_per_row_preqkv_append_batch_context_o_post_moe=force_per_row_full_attention_preqkv_append_batch_context_o_post_moe,",
+        "4799:                                     force_per_row_preqkv_append_context_batch_gate_o_post_moe=force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe,",
+        "4800:                                     force_per_row_preqkv_append_context_gate_batch_o_post_moe=force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe,",
+        "4801:                                     force_per_row_context=force_per_row_full_attention_context,",
+        "4802:                                     force_per_row_context_only=force_per_row_full_attention_context_only,",
+        "4803:                                     force_per_row_dense_context_only=layer_force_per_row_dense_context_only,",
+        "4804:                                     force_per_row_dense_context_batch_gate=layer_force_per_row_dense_context_batch_gate,",
+        "4805:                                     force_per_row_paged_context_only=layer_force_per_row_paged_context_only,"
+      ],
+      "file_sha256": "dc4ea6a6737adf2d2e217b8030b839a1273148ded833806fcc3fc95d24e97528"
+    },
+    {
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "line_start": 3623,
+      "line_end": 3643,
+      "label": "batch context/gate wrapper is explicitly the retained short-context decode path",
+      "snippet": [
+        "3623:     def decode_full_attention_context_gate_fp16_batch(",
+        "3624:         self,",
+        "3625:         scratch: Qwen35ParoAttentionScratch,",
+        "3626:         *,",
+        "3627:         key_cache: Tensor,",
+        "3628:         value_cache: Tensor,",
+        "3629:         spans: KVLiveSpans,",
+        "3630:         rows: int,",
+        "3631:         gate: Tensor | None = None,",
+        "3632:         block_size: int = 256,",
+        "3633:         scale: float | None = None,",
+        "3634:         library=None,",
+        "3635:         stream: int = 0,",
+        "3636:     ) -> Tensor:",
+        "3637:         \"\"\"Decode BF16 paged attention for one active token per row.",
+        "3638: ",
+        "3639:         This batch path intentionally covers the retained 512/128 bring-up",
+        "3640:         protocol where context remains below the split-K threshold. Longer",
+        "3641:         contexts still need a row-aware split-K reducer before they can be",
+        "3642:         labelled native c-aware decode.",
+        "3643:         \"\"\""
+      ],
+      "file_sha256": "1c1aa689b611cbbc4b6ec47e5772a33edfe83d93ddd174ccee957eef7d82b192"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+      "line_start": 347,
+      "line_end": 392,
+      "label": "batch paged-attention context kernel row/head indexing header",
+      "snippet": [
+        "347: __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(",
+        "348:     const float* query,",
+        "349:     const uint16_t* key_cache,",
+        "350:     const uint16_t* value_cache,",
+        "351:     const int32_t* block_table,",
+        "352:     const int64_t* context_len_ptr,",
+        "353:     float* out,",
+        "354:     int64_t rows,",
+        "355:     int64_t max_context_len,",
+        "356:     int64_t block_size,",
+        "357:     int64_t block_table_len,",
+        "358:     int64_t num_q_heads,",
+        "359:     int64_t num_kv_heads,",
+        "360:     int64_t head_dim,",
+        "361:     float scale) {",
+        "362:   const int64_t row = static_cast<int64_t>(blockIdx.y);",
+        "363:   if (row >= rows) {",
+        "364:     return;",
+        "365:   }",
+        "366:   const int64_t context_len = context_len_ptr[row];",
+        "367:   if (context_len <= 0 || context_len > max_context_len) {",
+        "368:     return;",
+        "369:   }",
+        "370:   extern __shared__ float shared[];",
+        "371:   float* scores = shared;",
+        "372:   float* warp_buf = scores + context_len;",
+        "373:   const int num_warps = blockDim.x / warpSize;",
+        "374:   float* q_shared = warp_buf + num_warps;",
+        "375:   // For c=2 long-context Qwen decode, the 1024-thread launch would otherwise",
+        "376:   // leave most threads idle while one thread per dim scans all values.",
+        "377:   // Keep tiny primitive fixtures on the exact c1-style accumulation order.",
+        "378:   const int raw_value_groups = (head_dim >= 128 && context_len >= 128) ? static_cast<int>(blockDim.x / static_cast<unsigned int>(head_dim)) : 0;",
+        "379:   const int value_groups = (blockDim.x >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;",
+        "380:   float* value_partials = q_shared + head_dim;",
+        "381:   const int64_t q_head = blockIdx.x;",
+        "382:   if (q_head >= num_q_heads) {",
+        "383:     return;",
+        "384:   }",
+        "385:   const int64_t kv_group = num_q_heads / num_kv_heads;",
+        "386:   const int64_t kv_head = q_head / kv_group;",
+        "387:   const int64_t q_offset = (row * num_q_heads + q_head) * head_dim;",
+        "388:   const int lane_id = threadIdx.x % warpSize;",
+        "389:   const int warp_id = threadIdx.x / warpSize;",
+        "390: ",
+        "391:   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {",
+        "392:     q_shared[dim] = query[q_offset + dim];"
+      ],
+      "file_sha256": "6c9ca61474c688670625e75def72f22f14faac6758e68deef70322802a26b768"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+      "line_start": 393,
+      "line_end": 443,
+      "label": "batch paged-attention context kernel reads row-relative block table with row-major cache addressing",
+      "snippet": [
+        "393:   }",
+        "394:   __syncthreads();",
+        "395: ",
+        "396:   float local_max = -3.4028234663852886e38f;",
+        "397:   for (int64_t token = warp_id; token < context_len; token += num_warps) {",
+        "398:     const int64_t logical_block = token / block_size;",
+        "399:     const int64_t block_offset = token - logical_block * block_size;",
+        "400:     const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);",
+        "401:     const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;",
+        "402:     const int64_t k_offset = token_offset + kv_head * head_dim;",
+        "403:     float acc = 0.0f;",
+        "404:     for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {",
+        "405:       acc += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset + dim + 0]);",
+        "406:       acc += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset + dim + 1]);",
+        "407:       acc += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset + dim + 2]);",
+        "408:       acc += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset + dim + 3]);",
+        "409:     }",
+        "410:     for (int offset = warpSize / 2; offset > 0; offset /= 2) {",
+        "411:       acc += __shfl_down(acc, offset);",
+        "412:     }",
+        "413:     if (lane_id == 0) {",
+        "414:       const float score = acc * scale;",
+        "415:       scores[token] = score;",
+        "416:       local_max = fmaxf(local_max, score);",
+        "417:     }",
+        "418:   }",
+        "419:   for (int offset = warpSize / 2; offset > 0; offset /= 2) {",
+        "420:     float other = __shfl_down(local_max, offset);",
+        "421:     local_max = fmaxf(local_max, other);",
+        "422:   }",
+        "423:   if (lane_id == 0) {",
+        "424:     warp_buf[warp_id] = local_max;",
+        "425:   }",
+        "426:   __syncthreads();",
+        "427:   if (threadIdx.x == 0) {",
+        "428:     float max_score = warp_buf[0];",
+        "429:     for (int i = 1; i < num_warps; ++i) {",
+        "430:       max_score = fmaxf(max_score, warp_buf[i]);",
+        "431:     }",
+        "432:     warp_buf[0] = max_score;",
+        "433:   }",
+        "434:   __syncthreads();",
+        "435:   const float max_score = warp_buf[0];",
+        "436: ",
+        "437:   float local_sum = 0.0f;",
+        "438:   for (int64_t token = warp_id; token < context_len; token += num_warps) {",
+        "439:     if (lane_id == 0) {",
+        "440:       const float val = expf(scores[token] - max_score);",
+        "441:       scores[token] = val;",
+        "442:       local_sum += val;",
+        "443:     }"
+      ],
+      "file_sha256": "6c9ca61474c688670625e75def72f22f14faac6758e68deef70322802a26b768"
+    }
+  ],
+  "hidden_bisect_cases": [
+    {
+      "case": "current_rowchunk_3_15",
+      "note": "Current green c4 default: rowchunk layer3 and layer15, layer limit 4, trace decode window 80..105.",
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --layer-limits 4 --trace-decode-start 80 --trace-decode-end 106 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter481-c4-layer3-hidden-bisect/current_rowchunk_3_15.json",
+      "status": "eq_ok",
+      "workload": {
+        "batch_size": 4,
+        "layer_limits": [
+          4
+        ],
+        "trace_decode_window": [
+          80,
+          106
+        ],
+        "row_chunk_layers": "3,15",
+        "row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false
+      },
+      "correctness": {
+        "passed": true,
+        "hidden_passed": true,
+        "token_passed": true,
+        "failure_modes": [],
+        "hidden_failure_rows": [],
+        "token_failure_rows": [],
+        "strict_hidden_bit_drift_rows": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "decode_linear_handoff_copy_passed": true,
+        "decode_linear_handoff_producer_passed": true,
+        "decode_linear_projection_passed_under_atol": true,
+        "decode_full_attention_failed_stages": [
+          "mlp_input"
+        ],
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": true,
+        "first_stage_failure": {
+          "layer_limit": 4,
+          "decode_step": 80,
+          "generated_index": 81,
+          "layer_index": 3,
+          "stage": "mlp_input",
+          "row": 2,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.001953125,
+          "max_abs_flat_index": 140,
+          "max_abs_index": [
+            0,
+            140
+          ],
+          "elements_over_atol": 1
+        },
+        "layer_summaries": [
+          {
+            "layer_limit": 4,
+            "hidden_passed": true,
+            "token_passed": true,
+            "token_prefix_lengths": null,
+            "token_first_mismatch_indices": null,
+            "first_hidden_mismatch": null
+          }
+        ]
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/current_rowchunk_3_15.json",
+          "sha256": "f4faf0c4e526733dcb0aaa963f943b7ecceea6b8ff4f9963efa57fefde6cccfc",
+          "size_bytes": 16512683
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/current_rowchunk_3_15.log",
+          "sha256": "f4faf0c4e526733dcb0aaa963f943b7ecceea6b8ff4f9963efa57fefde6cccfc",
+          "size_bytes": 16512683
+        }
+      }
+    },
+    {
+      "case": "layer3_native_layer15_rowchunk",
+      "note": "Diagnostic layer3-native path: only layer15 rowchunked, layer limit 4, same trace window.",
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --layer-limits 4 --trace-decode-start 80 --trace-decode-end 106 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter481-c4-layer3-hidden-bisect/layer3_native_layer15_rowchunk.json",
+      "status": "eq_ok",
+      "workload": {
+        "batch_size": 4,
+        "layer_limits": [
+          4
+        ],
+        "trace_decode_window": [
+          80,
+          106
+        ],
+        "row_chunk_layers": "15",
+        "row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false
+      },
+      "correctness": {
+        "passed": true,
+        "hidden_passed": true,
+        "token_passed": true,
+        "failure_modes": [],
+        "hidden_failure_rows": [],
+        "token_failure_rows": [],
+        "strict_hidden_bit_drift_rows": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "decode_linear_handoff_copy_passed": true,
+        "decode_linear_handoff_producer_passed": true,
+        "decode_linear_projection_passed_under_atol": true,
+        "decode_full_attention_failed_stages": [
+          "mlp_input"
+        ],
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": true,
+        "first_stage_failure": {
+          "layer_limit": 4,
+          "decode_step": 80,
+          "generated_index": 81,
+          "layer_index": 3,
+          "stage": "mlp_input",
+          "row": 2,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.001953125,
+          "max_abs_flat_index": 140,
+          "max_abs_index": [
+            0,
+            140
+          ],
+          "elements_over_atol": 1
+        },
+        "layer_summaries": [
+          {
+            "layer_limit": 4,
+            "hidden_passed": true,
+            "token_passed": true,
+            "token_prefix_lengths": null,
+            "token_first_mismatch_indices": null,
+            "first_hidden_mismatch": null
+          }
+        ]
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/layer3_native_layer15_rowchunk.json",
+          "sha256": "c1ae40343f7c5c3811ae4f3106f498d16f773983495eacd30231cb81c7274e6f",
+          "size_bytes": 16398949
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/layer3_native_layer15_rowchunk.log",
+          "sha256": "c1ae40343f7c5c3811ae4f3106f498d16f773983495eacd30231cb81c7274e6f",
+          "size_bytes": 16398949
+        }
+      }
+    }
+  ],
+  "timeout_attempts": [
+    {
+      "case": "layer3_native_layer15_rowchunk_layer_limits_attempt",
+      "status": "timeout_no_json",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py ... --layer-limits 4,8,12,16,20,24,28,32,36,40 --trace-decode-start 80 --trace-decode-end 106 --batch-decode-full-attn-row-chunk-layers 15",
+      "timeout_seconds": 12000,
+      "json_path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/layer3_native_layer15_rowchunk_layer_limits.json",
+      "json_exists": false,
+      "log_tmp": {
+        "path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/layer3_native_layer15_rowchunk_layer_limits.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      "used_for_conclusion": false
+    }
+  ],
+  "inspection_findings": {
+    "no_safe_code_change_made": true,
+    "row_major_block_table_is_intentional": "The _batch_full_spans implementation explicitly writes physical slot ids as row-relative block-table deltas (slot-row)*blocks, and the HIP context kernel then adds the active row base. This matches the row-major full KV cache shape, so changing that arithmetic would be speculative and unsafe.",
+    "rowchunk_semantics": "Rowchunking layer3 does not switch to a different context kernel; it slices hidden/slots/positions and calls the same native full-attention batch layer with tokens=chunk_rows plus row-aware GEMV O output. Therefore the difference under test is active row group size/row semantics, not a separate kernel family.",
+    "hidden_bisect_result": "For layer limit 4 and decode trace window 80..105, both current rowchunk(3,15) and layer3-native/layer15-rowchunk paths are hidden_passed=true and token_passed=true at hidden_atol=1e-3. Full-attention stage traces show only fp16-bit mlp_input drift under tolerance, with input/output/stage checks otherwise passed.",
+    "blocker_refinement": "Iter480 proved the full-model layer3-native path diverges at generated-token row0@82, but iter481 shows no immediate >atol hidden/token failure through layer4. The remaining blocker is likely later-layer amplification of sub-ulp/bit drift or a row-group-size-sensitive stage beyond layer4, not an obviously wrong row-major KV/cache indexing bug.",
+    "next_target": "Avoid a speculative kernel row-index edit. Use a narrower later-layer hidden-bisect window or add cheap first-failing-layer search support before attempting a native layer3 fix; keep c4 auto rowchunk layers at 3,15."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused hidden/full-attention parity evidence shows both the current c4 rowchunk path and the layer3-native diagnostic are hidden/token-green through layer4 in the known divergence window, eliminating immediate layer3 >atol hidden/context/O failure and refining the blocker to later-layer amplification/row-group semantics. No performance claim."
+  },
+  "conclusion": "No code change was made: source inspection found the suspected row-major block-table arithmetic intentional, and hidden-bisect eliminated immediate layer3 >atol hidden/token failure through layer4. Keep c4 default rowchunk layers at 3,15 and target later-layer first-failure localization next.",
+  "references": {
+    "iter480_layer3_localization": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-layer3-native-full-attn-localization-480/summary.json",
+      "sha256": "ac2a285cf36ff9d65df515f38593c25989a4f90d0e73fc1fb76fc5a8f5e82af2",
+      "size_bytes": 48860
+    },
+    "iter475_drop3_rejected": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop3-rejected-475/summary.json",
+      "sha256": "a1c7380b6664e2d2a593c6e5c3a11a7c2410a8cdb2bafde33dede112c44dd972",
+      "size_bytes": 8650
+    },
+    "current_c248_matrix_476": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-current-c248-defaults-476/summary.json",
+      "sha256": "a4e2cc67b7f94f65bf792b73a99a283a1e2f44fdbc0a1a35028cec996e136f42",
+      "size_bytes": 18238
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-layer3-row-semantics-inspection-481/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-layer3-row-semantics-inspection-481/compact-runs.json",
+      "sha256": "90c87bf2a14dcb460e3407d0211a59c7f96e89a4e887b6bb3f56a1889e806305",
+      "size_bytes": 8811
+    }
+  }
+}
