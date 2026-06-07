@@ -1063,13 +1063,16 @@ reporting.
   `--first-blocker-first-missing-evidence-only` /
   `--first-blocker-first-missing-evidence-sha-only`,
   `--first-blocker-current-status-only` /
-  `--first-blocker-current-status-sha-only`, and
+  `--first-blocker-current-status-sha-only`,
   `--first-blocker-gap-report-status-only` /
-  `--first-blocker-gap-report-status-sha-only` outputs expose the current
+  `--first-blocker-gap-report-status-sha-only`,
+  `--first-blocker-kind-only` / `--first-blocker-kind-sha-only`, and
+  `--first-blocker-recommended-command-kind-only` /
+  `--first-blocker-recommended-command-kind-sha-only` outputs expose the current
   first-blocker routing reason (`oracle_timeout_retry_with_longer_timeout`),
   first missing evidence (`oracle_completed_successfully`), current status
-  (`timeout`), and gap-report status (`blocked`) without fetching the
-  full work item. Status integrity also verifies the oracle progress
+  (`timeout`), gap-report status (`blocked`), blocker kind, and command kind
+  without fetching the full work item. Status integrity also verifies the oracle progress
   digest and oracle compact output-mode mappings, including the progress/status/blocker-kind routes.
   The blocker queue also records a compact
   `blocker_recommended_commands` list plus SHA so automation can inspect both
