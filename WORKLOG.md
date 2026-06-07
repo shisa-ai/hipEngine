@@ -67260,3 +67260,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: together with iter449's minimal layer3 rowchunk1 green and iter452's full c8 rowchunk2 green, this confirms the c8 correctness frontier is rows-per-context-launch <=2 for selected full-attention producers, not exactly rowchunk2. Rows>=4 full-attention context launch/order semantics remain the native repair target.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk1-equality-454/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter455 c4 rowchunk1 full equality green
+- No runtime/source code changed. Ran c4 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with the same selected c4 rowchunk correctness layers as the auto path (`3,7,11,15,19,23`) but explicit rowchunk size `1`.
+- Result: c4 generated-token equality vs independent c1 is **green** with rowchunk1. `correctness.generated_token_equality.passed=true`, `prefix_lengths=[137,137,137,137]`, `min_equal_prefix_tokens=137`, `tokens_per_sequence=137`, all `first_mismatch_indices` are `null`, and mismatch count is `0`. The selected full-attention layers use `native_batch_row_chunks`, `full_attention_row_chunk_size=1`, source `env`, and batch-GEMV O output; layers 27/31/35/39 remain native batch.
+- Interpretation: together with iter451 rowchunk2 c4 and iter454 rowchunk1 c8, this supports a common c4/c8 correctness cap of <=2 rows per selected full-attention context launch. Rows>=4 full-attention context launch/order semantics remain the native repair target.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk1-equality-455/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
