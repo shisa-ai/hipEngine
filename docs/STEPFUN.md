@@ -611,6 +611,8 @@ reporting.
   `--docs-open-partial-texts-joined-sha-only` expose a pipe-joined scalar form,
   `--docs-open-partial-line-texts-joined-only` /
   `--docs-open-partial-line-texts-joined-sha-only` expose a pipe-joined line:text scalar,
+  `--docs-open-partial-state-line-texts-joined-only` /
+  `--docs-open-partial-state-line-texts-joined-sha-only` expose a pipe-joined state:line:text scalar,
   and `--docs-first-open-partial-item-only` /
   `--docs-first-open-partial-item-sha-only` /
   `--docs-last-open-partial-item-only` /
