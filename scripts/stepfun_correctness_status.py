@@ -1370,6 +1370,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-mirror-records-safe-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_partial_output_handoff.all_mirror_records_safe for compact "
+            "supervised oracle-rerun mirror-record safety polling. Overrides readiness/queue "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-mirror-records-safe-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of oracle_partial_output_handoff."
+            "all_mirror_records_safe for supervised oracle-rerun mirror-record safety "
+            "drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-command-record-safe-only",
         action="store_true",
         help=(
@@ -2971,6 +2989,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff.all_partial_output_contracts_safe"
             and compact_output_modes.get("oracle_partial_output_all_contracts_safe_sha_only")
             == "oracle_partial_output_handoff.all_partial_output_contracts_safe.sha256"
+            and compact_output_modes.get("oracle_partial_output_mirror_records_safe_only")
+            == "oracle_partial_output_handoff.all_mirror_records_safe"
+            and compact_output_modes.get("oracle_partial_output_mirror_records_safe_sha_only")
+            == "oracle_partial_output_handoff.all_mirror_records_safe.sha256"
             and compact_output_modes.get("oracle_partial_output_command_record_safe_only")
             == "oracle_partial_output_handoff.command_record_safe"
             and compact_output_modes.get("oracle_partial_output_command_record_safe_sha_only")
@@ -5751,6 +5773,12 @@ def _handoff_summary(
             "oracle_partial_output_all_contracts_safe_sha_only": (
                 "oracle_partial_output_handoff.all_partial_output_contracts_safe.sha256"
             ),
+            "oracle_partial_output_mirror_records_safe_only": (
+                "oracle_partial_output_handoff.all_mirror_records_safe"
+            ),
+            "oracle_partial_output_mirror_records_safe_sha_only": (
+                "oracle_partial_output_handoff.all_mirror_records_safe.sha256"
+            ),
             "oracle_partial_output_command_record_safe_only": (
                 "oracle_partial_output_handoff.command_record_safe"
             ),
@@ -6865,6 +6893,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.oracle_partial_output_all_contracts_safe_only:
         result = status["oracle_partial_output_handoff"].get(
             "all_partial_output_contracts_safe"
+        )
+    elif args.oracle_partial_output_mirror_records_safe_sha_only:
+        mirror_records_safe = status["oracle_partial_output_handoff"].get(
+            "all_mirror_records_safe"
+        )
+        result = _stable_json_sha256(mirror_records_safe)
+    elif args.oracle_partial_output_mirror_records_safe_only:
+        result = status["oracle_partial_output_handoff"].get(
+            "all_mirror_records_safe"
         )
     elif args.oracle_partial_output_command_record_safe_sha_only:
         command_record_safe = status["oracle_partial_output_handoff"].get(
