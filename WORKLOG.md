@@ -67146,3 +67146,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: the rowchunk/fullnative split is real at the target stages and no longer depends on c1 proxy summaries. The remaining fix target is grouped full-attention numerical/composition vs rowchunk semantics, not another one-off per-row pre-QKV toggle.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-direct-rowchunk-fullnative-438/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter439 c8 direct layer3 full-attention stages
+- No runtime/source code changed. Reused the iter438 one-off in-memory hidden-bisect capture, now comparing every captured layer3 full-attention substage between c8 fullnative/no-rowchunk and rowchunk2, storing only compact deltas.
+- Direct result: layer3 full-attention pre-QKV/QKV/gate setup is exact between fullnative and rowchunk2 through `query` (`max_abs=0`, bit_mismatch `0`). The first bit drift appears at layer3 `attn_context` (`max_abs=1.907e-06`, bit_mismatch `29217`, elements_over_atol `0`), then stays under tolerance through `gated_attn`, `o_proj`, `residual`, `mlp_input`, and final layer3 `output` (`max_abs=0.000122`, elements_over_atol `0`). No layer3 full-attention substage is over tolerance.
+- The over-tolerance split still first appears after this under-atol layer3 output feeds layer4 linear-attention RMSNorm (`layer4 attn_input max_abs=0.0078125` from iter438), and layer7 later amplifies further.
+- Interpretation: target grouped full-attention context/output bit-level composition/order or the sensitive layer3→4 handoff; do not spend more c8 iterations on pre-QKV toggles.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-direct-layer3-fullattn-439/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
