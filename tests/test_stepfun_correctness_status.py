@@ -1729,6 +1729,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_status_sha_only": (
             "oracle_partial_output_handoff.command_record.partial_output_status.sha256"
         ),
+        "oracle_partial_output_blocker_kind_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_blocker_kind"
+        ),
+        "oracle_partial_output_blocker_kind_sha_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_blocker_kind.sha256"
+        ),
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
         "blocker_kinds_count_only": "blocker_kinds.count",
@@ -6423,6 +6429,71 @@ def test_stepfun_correctness_status_oracle_partial_output_status_outputs(
     )
 
 
+def test_stepfun_correctness_status_oracle_partial_output_blocker_kind_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    blocker_kind_output = tmp_path / "oracle-partial-output-blocker-kind.json"
+    sha_output = tmp_path / "oracle-partial-output-blocker-kind-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    partial_output_blocker_kind = status["oracle_partial_output_handoff"][
+        "command_record"
+    ]["partial_output_blocker_kind"]
+    calls = [
+        (
+            blocker_kind_output,
+            "--oracle-partial-output-blocker-kind-only",
+            partial_output_blocker_kind,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-blocker-kind-sha-only",
+            _stable_json_sha256(partial_output_blocker_kind),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert partial_output_blocker_kind == "llama_cpp_oracle_in_progress"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_blocker_kind_only"] == (
+        "oracle_partial_output_handoff.command_record.partial_output_blocker_kind"
+    )
+    assert compact_modes["oracle_partial_output_blocker_kind_sha_only"] == (
+        "oracle_partial_output_handoff.command_record.partial_output_blocker_kind.sha256"
+    )
+
+
 def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -6678,6 +6749,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_status_sha_only": (
             "oracle_partial_output_handoff.command_record.partial_output_status.sha256"
+        ),
+        "oracle_partial_output_blocker_kind_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_blocker_kind"
+        ),
+        "oracle_partial_output_blocker_kind_sha_only": (
+            "oracle_partial_output_handoff.command_record.partial_output_blocker_kind.sha256"
         ),
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
