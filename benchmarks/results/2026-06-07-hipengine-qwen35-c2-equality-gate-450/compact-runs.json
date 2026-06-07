@@ -1,0 +1,171 @@
+{
+  "iteration": 450,
+  "kind": "native_c2_512x128_generated_token_equality_green",
+  "created_at": "2026-06-07T08:20:49.878460+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "result": {
+    "top_level_status": "blocked",
+    "decision_accepted": false,
+    "decision_reason_summary": "blocked by retained-performance/profiler/baseline/artifact-path gates, not generated-token equality",
+    "generated_token_equality": {
+      "passed": true,
+      "skipped": false,
+      "rows": 2,
+      "tokens_per_sequence": 137,
+      "warmup_decode_tokens": 8,
+      "gen_tokens_per_request": 128,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "mismatch_count": 0,
+      "mismatch_summaries": []
+    },
+    "correctness": {
+      "overall_passed": false,
+      "primitive_batch_correctness": {
+        "artifact_path": null,
+        "status": "missing",
+        "passed": false,
+        "reason": "no primitive correctness artifact path provided"
+      },
+      "finite_logits": true,
+      "oracle": "generated-token ids equal independent c=1 resident runs through the same native packed prefill/decode path plus scripts/qwen35_batch_correctness.py primitive GPU correctness for the same c>N row count"
+    },
+    "decode_execution": {
+      "path": "scheduler_native_compact_batch",
+      "row_execution": "native_compact_caware_layers",
+      "native_prefill_plan": {
+        "path": "single_request_native_full",
+        "layer_limit": 40,
+        "linear_prefix_layers": 3,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "native_compact_prefill": true,
+      "native_caware_decode": true,
+      "throughput_claim_eligible": true,
+      "decode_rows": 2,
+      "decode_slots": [
+        0,
+        1
+      ],
+      "max_full_attention_context": 648,
+      "native_full_attention_layers": 10,
+      "full_attention_decode_path": "native_batch",
+      "full_attention_context_decode_path": "native_batch",
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_state_path": "native_segments",
+      "linear_attention_output_path": "batch_gemv",
+      "moe_decode_path": "grouped_compact",
+      "layer_type_counts": {
+        "linear_attention": 30,
+        "full_attention": 10
+      },
+      "full_attention_layers": [
+        {
+          "layer_index": 3,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 7,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 11,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 15,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 19,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 23,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 27,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 31,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 35,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        },
+        {
+          "layer_index": 39,
+          "rows": 2,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_output_decode_path": "batch_gemv_auto"
+        }
+      ]
+    },
+    "workload_paths": {
+      "concurrency": 2,
+      "shape": "c=2 prompt=512 decode=128",
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "warmup_decode_tokens": 8,
+      "max_layers": 40,
+      "native_caware_decode": true,
+      "batch_decode_full_attention_row_chunk_size": 0,
+      "batch_decode_full_attention_row_chunk_layers": "",
+      "batch_decode_full_attention_context_path": "batch",
+      "batch_decode_linear_path": "batch_segments",
+      "batch_decode_moe_path": "grouped_compact"
+    }
+  },
+  "interpretation": {
+    "positive_result": "The active native c2 512/128 generated-token equality gate is green: both rows match independent c1 for all 137 compared tokens and no mismatch indices are present.",
+    "blocked_status_explanation": "The retained-bench top-level status remains blocked because benchmark/profiler/baseline artifacts required for a retained performance/scaling claim are missing or tmp-rooted. This artifact is correctness-only and makes no performance claim.",
+    "next_target": "With c2 generated-token equality green, the loop can extend the same equality gate to c4/c8 (or refresh existing c4/c8 equality artifacts) before any retained performance/profiler/scaling evidence is claimed."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: active c2 512/128 generated-token equality vs independent c1 is green with prefix_lengths=[137,137], min_equal_prefix_tokens=137, and no mismatches; no performance claim."
+  },
+  "conclusion": "Native c2 512/128 generated-token equality is green; top-level retained-bench status is blocked only by performance-evidence protocol gates."
+}
