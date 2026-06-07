@@ -1,0 +1,286 @@
+{
+  "boundary_interpretation": {
+    "known_green": "c8 rowchunk2 retained path remained generated-token-equality green in prior artifacts.",
+    "known_red": "c8 fullnative / chunk8 retained path failed generated-token equality in prior artifacts.",
+    "new_result": "c8 rowchunk4 fails generated-token equality, so the safe full-attention grouping boundary for this workload remains rowchunk2; rowchunk4 throughput/scaling values are not claim-eligible.",
+    "next_fix_target": "Investigate grouped full-attention numerical drift before/around layer4 RMSNorm rather than promoting larger chunks without equality."
+  },
+  "conclusion": "Rowchunk4 is not a correctness-safe intermediate for c8 512/128 L40. Despite favorable native throughput fields in the rejected run, generated-token equality fails with min prefix 11 and rows 0/4/5 mismatching; no retained performance/scaling claim is made.",
+  "created_at": "2026-06-07T06:39:59.348173+00:00",
+  "decode_path": {
+    "blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+    ],
+    "full_attention_context_decode_path": "native_batch",
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_kv_append_decode_path": "native_batch",
+    "full_attention_row_chunk_size": 4,
+    "full_attention_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      35
+    ],
+    "native_caware_decode": false,
+    "native_full_attention_layers": 10
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 434,
+  "kind": "c8_rowchunk4_correctness_boundary",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused c8 full-attention grouping boundary diagnostic with artifact evidence. It does not improve c2 metric or enable a performance claim, but directly constrains the correctness fix path: rowchunk4 is red, leaving rowchunk2 as the current safe boundary and pointing back to grouped full-attention/layer4 RMSNorm drift.",
+    "passed": true
+  },
+  "result": {
+    "correctness_passed": false,
+    "decision_reason": "batch_execution.throughput_claim_eligible=false; generated-token equality vs independent c=1 did not pass; correctness.generated_token_equality.passed must be true; correctness.generated_token_equality.batch_sequences must equal c1_sequences; correctness.generated_token_equality.mismatches must be empty; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty; profiler kernel names must include selected projection_dispatch candidate or variant; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+    "first_mismatch_indices": [
+      82,
+      null,
+      null,
+      null,
+      45,
+      11,
+      null,
+      null
+    ],
+    "generated_token_equality_passed": false,
+    "min_equal_prefix_tokens": 11,
+    "mismatch_summaries": [
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 82,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 29,
+            "row": 6
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 3
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 4
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 5
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 7
+          }
+        ],
+        "batch_token_at_mismatch": 27502,
+        "batch_window": [
+          19,
+          60,
+          48306,
+          32907,
+          27502,
+          27502,
+          9640,
+          2713,
+          220,
+          15,
+          13
+        ],
+        "c1_token_at_mismatch": 8204,
+        "c1_window": [
+          19,
+          60,
+          48306,
+          32907,
+          27502,
+          8204,
+          1228,
+          9640,
+          2713,
+          220,
+          15
+        ],
+        "first_mismatch_index": 82,
+        "row": 0
+      },
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 45,
+            "row": 4
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 3
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 5
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 6
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 7
+          }
+        ],
+        "batch_token_at_mismatch": 220,
+        "batch_window": [
+          471,
+          561,
+          1156,
+          682,
+          3766,
+          220,
+          16,
+          17,
+          18922,
+          318,
+          269
+        ],
+        "c1_token_at_mismatch": 264,
+        "c1_window": [
+          471,
+          561,
+          1156,
+          682,
+          3766,
+          264,
+          3878,
+          314,
+          18922,
+          2600,
+          76168
+        ],
+        "first_mismatch_index": 45,
+        "row": 4
+      },
+      {
+        "batch_matches_c1_rows": [],
+        "batch_matches_other_batch_rows": [],
+        "batch_prefixes_by_c1_row": [
+          {
+            "equal_prefix_tokens": 47,
+            "row": 3
+          },
+          {
+            "equal_prefix_tokens": 11,
+            "row": 5
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 0
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 1
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 2
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 4
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 6
+          },
+          {
+            "equal_prefix_tokens": 0,
+            "row": 7
+          }
+        ],
+        "batch_token_at_mismatch": 81726,
+        "batch_window": [
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          81726,
+          35464,
+          11,
+          321,
+          81347,
+          13
+        ],
+        "c1_token_at_mismatch": 61369,
+        "c1_window": [
+          10597,
+          58655,
+          883,
+          68022,
+          11,
+          61369,
+          11,
+          4779,
+          32288,
+          11,
+          321
+        ],
+        "first_mismatch_index": 11,
+        "row": 5
+      }
+    ],
+    "native_decode_tokens_per_s_aggregate": null,
+    "native_vs_c1_ratio": null,
+    "native_vs_serial_bridge_ratio": null,
+    "prefix_lengths": [
+      82,
+      137,
+      137,
+      137,
+      45,
+      11,
+      137,
+      137
+    ],
+    "scaling_complete": true,
+    "status": "rejected_correctness",
+    "throughput_claim_eligible": false
+  },
+  "workload": {
+    "batch_size": 8,
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "full_attention_row_chunk_size": 4,
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

@@ -67109,3 +67109,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: the c8 fullnative bug is not a bad layer3 input and not an immediate large layer3 output failure. Candidate fix targets are layer3 full-attention output numerical parity, layer4 RMSNorm sensitivity/precision, or preserving rowchunk/per-row semantics across the layer3→4 handoff.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-upstream-stage-delta-433/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter434 c8 rowchunk4 boundary
+- Ran a focused c8 512/128 L40 retained diagnostic on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with `--batch-decode-full-attn-row-chunk-size 4`, plus primitive/c1/serial baseline attachments. No runtime code changed.
+- Result: rowchunk4 is **not** correctness-safe. The run is `rejected_correctness`; generated-token equality failed with min equal prefix `11`, prefix lengths `[82, 137, 137, 137, 45, 11, 137, 137]`, and first mismatches on rows 0, 4, and 5.
+- Throughput/scaling fields from the rejected run are not claim-eligible (`throughput_claim_eligible=false`) and are not added to benchmark rollups. This narrows the current safe full-attention grouping boundary for c8 to rowchunk2; rowchunk4/chunk8 both fail equality.
+- Interpretation: promoting larger grouped full-attention chunks is blocked by the same numerical drift localized in iters432/433 (layer3 output / layer4 RMSNorm / handoff amplification). Next work should target grouped full-attention numerical parity rather than performance promotion.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk4-434/summary.json`, `compact-runs.json`, and retained run JSON. No retained performance/scaling claim is made.
