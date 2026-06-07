@@ -1930,6 +1930,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_command_record_sha_only": (
             "oracle_partial_output_handoff.command_record.sha256"
         ),
+        "oracle_partial_output_command_record_key_count_only": (
+            "len(oracle_partial_output_handoff.command_record.keys)"
+        ),
+        "oracle_partial_output_command_record_key_count_sha_only": (
+            "len(oracle_partial_output_handoff.command_record.keys).sha256"
+        ),
         "oracle_partial_output_source_only": (
             "oracle_partial_output_handoff.command_record.source"
         ),
@@ -8800,6 +8806,8 @@ def test_stepfun_correctness_status_oracle_partial_output_command_record_sha_out
     docs = tmp_path / "STEPFUN.md"
     resource = tmp_path / "resource.json"
     output = tmp_path / "oracle-partial-output-command-record-sha.json"
+    key_count_output = tmp_path / "oracle-partial-output-command-record-key-count.json"
+    key_count_sha_output = tmp_path / "oracle-partial-output-command-record-key-count-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
@@ -8827,12 +8835,54 @@ def test_stepfun_correctness_status_oracle_partial_output_command_record_sha_out
     assert rc == 0
     assert json.loads(output.read_text()) == _stable_json_sha256(command_record)
 
+    command_record_key_count = len(command_record.keys())
+    calls = [
+        (
+            key_count_output,
+            "--oracle-partial-output-command-record-key-count-only",
+            command_record_key_count,
+        ),
+        (
+            key_count_sha_output,
+            "--oracle-partial-output-command-record-key-count-sha-only",
+            _stable_json_sha256(command_record_key_count),
+        ),
+    ]
+    for count_output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(count_output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(count_output.read_text()) == expected
+
+    assert command_record_key_count == 11
+
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
     compact_modes = status["handoff_summary"]["compact_output_modes"]
     assert compact_modes["oracle_partial_output_command_record_sha_only"] == (
         "oracle_partial_output_handoff.command_record.sha256"
+    )
+    assert compact_modes["oracle_partial_output_command_record_key_count_only"] == (
+        "len(oracle_partial_output_handoff.command_record.keys)"
+    )
+    assert compact_modes["oracle_partial_output_command_record_key_count_sha_only"] == (
+        "len(oracle_partial_output_handoff.command_record.keys).sha256"
     )
 
 
@@ -10006,6 +10056,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_command_record_sha_only": (
             "oracle_partial_output_handoff.command_record.sha256"
+        ),
+        "oracle_partial_output_command_record_key_count_only": (
+            "len(oracle_partial_output_handoff.command_record.keys)"
+        ),
+        "oracle_partial_output_command_record_key_count_sha_only": (
+            "len(oracle_partial_output_handoff.command_record.keys).sha256"
         ),
         "oracle_partial_output_source_only": (
             "oracle_partial_output_handoff.command_record.source"
