@@ -25551,3 +25551,64 @@ Retained artifact and rollup updates:
 - `benchmarks/README.md`
 - `benchmarks/CHANGELOG.md`
 - `docs/KERNELS.md`
+
+## 2026-06-08 analysis(mtp/dflash): the launch-submission wall — M15 active framing
+
+Reviewed MTP/DFlash status vs the task list and traced where the verifier cycle
+actually goes. The controlling finding (recorded as docs/MTP.md "M15 — the
+launch-submission wall"): the shared verifier is no longer kernel-bound, it is
+**launch-submission bound**, so the M7–M14 "shave a kernel family" micro-fusions
+each move `C_3` <5% (inside noise) and keep getting rejected.
+
+Evidence (task #29 rollup, W7900/gfx1100, MTP B=3, 11 steady passes,
+`benchmarks/results/2026-06-07-hipengine-mtp-verifier-rocprof-family-rollup.json`):
+
+- Host verify window 37.88 ms/pass; summed kernel time 18.46 ms/pass (48.7%).
+- **Host residual 19.42 ms/pass (51.3%)** across **971 launches/pass** → ~20 µs
+  of host cost per launch. Only 7 D2H scalar reads/pass.
+
+The residual is GPU command-queue submission cost of 971 separate kernels, not
+Python/ctypes and not graph-fixable on ROCm 7.x:
+
+- Not Python: the default-on C-side MoE dispatcher (`moe_c1_dispatch.hip`) was
+  measured parity in M14.dispatch.1 (cycle_cost off=3.707, on=3.696).
+- Not graph: M12.1 + M13.D measured HIP graph replay neutral-to-worse at >900
+  launches; `hipGraphLaunch` per-node submit ≈ direct dispatch on ROCm 7.x
+  (CUDA is ~1–2 µs/node, hence llama.cpp's whole-trunk graph wins there).
+
+Why AR escapes it: AR decode = 111 tok/s ≈ 8.94 ms/token through the same 40
+layers, which cannot contain 971×20 µs. AR's c=1 path is the fused decode +
+graph-replayed path; the verifier's tokens>1 chain
+(`run_linear_attention_moe_chain_tloop_layer_fp16`, M7.C.6 split-single /
+`awq_fusedw4_prefill_*`) is a separate, less-fused path that never inherited
+AR's decode-kernel consolidation. Task #31 (`decode_batched`) fixed only the 10
+full-attention layers; the 30 linear-attention layers + MoE surround (720 of 971
+launches) still run heavy tokens>1 shapes.
+
+Launch budget (task #29): selected_moe 400/pass (incl. 190 paro_rotate),
+shared_dense_w4 300/pass (largest kernel bucket, 6.58 ms), rmsnorm_misc/format
+173/pass, linear_conv_gdn 60, full_attn 20, lm_head 3, commit/accept 15.
+
+Math for the goal: `C_3 ≤ 2.0` ⇒ cycle ≤ 17.9 ms ⇒ verify window ≈10 ms. At a
+~20 µs/launch floor, even zero kernel time caps the launch budget at ≈500;
+realistic budget is lower. The verifier must drop **971 → ≈300–400 launches/pass**
+with kernel time ≈flat. Removing 30–80 launches at a time is within noise and
+must be batched into one measured landing, not committed piecemeal.
+
+Prioritized program (docs/MTP.md M15.1–M15.4; M15.1/M15.2 are decode-kernel R&D
+that belongs in ~/amd-gpu-tuning/ first per AGENTS, then ported behind a flag
+with bit-exact RED + MTP/DFlash exact-AR smoke):
+
+1. M15.1 small-batch decode-shaped **linear-attention** layer (mirror task #31
+   for the 30 linear layers): read each weight stream once for all B+1 rows.
+   Largest target (720/971 launches).
+2. M15.2 exact small-batch W4 multi-row pack8 GEMV for the unsafe sites
+   (`shared_gate_up`, `single_full_v`, `single_linear_out`; M14.num.1) — fewer
+   launches AND less kernel time, blocked on matching WMMA/prefill dequant
+   numerics for exact AR.
+3. M15.3 producer-side rotate/format fusion (fold paro_rotate into the producing
+   RMSNorm/SiLU/add, never the GEMV consumer = M13.B.1 trap).
+4. M15.4 re-evaluate graph replay once count < ~400 (task #34 precondition).
+
+DFlash shares the wall (same tokens>1 trunk), so M15.1/M15.2 land for both
+providers (task #35). No tracked code changed in this analysis unit; docs only.
