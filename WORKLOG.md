@@ -25454,3 +25454,100 @@ use its MTP verifier shape as a checklist: audit `rows == 1` / `tokens == 1`
 optimized-layout gates, trace B+1 verifier projection dispatch for rows 2..8,
 finish exact W4 multi-row coverage only behind exact-AR gates, and use M12.2
 LM-head weight sharing as the local success standard.  No GPU work was run.
+
+
+## 2026-06-07 — Task #31 small-B decode-shaped full-attention verifier
+
+Added a graph-off `chain_attn_mode="decode_batched"` verifier path for chain
+verification.  It keeps the existing row-batched QKV/KV/O/MoE staging but
+replaces the prefill-style full-attention GQA kernel with two small-B decode
+kernels per full-attention layer:
+
+- `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<8,16,2>`
+- `qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<_Float16>`
+
+The c=1 loop and prefill-batched verifier modes remain available as fallbacks.
+`decode_batched` is deliberately graph-off only for now because `num_splits` is
+chosen from the current verifier position bucket and is not part of the existing
+graph cache key.
+
+Correctness / fixture evidence:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/smoke.py \
+  --mode qwen35-paged-attn-gqa-batch-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+```
+
+Result: `gqa_gate_fp16_batch_vs_c1_mismatch=0`, max abs `0` for 4 verifier rows
+against independent c=1 GQA gated decode.
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_VERIFY_GPU_ACCEPT=validate PYTHONPATH=. \
+python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 8 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched \
+  --json /tmp/hipengine-task31-smoke-decode-batched-d8-validate.json
+```
+
+Result: exact AR, accepted `[3, 3]`, 8/8 target top-1 values finite (sample
+`27.3298, 23.3200, 24.4993, 25.7882`).
+
+Economics command:
+
+```bash
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 --candidate-budgets 3,5 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-task31/mtp_raw \
+  --out /tmp/hipengine-task31/mtp_economics_decode_batched_b3_b5.json
+```
+
+Compared with the 2026-06-07 prefill-batched baseline on the same quicksort D32
+row:
+
+| Budget | `C_B` old → new | Verify ms/cycle old → new | Cycle wall old → new | Correctness |
+| --- | ---: | ---: | ---: | --- |
+| B=3 | `5.46 -> 4.39` (-19.6%) | `38.85 -> 35.13` (-9.6%) | `48.87 -> 45.17` (-7.6%) | exact |
+| B=5 | `6.83 -> 6.23` (-8.7%) | `46.44 -> 43.26` (-6.8%) | `61.24 -> 58.17` (-5.0%) | exact |
+
+Rocprof command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched \
+  --steady-state-skip 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-task31/mtp_rocprof_decode_batched_b3_d32 \
+  --out /tmp/hipengine-task31/mtp_verifier_rocprof_decode_batched_b3_d32.json
+```
+
+Rocprof B=3/D32 over 11 steady verifier passes: host verifier window
+`37.88 -> 36.03 ms/pass` (-4.9%), summed kernel time `18.46 -> 17.01 ms/pass`
+(-7.8%), launches/pass `971 -> 981` (+10).  Full-attn attention+KV drops
+`1.91 -> 0.45 ms/pass` (-76.7%); native prefill attention `1.88 ms/pass` is
+replaced by decode context+reduce `0.42 ms/pass`.  The profiler shows the new
+batch GQA context and reduce-gate kernels; each launch covers all verifier rows
+via `grid.z=rows`.
+
+Retained artifact and rollup updates:
+
+- `benchmarks/results/2026-06-07-hipengine-mtp-small-b-decode-full-attn.json`
+- `benchmarks/README.md`
+- `benchmarks/CHANGELOG.md`
+- `docs/KERNELS.md`

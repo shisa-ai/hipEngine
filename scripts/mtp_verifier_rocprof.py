@@ -69,7 +69,7 @@ def main() -> int:
         ),
     )
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="c1_loop")
+    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
     parser.add_argument(
         "--out",
         type=Path,

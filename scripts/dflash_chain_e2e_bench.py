@@ -3018,7 +3018,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
     parser.add_argument("--verifier-mode", choices=("native_bulk_bplus1", "serial_in_place_single_slot"), default="native_bulk_bplus1")
     parser.add_argument("--verifier-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native B+1 verifier forward+accept; auto replays fixed rows/capture-width buckets")
-    parser.add_argument("--full-attn-chain-mode", choices=("c1_loop", "batched"), default="c1_loop", help="Native B+1 verifier full-attention scheduling: c1_loop (per-row resident decode kernels, current default) or batched (one batched pass per layer using prefill primitives + c=1 MoE)")
+    parser.add_argument("--full-attn-chain-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop", help="Native B+1 verifier full-attention scheduling: c1_loop (per-row resident decode kernels), batched (one prefill-style batched pass per layer), or decode_batched (small-B row-batched decode attention + batched projections/MoE)")
     parser.add_argument(
         "--tree-mode",
         choices=("chain", "chain_as_tree", "branching_topk"),

@@ -286,7 +286,7 @@ def main() -> int:
     parser.add_argument("--proposal-impl", choices=("persistent_device", "persistent_device_b1", "reload_d2h"), default="persistent_device")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--hip-arch", default="gfx1151")
-    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="c1_loop")
+    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--small-batch-decode-threshold", type=int, default=7)
     parser.add_argument("--verify-gpu-accept", default=None)

@@ -464,7 +464,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--backend", default="hip_gfx1100", help="hipEngine backend for hipengine-current mode")
     parser.add_argument("--hip-arch", default="gfx1100", help="HIP arch for hipengine-current mode")
-    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="batched")
+    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="batched")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--small-batch-decode-threshold", type=int, default=7)
     parser.add_argument("--verify-gpu-accept", default=None)

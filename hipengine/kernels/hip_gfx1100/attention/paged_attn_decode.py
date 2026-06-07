@@ -21,6 +21,7 @@ _SYMBOL_CONTEXT_BATCH = "hipengine_qwen35_paged_full_attn_decode_context_bf16_ba
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
 _SYMBOL_SPLIT_WARP_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_bf16_spans"
 _SYMBOL_SPLIT_GQA_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_bf16_spans"
+_SYMBOL_SPLIT_GQA_CONTEXT_BATCH = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_batch_bf16_spans"
 _SYMBOL_SPLIT_REDUCE = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32"
 _SYMBOL_SPLIT_REDUCE_GATE_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
 _SYMBOL_PREFILL_GQA_GATE_FP16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans"
@@ -28,6 +29,7 @@ _SYMBOL_PREFILL_GQA_GATE_TREE_FP16 = "hipengine_qwen35_paged_full_attn_prefill_g
 _SYMBOL_PREFILL_VARLEN_GQA_GATE_FP16 = "hipengine_qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans"
 _SYMBOL_SPLIT_REDUCE_GATE_BF16 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16"
 _SYMBOL_SPLIT_REDUCE_GATE_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16"
+_SYMBOL_SPLIT_REDUCE_GATE_FP16_BATCH = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16_batch"
 
 
 def plan_qwen35_paged_attn_decode_build(
@@ -698,6 +700,88 @@ def qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans(
     )
 
 
+def qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run small-B row-batched Qwen3.5 GQA decode and FP16 gated reduce."""
+
+    block_table_len = _check_qwen35_gqa_batch_shape(
+        spans,
+        rows,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context_batch(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        rows,
+        chunk_size,
+        num_splits,
+        block_size,
+        block_table_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        symbol=_SYMBOL_SPLIT_GQA_CONTEXT_BATCH,
+    )
+    _launch_gate_reduce_batch(
+        _SYMBOL_SPLIT_REDUCE_GATE_FP16_BATCH,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        rows,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -1310,6 +1394,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_gqa_gate_fp16_batch_spans"),
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "qwen35_causal_gqa_gate_fp16"),
         qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
         replace=replace,
@@ -1516,6 +1605,57 @@ def _launch_gate_reduce(
     )
     _check_launch(runtime, err)
 
+def _launch_gate_reduce_batch(
+    symbol: str,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    rows: int,
+    num_q_heads: int,
+    num_splits: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL,
+    runtime: HipRuntime,
+) -> None:
+    reduce_gate = getattr(library, symbol)
+    reduce_gate.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    reduce_gate.restype = ctypes.c_int
+    err = reduce_gate(
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(gate_stride1),
+        ctypes.c_int64(gate_stride2),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _launch_split_context(
     query_ptr: int,
     key_cache_ptr: int,
@@ -1579,6 +1719,74 @@ def _launch_split_context(
     )
     _check_launch(runtime, err)
 
+def _launch_split_context_batch(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    block_table_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int,
+    library: ctypes.CDLL,
+    runtime: HipRuntime,
+    symbol: str,
+) -> None:
+    split = getattr(library, symbol)
+    split.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    split.restype = ctypes.c_int
+    err = split(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(chunk_size),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _check_split_shape(
     spans: KVLiveSpans,
     chunk_size: int,
@@ -1616,6 +1824,32 @@ def _check_qwen35_gqa_shape(
     _check_split_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
     if block_size != 256 or num_q_heads != 16 or num_kv_heads != 2 or head_dim != 256:
         raise ValueError("Qwen3.5 GQA split-K specialization requires block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256")
+
+def _check_qwen35_gqa_batch_shape(
+    spans: KVLiveSpans,
+    rows: int,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> int:
+    block_table_len = _check_decode_batch_shape(
+        spans,
+        rows,
+        chunk_size * num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    _check_positive(chunk_size, "chunk_size")
+    _check_positive(num_splits, "num_splits")
+    if block_size != 256 or num_q_heads != 16 or num_kv_heads != 2 or head_dim != 256:
+        raise ValueError("Qwen3.5 GQA split-K specialization requires block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256")
+    return block_table_len
+
 
 def _check_positive(value: int, name: str) -> None:
     if value <= 0:

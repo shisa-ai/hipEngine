@@ -51,6 +51,7 @@ def main() -> int:
             "qwen35-paged-attn-gate-hip",
             "qwen35-paged-attn-gate-bf16-hip",
             "qwen35-paged-attn-gqa-hip",
+            "qwen35-paged-attn-gqa-batch-hip",
             "qwen35-paged-attn-prefill-hip",
             "qwen35-paged-attn-prefill-varlen-hip",
             "qwen35-paged-attn-gqa-state-hip",
@@ -209,6 +210,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-paged-attn-gqa-hip":
         return qwen35_paged_attn_gqa_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-paged-attn-gqa-batch-hip":
+        return qwen35_paged_attn_gqa_batch_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -1266,6 +1272,173 @@ def qwen35_paged_attn_gqa_hip_smoke(
         and gate_mismatch == 0
         else 1
     )
+
+def qwen35_paged_attn_gqa_batch_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_qwen35_paged_attn_decode,
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans,
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
+    )
+    from hipengine.kvcache import KVLiveSpans
+
+    rows = 4
+    block_size = 256
+    blocks = 1
+    context_counts = np.asarray([17, 18, 19, 20], dtype=np.int64)
+    chunk_size = 256
+    num_splits = 1
+    num_q_heads = 16
+    num_kv_heads = 2
+    head_dim = 256
+    scale = head_dim ** -0.5
+    block_tables = np.tile(np.asarray([0], dtype=np.int32), (rows, 1)).reshape(-1)
+    query_grid = np.arange(rows * num_q_heads * head_dim, dtype=np.float32).reshape(rows, num_q_heads, head_dim)
+    query = ((query_grid % 97.0) - 48.0) / 128.0
+    gate = (((query_grid % 31.0) - 15.0) / 8.0).astype(np.float16)
+    token_grid = np.arange(blocks * block_size * num_kv_heads * head_dim, dtype=np.float32).reshape(
+        blocks, block_size, num_kv_heads, head_dim
+    )
+    key_cache = _float32_to_bf16_bits(((token_grid % 89.0) - 44.0) / 96.0)
+    value_cache = _float32_to_bf16_bits((37.0 - (token_grid % 83.0)) / 80.0)
+    batch_out = np.empty((rows, num_q_heads, head_dim), dtype=np.float16)
+    row_out = np.empty_like(batch_out)
+    batch_partial_out = np.zeros((rows, num_q_heads, num_splits, head_dim), dtype=np.float32)
+    batch_partial_m = np.zeros((rows, num_q_heads, num_splits), dtype=np.float32)
+    batch_partial_l = np.zeros_like(batch_partial_m)
+    row_partial_out = np.zeros((num_q_heads, num_splits, head_dim), dtype=np.float32)
+    row_partial_m = np.zeros((num_q_heads, num_splits), dtype=np.float32)
+    row_partial_l = np.zeros_like(row_partial_m)
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_paged_attn_decode(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        arr = np.ascontiguousarray(array)
+        buffer = malloc(arr.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(arr), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        block_tables_dev = dev(block_tables)
+        live_counts_dev = dev(context_counts)
+        query_dev = dev(query)
+        gate_dev = dev(gate)
+        key_cache_dev = dev(key_cache)
+        value_cache_dev = dev(value_cache)
+        batch_out_dev = out_dev(batch_out)
+        row_out_dev = out_dev(row_out)
+        batch_partial_out_dev = out_dev(batch_partial_out)
+        batch_partial_m_dev = out_dev(batch_partial_m)
+        batch_partial_l_dev = out_dev(batch_partial_l)
+        row_partial_out_dev = out_dev(row_partial_out)
+        row_partial_m_dev = out_dev(row_partial_m)
+        row_partial_l_dev = out_dev(row_partial_l)
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(block_tables_dev.ptr, block_tables.shape, "int32", Device("hip", 0)),
+            live_counts=Tensor.from_handle(live_counts_dev.ptr, context_counts.shape, "int64", Device("hip", 0)),
+            max_live_count=int(chunk_size * num_splits),
+            storage_dtype="bf16",
+        )
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
+            query_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            gate_dev.ptr,
+            batch_out_dev.ptr,
+            batch_partial_out_dev.ptr,
+            batch_partial_m_dev.ptr,
+            batch_partial_l_dev.ptr,
+            spans,
+            rows,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            library=library,
+            runtime=runtime,
+        )
+        row_table_bytes = blocks * np.dtype(np.int32).itemsize
+        live_bytes = np.dtype(np.int64).itemsize
+        row_query_bytes = num_q_heads * head_dim * np.dtype(np.float32).itemsize
+        row_gate_bytes = num_q_heads * head_dim * np.dtype(np.float16).itemsize
+        row_out_bytes = num_q_heads * head_dim * np.dtype(np.float16).itemsize
+        for row in range(rows):
+            row_spans = KVLiveSpans.paged_uniform(
+                block_table=Tensor.from_handle(block_tables_dev.ptr + row * row_table_bytes, (blocks,), "int32", Device("hip", 0)),
+                live_counts=Tensor.from_handle(live_counts_dev.ptr + row * live_bytes, (1,), "int64", Device("hip", 0)),
+                max_live_count=int(chunk_size * num_splits),
+                storage_dtype="bf16",
+            )
+            qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans(
+                query_dev.ptr + row * row_query_bytes,
+                key_cache_dev.ptr,
+                value_cache_dev.ptr,
+                gate_dev.ptr + row * row_gate_bytes,
+                row_out_dev.ptr + row * row_out_bytes,
+                row_partial_out_dev.ptr,
+                row_partial_m_dev.ptr,
+                row_partial_l_dev.ptr,
+                row_spans,
+                chunk_size,
+                num_splits,
+                block_size,
+                num_q_heads,
+                num_kv_heads,
+                head_dim,
+                head_dim,
+                1,
+                scale,
+                library=library,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(batch_out), batch_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(row_out), row_out_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    mismatch = int(np.count_nonzero(batch_out.view(np.uint16) != row_out.view(np.uint16)))
+    max_abs = float(np.max(np.abs(batch_out.astype(np.float32) - row_out.astype(np.float32))))
+    print(
+        f"rows={rows} context_counts={context_counts.tolist()} shape={num_q_heads}x{head_dim}/{num_kv_heads} "
+        f"gqa_gate_fp16_batch_vs_c1_mismatch={mismatch} gqa_gate_fp16_batch_vs_c1_max_abs={max_abs:.3g}"
+    )
+    print("gqa_batch_row3_head0=", batch_out[3, 0, :8].astype(np.float32).tolist())
+    return 0 if mismatch == 0 else 1
+
 
 def qwen35_paged_attn_prefill_hip_smoke(
     *,

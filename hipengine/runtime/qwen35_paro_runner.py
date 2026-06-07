@@ -2185,6 +2185,25 @@ class Qwen35ParoResidentSession:
         self.prefill_full_scratch = scratch
         return scratch
 
+    def _ensure_full_decode_batch_partials(self, *, rows: int, num_splits: int) -> tuple[Tensor, Tensor, Tensor]:
+        owner = self._prefill_scratch_owner()
+        partial_out = owner.workspace.reserve_tensor(
+            "attn.decode_batch.partial_out",
+            (rows, self.config.num_attention_heads, num_splits, self.config.head_dim),
+            DType.FP32,
+        )
+        partial_m = owner.workspace.reserve_tensor(
+            "attn.decode_batch.partial_m",
+            (rows, self.config.num_attention_heads, num_splits),
+            DType.FP32,
+        )
+        partial_l = owner.workspace.reserve_tensor(
+            "attn.decode_batch.partial_l",
+            (rows, self.config.num_attention_heads, num_splits),
+            DType.FP32,
+        )
+        return partial_out, partial_m, partial_l
+
     def _reserve_mlp_scratch(self, state: Qwen35ParoDecodeState, *, tokens: int):
         if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
             return state.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
@@ -2403,7 +2422,10 @@ class Qwen35ParoResidentSession:
         + QKV projection over rows, prompt-style batched K/V append, gated
         prefill GQA attention with per-row causal limit, then c=1 MoE with
         ``tokens=rows``) so each full-attention layer runs in one batched pass.
-        ``graph_mode != 'off'`` is only supported with ``c1_loop`` for now.
+        ``decode_batched`` keeps the row-batched projections/KV/MoE staging but
+        swaps the prefill attention kernel for a small-B row-batched decode GQA
+        split-K primitive; it is currently graph-off only because the split
+        count changes with verifier position buckets.
         """
 
         if self.closed:
@@ -2412,8 +2434,10 @@ class Qwen35ParoResidentSession:
             raise ValueError("bulk verifier currently supports verify_chain only")
         if len(batch.request_ids) != 1:
             raise ValueError("bulk verifier E2E path currently supports one request")
-        if chain_attn_mode not in {"c1_loop", "batched"}:
-            raise ValueError("chain_attn_mode must be 'c1_loop' or 'batched'")
+        if chain_attn_mode not in {"c1_loop", "batched", "decode_batched"}:
+            raise ValueError("chain_attn_mode must be 'c1_loop', 'batched', or 'decode_batched'")
+        if chain_attn_mode == "decode_batched" and graph_mode != "off":
+            raise ValueError("chain_attn_mode='decode_batched' currently requires graph_mode='off'")
         # NOTE: chain_attn_mode='batched' is now allowed with graph_mode!='off';
         # the verifier graph cache key includes chain_attn_mode/linear_attn_mode
         # so batched and c1_loop captures do not alias.  See `docs/MTP.md` M12.1.
@@ -3015,6 +3039,17 @@ class Qwen35ParoResidentSession:
                         base_slot=base_slot,
                         stream=stream,
                     )
+                elif chain_attn_mode == "decode_batched":
+                    self._run_full_attention_chain_decode_batched(
+                        state,
+                        layer_id=layer_id,
+                        hidden=hidden,
+                        next_hidden=next_hidden,
+                        rows=rows,
+                        positions=batch.positions,
+                        base_slot=base_slot,
+                        stream=stream,
+                    )
                 else:
                     self._run_full_attention_chain_c1_loop(
                         state,
@@ -3220,6 +3255,145 @@ class Qwen35ParoResidentSession:
         # into the trunk ``next_hidden`` buffer, so the conditional D2D
         # below becomes a no-op (10 launches/pass eliminated for the
         # chain-batched full-attention layers).
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        if dense_mlp:
+            out = state.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                out=next_hidden,
+                tokens=rows,
+                library=self.libraries,
+                stream=stream,
+            )
+        else:
+            out = state.run_moe_c1_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                out=next_hidden,
+                tokens=rows,
+                library=self.libraries,
+                stream=stream,
+            )
+        if out.ptr != next_hidden.ptr:
+            self.runtime.memcpy_async(
+                next_hidden.ptr,
+                out.ptr,
+                rows * self.hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+
+    def _run_full_attention_chain_decode_batched(
+        self,
+        state: Qwen35ParoDecodeState,
+        *,
+        layer_id: int,
+        hidden: Tensor,
+        next_hidden: Tensor,
+        rows: int,
+        positions: Sequence[int],
+        base_slot: int,
+        stream: int = 0,
+    ) -> None:
+        """Run a full-attention verifier layer with small-B decode attention.
+
+        This keeps the safe row-batched QKV/KV/O/MoE staging from
+        ``_run_full_attention_chain_batched`` but replaces the prefill-style GQA
+        attention kernel with a row-batched decode split-K primitive.  The K/V
+        cache block table is still populated by ``_write_verify_chain_metadata``
+        with absolute physical blocks for ``base_slot``.
+        """
+
+        _ = base_slot  # base_slot already encoded in prefill_block_table_buf
+        if len(positions) != rows:
+            raise ValueError("positions must match verifier rows")
+        positions_tensor = Tensor.from_handle(
+            self.prefill_position_buf.ptr,
+            (rows,),
+            DType.INT64,
+            self.device,
+        )
+        append_spans, decode_spans = self._verify_chain_full_attention_spans_batched(rows)
+        key_cache, value_cache = self._full_cache_all_slots(layer_id)
+        attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
+        moe_scratch = self._ensure_moe_c1_prefill_scratch(layer_id=layer_id, tokens=rows)
+        max_context = max(int(position) for position in positions) + 1
+        num_splits = max(1, (max_context + self.decode_chunk_size - 1) // self.decode_chunk_size)
+        partial_out, partial_m, partial_l = self._ensure_full_decode_batch_partials(rows=rows, num_splits=num_splits)
+
+        state.input_rmsnorm_fp16(
+            hidden,
+            attention_scratch.attn_input,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        state.rotate_full_attention_inputs_fp16(
+            attention_scratch.attn_input,
+            attention_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        state.project_full_attention_qkv_fp16(
+            attention_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        _query, _key, _value, gate = state.prepare_full_attention_qkv_fp16(
+            attention_scratch,
+            cos_table=self.cos,
+            sin_table=self.sin,
+            position=positions_tensor,
+            max_positions=self.max_sequence_length,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        state.append_full_attention_kv_fp16_batch(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=append_spans,
+            rows=rows,
+            block_size=self.block_size,
+            library=self.libraries,
+            stream=stream,
+        )
+        gated = state.decode_full_attention_gqa_gate_fp16_batch(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=decode_spans,
+            rows=rows,
+            partial_out=partial_out,
+            partial_m=partial_m,
+            partial_l=partial_l,
+            chunk_size=self.decode_chunk_size,
+            num_splits=num_splits,
+            gate=gate,
+            block_size=self.block_size,
+            library=self.libraries,
+            stream=stream,
+        )
+        attn_out = state.project_full_attention_o_fp16(
+            gated,
+            attention_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        mlp_input, residual = state.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         if dense_mlp:
             out = state.run_dense_mlp_residual_fp16(

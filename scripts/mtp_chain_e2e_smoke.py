@@ -261,6 +261,7 @@ def _run_spec_smoke(
                             "root_token": root,
                             "draft_candidates": candidates,
                             "target_top1_path": list(map(int, verify.target_top1[: 1 + active_budget])),
+                            "target_top1_values": list(map(float, verify.target_top1_values[: 1 + active_budget])),
                             "accepted": accepted,
                             "committed_tokens": committed,
                             "bonus_token": bonus,
@@ -436,6 +437,7 @@ def _run_spec_persistent_device(
                                 "root_token": root,
                                 "draft_candidates": candidates,
                                 "target_top1_path": list(map(int, verify.target_top1[: 1 + active_budget])),
+                                "target_top1_values": list(map(float, verify.target_top1_values[: 1 + active_budget])),
                                 "accepted": accepted,
                                 "committed_tokens": committed,
                                 "bonus_token": bonus,
@@ -564,7 +566,7 @@ def main() -> int:
     parser.add_argument("--candidate-budget", type=int, default=2)
     parser.add_argument("--proposal-impl", choices=("reload_d2h", "persistent_device", "persistent_device_b1"), default="reload_d2h")
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="c1_loop")
+    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument(
         "--rocprof-warmup-cycles",

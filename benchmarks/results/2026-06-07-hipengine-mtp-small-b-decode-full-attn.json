@@ -1,0 +1,166 @@
+{
+  "commands": {
+    "economics": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3,5 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-task31/mtp_raw --out /tmp/hipengine-task31/mtp_economics_decode_batched_b3_b5.json",
+    "exact_ar_finite_smoke": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_VERIFY_GPU_ACCEPT=validate PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 8 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --json /tmp/hipengine-task31-smoke-decode-batched-d8-validate.json",
+    "gpu_fixture": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-batch-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt",
+    "rocprof": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/hipengine-task31/mtp_rocprof_decode_batched_b3_d32 -o mtp-verifier-baseline -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --rocprof-warmup-cycles 0 --rocprof-verify-cycles 0 --json /tmp/hipengine-task31/mtp_rocprof_decode_batched_b3_d32/mtp-verifier-baseline-smoke.json"
+  },
+  "correctness": {
+    "gpu_fixture_batch_vs_c1_bit_exact": true,
+    "mtp_d32_economics_all_exact_ar_match": true,
+    "mtp_d8_validate_exact_ar_match": true,
+    "mtp_d8_validate_target_top1_values_all_finite": true,
+    "mtp_d8_validate_target_top1_values_count": 8
+  },
+  "date": "2026-06-07",
+  "decision_reason": "Retained as a diagnostic/default-available verifier mode: exact AR holds and B=3/B=5 cycle cost improves, but MTP remains below AR and decode_batched is graph-off-only pending a stable split-count graph bucket.",
+  "economics_vs_prefill_batched_baseline": [
+    {
+      "accepted_lengths": [
+        3,
+        3,
+        2,
+        0,
+        2,
+        0,
+        0,
+        1,
+        3,
+        0,
+        2,
+        0,
+        2
+      ],
+      "avg_visible_tokens_per_cycle": 2.3846153846153846,
+      "budget": 3,
+      "cycle_cost_ar_tokens": {
+        "delta_pct": -19.607927636702563,
+        "new": 4.3930285969164045,
+        "old": 5.46450473009826
+      },
+      "cycle_wall_ms_per_cycle": {
+        "delta_pct": -7.571540130833901,
+        "new": 45.16863746153847,
+        "old": 48.86875484615384
+      },
+      "exact_ar_match": true,
+      "new_chain_attn_mode": "decode_batched",
+      "old_chain_attn_mode": "batched",
+      "verify_ms_per_cycle": {
+        "delta_pct": -9.585764262393084,
+        "new": 35.12724899113751,
+        "old": 38.85145818528075
+      }
+    },
+    {
+      "accepted_lengths": [
+        5,
+        4,
+        0,
+        2,
+        0,
+        0,
+        1,
+        4,
+        2,
+        0,
+        2
+      ],
+      "avg_visible_tokens_per_cycle": 2.8181818181818183,
+      "budget": 5,
+      "cycle_cost_ar_tokens": {
+        "delta_pct": -8.747152874590093,
+        "new": 6.233443949119198,
+        "old": 6.830958315801916
+      },
+      "cycle_wall_ms_per_cycle": {
+        "delta_pct": -5.0127857899354815,
+        "new": 58.16983545454546,
+        "old": 61.239647818181815
+      },
+      "exact_ar_match": true,
+      "new_chain_attn_mode": "decode_batched",
+      "old_chain_attn_mode": "batched",
+      "verify_ms_per_cycle": {
+        "delta_pct": -6.846806754023121,
+        "new": 43.26482392339544,
+        "old": 46.4448103342544
+      }
+    }
+  ],
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0"
+  },
+  "implementation": {
+    "chain_attn_mode": "decode_batched",
+    "fallbacks": [
+      "chain_attn_mode=c1_loop",
+      "chain_attn_mode=batched"
+    ],
+    "graph_note": "decode_batched is graph-off only; split count is selected from the current verifier position bucket.",
+    "new_kernels": [
+      "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<8,16,2>",
+      "qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<_Float16>"
+    ]
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "raw_outputs": {
+    "economics_json": "/tmp/hipengine-task31/mtp_economics_decode_batched_b3_b5.json",
+    "finite_smoke_json": "/tmp/hipengine-task31-smoke-decode-batched-d8-validate.json",
+    "rocprof_json": "/tmp/hipengine-task31/mtp_verifier_rocprof_decode_batched_b3_d32.json",
+    "rocprof_kernel_trace_csv": "/tmp/hipengine-task31/mtp_rocprof_decode_batched_b3_d32/mtp-verifier-baseline_kernel_trace.csv"
+  },
+  "rocprof_vs_prefill_batched_baseline": {
+    "attention_kernel_calls_per_pass": {
+      "new_decode_context_plus_reduce": 20.0,
+      "note": "new count is two decode kernels per full-attention layer: batch GQA context plus batch reduce-gate; each launch covers all verifier rows via grid.z=rows",
+      "old_native_prefill_attention": 10.0
+    },
+    "attention_kernel_ms_per_pass": {
+      "delta_pct": -77.87431643788591,
+      "new_decode_attention": 0.41600509090909094,
+      "old_native_prefill_attention": 1.880190909090909
+    },
+    "baseline_profile_artifact": "benchmarks/results/2026-06-07-hipengine-mtp-verifier-rocprof-family-rollup.json",
+    "full_attention_attention_kv_ms_per_pass": {
+      "delta_pct": -76.65931019171201,
+      "new_decode_attention_plus_kv": 0.4457508181818182,
+      "old_native_prefill_attention_plus_kv": 1.9097585454545454
+    },
+    "host_window_ms_per_pass": {
+      "delta_pct": -4.89300003256662,
+      "new": 36.02953636363637,
+      "old": 37.88315936363636
+    },
+    "kernel_calls_per_pass": {
+      "delta": 10.0,
+      "new": 981.0,
+      "old": 971.0
+    },
+    "kernel_time_ms_per_pass": {
+      "delta_pct": -7.845575735996342,
+      "new": 17.01133181818182,
+      "old": 18.45959318181818
+    },
+    "new_raw_profile_json": "/tmp/hipengine-task31/mtp_verifier_rocprof_decode_batched_b3_d32.json",
+    "verifier_passes": 11
+  },
+  "schema": 1,
+  "task": 31,
+  "title": "Small-B decode-shaped full-attention verifier primitive",
+  "workload": {
+    "candidate_budgets": [
+      3,
+      5
+    ],
+    "decode_tokens": 32,
+    "graph_mode": "off",
+    "prompt": "fixtures/dflash/stable_prompts.jsonl id=code:quicksort_prefix",
+    "proposal_impl": "persistent_device"
+  }
+}
