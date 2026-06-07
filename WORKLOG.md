@@ -67154,3 +67154,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: target grouped full-attention context/output bit-level composition/order or the sensitive layer3→4 handoff; do not spend more c8 iterations on pre-QKV toggles.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-direct-layer3-fullattn-439/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter440 c8 layer3 dense-context probe
+- Ran a minimal c8 fullnative/no-rowchunk L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with only a layer3 dense-context+batch-gate override (`--batch-decode-attn-context-path batch --batch-decode-attn-dense-context-batch-gate-layers 3`), against the native-batch c1 oracle. No runtime code changed.
+- Result: selected layer3 dense context is **not** a c8 fix. The diagnostic is `mismatch_found`; hidden and token checks fail. Layer4 linear `attn_input` drift remains (`max_abs=0.0078125`, `bit_mismatch=765`, elements_over_atol `7`), and layer3 full-attention now has an over-atol `mlp_input` failure (`max_abs=0.001953125`, elements_over_atol `1`). Full-attention failed-stage count is `18`.
+- Interpretation: layer3 context bit drift is a useful origin marker, but replacing only that producer with dense-context+batch-gate is not safe for c8. Continue toward grouped full-attention context/output bit-order parity or rowchunk semantics rather than selected dense-context promotion.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-layer3-dense-context-440/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.

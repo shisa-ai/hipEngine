@@ -1,0 +1,53 @@
+{
+  "conclusion": "Layer3 dense-context+batch-gate override is red in the minimal c8 fullnative window and should not be promoted. The fix remains grouped full-attention context/output bit-order parity or rowchunk semantics.",
+  "created_at": "2026-06-07T07:17:11.236746+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "negative_result": "Forcing dense-context+batch-gate at layer3 only does not remove the layer4 attn_input drift. It leaves layer4 attn_input max_abs 0.0078125 and turns layer3 full-attention mlp_input into the first over-atol full-attention failure (max_abs 0.001953125, elements_over_atol 1).",
+    "target_update": "The layer3 context bit drift is a useful origin marker, but replacing only that layer with dense-context+batch-gate is not a safe fix for c8. Continue toward bit/order parity of grouped context/output or rowchunk semantics rather than selected dense-context promotion."
+  },
+  "iteration": 440,
+  "kind": "c8_layer3_dense_context_batch_gate_probe",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused layer3 context override tests the first drifting producer identified by direct comparator and eliminates selected dense-context promotion as a c8 fix; no performance claim.",
+    "passed": true
+  },
+  "result": {
+    "full_attention_failed_stage_count": 18,
+    "hidden_passed": false,
+    "layer3_full_attention_first_failure": {
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 3,
+      "max_abs": 0.001953125,
+      "max_abs_flat_index": 201,
+      "max_abs_index": [
+        0,
+        201
+      ],
+      "row": 0,
+      "stage": "mlp_input"
+    },
+    "layer4_attn_input_first_drift": {
+      "bit_mismatch": 765,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 7,
+      "generated_index": 1,
+      "layer_index": 4,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "linear_drift_stage_count": 9,
+    "status": "mismatch_found",
+    "token_passed": false
+  }
+}
