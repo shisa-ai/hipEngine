@@ -1,0 +1,1629 @@
+{
+  "iteration": 447,
+  "kind": "direct_layer3_chunk2_chunk4_fullnative_stage_comparator",
+  "created_at": "2026-06-07T08:04:25.445273+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "workload": {
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "batch_size": 8,
+    "warmup_decode_tokens": 8,
+    "decode_tokens": 1,
+    "max_layers": 8,
+    "layer_limit": 8,
+    "trace_decode_window": [
+      0,
+      1
+    ],
+    "c1_decode_path": "native_batch",
+    "layer": 3,
+    "hidden_atol": 0.001
+  },
+  "result": {
+    "variant_status": {
+      "fullnative": {
+        "payload_status": "mismatch_found",
+        "summary_hidden_passed": false,
+        "summary_token_passed": true,
+        "first_linear_mismatch": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 4,
+          "stage": "attn_input",
+          "row": 0,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 1296,
+          "max_abs_index": [
+            0,
+            1296
+          ],
+          "elements_over_atol": 5,
+          "bit_mismatch": 491
+        },
+        "first_full_attention_failure": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 7,
+          "stage": "attn_input_pre_qkv",
+          "row": 0,
+          "max_abs": 0.015625,
+          "max_abs_flat_index": 1269,
+          "max_abs_index": [
+            0,
+            1269
+          ],
+          "elements_over_atol": 39
+        },
+        "full_attention_stage_passed": {
+          "input": true,
+          "attn_input_pre_qkv": false,
+          "attn_input_after_rotate": false,
+          "attn_input_after_project": false,
+          "q_proj_key_after_project": false,
+          "value_after_project": false,
+          "query_raw_after_split": false,
+          "key_raw_after_cast": false,
+          "gate_after_split": false,
+          "query_after_prepare": false,
+          "key_after_prepare": false,
+          "attn_input_after_prepare": false,
+          "attn_input": false,
+          "gate": false,
+          "query": false,
+          "attn_context": false,
+          "gated_attn": true,
+          "o_proj": true,
+          "residual": false,
+          "mlp_input": false,
+          "output": false
+        }
+      },
+      "layer3_rowchunk4": {
+        "payload_status": "mismatch_found",
+        "summary_hidden_passed": false,
+        "summary_token_passed": true,
+        "first_linear_mismatch": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 4,
+          "stage": "attn_input",
+          "row": 0,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 1296,
+          "max_abs_index": [
+            0,
+            1296
+          ],
+          "elements_over_atol": 5,
+          "bit_mismatch": 491
+        },
+        "first_full_attention_failure": {
+          "decode_step": 0,
+          "generated_index": 1,
+          "layer_index": 7,
+          "stage": "attn_input_pre_qkv",
+          "row": 0,
+          "max_abs": 0.015625,
+          "max_abs_flat_index": 1269,
+          "max_abs_index": [
+            0,
+            1269
+          ],
+          "elements_over_atol": 39
+        },
+        "full_attention_stage_passed": {
+          "input": true,
+          "attn_input_pre_qkv": false,
+          "attn_input_after_rotate": false,
+          "attn_input_after_project": false,
+          "q_proj_key_after_project": false,
+          "value_after_project": false,
+          "query_raw_after_split": false,
+          "key_raw_after_cast": false,
+          "gate_after_split": false,
+          "query_after_prepare": false,
+          "key_after_prepare": false,
+          "attn_input_after_prepare": false,
+          "attn_input": false,
+          "gate": false,
+          "query": false,
+          "attn_context": false,
+          "gated_attn": true,
+          "o_proj": true,
+          "residual": false,
+          "mlp_input": false,
+          "output": false
+        }
+      },
+      "layer3_rowchunk2": {
+        "payload_status": "eq_ok",
+        "summary_hidden_passed": true,
+        "summary_token_passed": true,
+        "first_linear_mismatch": null,
+        "first_full_attention_failure": null,
+        "full_attention_stage_passed": {
+          "input": true,
+          "attn_input_pre_qkv": true,
+          "attn_input_after_rotate": true,
+          "attn_input_after_project": true,
+          "q_proj_key_after_project": true,
+          "value_after_project": true,
+          "query_raw_after_split": true,
+          "key_raw_after_cast": true,
+          "gate_after_split": true,
+          "query_after_prepare": true,
+          "key_after_prepare": true,
+          "attn_input_after_prepare": true,
+          "attn_input": true,
+          "gate": true,
+          "query": true,
+          "attn_context": true,
+          "gated_attn": true,
+          "o_proj": true,
+          "residual": true,
+          "mlp_input": true,
+          "output": true
+        }
+      }
+    },
+    "pair_summaries": {
+      "fullnative_vs_rowchunk2": {
+        "left": "fullnative",
+        "right": "layer3_rowchunk2",
+        "first_bit_drift": {
+          "stage": "attn_context",
+          "max_abs": 1.9073486328125e-06,
+          "elements_over_atol": 0,
+          "bit_mismatch": 29217,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            2,
+            1165
+          ]
+        },
+        "first_over_atol": null,
+        "first_not_passed": null,
+        "stage_count": 21
+      },
+      "rowchunk4_vs_rowchunk2": {
+        "left": "layer3_rowchunk4",
+        "right": "layer3_rowchunk2",
+        "first_bit_drift": {
+          "stage": "attn_context",
+          "max_abs": 1.9073486328125e-06,
+          "elements_over_atol": 0,
+          "bit_mismatch": 29217,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            2,
+            1165
+          ]
+        },
+        "first_over_atol": null,
+        "first_not_passed": null,
+        "stage_count": 21
+      },
+      "fullnative_vs_rowchunk4": {
+        "left": "fullnative",
+        "right": "layer3_rowchunk4",
+        "first_bit_drift": null,
+        "first_over_atol": null,
+        "first_not_passed": null,
+        "stage_count": 21
+      }
+    },
+    "pair_key_stages": {
+      "fullnative_vs_rowchunk2": {
+        "attn_context": {
+          "comparison_kind": "fp32",
+          "shape": [
+            8,
+            4096
+          ],
+          "passed": true,
+          "max_abs": 1.9073486328125e-06,
+          "mean_abs": 6.52586749083639e-08,
+          "elements_over_atol": 0,
+          "bit_mismatch": 29217,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            2,
+            1165
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 1.0132789611816406e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3616,
+              "max_abs_index": [
+                0,
+                3558
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 1.6689300537109375e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3782,
+              "max_abs_index": [
+                0,
+                1165
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3616,
+              "max_abs_index": [
+                0,
+                1165
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 1.5497207641601562e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3658,
+              "max_abs_index": [
+                0,
+                3471
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3648,
+              "max_abs_index": [
+                0,
+                271
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3710,
+              "max_abs_index": [
+                0,
+                1203
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3533,
+              "max_abs_index": [
+                0,
+                1165
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3654,
+              "max_abs_index": [
+                0,
+                3451
+              ]
+            }
+          ]
+        },
+        "gated_attn": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            4096
+          ],
+          "passed": true,
+          "max_abs": 7.62939453125e-06,
+          "mean_abs": 6.96672941558063e-10,
+          "elements_over_atol": 0,
+          "bit_mismatch": 16,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            6,
+            2836
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 4.76837158203125e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                3581
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 3.814697265625e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 4,
+              "max_abs_index": [
+                0,
+                844
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 2.384185791015625e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                2807
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 1.1920928955078125e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                2972
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                3122
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 2.384185791015625e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                3250
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                2836
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3,
+              "max_abs_index": [
+                0,
+                3191
+              ]
+            }
+          ]
+        },
+        "o_proj": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 1.52587890625e-05,
+          "mean_abs": 8.80645529832691e-08,
+          "elements_over_atol": 0,
+          "bit_mismatch": 886,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            1,
+            208
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 14,
+              "max_abs_index": [
+                0,
+                172
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 295,
+              "max_abs_index": [
+                0,
+                208
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 9.5367431640625e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 13,
+              "max_abs_index": [
+                0,
+                15
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 70,
+              "max_abs_index": [
+                0,
+                1898
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 132,
+              "max_abs_index": [
+                0,
+                53
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 3.814697265625e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 8,
+              "max_abs_index": [
+                0,
+                374
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 234,
+              "max_abs_index": [
+                0,
+                905
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 120,
+              "max_abs_index": [
+                0,
+                19
+              ]
+            }
+          ]
+        },
+        "residual": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 3.0517578125e-05,
+          "mean_abs": 7.966445991769433e-08,
+          "elements_over_atol": 0,
+          "bit_mismatch": 213,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            1,
+            96
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 5,
+              "max_abs_index": [
+                0,
+                1120
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 80,
+              "max_abs_index": [
+                0,
+                96
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3,
+              "max_abs_index": [
+                0,
+                653
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 10,
+              "max_abs_index": [
+                0,
+                572
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 25,
+              "max_abs_index": [
+                0,
+                1570
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 3.814697265625e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                418
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 63,
+              "max_abs_index": [
+                0,
+                245
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 25,
+              "max_abs_index": [
+                0,
+                121
+              ]
+            }
+          ]
+        },
+        "mlp_input": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0009765625,
+          "mean_abs": 2.7398928068578243e-06,
+          "elements_over_atol": 0,
+          "bit_mismatch": 198,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            1,
+            96
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 0.000244140625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 5,
+              "max_abs_index": [
+                0,
+                1120
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 75,
+              "max_abs_index": [
+                0,
+                96
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                265
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 11,
+              "max_abs_index": [
+                0,
+                572
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 22,
+              "max_abs_index": [
+                0,
+                1570
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                418
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 58,
+              "max_abs_index": [
+                0,
+                1359
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 24,
+              "max_abs_index": [
+                0,
+                121
+              ]
+            }
+          ]
+        },
+        "output": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0001220703125,
+          "mean_abs": 2.262084308313206e-06,
+          "elements_over_atol": 0,
+          "bit_mismatch": 4303,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            0,
+            100
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 465,
+              "max_abs_index": [
+                0,
+                100
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 700,
+              "max_abs_index": [
+                0,
+                1560
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 158,
+              "max_abs_index": [
+                0,
+                69
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 655,
+              "max_abs_index": [
+                0,
+                565
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 586,
+              "max_abs_index": [
+                0,
+                955
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 400,
+              "max_abs_index": [
+                0,
+                1116
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 709,
+              "max_abs_index": [
+                0,
+                542
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 630,
+              "max_abs_index": [
+                0,
+                883
+              ]
+            }
+          ]
+        }
+      },
+      "rowchunk4_vs_rowchunk2": {
+        "attn_context": {
+          "comparison_kind": "fp32",
+          "shape": [
+            8,
+            4096
+          ],
+          "passed": true,
+          "max_abs": 1.9073486328125e-06,
+          "mean_abs": 6.52586749083639e-08,
+          "elements_over_atol": 0,
+          "bit_mismatch": 29217,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            2,
+            1165
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 1.0132789611816406e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3616,
+              "max_abs_index": [
+                0,
+                3558
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 1.6689300537109375e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3782,
+              "max_abs_index": [
+                0,
+                1165
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3616,
+              "max_abs_index": [
+                0,
+                1165
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 1.5497207641601562e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3658,
+              "max_abs_index": [
+                0,
+                3471
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3648,
+              "max_abs_index": [
+                0,
+                271
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3710,
+              "max_abs_index": [
+                0,
+                1203
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3533,
+              "max_abs_index": [
+                0,
+                1165
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 1.3113021850585938e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3654,
+              "max_abs_index": [
+                0,
+                3451
+              ]
+            }
+          ]
+        },
+        "gated_attn": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            4096
+          ],
+          "passed": true,
+          "max_abs": 7.62939453125e-06,
+          "mean_abs": 6.96672941558063e-10,
+          "elements_over_atol": 0,
+          "bit_mismatch": 16,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            6,
+            2836
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 4.76837158203125e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                3581
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 3.814697265625e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 4,
+              "max_abs_index": [
+                0,
+                844
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 2.384185791015625e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                2807
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 1.1920928955078125e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                2972
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                3122
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 2.384185791015625e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                3250
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                2836
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3,
+              "max_abs_index": [
+                0,
+                3191
+              ]
+            }
+          ]
+        },
+        "o_proj": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 1.52587890625e-05,
+          "mean_abs": 8.80645529832691e-08,
+          "elements_over_atol": 0,
+          "bit_mismatch": 886,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            1,
+            208
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 14,
+              "max_abs_index": [
+                0,
+                172
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 295,
+              "max_abs_index": [
+                0,
+                208
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 9.5367431640625e-07,
+              "elements_over_atol": 0,
+              "bit_mismatch": 13,
+              "max_abs_index": [
+                0,
+                15
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 70,
+              "max_abs_index": [
+                0,
+                1898
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 132,
+              "max_abs_index": [
+                0,
+                53
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 3.814697265625e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 8,
+              "max_abs_index": [
+                0,
+                374
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 234,
+              "max_abs_index": [
+                0,
+                905
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 120,
+              "max_abs_index": [
+                0,
+                19
+              ]
+            }
+          ]
+        },
+        "residual": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 3.0517578125e-05,
+          "mean_abs": 7.966445991769433e-08,
+          "elements_over_atol": 0,
+          "bit_mismatch": 213,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            1,
+            96
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 7.62939453125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 5,
+              "max_abs_index": [
+                0,
+                1120
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 80,
+              "max_abs_index": [
+                0,
+                96
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 1.9073486328125e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 3,
+              "max_abs_index": [
+                0,
+                653
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 10,
+              "max_abs_index": [
+                0,
+                572
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 25,
+              "max_abs_index": [
+                0,
+                1570
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 3.814697265625e-06,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                418
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 63,
+              "max_abs_index": [
+                0,
+                245
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 25,
+              "max_abs_index": [
+                0,
+                121
+              ]
+            }
+          ]
+        },
+        "mlp_input": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0009765625,
+          "mean_abs": 2.7398928068578243e-06,
+          "elements_over_atol": 0,
+          "bit_mismatch": 198,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            1,
+            96
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 0.000244140625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 5,
+              "max_abs_index": [
+                0,
+                1120
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 75,
+              "max_abs_index": [
+                0,
+                96
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 1.52587890625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 1,
+              "max_abs_index": [
+                0,
+                265
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 11,
+              "max_abs_index": [
+                0,
+                572
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 22,
+              "max_abs_index": [
+                0,
+                1570
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 2,
+              "max_abs_index": [
+                0,
+                418
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 58,
+              "max_abs_index": [
+                0,
+                1359
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 0.0009765625,
+              "elements_over_atol": 0,
+              "bit_mismatch": 24,
+              "max_abs_index": [
+                0,
+                121
+              ]
+            }
+          ]
+        },
+        "output": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0001220703125,
+          "mean_abs": 2.262084308313206e-06,
+          "elements_over_atol": 0,
+          "bit_mismatch": 4303,
+          "drifting_row_count": 8,
+          "max_abs_index": [
+            0,
+            100
+          ],
+          "rows": [
+            {
+              "row": 0,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 465,
+              "max_abs_index": [
+                0,
+                100
+              ]
+            },
+            {
+              "row": 1,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 700,
+              "max_abs_index": [
+                0,
+                1560
+              ]
+            },
+            {
+              "row": 2,
+              "passed": true,
+              "max_abs": 3.0517578125e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 158,
+              "max_abs_index": [
+                0,
+                69
+              ]
+            },
+            {
+              "row": 3,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 655,
+              "max_abs_index": [
+                0,
+                565
+              ]
+            },
+            {
+              "row": 4,
+              "passed": true,
+              "max_abs": 0.0001220703125,
+              "elements_over_atol": 0,
+              "bit_mismatch": 586,
+              "max_abs_index": [
+                0,
+                955
+              ]
+            },
+            {
+              "row": 5,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 400,
+              "max_abs_index": [
+                0,
+                1116
+              ]
+            },
+            {
+              "row": 6,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 709,
+              "max_abs_index": [
+                0,
+                542
+              ]
+            },
+            {
+              "row": 7,
+              "passed": true,
+              "max_abs": 6.103515625e-05,
+              "elements_over_atol": 0,
+              "bit_mismatch": 630,
+              "max_abs_index": [
+                0,
+                883
+              ]
+            }
+          ]
+        }
+      },
+      "fullnative_vs_rowchunk4": {
+        "attn_context": {
+          "comparison_kind": "fp32",
+          "shape": [
+            8,
+            4096
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "elements_over_atol": 0,
+          "bit_mismatch": 0,
+          "drifting_row_count": 0,
+          "max_abs_index": [
+            0,
+            0
+          ],
+          "rows": []
+        },
+        "gated_attn": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            4096
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "elements_over_atol": 0,
+          "bit_mismatch": 0,
+          "drifting_row_count": 0,
+          "max_abs_index": [
+            0,
+            0
+          ],
+          "rows": []
+        },
+        "o_proj": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "elements_over_atol": 0,
+          "bit_mismatch": 0,
+          "drifting_row_count": 0,
+          "max_abs_index": [
+            0,
+            0
+          ],
+          "rows": []
+        },
+        "residual": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "elements_over_atol": 0,
+          "bit_mismatch": 0,
+          "drifting_row_count": 0,
+          "max_abs_index": [
+            0,
+            0
+          ],
+          "rows": []
+        },
+        "mlp_input": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "elements_over_atol": 0,
+          "bit_mismatch": 0,
+          "drifting_row_count": 0,
+          "max_abs_index": [
+            0,
+            0
+          ],
+          "rows": []
+        },
+        "output": {
+          "comparison_kind": "fp16_bits",
+          "shape": [
+            8,
+            2048
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "elements_over_atol": 0,
+          "bit_mismatch": 0,
+          "drifting_row_count": 0,
+          "max_abs_index": [
+            0,
+            0
+          ],
+          "rows": []
+        }
+      }
+    }
+  },
+  "interpretation": {
+    "conclusion": "Layer3 rowchunk4 is bit-identical to fullnative for captured layer3 full-attention stages, while both differ from rowchunk2 first at attn_context. The c8 minimal green path therefore requires rowchunk2-specific ordering/metadata, not chunk4.",
+    "localized_frontier": "The first captured layer3 difference between the green chunk2 path and both red paths is attn_context. All pre-context layer3 Q/K/V/gate/prepared stages are identical; fullnative and chunk4 are fully bit-identical across captured layer3 full-attention stages.",
+    "next_target": "Inspect the layer3 context kernel metadata/order for rowchunk2 versus c4/c8 grouping: compact-varlen sequence packing, row-group launch shape, or reduction/order differences. Chunk4 can be treated as equivalent to fullnative for this minimal c8 layer3 producer."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused direct stage comparator eliminates layer3 rowchunk4 as distinct from fullnative and narrows the green path to rowchunk2-specific context semantics; no performance claim."
+  },
+  "conclusion": "Layer3 rowchunk4 is bit-identical to fullnative for captured layer3 full-attention stages, while both differ from rowchunk2 first at attn_context. The c8 minimal green path therefore requires rowchunk2-specific ordering/metadata, not chunk4."
+}
