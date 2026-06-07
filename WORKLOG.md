@@ -67055,3 +67055,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - This resolves the comparator ambiguity: c4 row-chunk correctness is not a retained sequence-accounting accident and the full-native blocker is real hidden drift in full-native grouping. The later retained full-native row3 token118 failure is downstream of this early hidden drift.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on the same GPU.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-nativec1-hidden-426/summary.json` and `compact-runs.json`; raw hidden JSON/logs remain under `/tmp` with hashes recorded.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter427 current c8 scaling baselines
+- No runtime code changed. Refreshed current-commit c8 scheduler-serial-bridge scaling baseline on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX and attached it with the iter419 c1 baseline plus iter416 primitive-c8 evidence to a c8 retained-bench run.
+- c8 serial bridge: `111.786 tok/s` aggregate / `13.973 tok/s` per request. c8 retained native: generated-token equality green `[137,137,137,137,137,137,137,137]`, `correctness.passed=true`, `scaling.complete=true`, native `181.279 tok/s` aggregate / `22.660 tok/s` per request.
+- Scaling ratios: aggregate vs c1 `1.354`, aggregate/per-request vs serial bridge `1.622`, per-request vs c1 `0.169`. This is the strongest positive c>N scaling evidence so far but not a retained performance claim.
+- Retained status remains `blocked`: `profiler.status=not_captured`, `batch_execution.throughput_claim_eligible=false`, and `decode_execution.blockers=["full-attention decode forced to native row-chunk diagnostic path on selected layers"]`. As with c4, row-chunk appears to be the correctness workaround; full-native correctness/profiler gating must be resolved before any rollup update.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on the same GPU.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-baselines-427/summary.json`, `compact-runs.json`, `c8-serial-bridge-scaling.json`, and `retained-c8-with-baselines.json`; raw `/tmp` c8 logs are hashed in the summary and not committed.
