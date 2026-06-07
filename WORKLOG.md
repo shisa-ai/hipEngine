@@ -67168,3 +67168,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: rowchunk2 green is not reproduced by swapping context alone; rowchunk semantics include broader grouping/order effects across context and suffix/output composition.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-contextonly-441/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter442 c8 native O-output contrast
+- Ran a minimal c8 fullnative/no-rowchunk L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with `--batch-decode-full-attn-output-path batch`, against the native-batch c1 oracle. No runtime code changed.
+- Result: native full-attention O/output path is **not** a c8 fix. The diagnostic is `mismatch_found`; hidden and token checks fail. It changes the failure shape from the default batch-GEMV O path but keeps layer4 linear `attn_input` drift (`max_abs=0.0078125`, `bit_mismatch=1139`, `elements_over_atol=21`) and makes layer3 full-attention `mlp_input` the first over-atol full-attention failure (`max_abs=0.00390625`, `elements_over_atol=10`). Full-attention failed-stage count is `19`.
+- Interpretation: hidden-bisect already exercises row-aware batch-GEMV O projection by default, and switching to native batch O does not close the suffix/handoff issue. Continue targeting rowchunk/grouped ordering or layer4 RMSNorm sensitivity rather than O-projection path promotion.
+- Required active c2 verify printed `137` with `[137,137]`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-output-batch-442/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.

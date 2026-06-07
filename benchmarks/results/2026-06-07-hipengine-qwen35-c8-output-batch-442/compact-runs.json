@@ -1,0 +1,119 @@
+{
+  "iteration": 442,
+  "kind": "c8_fullnative_output_batch_contrast",
+  "created_at": "2026-06-07T07:31:07.131045+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "result": {
+    "status": "mismatch_found",
+    "hidden_passed": false,
+    "token_passed": false,
+    "hidden_failure_rows": [
+      4,
+      6,
+      5,
+      0
+    ],
+    "token_failure_rows": [
+      6
+    ],
+    "linear_drift_stage_count": 5,
+    "full_attention_failed_stage_count": 19,
+    "layer3_full_attention_first_failure": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 3,
+      "stage": "mlp_input",
+      "row": 0,
+      "max_abs": 0.00390625,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "elements_over_atol": 10
+    },
+    "layer4_attn_input_first_drift": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "stage": "attn_input",
+      "row": 0,
+      "comparison_kind": "fp16_bits",
+      "passed_under_atol": false,
+      "bit_mismatch": 1139,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 859,
+      "max_abs_index": [
+        0,
+        859
+      ],
+      "elements_over_atol": 21
+    },
+    "linear_input_passed": true,
+    "linear_input_worst_diff": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "row": 0,
+      "passed": true,
+      "max_abs": 0.00048828125,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "elements_over_atol": 0
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": false,
+      "attn_input_after_rotate": false,
+      "attn_input_after_project": false,
+      "q_proj_key_after_project": false,
+      "value_after_project": false,
+      "query_raw_after_split": false,
+      "key_raw_after_cast": false,
+      "gate_after_split": false,
+      "query_after_prepare": false,
+      "key_after_prepare": false,
+      "attn_input_after_prepare": false,
+      "attn_input": false,
+      "gate": false,
+      "query": false,
+      "attn_context": false,
+      "gated_attn": false,
+      "o_proj": true,
+      "residual": false,
+      "mlp_input": false,
+      "output": false
+    },
+    "linear_stage_passed": {
+      "attn_input": false,
+      "qkv": false,
+      "z": false,
+      "conv_out": false,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": false,
+      "output": true
+    },
+    "workload": {
+      "batch_decode_full_attention_output_path": "batch",
+      "batch_decode_full_attention_row_chunk_size": 0,
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_attention_context_path": "batch",
+      "full_attention_decode_path": "batch_context"
+    }
+  },
+  "interpretation": {
+    "negative_result": "Native full-attention O/output path=batch is not a c8 fullnative fix. It keeps hidden/token checks red and makes layer3 full-attention mlp_input the first over-atol failure (max_abs 0.00390625), while the linear attn_input stage still drifts at layer4 (max_abs 0.0078125).",
+    "target_update": "The hidden-bisect default already exercises row-aware batch_gemv O projection; switching to native batch O does not close the suffix/handoff issue. Continue targeting rowchunk/grouped ordering or layer4 RMSNorm sensitivity, not O-projection path promotion."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused minimal c8 no-rowchunk O-output contrast eliminates native batch O projection as a hidden/token fix; no performance claim."
+  },
+  "conclusion": "Changing full-attention O/output from batch_gemv to native batch is red and worsens layer3 suffix failure shape; it is not a fix for c8 fullnative grouping drift."
+}
