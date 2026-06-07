@@ -67161,3 +67161,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: layer3 context bit drift is a useful origin marker, but replacing only that producer with dense-context+batch-gate is not safe for c8. Continue toward grouped full-attention context/output bit-order parity or rowchunk semantics rather than selected dense-context promotion.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-layer3-dense-context-440/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter441 c8 row-local paged context-only probe
+- Ran a minimal c8 fullnative/no-rowchunk L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with `--batch-decode-attn-context-path per_row_context_only`, against the native-batch c1 oracle. No runtime code changed.
+- Result: row-local paged context-only is **not** a c8 fix. The diagnostic is `mismatch_found`; hidden and token checks fail. The failure shape matches the layer3 dense-context probe: layer4 linear `attn_input` drift remains (`max_abs=0.0078125`, `bit_mismatch=765`, elements_over_atol `7`), and layer3 full-attention `mlp_input` is the first over-atol full-attention failure (`max_abs=0.001953125`, elements_over_atol `1`). Full-attention failed-stage count is `18`.
+- Interpretation: rowchunk2 green is not reproduced by swapping context alone; rowchunk semantics include broader grouping/order effects across context and suffix/output composition.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-contextonly-441/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.

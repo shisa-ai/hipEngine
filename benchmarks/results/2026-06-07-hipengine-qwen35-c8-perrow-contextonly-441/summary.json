@@ -1,0 +1,97 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-contextonly-441/compact-runs.json",
+      "sha256": "794602d5658813bc539bf14ff5cf2c7cdaaa301d2eee7211df019e967ffc9875",
+      "size_bytes": 2222
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-contextonly-441/summary.json"
+    }
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --warmup-decode-tokens 8 --decode-tokens 1 --max-layers 8 --layer-limits 8 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-context-path per_row_context_only --json /tmp/hipengine-hidden-bisect-iter441-L8-c8-fullnative-perrow-contextonly-nativec1-warm8-decode1-trace0-1.json",
+  "conclusion": "Context-only row-local replay is red for the minimal c8 fullnative window. Continue targeting rowchunk/grouped composition rather than context-only fallback.",
+  "created_at": "2026-06-07T07:21:42.400380+00:00",
+  "git_commit_before_commit": "04b089a1a03ec1accd360339b6612dfb9f4b2d81",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "negative_result": "Row-local paged context-only is not a c8 fix. It matches the layer3 dense-context red shape: layer4 attn_input drift remains max_abs 0.0078125/bit_mismatch 765/elements_over_atol 7, and layer3 mlp_input becomes the first full-attention over-atol failure max_abs 0.001953125.",
+    "target_update": "The rowchunk2 green path is not reproduced by swapping context alone. Rowchunk semantics include a broader grouping/order effect across context and suffix/output composition."
+  },
+  "iteration": 441,
+  "kind": "c8_perrow_paged_context_only_probe",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused row-local paged-context probe tests the first context bit-drift hypothesis and eliminates context-only replay as a c8 fix; no performance claim.",
+    "passed": true
+  },
+  "references": {
+    "direct_layer3_439": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-direct-layer3-fullattn-439/summary.json",
+      "sha256": "5c5d73044817c93420bf2ad27b1288959548db33f2e1dc8d008f06f024003beb",
+      "size_bytes": 133883
+    },
+    "layer3_dense_context_440": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-layer3-dense-context-440/summary.json",
+      "sha256": "e368b84148833c6d6cb4b802f0970388635ccedff82ce03ea1a3e3a00f1bcc38",
+      "size_bytes": 30455
+    },
+    "perrow_context_hidden": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter441-L8-c8-fullnative-perrow-contextonly-nativec1-warm8-decode1-trace0-1.json",
+      "sha256": "bd0050acc035717be44fe12d227d4fb3fe07e680c54dc4bb2c31f9ad1154e89c",
+      "size_bytes": 5007721
+    },
+    "perrow_context_log": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter441-L8-c8-fullnative-perrow-contextonly-nativec1-warm8-decode1-trace0-1.log",
+      "sha256": "bd0050acc035717be44fe12d227d4fb3fe07e680c54dc4bb2c31f9ad1154e89c",
+      "size_bytes": 5007721
+    }
+  },
+  "result": {
+    "full_attention_failed_stage_count": 18,
+    "hidden_passed": false,
+    "layer3_full_attention_first_failure": {
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 3,
+      "max_abs": 0.001953125,
+      "max_abs_flat_index": 201,
+      "max_abs_index": [
+        0,
+        201
+      ],
+      "row": 0,
+      "stage": "mlp_input"
+    },
+    "layer4_attn_input_first_drift": {
+      "bit_mismatch": 765,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 7,
+      "generated_index": 1,
+      "layer_index": 4,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "linear_drift_stage_count": 9,
+    "status": "mismatch_found",
+    "token_passed": false,
+    "workload": {
+      "batch_decode_attention_context_path": "per_row_context_only",
+      "batch_decode_full_attention_row_chunk_size": 0,
+      "full_attention_decode_path": "batch_context"
+    }
+  }
+}
