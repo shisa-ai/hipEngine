@@ -758,17 +758,17 @@
   "schema_version": 1,
   "status": "blocked",
   "status_provenance": {
-    "handoff_summary_sha256": "1bd58be5480789d5c7af4a0cfae6ac4fd6cc02f4c975ec862fcb37f6c784d96b",
-    "next_action_commands_sha256": "2d6a9da297c9a0c84687b34cbb9580907af8a5c39c04b51caf4074c04e5772e7",
+    "handoff_summary_sha256": "beace106bf861e5c3cd3beba7d07321f10128e4b17f852db5d0f9621bb5da914",
+    "next_action_commands_sha256": "cd4b5be9ab71b91f429dcd02b9f5856d7977bc8403998f0b9afb5ac9f8b9fe7c",
     "oracle_partial_output_handoff_sha256": "bd0628cadd439eee98a671e02d58b8508e634ff94adbe9e633db10edb1072477",
     "oracle_progress_sha256": "3bcd3b8b73a49ca26a9639378342b22327382870ddf9fc0964569b56c31c6e2c",
-    "readiness_summary_sha256": "42fe84fb57c50c2123d57f6b1acfbccd16414c98554c8b753670c60613c742a2",
+    "readiness_summary_sha256": "87a8d32dd959c608925d307946670ef6a3364b2383c0b12ab62bac73408b5377",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "477191cbab56dc2d186ab9ddea5d7ae55c34614a824e1bb2fecaeaccf74d3974",
-        "size_bytes": 83218
+        "sha256": "41a30d93390cf603a2e4063325affe14083494d69f2fbfbe313009dc66a6b4c5",
+        "size_bytes": 83351
       },
       "oracle": {
         "exists": true,
@@ -795,10 +795,10 @@
         "size_bytes": 176642
       }
     },
-    "source_artifacts_sha256": "9d01a4cb514e97780e7eb078813fec0f78a0c2bd1a1c4ca255bb3320d8c657b8",
-    "status_integrity_sha256": "42c2c827499a4b1f4af7e643d7fc7f6baf01a025b316b542e6994d79384cbae2"
+    "source_artifacts_sha256": "d8e37314799c9c708dcbf3c4b7d1f4216ba67a2afe90ee4f968570861adb9487",
+    "status_integrity_sha256": "6d8c72d493d7215738979fd69f5684b2bf1a5268c37a7800fb36b07db33da38c"
   },
-  "status_provenance_sha256": "dc150c246000a3da4f3deda7abf15649d73f696a69990a95645eee669ad19dd7",
+  "status_provenance_sha256": "6b19bfea4c753b9f332c90b49cc18b71c993250caaa29b0a91733bf6f02e9657",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",
