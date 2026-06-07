@@ -1,0 +1,174 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c1-oracle-split-c2-green-414/compact-runs.json",
+      "sha256": "cc8ec068c1b3f7e7021114407da83bee461178d44d099803a5de915e958fd3ef",
+      "size_bytes": 7088
+    },
+    "raw": {
+      "active_c2_verify": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "e164f7c4c8c2b348e75e4894c73e8d870a7bcb470fb6a3b0cb4630109dcc5d1d",
+        "size_bytes": 138429
+      },
+      "active_c2_verify_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "e164f7c4c8c2b348e75e4894c73e8d870a7bcb470fb6a3b0cb4630109dcc5d1d",
+        "size_bytes": 138429
+      },
+      "c1_oracle_split": {
+        "exists": true,
+        "path": "/tmp/hipengine-c1-oracle-split-iter414.json",
+        "sha256": "e16babf4878709e08e44fcde7f296c84d89a7e2f9be03ece51971f370cf99924",
+        "size_bytes": 9798
+      },
+      "c1_oracle_split_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-c1-oracle-split-iter414.log",
+        "sha256": "8476b8737287dd1f2190282eaa3eef6db86cfbe7c518f4f84bd2da7b29c9dc41",
+        "size_bytes": 794
+      },
+      "c1_oracle_split_script": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c1-oracle-split-c2-green-414/c1-oracle-split-iter414.py",
+        "sha256": "a1ecad83c19c38c44a18c57d2e9fc67ff6804ee9a53bb98a100a78560ed6a5c5",
+        "size_bytes": 9073
+      },
+      "c1_oracle_split_wrapper": {
+        "exists": true,
+        "path": "/tmp/hipengine-c1-oracle-split-iter414.wrapper.log",
+        "sha256": "d6e33393de3073668b46b6281dbaba5a31250992ea4f0cefbfb4525ba766d164",
+        "size_bytes": 80
+      },
+      "primitive_c2": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      "primitive_c8": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      }
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c1-oracle-split-c2-green-414/summary.json"
+    }
+  },
+  "commands": {
+    "active_verify": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "c1_oracle_split": "HIP_VISIBLE_DEVICES=1 python3 /tmp/hipengine-c1-oracle-split-iter414.py",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json"
+  },
+  "conclusion": "The default retained native c2 path now passes generated-token equality for the full 512/128 c=2 gate. The rowchunk/interleaved diagnostic failure from iter413 is explained by c1 serial-vs-native-batch divergence at row1 index104, not by retained sequence accounting. Next step is to extend the equality gate to c=4 and c=8 with primitive artifacts wired into retained-bench so overall status is accepted rather than blocked.",
+  "created_at": "2026-06-07T02:48:42.029783+00:00",
+  "decode_execution": {
+    "blockers": [],
+    "full_attention_context_decode_path": "native_batch",
+    "full_attention_decode_path": "native_batch",
+    "full_attention_kv_append_decode_path": "native_batch",
+    "linear_attention_output_path": "batch_gemv",
+    "linear_attention_projection_path": "native_batch",
+    "linear_attention_state_path": "native_segments",
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "sampler_execution": {
+      "argmax_audit_enabled": false,
+      "argmax_mode": "serial_per_row",
+      "blockers": [],
+      "c2_equality_green": false,
+      "equality_artifact": null,
+      "equality_rows": null,
+      "final_cast_elems_fence_elements": 0,
+      "final_cast_elems_fence_enabled": false,
+      "final_cast_path": "serial_per_row",
+      "final_cast_temp_fence_enabled": false,
+      "final_cast_tiny_fence_enabled": false,
+      "final_norm_audit_enabled": false,
+      "final_norm_kernel_fence_enabled": false,
+      "final_norm_path": "serial_per_row",
+      "final_rmsnorm_kernel_fence_enabled": false,
+      "final_rmsnorm_temp_fence_enabled": false,
+      "lm_head_audit_enabled": false,
+      "lm_head_kernel_fence_enabled": false,
+      "mode": "serial_lm_head",
+      "native_row_aware_lm_head": false,
+      "requested_mode": "serial_lm_head",
+      "rows": 2,
+      "stabilize_cast_elems": 0,
+      "stabilize_cast_elems_enabled": false,
+      "suffix_fence_enabled": false,
+      "suffix_kernel_fence_enabled": false,
+      "sync_fence_enabled": false
+    }
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 414,
+  "kind": "c1_serial_native_oracle_split_and_c2_generated_equality_green",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: c2 512/128 generated-token equality vs independent native-batch c1 is green ([137,137] of 137 tokens) on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX, primitive c2/c8 guards passed, and c1-only diagnostic proves serial-c1 vs native-batch-c1 diverges at row1 index104. Retained overall status is blocked only because primitive artifact path was not supplied to that verify invocation; guard supplies the primitive evidence. No performance claim.",
+    "passed": true
+  },
+  "result": {
+    "active_verify_metric": 137,
+    "c1_row1_mismatch": {
+      "first_mismatch_index": 104,
+      "native_batch_token_at_mismatch": 799,
+      "native_batch_window": [
+        198,
+        256,
+        471,
+        561,
+        1483,
+        799,
+        369,
+        3799,
+        974,
+        25,
+        74988
+      ],
+      "row": 1,
+      "serial_token_at_mismatch": 2713,
+      "serial_window": [
+        198,
+        256,
+        471,
+        561,
+        1483,
+        2713,
+        74988,
+        16,
+        25,
+        16,
+        17
+      ]
+    },
+    "c1_serial_vs_native_batch_min_equal_prefix_tokens": 104,
+    "c1_serial_vs_native_batch_passed": false,
+    "c1_serial_vs_native_batch_prefix_lengths": [
+      137,
+      104
+    ],
+    "c2_first_mismatch_indices": [
+      null,
+      null
+    ],
+    "c2_generated_token_equality_passed": true,
+    "c2_prefix_lengths": [
+      137,
+      137
+    ],
+    "primitive_c2_passed": true,
+    "primitive_c8_passed": true,
+    "retained_overall_blocker_reason": "no primitive correctness artifact path provided",
+    "retained_overall_correctness_passed": false,
+    "retained_overall_status": "blocked",
+    "tokens_per_sequence": 137
+  }
+}
