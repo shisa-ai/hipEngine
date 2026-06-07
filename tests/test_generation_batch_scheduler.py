@@ -3753,7 +3753,7 @@ def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontie
     c4 = args_for(4)
     assert retained_bench._resolved_batch_decode_full_attn_path(c4) == "native_batch"
     assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c4) == 2
-    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c4) == "3,7,15"
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c4) == "3,15"
     assert retained_bench._resolved_batch_decode_full_attn_output_path(c4) == "batch_gemv"
 
     c8 = args_for(8)
@@ -3861,7 +3861,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     )
     assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE"] == "2"
-    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,7,15"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"] == "3,15"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"] == "0"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS"] == ""
