@@ -1747,6 +1747,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_mirror_records_sha_only": (
             "oracle_partial_output_handoff.mirror_records.sha256"
         ),
+        "oracle_partial_output_mirror_sources_only": (
+            "oracle_partial_output_handoff.mirror_records[].source"
+        ),
+        "oracle_partial_output_mirror_sources_sha_only": (
+            "oracle_partial_output_handoff.mirror_records[].source.sha256"
+        ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
         ),
@@ -6758,6 +6764,76 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_records_outputs
     )
 
 
+def test_stepfun_correctness_status_oracle_partial_output_mirror_sources_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    sources_output = tmp_path / "oracle-partial-output-mirror-sources.json"
+    sha_output = tmp_path / "oracle-partial-output-mirror-sources-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    mirror_sources = [
+        record["source"]
+        for record in status["oracle_partial_output_handoff"]["mirror_records"]
+    ]
+    calls = [
+        (
+            sources_output,
+            "--oracle-partial-output-mirror-sources-only",
+            mirror_sources,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-mirror-sources-sha-only",
+            _stable_json_sha256(mirror_sources),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert mirror_sources == [
+        "handoff_summary.blocker_work_queue.oracle_parity_blocked",
+        "remaining_blockers_report.items.oracle_parity_blocked",
+        "first_remaining_blocker_report",
+    ]
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_mirror_sources_only"] == (
+        "oracle_partial_output_handoff.mirror_records[].source"
+    )
+    assert compact_modes["oracle_partial_output_mirror_sources_sha_only"] == (
+        "oracle_partial_output_handoff.mirror_records[].source.sha256"
+    )
+
+
 def test_stepfun_correctness_status_oracle_partial_output_all_contracts_safe_outputs(
     capsys,
     tmp_path: Path,
@@ -8050,6 +8126,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_mirror_records_sha_only": (
             "oracle_partial_output_handoff.mirror_records.sha256"
+        ),
+        "oracle_partial_output_mirror_sources_only": (
+            "oracle_partial_output_handoff.mirror_records[].source"
+        ),
+        "oracle_partial_output_mirror_sources_sha_only": (
+            "oracle_partial_output_handoff.mirror_records[].source.sha256"
         ),
         "oracle_partial_output_all_contracts_safe_only": (
             "oracle_partial_output_handoff.all_partial_output_contracts_safe"
