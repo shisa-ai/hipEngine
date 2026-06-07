@@ -1,0 +1,131 @@
+{
+  "iteration": 446,
+  "kind": "c8_minimal_layer3_rowchunk4_rejected",
+  "created_at": "2026-06-07T07:56:52.850575+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "f1e311255b8df8033ff31373bf7abc93dc9ab2e3",
+  "performance_claim": false,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --warmup-decode-tokens 8 --decode-tokens 1 --max-layers 8 --layer-limits 8 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 4 --batch-decode-full-attn-row-chunk-layers 3 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter446-L8-c8-rowchunk4-layer3-nativec1-warm8-decode1-trace0-1.json",
+  "result": {
+    "status": "mismatch_found",
+    "hidden_passed": false,
+    "token_passed": true,
+    "failure_modes": [
+      "hidden"
+    ],
+    "linear_stage_passed": {
+      "attn_input": false,
+      "qkv": false,
+      "z": false,
+      "conv_out": false,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": false,
+      "output": true
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": false,
+      "attn_input_after_rotate": false,
+      "attn_input_after_project": false,
+      "q_proj_key_after_project": false,
+      "value_after_project": false,
+      "query_raw_after_split": false,
+      "key_raw_after_cast": false,
+      "gate_after_split": false,
+      "query_after_prepare": false,
+      "key_after_prepare": false,
+      "attn_input_after_prepare": false,
+      "attn_input": false,
+      "gate": false,
+      "query": false,
+      "attn_context": false,
+      "gated_attn": true,
+      "o_proj": true,
+      "residual": false,
+      "mlp_input": false,
+      "output": false
+    },
+    "linear_drift_stage_count": 5,
+    "full_attention_failed_stage_count": 18,
+    "first_linear_mismatch": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "stage": "attn_input",
+      "row": 0,
+      "comparison_kind": "fp16_bits",
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "elements_over_atol": 5,
+      "bit_mismatch": 491
+    },
+    "first_full_attention_failure": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 7,
+      "stage": "attn_input_pre_qkv",
+      "row": 0,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "elements_over_atol": 39
+    },
+    "workload_paths": {
+      "batch_decode_full_attention_row_chunk_size": 4,
+      "batch_decode_full_attention_row_chunk_layers": "3",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "batch_decode_full_attention_output_path": "batch_gemv"
+    }
+  },
+  "interpretation": {
+    "negative_result": "Layer3-only rowchunk4 does not close the minimal c8 L8 frontier. It remains hidden-red/token-green with the same layer4 attn_input first mismatch as no-rowchunk/per-row-linear: max_abs=0.0078125, row0 elements_over_atol=5.",
+    "localized_frontier": "Together with iter445, this means the minimal layer3 producer repair specifically needs rowchunk2 semantics, not just splitting c8 into smaller-than-full chunks.",
+    "next_target": "Compare layer3 context math/order between chunk2 and chunk4/fullnative, especially row grouping and AOTriton compact-varlen metadata, before attempting a fullnative replacement."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused hidden/full-attention parity blocker narrowed; layer3-only rowchunk4 is red while iter445 layer3-only rowchunk2 is green, isolating the required layer3 chunk size/order semantics. No performance claim."
+  },
+  "conclusion": "Layer3-only rowchunk4 is red; the minimal c8 layer3 frontier specifically needs rowchunk2-equivalent semantics.",
+  "references": {
+    "raw_hidden_bisect_tmp": {
+      "path": "/tmp/hipengine-hidden-bisect-iter446-L8-c8-rowchunk4-layer3-nativec1-warm8-decode1-trace0-1.json",
+      "sha256": "3028cc23b830048343b9ae60efcf01583cd180460f5b5e747843e800929c368a",
+      "size_bytes": 4977064
+    },
+    "raw_log_tmp": {
+      "path": "/tmp/hipengine-hidden-bisect-iter446-L8-c8-rowchunk4-layer3-nativec1-warm8-decode1-trace0-1.log",
+      "sha256": "3028cc23b830048343b9ae60efcf01583cd180460f5b5e747843e800929c368a",
+      "size_bytes": 4977064
+    },
+    "prior_layer3_rowchunk2_445": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk-layer3-445/summary.json",
+      "sha256": "5018c29390da9a0886aee0f8fe6c5152a7522e705aa366a405a7441e9eddc460",
+      "size_bytes": 5241
+    },
+    "prior_rowchunk4_full_l40_434": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk4-434/summary.json",
+      "sha256": "362e13324eb400e186c84430bae2bad2d09eccfee1d5afb3c31bfcd6c53cc943",
+      "size_bytes": 13321
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk4-layer3-446/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk4-layer3-446/compact-runs.json",
+      "sha256": "df25458ebce1d958bad86136865577df02f689cd9f2685d970ff4cc2bc097cd2",
+      "size_bytes": 3427
+    }
+  }
+}
