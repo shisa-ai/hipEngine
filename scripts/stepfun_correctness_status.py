@@ -1388,6 +1388,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-integrity-check-count-only",
+        action="store_true",
+        help=(
+            "Emit only len(oracle_partial_output_handoff.integrity_checks) for compact "
+            "supervised oracle-rerun handoff integrity-check count polling. Overrides "
+            "readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-integrity-check-count-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of len(oracle_partial_output_handoff."
+            "integrity_checks) for supervised oracle-rerun handoff integrity-check count "
+            "drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-mirror-records-only",
         action="store_true",
         help=(
@@ -3486,6 +3504,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff.integrity_checks"
             and compact_output_modes.get("oracle_partial_output_integrity_checks_sha_only")
             == "oracle_partial_output_handoff.integrity_checks.sha256"
+            and compact_output_modes.get("oracle_partial_output_integrity_check_count_only")
+            == "len(oracle_partial_output_handoff.integrity_checks)"
+            and compact_output_modes.get("oracle_partial_output_integrity_check_count_sha_only")
+            == "len(oracle_partial_output_handoff.integrity_checks).sha256"
             and compact_output_modes.get("oracle_partial_output_mirror_records_only")
             == "oracle_partial_output_handoff.mirror_records"
             and compact_output_modes.get("oracle_partial_output_mirror_records_sha_only")
@@ -6380,6 +6402,12 @@ def _handoff_summary(
             "oracle_partial_output_integrity_checks_sha_only": (
                 "oracle_partial_output_handoff.integrity_checks.sha256"
             ),
+            "oracle_partial_output_integrity_check_count_only": (
+                "len(oracle_partial_output_handoff.integrity_checks)"
+            ),
+            "oracle_partial_output_integrity_check_count_sha_only": (
+                "len(oracle_partial_output_handoff.integrity_checks).sha256"
+            ),
             "oracle_partial_output_mirror_records_only": (
                 "oracle_partial_output_handoff.mirror_records"
             ),
@@ -7683,6 +7711,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = _stable_json_sha256(integrity_checks)
     elif args.oracle_partial_output_integrity_checks_only:
         result = status["oracle_partial_output_handoff"].get("integrity_checks")
+    elif args.oracle_partial_output_integrity_check_count_sha_only:
+        integrity_checks = status["oracle_partial_output_handoff"].get(
+            "integrity_checks", []
+        )
+        result = _stable_json_sha256(len(integrity_checks))
+    elif args.oracle_partial_output_integrity_check_count_only:
+        integrity_checks = status["oracle_partial_output_handoff"].get(
+            "integrity_checks", []
+        )
+        result = len(integrity_checks)
     elif args.oracle_partial_output_mirror_records_sha_only:
         mirror_records = status["oracle_partial_output_handoff"].get(
             "mirror_records"
