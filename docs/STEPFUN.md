@@ -1047,12 +1047,15 @@ reporting.
   `--oracle-partial-output-handoff-sha-only` outputs expose the supervised oracle
   rerun partial-output contract (command record, queue/report mirrors, source-path
   match, and safe/drift status), while `--oracle-partial-output-status-only` /
-  `--oracle-partial-output-status-sha-only` and
+  `--oracle-partial-output-path-only` /
+  `--oracle-partial-output-path-sha-only`,
+  `--oracle-partial-output-status-only` /
+  `--oracle-partial-output-status-sha-only`,
   `--oracle-partial-output-blocker-kind-only` /
   `--oracle-partial-output-blocker-kind-sha-only`, and
   `--oracle-partial-output-source-match-only` /
   `--oracle-partial-output-source-match-sha-only` expose the current partial-output
-  status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
+  artifact path, status, blocker-kind, and source-path match scalars without requiring the full status artifact. Status
   integrity verifies the command-level partial-output guarantee, the compact handoff digest/status,
   and that the queue/compact blocker
   reports mirror the same path/status/overwrite fields; oracle-helper tests now
