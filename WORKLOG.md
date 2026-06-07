@@ -67232,3 +67232,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Status nuance: the top-level retained-bench status remains `blocked` because retained performance/scaling protocol evidence is missing or tmp-rooted (`c1_baseline_json`, serial bridge, profiler trace, repo-relative artifacts, graph histogram observations). This is not a generated-token equality failure, and no performance/scaling claim is made.
 - Required guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-gate-450/summary.json` and `compact-runs.json`. Next correctness target can extend/refresh c4/c8 generated-token equality before any retained performance evidence is claimed.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter451 c4 equality gate green
+- No runtime/source code changed. Ran c4 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX after iter450 established active c2 equality green.
+- Result: c4 generated-token equality vs independent c1 is **green**. `correctness.generated_token_equality.passed=true`, `prefix_lengths=[137,137,137,137]`, `min_equal_prefix_tokens=137`, `tokens_per_sequence=137`, and `first_mismatch_indices=[null,null,null,null]` with zero mismatches.
+- Status nuance: the top-level status remains `blocked`, and this is not a retained throughput/scaling row. The execution uses the rowchunk2 correctness/diagnostic native path for selected full-attention layers (`native_caware_decode=false`, throughput claim ineligible), so this artifact is correctness-only and makes no performance claim.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-gate-451/summary.json` and `compact-runs.json`. Next correctness target is to refresh/record c8 generated-token equality before any retained performance evidence is claimed.
