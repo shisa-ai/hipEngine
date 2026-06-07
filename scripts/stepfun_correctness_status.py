@@ -1058,6 +1058,25 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--blocker-command-unavailable-joined-only",
+        action="store_true",
+        help=(
+            "Emit only the pipe-joined blocker command-unavailability route derived from "
+            "handoff_summary.blocker_work_queue[].command_available for compact "
+            "missing-action polling. Overrides --summary-only and blocker-work-queue "
+            "compact modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-command-unavailable-joined-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of the pipe-joined blocker command-unavailability "
+            "route for missing-action drift polling. Overrides --summary-only and "
+            "blocker-work-queue compact modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-command-available-count-only",
         action="store_true",
         help=(
@@ -2697,6 +2716,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "handoff_summary.blocker_work_queue.command_available.joined"
             and compact_output_modes.get("blocker_command_available_joined_sha_only")
             == "handoff_summary.blocker_work_queue.command_available.joined.sha256"
+            and compact_output_modes.get("blocker_command_unavailable_joined_only")
+            == "handoff_summary.blocker_work_queue.command_unavailable.joined"
+            and compact_output_modes.get("blocker_command_unavailable_joined_sha_only")
+            == "handoff_summary.blocker_work_queue.command_unavailable.joined.sha256"
             and compact_output_modes.get("blocker_command_available_count_only")
             == "handoff_summary.blocker_work_queue.command_available.count"
             and compact_output_modes.get("blocker_command_available_count_sha_only")
@@ -5458,6 +5481,12 @@ def _handoff_summary(
             "blocker_command_available_joined_sha_only": (
                 "handoff_summary.blocker_work_queue.command_available.joined.sha256"
             ),
+            "blocker_command_unavailable_joined_only": (
+                "handoff_summary.blocker_work_queue.command_unavailable.joined"
+            ),
+            "blocker_command_unavailable_joined_sha_only": (
+                "handoff_summary.blocker_work_queue.command_unavailable.joined.sha256"
+            ),
             "blocker_command_available_count_only": (
                 "handoff_summary.blocker_work_queue.command_available.count"
             ),
@@ -6631,6 +6660,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             if isinstance(item, dict)
         )
         result = _stable_json_sha256(command_available_route)
+    elif args.blocker_command_unavailable_joined_sha_only:
+        command_unavailable_route = "|".join(
+            str(item.get("command_available") is not True)
+            for item in status["handoff_summary"]["blocker_work_queue"]
+            if isinstance(item, dict)
+        )
+        result = _stable_json_sha256(command_unavailable_route)
+    elif args.blocker_command_unavailable_joined_only:
+        result = "|".join(
+            str(item.get("command_available") is not True)
+            for item in status["handoff_summary"]["blocker_work_queue"]
+            if isinstance(item, dict)
+        )
     elif args.blocker_command_available_count_sha_only:
         command_available_count = sum(
             1

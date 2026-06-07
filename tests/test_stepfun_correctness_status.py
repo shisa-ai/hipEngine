@@ -1914,6 +1914,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocker_command_available_joined_sha_only": (
             "handoff_summary.blocker_work_queue.command_available.joined.sha256"
         ),
+        "blocker_command_unavailable_joined_only": (
+            "handoff_summary.blocker_work_queue.command_unavailable.joined"
+        ),
+        "blocker_command_unavailable_joined_sha_only": (
+            "handoff_summary.blocker_work_queue.command_unavailable.joined.sha256"
+        ),
         "blocker_command_available_count_only": (
             "handoff_summary.blocker_work_queue.command_available.count"
         ),
@@ -6751,6 +6757,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocker_command_available_joined_sha_only": (
             "handoff_summary.blocker_work_queue.command_available.joined.sha256"
         ),
+        "blocker_command_unavailable_joined_only": (
+            "handoff_summary.blocker_work_queue.command_unavailable.joined"
+        ),
+        "blocker_command_unavailable_joined_sha_only": (
+            "handoff_summary.blocker_work_queue.command_unavailable.joined.sha256"
+        ),
         "blocker_command_available_count_only": (
             "handoff_summary.blocker_work_queue.command_available.count"
         ),
@@ -7550,6 +7562,73 @@ def test_stepfun_correctness_status_blocker_command_available_joined(
     )
     assert compact_modes["blocker_command_available_joined_sha_only"] == (
         "handoff_summary.blocker_work_queue.command_available.joined.sha256"
+    )
+
+
+def test_stepfun_correctness_status_blocker_command_unavailable_joined(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    joined_output = tmp_path / "blocker-command-unavailable-joined.json"
+    sha_output = tmp_path / "blocker-command-unavailable-joined-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    command_unavailable_route = "|".join(
+        str(item["command_available"] is not True)
+        for item in status["handoff_summary"]["blocker_work_queue"]
+    )
+    calls = [
+        (
+            joined_output,
+            "--blocker-command-unavailable-joined-only",
+            command_unavailable_route,
+        ),
+        (
+            sha_output,
+            "--blocker-command-unavailable-joined-sha-only",
+            _stable_json_sha256(command_unavailable_route),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--blocker-work-queue-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert command_unavailable_route == "False|False"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["blocker_command_unavailable_joined_only"] == (
+        "handoff_summary.blocker_work_queue.command_unavailable.joined"
+    )
+    assert compact_modes["blocker_command_unavailable_joined_sha_only"] == (
+        "handoff_summary.blocker_work_queue.command_unavailable.joined.sha256"
     )
 
 

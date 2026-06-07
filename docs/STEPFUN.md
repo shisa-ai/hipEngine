@@ -1118,6 +1118,8 @@ reporting.
   `--blocker-first-missing-evidence-joined-sha-only` missing-evidence route outputs,
   `--blocker-command-available-joined-only` /
   `--blocker-command-available-joined-sha-only` runnable-action route outputs,
+  `--blocker-command-unavailable-joined-only` /
+  `--blocker-command-unavailable-joined-sha-only` missing-action route outputs,
   `--blocker-command-available-count-only` /
   `--blocker-command-available-count-sha-only` runnable-action count outputs,
   `--blocker-command-unavailable-count-only` /
