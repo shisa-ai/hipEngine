@@ -1335,6 +1335,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-partial-output-command-has-execute-only",
+        action="store_true",
+        help=(
+            "Emit only oracle_partial_output_handoff.command_record.command_has_execute "
+            "for compact supervised oracle-rerun execute-command polling. Overrides readiness/queue "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-partial-output-command-has-execute-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of oracle_partial_output_handoff.command_record."
+            "command_has_execute for supervised oracle-rerun execute-command drift polling. "
+            "Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-partial-output-writes-before-launch-only",
         action="store_true",
         help=(
@@ -2811,6 +2829,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "oracle_partial_output_handoff"
             and compact_output_modes.get("oracle_partial_output_handoff_sha_only")
             == "oracle_partial_output_handoff_sha256"
+            and compact_output_modes.get("oracle_partial_output_command_has_execute_only")
+            == "oracle_partial_output_handoff.command_record.command_has_execute"
+            and compact_output_modes.get("oracle_partial_output_command_has_execute_sha_only")
+            == "oracle_partial_output_handoff.command_record.command_has_execute.sha256"
             and compact_output_modes.get("oracle_partial_output_writes_before_launch_only")
             == "oracle_partial_output_handoff.command_record.writes_partial_output_before_launch"
             and compact_output_modes.get("oracle_partial_output_writes_before_launch_sha_only")
@@ -5553,6 +5575,12 @@ def _handoff_summary(
             "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
             "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
             "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
+            "oracle_partial_output_command_has_execute_only": (
+                "oracle_partial_output_handoff.command_record.command_has_execute"
+            ),
+            "oracle_partial_output_command_has_execute_sha_only": (
+                "oracle_partial_output_handoff.command_record.command_has_execute.sha256"
+            ),
             "oracle_partial_output_writes_before_launch_only": (
                 "oracle_partial_output_handoff.command_record.writes_partial_output_before_launch"
             ),
@@ -6615,6 +6643,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["oracle_partial_output_handoff_sha256"]
     elif args.oracle_partial_output_handoff_only:
         result = status["oracle_partial_output_handoff"]
+    elif args.oracle_partial_output_command_has_execute_sha_only:
+        command_has_execute = (
+            status["oracle_partial_output_handoff"]
+            .get("command_record", {})
+            .get("command_has_execute")
+        )
+        result = _stable_json_sha256(command_has_execute)
+    elif args.oracle_partial_output_command_has_execute_only:
+        result = (
+            status["oracle_partial_output_handoff"]
+            .get("command_record", {})
+            .get("command_has_execute")
+        )
     elif args.oracle_partial_output_writes_before_launch_sha_only:
         writes_before_launch = (
             status["oracle_partial_output_handoff"]
