@@ -1723,6 +1723,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
         "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
         "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
+        "oracle_partial_output_handoff_status_only": (
+            "oracle_partial_output_handoff.status"
+        ),
+        "oracle_partial_output_handoff_status_sha_only": (
+            "oracle_partial_output_handoff.status.sha256"
+        ),
         "oracle_partial_output_command_record_sha_only": (
             "oracle_partial_output_handoff.command_record.sha256"
         ),
@@ -6421,6 +6427,69 @@ def test_stepfun_correctness_status_oracle_partial_output_handoff_outputs(
     assert captured.err == ""
 
 
+def test_stepfun_correctness_status_oracle_partial_output_handoff_status_outputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "oracle-partial-output-handoff-status.json"
+    sha_output = tmp_path / "oracle-partial-output-handoff-status-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    handoff_status = status["oracle_partial_output_handoff"]["status"]
+    calls = [
+        (
+            status_output,
+            "--oracle-partial-output-handoff-status-only",
+            handoff_status,
+        ),
+        (
+            sha_output,
+            "--oracle-partial-output-handoff-status-sha-only",
+            _stable_json_sha256(handoff_status),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert handoff_status == "safe"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["oracle_partial_output_handoff_status_only"] == (
+        "oracle_partial_output_handoff.status"
+    )
+    assert compact_modes["oracle_partial_output_handoff_status_sha_only"] == (
+        "oracle_partial_output_handoff.status.sha256"
+    )
+
+
 def test_stepfun_correctness_status_oracle_partial_output_command_record_sha_output(
     capsys,
     tmp_path: Path,
@@ -7430,6 +7499,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "atomic_output_handoff_sha_only": "atomic_output_handoff_sha256",
         "oracle_partial_output_handoff_only": "oracle_partial_output_handoff",
         "oracle_partial_output_handoff_sha_only": "oracle_partial_output_handoff_sha256",
+        "oracle_partial_output_handoff_status_only": (
+            "oracle_partial_output_handoff.status"
+        ),
+        "oracle_partial_output_handoff_status_sha_only": (
+            "oracle_partial_output_handoff.status.sha256"
+        ),
         "oracle_partial_output_command_record_sha_only": (
             "oracle_partial_output_handoff.command_record.sha256"
         ),
