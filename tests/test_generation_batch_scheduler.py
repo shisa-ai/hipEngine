@@ -3728,6 +3728,45 @@ def test_retained_bench_defaults_to_valid_batched_sampler_artifact(tmp_path: Pat
     _clear_qwen35_batch_env()
 
 
+def test_retained_bench_auto_full_attention_rowchunk_cap_tracks_equality_frontier() -> None:
+    """The correctness-first auto path encodes the current c2/c4/c8 equality frontier."""
+
+    def args_for(rows: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            batch_size=rows,
+            batch_decode_full_attn_path="auto",
+            batch_decode_full_attn_row_chunk_size=0,
+            batch_decode_full_attn_row_chunk_layers="",
+            batch_decode_full_attn_output_path="batch",
+        )
+
+    c2 = args_for(2)
+    assert retained_bench._resolved_batch_decode_full_attn_path(c2) == "native_batch"
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c2) == 0
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c2) == ""
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c2) == "batch"
+
+    # c=4/c=8 generated-token equality is green only through the <=2-row
+    # full-attention context launch cap. Keep those defaults explicit so future
+    # retained-bench refactors do not silently fall back to rows>=4 context
+    # launches before the rows>=4 kernel semantics are repaired.
+    c4 = args_for(4)
+    assert retained_bench._resolved_batch_decode_full_attn_path(c4) == "native_batch"
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c4) == 2
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c4) == "3,7,11,15,19,23"
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c4) == "batch_gemv"
+
+    c8 = args_for(8)
+    assert retained_bench._resolved_batch_decode_full_attn_path(c8) == "native_batch"
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c8) == 2
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c8) == "3,7,11,15,19,23,35"
+    assert retained_bench._resolved_batch_decode_full_attn_output_path(c8) == "batch_gemv"
+
+    c9 = args_for(9)
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_size(c9) == 0
+    assert retained_bench._resolved_batch_decode_full_attn_row_chunk_layers(c9) == ""
+
+
 def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, raising=False)
     args = SimpleNamespace(
