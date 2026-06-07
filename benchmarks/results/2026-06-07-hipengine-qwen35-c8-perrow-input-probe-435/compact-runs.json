@@ -1,0 +1,64 @@
+{
+  "conclusion": "Per-row full-attention input RMSNorm alone is not a c8 fullnative fix. Continue targeting grouped full-attention output/composition or rowchunk semantics rather than promoting larger chunks or only replaying the later input norm.",
+  "created_at": "2026-06-07T06:48:36.494837+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "negative_result": "Forcing only full-attention input RMSNorm to per-row does not make the c8 fullnative L8/decode1 trace green. It keeps the layer4 attn_input bit drift and increases full-attention failed stages from the baseline 12 to 18; token equality also fails by layer_limit 6 in this diagnostic.",
+    "no_code_change": "The retained-bench/runtime rowchunk2 auto policy was already present, so no policy patch was made in this iteration.",
+    "root_target": "The layer4 drift is not solved by replaying the later full-attention input RMSNorm. It remains consistent with upstream full-attention output numerical drift feeding layer4 linear-attention state/RMSNorm, or broader grouped full-attention composition/ordering, while rowchunk2 remains exact."
+  },
+  "iteration": 435,
+  "kind": "c8_fullnative_perrow_input_rmsnorm_probe",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused c8 full-attention input/RMSNorm diagnostic directly tests the layer4 amplification hypothesis with artifact evidence. It is negative, but it materially narrows the fix target and makes no performance claim.",
+    "passed": true
+  },
+  "result": {
+    "baseline_fullnative_full_attention_failed_stage_count": 12,
+    "baseline_fullnative_linear_drift_stage_count": 9,
+    "baseline_fullnative_status": "eq_ok",
+    "perrow_input_first_full_attention_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 39,
+      "generated_index": 1,
+      "layer_index": 7,
+      "layer_limit": 8,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "perrow_input_first_linear_bit_drift": {
+      "bit_mismatch": 491,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 5,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 5,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "passed_under_atol": false,
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "perrow_input_full_attention_failed_stage_count": 18,
+    "perrow_input_hidden_passed": false,
+    "perrow_input_linear_drift_stage_count": 9,
+    "perrow_input_status": "mismatch_found",
+    "perrow_input_token_passed": false,
+    "rowchunk2_full_attention_failed_stage_count": 0,
+    "rowchunk2_linear_drift_stage_count": 0,
+    "rowchunk2_status": "eq_ok"
+  }
+}

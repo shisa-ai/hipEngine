@@ -67117,3 +67117,11 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: promoting larger grouped full-attention chunks is blocked by the same numerical drift localized in iters432/433 (layer3 output / layer4 RMSNorm / handoff amplification). Next work should target grouped full-attention numerical parity rather than performance promotion.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk4-434/summary.json`, `compact-runs.json`, and retained run JSON. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter435 c8 per-row full-attention input probe
+- No runtime code changed: retained-bench/runtime rowchunk2 auto policy for c3..c8 was already present, so there was no safe default-policy patch to make.
+- Ran a minimal c8 fullnative/no-rowchunk L8 decode0 hidden-bisect on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with only `--batch-decode-attn-input-path per_row` forced, against the native-batch c1 oracle.
+- Result: per-row full-attention input RMSNorm does **not** close the iter432/433 c8 drift. The diagnostic is `mismatch_found`; hidden and token checks fail. It preserves the layer4 linear `attn_input` first bit drift (`max_abs=0.0078125`, `bit_mismatch=491`, elements_over_atol `5`) and the layer7 `attn_input_pre_qkv` full-attention failure (`max_abs=0.015625`, elements_over_atol `39`). Full-attention failed-stage count increases from the baseline fullnative minimal trace's `12` to `18`; rowchunk2 control remains `0`/`0` drift/failure counts.
+- Interpretation: replaying only the later full-attention input RMSNorm is not a c8 fullnative fix. Continue targeting grouped full-attention output/composition or rowchunk semantics, not larger chunk promotion or an input-norm-only replay.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-input-probe-435/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
