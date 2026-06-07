@@ -1057,7 +1057,14 @@ reporting.
   `--oracle-helper-long-timeout-command-sha-only` and
   `--first-blocker-recommended-command-only` /
   `--first-blocker-recommended-command-sha-only` outputs expose the rerun
-  command/digests directly. Status integrity also verifies the oracle progress
+  command/digests directly. Compact
+  `--first-blocker-recommended-command-reason-only` /
+  `--first-blocker-recommended-command-reason-sha-only` and
+  `--first-blocker-first-missing-evidence-only` /
+  `--first-blocker-first-missing-evidence-sha-only` outputs expose the current
+  first-blocker routing reason (`oracle_timeout_retry_with_longer_timeout`) and
+  first missing evidence (`oracle_completed_successfully`) without fetching the
+  full work item. Status integrity also verifies the oracle progress
   digest and oracle compact output-mode mappings, including the progress/status/blocker-kind routes.
   The blocker queue also records a compact
   `blocker_recommended_commands` list plus SHA so automation can inspect both

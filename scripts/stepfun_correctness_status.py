@@ -1023,6 +1023,40 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-recommended-command-reason-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.recommended_command_reason "
+            "for compact immediate-blocker routing. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-recommended-command-reason-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of handoff_summary.first_blocker_work_item."
+            "recommended_command_reason for immediate-blocker reason drift polling. "
+            "Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-first-missing-evidence-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.first_missing_evidence "
+            "for compact immediate-blocker evidence routing. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-first-missing-evidence-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of handoff_summary.first_blocker_work_item."
+            "first_missing_evidence for immediate-blocker evidence drift polling. "
+            "Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--verify-source-artifacts",
         type=Path,
         default=None,
@@ -2215,6 +2249,14 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == "handoff_summary.first_blocker_work_item.recommended_command"
             and compact_output_modes.get("first_blocker_recommended_command_sha_only")
             == "handoff_summary.first_blocker_work_item.recommended_command_sha256"
+            and compact_output_modes.get("first_blocker_recommended_command_reason_only")
+            == "handoff_summary.first_blocker_work_item.recommended_command_reason"
+            and compact_output_modes.get("first_blocker_recommended_command_reason_sha_only")
+            == "handoff_summary.first_blocker_work_item.recommended_command_reason.sha256"
+            and compact_output_modes.get("first_blocker_first_missing_evidence_only")
+            == "handoff_summary.first_blocker_work_item.first_missing_evidence"
+            and compact_output_modes.get("first_blocker_first_missing_evidence_sha_only")
+            == "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
         ),
         "first_blocker_work_item_sha256": first_blocker_work_item_sha256_match,
         "first_blocker_work_item_mirror": first_blocker_work_item_mirror,
@@ -4886,6 +4928,18 @@ def _handoff_summary(
             "first_blocker_recommended_command_sha_only": (
                 "handoff_summary.first_blocker_work_item.recommended_command_sha256"
             ),
+            "first_blocker_recommended_command_reason_only": (
+                "handoff_summary.first_blocker_work_item.recommended_command_reason"
+            ),
+            "first_blocker_recommended_command_reason_sha_only": (
+                "handoff_summary.first_blocker_work_item.recommended_command_reason.sha256"
+            ),
+            "first_blocker_first_missing_evidence_only": (
+                "handoff_summary.first_blocker_work_item.first_missing_evidence"
+            ),
+            "first_blocker_first_missing_evidence_sha_only": (
+                "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
+            ),
             "fail_on_blocked_preserves_payload": True,
         },
         "ready_gates": ready_gates,
@@ -5439,6 +5493,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
         result = (
             first_blocker_work_item.get("recommended_command_sha256")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_recommended_command_reason_sha_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            _stable_json_sha256(first_blocker_work_item.get("recommended_command_reason"))
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_recommended_command_reason_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("recommended_command_reason")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_first_missing_evidence_sha_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            _stable_json_sha256(first_blocker_work_item.get("first_missing_evidence"))
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_first_missing_evidence_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("first_missing_evidence")
             if isinstance(first_blocker_work_item, dict)
             else None
         )

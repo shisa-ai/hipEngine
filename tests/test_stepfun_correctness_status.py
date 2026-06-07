@@ -1864,6 +1864,18 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "first_blocker_recommended_command_sha_only": (
             "handoff_summary.first_blocker_work_item.recommended_command_sha256"
         ),
+        "first_blocker_recommended_command_reason_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_reason"
+        ),
+        "first_blocker_recommended_command_reason_sha_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_reason.sha256"
+        ),
+        "first_blocker_first_missing_evidence_only": (
+            "handoff_summary.first_blocker_work_item.first_missing_evidence"
+        ),
+        "first_blocker_first_missing_evidence_sha_only": (
+            "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
+        ),
         "fail_on_blocked_preserves_payload": True,
     }
     assert handoff["ready_gates"] == []
@@ -6219,6 +6231,18 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "first_blocker_recommended_command_sha_only": (
             "handoff_summary.first_blocker_work_item.recommended_command_sha256"
         ),
+        "first_blocker_recommended_command_reason_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_reason"
+        ),
+        "first_blocker_recommended_command_reason_sha_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_reason.sha256"
+        ),
+        "first_blocker_first_missing_evidence_only": (
+            "handoff_summary.first_blocker_work_item.first_missing_evidence"
+        ),
+        "first_blocker_first_missing_evidence_sha_only": (
+            "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
+        ),
         "fail_on_blocked_preserves_payload": True,
     }
     assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
@@ -7814,6 +7838,92 @@ def test_stepfun_correctness_status_first_blocker_recommended_command_sha_only(
     ]
     assert payload == hashlib.sha256(expected.encode()).hexdigest()
 
+
+
+def test_stepfun_correctness_status_first_blocker_routing_scalars(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    reason_output = tmp_path / "first-blocker-command-reason.json"
+    reason_sha_output = tmp_path / "first-blocker-command-reason-sha.json"
+    evidence_output = tmp_path / "first-blocker-missing-evidence.json"
+    evidence_sha_output = tmp_path / "first-blocker-missing-evidence-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    first_blocker = status["handoff_summary"]["first_blocker_work_item"]
+    calls = [
+        (
+            reason_output,
+            "--first-blocker-recommended-command-reason-only",
+            first_blocker["recommended_command_reason"],
+        ),
+        (
+            reason_sha_output,
+            "--first-blocker-recommended-command-reason-sha-only",
+            _stable_json_sha256(first_blocker["recommended_command_reason"]),
+        ),
+        (
+            evidence_output,
+            "--first-blocker-first-missing-evidence-only",
+            first_blocker["first_missing_evidence"],
+        ),
+        (
+            evidence_sha_output,
+            "--first-blocker-first-missing-evidence-sha-only",
+            _stable_json_sha256(first_blocker["first_missing_evidence"]),
+        ),
+    ]
+    for output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(output),
+                "--summary-only",
+                "--blocker-work-queue-only",
+                "--first-blocker-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(output.read_text()) == expected
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert first_blocker["recommended_command_reason"] == (
+        "oracle_timeout_retry_with_longer_timeout"
+    )
+    assert first_blocker["first_missing_evidence"] == "oracle_completed_successfully"
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["first_blocker_recommended_command_reason_only"] == (
+        "handoff_summary.first_blocker_work_item.recommended_command_reason"
+    )
+    assert compact_modes["first_blocker_recommended_command_reason_sha_only"] == (
+        "handoff_summary.first_blocker_work_item.recommended_command_reason.sha256"
+    )
+    assert compact_modes["first_blocker_first_missing_evidence_only"] == (
+        "handoff_summary.first_blocker_work_item.first_missing_evidence"
+    )
+    assert compact_modes["first_blocker_first_missing_evidence_sha_only"] == (
+        "handoff_summary.first_blocker_work_item.first_missing_evidence.sha256"
+    )
 
 
 def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, tmp_path: Path) -> None:
