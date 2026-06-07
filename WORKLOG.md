@@ -67322,3 +67322,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: layer7 is required in the current c8 rowchunk2 correctness path. Together with iter459-462, layers 7/11/15/19/23 are required in the evidence-backed c8 auto set `3,7,11,15,19,23`; do not drop layer7 without a deeper layer7 context repair.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop7-rejected-463/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter464 c8 rowchunk2 drop3 rejected
+- No runtime/source code changed. Ran c8 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with rowchunk2 on layers `7,11,15,19,23` (dropping layer3 from the evidence-backed auto set `3,7,11,15,19,23` while keeping layers 7/11/15/19/23 rowchunked).
+- Result: dropping layer3 is **red**. `correctness.generated_token_equality.passed=false`, `min_equal_prefix_tokens=45`, `prefix_lengths=[137,137,137,118,45,58,68,137]`; rows 3/4/5/6 first mismatch at indices `118/45/58/68`. Layer3 runs native batch in this rejected probe; layers 7/11/15/19/23 use rowchunk2.
+- Interpretation: layer3 is required in the current c8 rowchunk2 correctness path. Together with iter459-463, every layer in the evidence-backed c8 auto set `3,7,11,15,19,23` has now been independently validated as required by one-layer drop tests. The selected-layer reduction series is complete; next target is rows>=4 full-attention context repair at these required layers (or documentation of the current correctness cap) before profiling/scaling.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop3-rejected-464/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
