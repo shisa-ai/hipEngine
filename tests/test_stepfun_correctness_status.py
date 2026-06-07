@@ -1867,6 +1867,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_partial_output_mirror_blocker_kind_count_sha_only": (
             "len(oracle_partial_output_handoff.mirror_records[].blocker_kind).sha256"
         ),
+        "oracle_partial_output_mirror_unique_blocker_kind_count_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind))"
+        ),
+        "oracle_partial_output_mirror_unique_blocker_kind_count_sha_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind)).sha256"
+        ),
         "oracle_partial_output_mirror_output_blocker_kinds_only": (
             "oracle_partial_output_handoff.mirror_records[].partial_output_blocker_kind"
         ),
@@ -7939,18 +7945,20 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_blocker_kind_co
     resource = tmp_path / "resource.json"
     count_output = tmp_path / "oracle-partial-output-mirror-blocker-kind-count.json"
     sha_output = tmp_path / "oracle-partial-output-mirror-blocker-kind-count-sha.json"
+    unique_count_output = tmp_path / "oracle-partial-output-mirror-unique-blocker-kind-count.json"
+    unique_count_sha_output = tmp_path / "oracle-partial-output-mirror-unique-blocker-kind-count-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
     _write_docs(docs)
 
     status = build_status(prompt, oracle, docs, resource_artifact=resource)
-    mirror_blocker_kind_count = len(
-        [
-            record.get("blocker_kind")
-            for record in status["oracle_partial_output_handoff"]["mirror_records"]
-        ]
-    )
+    mirror_blocker_kinds = [
+        record.get("blocker_kind")
+        for record in status["oracle_partial_output_handoff"]["mirror_records"]
+    ]
+    mirror_blocker_kind_count = len(mirror_blocker_kinds)
+    mirror_unique_blocker_kind_count = len(set(mirror_blocker_kinds))
     calls = [
         (
             count_output,
@@ -7961,6 +7969,16 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_blocker_kind_co
             sha_output,
             "--oracle-partial-output-mirror-blocker-kind-count-sha-only",
             _stable_json_sha256(mirror_blocker_kind_count),
+        ),
+        (
+            unique_count_output,
+            "--oracle-partial-output-mirror-unique-blocker-kind-count-only",
+            mirror_unique_blocker_kind_count,
+        ),
+        (
+            unique_count_sha_output,
+            "--oracle-partial-output-mirror-unique-blocker-kind-count-sha-only",
+            _stable_json_sha256(mirror_unique_blocker_kind_count),
         ),
     ]
     for output, mode, expected in calls:
@@ -7988,12 +8006,19 @@ def test_stepfun_correctness_status_oracle_partial_output_mirror_blocker_kind_co
     assert captured.out == ""
     assert captured.err == ""
     assert mirror_blocker_kind_count == 3
+    assert mirror_unique_blocker_kind_count == 1
     compact_modes = status["handoff_summary"]["compact_output_modes"]
     assert compact_modes["oracle_partial_output_mirror_blocker_kind_count_only"] == (
         "len(oracle_partial_output_handoff.mirror_records[].blocker_kind)"
     )
     assert compact_modes["oracle_partial_output_mirror_blocker_kind_count_sha_only"] == (
         "len(oracle_partial_output_handoff.mirror_records[].blocker_kind).sha256"
+    )
+    assert compact_modes["oracle_partial_output_mirror_unique_blocker_kind_count_only"] == (
+        "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind))"
+    )
+    assert compact_modes["oracle_partial_output_mirror_unique_blocker_kind_count_sha_only"] == (
+        "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind)).sha256"
     )
 
 
@@ -10093,6 +10118,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "oracle_partial_output_mirror_blocker_kind_count_sha_only": (
             "len(oracle_partial_output_handoff.mirror_records[].blocker_kind).sha256"
+        ),
+        "oracle_partial_output_mirror_unique_blocker_kind_count_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind))"
+        ),
+        "oracle_partial_output_mirror_unique_blocker_kind_count_sha_only": (
+            "len(unique(oracle_partial_output_handoff.mirror_records[].blocker_kind)).sha256"
         ),
         "oracle_partial_output_mirror_output_blocker_kinds_only": (
             "oracle_partial_output_handoff.mirror_records[].partial_output_blocker_kind"
