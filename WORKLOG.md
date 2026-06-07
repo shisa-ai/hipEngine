@@ -67315,3 +67315,10 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - Interpretation: layer11 is required in the current c8 rowchunk2 correctness path. Together with iter459/460/461, layers 11/15/19/23 are required in the evidence-backed c8 auto set `3,7,11,15,19,23`; do not drop layer11 without a deeper layer11 context repair.
 - Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
 - Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop11-rejected-462/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
+
+## 2026-06-07 — concurrency-e2e/native-c2-e2e iter463 c8 rowchunk2 drop7 rejected
+- No runtime/source code changed. Ran c8 512/128 retained-bench equality on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX with rowchunk2 on layers `3,11,15,19,23` (dropping layer7 from the evidence-backed auto set `3,7,11,15,19,23` while keeping layers 11/15/19/23 rowchunked).
+- Result: dropping layer7 is **red**. `correctness.generated_token_equality.passed=false`, `min_equal_prefix_tokens=45`, `prefix_lengths=[137,137,137,137,45,72,83,137]`; row4 first mismatch at index `45` (`batch_token=220`, `c1_token=264`), row5 at `72` (`batch_token=27502`, `c1_token=9640`), and row6 at `83` (`batch_token=271`, `c1_token=198`). Layer7 runs native batch in this rejected probe; layers 3/11/15/19/23 use rowchunk2.
+- Interpretation: layer7 is required in the current c8 rowchunk2 correctness path. Together with iter459-462, layers 7/11/15/19/23 are required in the evidence-backed c8 auto set `3,7,11,15,19,23`; do not drop layer7 without a deeper layer7 context repair.
+- Required active c2 verify printed `137`; guard passed compileall, targeted pytest, primitive c2, and primitive c8 on `HIP_VISIBLE_DEVICES=1` / RX 7900 XTX.
+- Artifact: `benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop7-rejected-463/summary.json` and `compact-runs.json`. No retained performance/scaling claim is made.
