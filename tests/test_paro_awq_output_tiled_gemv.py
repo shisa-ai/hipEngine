@@ -26,8 +26,12 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     build_paro_awq_gemv,
     gemv_awq_pack8_output_tiled_bf16,
     gemv_awq_pack8_output_tiled_fp16,
+    gemv_awq_pack8_output_tiled_transposed_bf16,
+    gemv_awq_pack8_output_tiled_transposed_fp16,
     gemv_awq_pack8_strided_bf16,
     gemv_awq_pack8_strided_fp16,
+    gemv_awq_pack8_transposed_bf16,
+    gemv_awq_pack8_transposed_fp16,
 )
 
 
@@ -60,18 +64,31 @@ def _dev(arr: np.ndarray):
 _SHAPES = [(256, 2), (512, 16), (2048, 4), (4096, 8)]
 
 
-def _run_case(rows, in_features, out_packed, threads, *, dtype):
-    rng = np.random.default_rng(1234 + rows * 17 + in_features + out_packed * 3 + threads + (1 if dtype == "fp16" else 0))
+def _run_case(rows, in_features, out_packed, threads, *, dtype, layout):
+    rng = np.random.default_rng(
+        1234 + rows * 17 + in_features + out_packed * 3 + threads
+        + (1 if dtype == "fp16" else 0) + (7 if layout == "transposed" else 0)
+    )
     group_size = 128
     groups = in_features // group_size
     out_features = out_packed * 8
     bits = _bf16_bits if dtype == "bf16" else _fp16_bits
-    strided = gemv_awq_pack8_strided_bf16 if dtype == "bf16" else gemv_awq_pack8_strided_fp16
-    tiled = gemv_awq_pack8_output_tiled_bf16 if dtype == "bf16" else gemv_awq_pack8_output_tiled_fp16
+    if layout == "strided":
+        ref = gemv_awq_pack8_strided_bf16 if dtype == "bf16" else gemv_awq_pack8_strided_fp16
+        tiled = gemv_awq_pack8_output_tiled_bf16 if dtype == "bf16" else gemv_awq_pack8_output_tiled_fp16
+        qw_shape = (in_features, out_packed)
+    else:
+        ref = gemv_awq_pack8_transposed_bf16 if dtype == "bf16" else gemv_awq_pack8_transposed_fp16
+        tiled = (
+            gemv_awq_pack8_output_tiled_transposed_bf16
+            if dtype == "bf16"
+            else gemv_awq_pack8_output_tiled_transposed_fp16
+        )
+        qw_shape = (out_packed, in_features)
 
     library = build_paro_awq_gemv(load=True)
     x = bits(rng.standard_normal((rows, in_features)).astype(np.float32))
-    qweight = rng.integers(0, 2**32, size=(in_features, out_packed), dtype=np.uint32).view(np.int32)
+    qweight = rng.integers(0, 2**32, size=qw_shape, dtype=np.uint32).view(np.int32)
     qzeros = rng.integers(0, 2**32, size=(groups, out_packed), dtype=np.uint32).view(np.int32)
     scales = bits((0.01 * rng.standard_normal((groups, out_features))).astype(np.float32))
     out_ref = np.zeros((rows, out_features), dtype=np.uint16)
@@ -85,7 +102,7 @@ def _run_case(rows, in_features, out_packed, threads, *, dtype):
         sc_d = _dev(np.ascontiguousarray(scales)); bufs.append(sc_d)
         ref_d = _dev(out_ref); bufs.append(ref_d)
         test_d = _dev(out_test); bufs.append(test_d)
-        strided(x_d.ptr, qw_d.ptr, qz_d.ptr, sc_d.ptr, ref_d.ptr, rows, in_features, out_packed, group_size, threads=threads, library=library)
+        ref(x_d.ptr, qw_d.ptr, qz_d.ptr, sc_d.ptr, ref_d.ptr, rows, in_features, out_packed, group_size, threads=threads, library=library)
         tiled(x_d.ptr, qw_d.ptr, qz_d.ptr, sc_d.ptr, test_d.ptr, rows, in_features, out_packed, group_size, threads=threads, library=library)
         copy_device_to_host(host_array_ptr(out_ref), ref_d, out_ref.nbytes)
         copy_device_to_host(host_array_ptr(out_test), test_d, out_test.nbytes)
@@ -94,19 +111,21 @@ def _run_case(rows, in_features, out_packed, threads, *, dtype):
             free(b)
     np.testing.assert_array_equal(
         out_test, out_ref,
-        err_msg=f"output-tiled != strided (bf16/fp16={dtype}, rows={rows}, in={in_features}, out_packed={out_packed}, threads={threads})",
+        err_msg=f"output-tiled != per-row ({layout}, dtype={dtype}, rows={rows}, in={in_features}, out_packed={out_packed}, threads={threads})",
     )
 
 
+@pytest.mark.parametrize("layout", ["strided", "transposed"])
 @pytest.mark.parametrize("rows", [2, 4, 8])
 @pytest.mark.parametrize("in_features,out_packed", _SHAPES)
 @pytest.mark.parametrize("threads", [64, 128])
-def test_output_tiled_bitexact_bf16(rows, in_features, out_packed, threads):
-    _run_case(rows, in_features, out_packed, threads, dtype="bf16")
+def test_output_tiled_bitexact_bf16(rows, in_features, out_packed, threads, layout):
+    _run_case(rows, in_features, out_packed, threads, dtype="bf16", layout=layout)
 
 
+@pytest.mark.parametrize("layout", ["strided", "transposed"])
 @pytest.mark.parametrize("rows", [2, 4, 8])
 @pytest.mark.parametrize("in_features,out_packed", _SHAPES)
 @pytest.mark.parametrize("threads", [64, 128])
-def test_output_tiled_bitexact_fp16(rows, in_features, out_packed, threads):
-    _run_case(rows, in_features, out_packed, threads, dtype="fp16")
+def test_output_tiled_bitexact_fp16(rows, in_features, out_packed, threads, layout):
+    _run_case(rows, in_features, out_packed, threads, dtype="fp16", layout=layout)

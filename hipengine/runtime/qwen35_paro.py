@@ -117,6 +117,10 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
     gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
+    gemv_awq_pack8_output_tiled_bf16,
+    gemv_awq_pack8_output_tiled_fp16,
+    gemv_awq_pack8_output_tiled_transposed_bf16,
+    gemv_awq_pack8_output_tiled_transposed_fp16,
     gemv_awq_pack8_strided_bf16,
     gemv_awq_pack8_strided_fp16,
     gemv_awq_pack8_transposed_bf16,
@@ -154,6 +158,16 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 
 
 _PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"
+
+# C3.0c: row counts for which the output-column-tiled pack8 GEMV is instantiated
+# (templated C in the kernel). Other c>1 row counts fall back to the per-row
+# strided GEMV. Byte-exact equivalence is gated in
+# tests/test_paro_awq_output_tiled_gemv.py.
+_PACK8_OUTPUT_TILED_ROWS = (
+    frozenset()
+    if os.environ.get("HIPENGINE_DISABLE_PACK8_OUTPUT_TILED")
+    else frozenset({2, 4, 8})
+)
 
 
 def qwen35_grouped_moe_lane_rows(tokens: int, top_k: int) -> tuple[int, ...]:
@@ -594,7 +608,15 @@ class Qwen35ParoDecodeState:
             qweight = self.tensor(f"{prefix}.qweight")
             if not qweight.shape:
                 raise ValueError(f"{prefix}.qweight must have at least one dimension")
-            gemv_awq_pack8_strided_bf16(
+            # C3.0c: output-column-tiled GEMV amortizes the weight load across all
+            # c active columns for c in {2,4,8}; byte-exact vs the per-row strided
+            # kernel (tests/test_paro_awq_output_tiled_gemv.py).
+            pack8_fn = (
+                gemv_awq_pack8_output_tiled_bf16
+                if rows in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_strided_bf16
+            )
+            pack8_fn(
                 x.ptr,
                 qweight.ptr,
                 qzeros.ptr,
@@ -611,7 +633,12 @@ class Qwen35ParoDecodeState:
             )
         else:
             qweight = self.tensor(f"{prefix}.qweight_pack8_decode")
-            gemv_awq_pack8_transposed_bf16(
+            pack8_t_fn = (
+                gemv_awq_pack8_output_tiled_transposed_bf16
+                if rows in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_transposed_bf16
+            )
+            pack8_t_fn(
                 x.ptr,
                 qweight.ptr,
                 qzeros.ptr,
@@ -690,7 +717,12 @@ class Qwen35ParoDecodeState:
                     runtime=self.runtime,
                 )
             else:
-                gemv_awq_pack8_strided_fp16(
+                pack8_fn = (
+                    gemv_awq_pack8_output_tiled_fp16
+                    if rows in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_pack8_strided_fp16
+                )
+                pack8_fn(
                     x.ptr,
                     qweight.ptr,
                     qzeros.ptr,
@@ -724,7 +756,12 @@ class Qwen35ParoDecodeState:
                     runtime=self.runtime,
                 )
             else:
-                gemv_awq_pack8_transposed_fp16(
+                pack8_t_fn = (
+                    gemv_awq_pack8_output_tiled_transposed_fp16
+                    if rows in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_pack8_transposed_fp16
+                )
+                pack8_t_fn(
                     x.ptr,
                     qweight.ptr,
                     qzeros.ptr,
@@ -5667,7 +5704,12 @@ class Qwen35ParoDecodeState:
                 )
         elif force_gemv:
             awq_library = _library_for(library, "awq")
-            gemv_awq_pack8_transposed_fp16(
+            qkv_proj_fn = (
+                gemv_awq_pack8_output_tiled_transposed_fp16
+                if tokens in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_transposed_fp16
+            )
+            qkv_proj_fn(
                 scratch.qkv_rot.ptr,
                 qkv_qweight.ptr,
                 self.tensor(f"{qkv}.qzeros").ptr,
@@ -5682,7 +5724,12 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-            gemv_awq_pack8_transposed_fp16(
+            z_proj_fn = (
+                gemv_awq_pack8_output_tiled_transposed_fp16
+                if tokens in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_transposed_fp16
+            )
+            z_proj_fn(
                 scratch.z_rot.ptr,
                 z_qweight.ptr,
                 self.tensor(f"{z}.qzeros").ptr,
@@ -7446,7 +7493,12 @@ class Qwen35ParoDecodeState:
             )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
         if use_batch_gemv:
-            gemv_awq_pack8_transposed_fp16(
+            shared_down_fn = (
+                gemv_awq_pack8_output_tiled_transposed_fp16
+                if tokens in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_transposed_fp16
+            )
+            shared_down_fn(
                 scratch.shared_down_input.ptr,
                 down_qweight.ptr,
                 self.tensor(f"{down_base}.qzeros").ptr,

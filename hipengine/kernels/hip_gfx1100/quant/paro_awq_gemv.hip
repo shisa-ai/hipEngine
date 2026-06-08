@@ -1830,6 +1830,22 @@ extern "C" int hipengine_gemv_awq_pack8_output_tiled_bf16(
       x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
 }
 
+extern "C" int hipengine_gemv_awq_pack8_output_tiled_transposed_bf16(
+    const uint16_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const uint16_t* scales,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_output_tiled<uint16_t, true>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
 extern "C" int hipengine_gemv_awq_pack8_transposed_bf16(
     const uint16_t* x,
     const int32_t* qweight,
@@ -2034,6 +2050,22 @@ extern "C" int hipengine_gemv_awq_pack8_output_tiled_fp16(
     int64_t threads,
     hipStream_t stream) {
   return launch_pack8_output_tiled<half_t, false>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_output_tiled_transposed_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_output_tiled<half_t, true>(
       x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
 }
 

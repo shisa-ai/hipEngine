@@ -3654,6 +3654,32 @@ levers" above and
       top-1>=90% vs `kernels/cpu_reference/`, plus byte-identical generated
       tokens vs the current GEMV path) and the port once a stable kernel exists.
 
+      *Progress (2026-06-07) — in-repo (fork boundary changed; kernel work now
+      done in this tree, AGENTS.md left unedited to avoid merge conflicts).*
+      - **Single pack8 output-tiled GEMV: DONE + wired + exercised.** New
+        `gemv_awq_pack8_output_tiled_kernel<scalar_t, qweight_transposed, int C>`
+        (`paro_awq_gemv.hip`): grid `(out_packed)`, one block loads each weight
+        pack once into `acc[C][8]` registers and FMAs all C columns; reduction
+        order identical to the per-row kernel so it is **byte-exact**. Templated
+        C in {2,4,8}, bf16+fp16, both layouts (strided + transposed). Gate
+        `tests/test_paro_awq_output_tiled_gemv.py` **96/96 PASS**.
+      - **Decode uses the TRANSPOSED layout.** A projection-call-count probe
+        (c2, native decode) shows per-step: dual_transposed 2200,
+        pack8_transposed 1800, marlin_k 1600, selected_dual_transposed 1200,
+        selected_transposed 1200. The strided `.qweight` single GEMV is NOT on
+        the decode hot path; `project_pack8`'s transposed branch and the
+        QKV/Z (`force_gemv`) + shared-down (`use_batch_gemv`) sites are.
+      - Wired the transposed single output-tiled into those hot sites
+        (`tokens in {2,4,8}`, env kill-switch `HIPENGINE_DISABLE_PACK8_OUTPUT_TILED`).
+        Probe confirms `gemv_awq_pack8_output_tiled_transposed_fp16` = 1000
+        calls/step (per-row 1800→800). Generated tokens byte-identical ON vs OFF
+        e2e. Throughput NOT claimed (crude wall A/B noise-dominated; needs proper
+        protocol; single-projection is a small ~5.3 ms/step slice).
+      - **Next packet — output-tiled DUAL pack8 (the bigger lever).** The
+        dual_transposed projection (2200 calls/step, ~9.1 ms profiled) dominates
+        the dense projection time; extend the same template to the two-output-group
+        `gemv_awq_dual_pack8` kernel, then the selected (MoE) transposed variants.
+
 - [ ] **C3.1 INT8 KV c>N parity.** Validate batched INT8 KV append/decode
       end-to-end with the same generated-token gates as BF16. Acceptance:
       c=2 512/128 INT8 artifact is equality-green or explicitly
