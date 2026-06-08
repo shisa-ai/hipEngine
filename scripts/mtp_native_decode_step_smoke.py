@@ -338,6 +338,10 @@ def run_smoke(
         _, block_indices_buf = _empty_device((block_count,), np.int64, buffers)
         out_index_host, out_index_buf = _empty_device((1,), np.int64, buffers)
         out_value_host, out_value_buf = _empty_device((1,), np.float32, buffers)
+        # Top-k oracle: full vocab top-k tokens per draft step (diagnostic).
+        _ORACLE_K = 8
+        token_topk_ids_host, token_topk_ids_buf = _empty_device((1, _ORACLE_K), np.int32, buffers)
+        _, token_topk_values_buf = _empty_device((1, _ORACLE_K), np.float32, buffers)
 
         mtp_lib = build_mtp_speculative(load=True)
         dflash_lib = build_dflash_drafter(load=True)
@@ -348,6 +352,7 @@ def run_smoke(
         down_expert_bytes = hidden * intermediate * DType.BF16.itemsize
         candidates: list[int] = []
         candidate_logits: list[float] = []
+        candidate_topk: list[list[int]] = []
         topk_experts_by_step: list[list[int]] = []
         topk_logits_by_step: list[list[float]] = []
         started = time.perf_counter()
@@ -481,10 +486,13 @@ def run_smoke(
                 threads=256,
                 library=lm_lib,
             )
+            topk_f32_rows_i32(logits_buf.ptr, token_topk_values_buf.ptr, token_topk_ids_buf.ptr, 1, vocab, _ORACLE_K, threads=256, library=lm_lib)
             copy_device_to_host(host_array_ptr(out_index_host), out_index_buf, out_index_host.nbytes)
             copy_device_to_host(host_array_ptr(out_value_host), out_value_buf, out_value_host.nbytes)
+            copy_device_to_host(host_array_ptr(token_topk_ids_host), token_topk_ids_buf, token_topk_ids_host.nbytes)
             candidates.append(int(out_index_host[0]))
             candidate_logits.append(float(out_value_host[0]))
+            candidate_topk.append([int(x) for x in token_topk_ids_host.reshape(-1)])
         runtime.device_synchronize()
         native_seconds = time.perf_counter() - started
     finally:
@@ -506,6 +514,7 @@ def run_smoke(
         "draft_budget": int(draft_budget),
         "candidate_tokens": candidates,
         "candidate_logits": candidate_logits,
+        "candidate_topk": candidate_topk,
         "candidate_token": candidates[-1],
         "candidate_logit": candidate_logits[-1],
         "native_seconds": native_seconds,

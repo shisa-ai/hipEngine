@@ -174,6 +174,10 @@ def _run_spec_smoke(
     generated: list[int] = []
     accepted_lengths: list[int] = []
     proposal_trace: list[dict[str, Any]] = []
+    # Top-k oracle: per cycle, the rank of the target's chosen depth-1 token in
+    # the MTP head's top-k (1 = top-1 match/accepted, 2..K = root-branch
+    # rescuable, 0 = absent from top-k). Bounds the tree-draft acceptance gain.
+    oracle_depth1_ranks: list[int] = []
     proposal_seconds = 0.0
     verify_seconds = 0.0
     target_forward_calls = 0
@@ -249,6 +253,14 @@ def _run_spec_smoke(
                 target_forward_calls += int(verify.target_forward_calls)
                 accepted = int(verify.accepted_count)
                 accepted_lengths.append(accepted)
+                # Depth-1 top-k oracle: where does the target's chosen next token
+                # (verify.target_top1[0]) rank in the MTP head's depth-1 top-k?
+                candidate_topk = proposal.get("candidate_topk") or []
+                if candidate_topk and len(verify.target_top1) > 0:
+                    target_next = int(verify.target_top1[0])
+                    d1_topk = [int(x) for x in candidate_topk[0]]
+                    rank = (d1_topk.index(target_next) + 1) if target_next in d1_topk else 0
+                    oracle_depth1_ranks.append(rank)
                 accepted_tokens = candidates[:accepted]
                 committed = [root, *accepted_tokens]
                 generated.extend(committed)
@@ -279,9 +291,29 @@ def _run_spec_smoke(
             if capture_buf is not None:
                 free(capture_buf, runtime=session.runtime)
     seconds = time.perf_counter() - started
+    n_oracle = len(oracle_depth1_ranks)
+    top1 = sum(1 for r in oracle_depth1_ranks if r == 1)
+    in_topk = sum(1 for r in oracle_depth1_ranks if r >= 1)
+    rescuable = sum(1 for r in oracle_depth1_ranks if r >= 2)
+    rank_hist: dict[int, int] = {}
+    for r in oracle_depth1_ranks:
+        rank_hist[r] = rank_hist.get(r, 0) + 1
+    topk_oracle = {
+        "cycles": n_oracle,
+        "k": 8,
+        "depth1_top1_match": top1,
+        "depth1_top1_rate": (top1 / n_oracle) if n_oracle else None,
+        "depth1_in_topk": in_topk,
+        "depth1_in_topk_rate": (in_topk / n_oracle) if n_oracle else None,
+        "depth1_rescuable_2_to_k": rescuable,
+        "depth1_rescuable_rate": (rescuable / n_oracle) if n_oracle else None,
+        "rank_histogram": {str(k): rank_hist[k] for k in sorted(rank_hist)},
+        "note": "rank 1 = chain already accepts; 2..k = root-branch tree could rescue; 0 = target token absent from MTP top-k (unrescuable at depth 1).",
+    }
     return generated[: int(decode_tokens)], {
         "seconds": seconds,
         "tok_s": int(decode_tokens) / seconds if seconds > 0 else None,
+        "topk_oracle": topk_oracle,
         "proposal_seconds": proposal_seconds,
         "verify_seconds": verify_seconds,
         "accepted_lengths": accepted_lengths,

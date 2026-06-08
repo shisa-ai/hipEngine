@@ -1281,6 +1281,47 @@ Get the *exact* path to beat AR first by grinding down the launch count and
 verifier shape (M15.1/M15.3); revisit the approximate tier only once exact MTP/
 DFlash beats AR and we want a higher-speed opt-in.
 
+### Top-k oracle — the MTP head is ready; C_B is the wall (2026-06-08)
+
+To decide whether "more tokens/cycle" (acceptance) can push MTP positive, we
+measured the **top-k oracle**: instrument the proposer to emit the per-depth
+vocab top-k (`topk_f32_rows_i32` over the lm-head logits) and, in
+`scripts/mtp_chain_e2e_smoke.py`, record the rank of the target's chosen depth-1
+token (`verify.target_top1[0]`, populated with `HIPENGINE_VERIFY_GPU_ACCEPT=validate`)
+in the MTP head's top-8. Artifact:
+`benchmarks/results/2026-06-08-hipengine-mtp-topk-oracle.json`.
+
+W7900, quicksort, B=3, exact D32 (11 cycles): **depth-1 top-1 = 82%, in-top-8 =
+100%, rescuable (rank 2..8) = 18%, unrescuable = 0%.** D64 (24 cycles) is
+consistent: in-top-8 = 96%, top-1 = 79%.
+
+Interpretation — this is the decisive economics finding:
+
+1. **The MTP head is excellent and acceptance is realizable.** The target's
+   greedy token is essentially always in the head's depth-1 top-8, so a
+   root-branching tree could drive depth-1 acceptance to ~100% and rescue the
+   ~18% zero-accept cycles. The model is *not* the blocker. This is why the same
+   model class beats AR on llama.cpp/hipfire.
+2. **But the perfect-accept ceiling is < 1.0 at B≤5 because C_B exceeds B+1.**
+   Measured C_B (decode_batched, sublinear after M15.1/M15.3): B1 4.25, B2 4.53,
+   B3 4.89, B5 6.14 → ceilings 0.47 / 0.66 / 0.82 / 0.98. The ~4.25 floor at B=1
+   is the **ROCm launch-submission cost**, not model quality. llama.cpp/hipfire
+   run at C_B≈2 (CUDA dispatch/graph replay ~10× cheaper per launch), so the same
+   acceptance yields >1.0×; we cannot, because our C_B is ~2× theirs.
+3. **Therefore MTP-positive is C_B-bound, not acceptance-bound.** Tree drafts are
+   necessary-but-insufficient: they realize the head's quality but cannot close a
+   ~2× dispatch gap. At B≥7 the ceiling does cross 1.0 (C_B sublinear), but the
+   required acceptance (~84%) exceeds the single-layer head's deep-draft horizon
+   (avg_accepted saturates ~1.4–1.8).
+
+**Decision:** stop chasing MTP-positive via tokens/cycle. The model is ready; the
+wall is the ROCm dispatch floor (`C_B`), which only a megakernel / fewer-larger-
+kernel rewrite (or a ROCm graph-replay improvement) can move — the hard problem
+M15 already mapped. The tractable deployable >1.0× exact win is **DFlash
+profile-routing**, which sidesteps per-cycle `C_B` by routing profitable prompts
+to spec and the rest to AR (already 1.35× offline; see `DFLASH.md`). Build MTP
+tree drafts only if/when `C_B` is cut to the ~2–3 range.
+
 ## Closing the gap with llama.cpp MTP — kernel roadmap (2026-05-21)
 
 Historical note: this section captured the pre-M7.C.6 kernel-family roadmap.

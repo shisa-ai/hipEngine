@@ -25768,3 +25768,40 @@ hipengine/kernels/hip_gfx1100/rotary/paro_rotate.{hip,py},
 hipengine/runtime/qwen35_paro.py (gate + chain-layer wiring),
 tests/test_paro_rmsnorm_rotate2.py,
 benchmarks/results/2026-06-08-hipengine-mtp-m15.4-fused-rmsnorm-rotate-neutral.json.
+
+## 2026-06-08 measure(mtp): top-k oracle — MTP head is ready; C_B (dispatch) is the wall
+
+Gate before investing in MTP tree drafts. Instrumented run_native_mtp_proposal
+(scripts/mtp_native_decode_step_smoke.py) to emit per-depth vocab top-k
+(topk_f32_rows_i32 over the lm-head logits) and scripts/mtp_chain_e2e_smoke.py to
+record the rank of the target's chosen depth-1 token (verify.target_top1[0],
+populated with HIPENGINE_VERIFY_GPU_ACCEPT=validate) in the MTP head's top-8.
+
+W7900 quicksort B=3 exact D32 (11 cycles): depth-1 top-1 82%, in-top-8 100%,
+rescuable (rank 2..8) 18%, unrescuable 0%. D64 (24 cycles): in-top-8 96%, top-1 79%.
+
+Decisive finding:
+- The MTP head is excellent: the target's greedy token is essentially always in
+  the depth-1 top-8. Acceptance is realizable (a root-branch tree could drive
+  depth-1 acceptance ~100% and rescue the ~18% zero-accept cycles). The MODEL is
+  not the blocker -- same class as what llama.cpp/hipfire beat AR with.
+- But perfect-accept ceiling <1.0 at B<=5 because C_B > B+1. C_B (decode_batched,
+  sublinear after M15.1/M15.3): B1 4.25, B2 4.53, B3 4.89, B5 6.14 -> ceilings
+  0.47/0.66/0.82/0.98. The ~4.25 floor is the ROCm launch-submission cost.
+  llama.cpp/hipfire run at C_B~2 (CUDA dispatch/graph ~10x cheaper per launch),
+  so the same acceptance yields >1.0x; we cannot, at ~2x their C_B.
+- Therefore MTP-positive is C_B-bound, not acceptance-bound. Tree drafts are
+  necessary-but-insufficient (can't close a ~2x dispatch gap). avg_accepted
+  saturates ~1.4-1.8 (single-layer deep-draft horizon), so B>=7 (ceiling>1.0)
+  still needs ~84% acceptance it can't reach.
+
+Decision: stop chasing MTP-positive via tokens/cycle; the wall is the ROCm
+dispatch floor (megakernel/graph problem M15 mapped). Pivot the deployable >1.0x
+exact win to DFlash profile-routing (sidesteps per-cycle C_B; already 1.35x
+offline). Build MTP tree drafts only once C_B is in the ~2-3 range.
+
+Files: scripts/mtp_native_decode_step_smoke.py (+candidate_topk),
+scripts/mtp_chain_e2e_smoke.py (+depth-1 topk_oracle in _run_spec_smoke),
+docs/MTP.md (top-k oracle section),
+benchmarks/results/2026-06-08-hipengine-mtp-topk-oracle.json. Diagnostic tooling;
+no runtime/default change.

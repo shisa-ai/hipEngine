@@ -1,0 +1,78 @@
+{
+ "schema": 1,
+ "task_id": 43,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "timestamp": "2026-06-08",
+ "date": "2026-06-08",
+ "summary": "MTP top-k oracle: the MTP head is excellent at depth-1 (target token in top-8 100% / 96% of cycles), so acceptance is realizable via root-branching trees. But the perfect-accept ceiling stays <1.0 at B<=5 because C_B (ROCm launch floor ~4.25) exceeds B+1. MTP-positive is C_B-bound (dispatch), not acceptance-bound.",
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100"
+ },
+ "backend": "hip_gfx1100",
+ "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+ "method": "Instrumented run_native_mtp_proposal to emit per-depth vocab top-k (topk_f32_rows_i32 over lm-head logits); the e2e smoke records the rank of verify.target_top1[0] (target greedy next token) in the depth-1 MTP top-8. HIPENGINE_VERIFY_GPU_ACCEPT=validate to populate target_top1.",
+ "oracle": {
+  "B3_D32_exact": {
+   "cycles": 11,
+   "depth1_in_topk": 11,
+   "depth1_in_topk_rate": 1.0,
+   "depth1_rescuable_2_to_k": 2,
+   "depth1_rescuable_rate": 0.18181818181818182,
+   "depth1_top1_match": 9,
+   "depth1_top1_rate": 0.8181818181818182,
+   "k": 8,
+   "note": "rank 1 = chain already accepts; 2..k = root-branch tree could rescue; 0 = target token absent from MTP top-k (unrescuable at depth 1).",
+   "rank_histogram": {
+    "1": 9,
+    "2": 1,
+    "3": 1
+   }
+  },
+  "B3_D64": {
+   "cycles": 24,
+   "depth1_in_topk": 23,
+   "depth1_in_topk_rate": 0.9583333333333334,
+   "depth1_rescuable_2_to_k": 4,
+   "depth1_rescuable_rate": 0.16666666666666666,
+   "depth1_top1_match": 19,
+   "depth1_top1_rate": 0.7916666666666666,
+   "k": 8,
+   "note": "rank 1 = chain already accepts; 2..k = root-branch tree could rescue; 0 = target token absent from MTP top-k (unrescuable at depth 1).",
+   "rank_histogram": {
+    "0": 1,
+    "1": 19,
+    "2": 2,
+    "3": 1,
+    "4": 1
+   }
+  }
+ },
+ "economics_context": {
+  "C_B": {
+   "B1": 4.25,
+   "B2": 4.53,
+   "B3": 4.89,
+   "B5": 6.14
+  },
+  "perfect_accept_ceiling": {
+   "B1": 0.47,
+   "B2": 0.66,
+   "B3": 0.82,
+   "B5": 0.98
+  },
+  "avg_accepted_saturates": "~1.4-1.8 (single MTP layer good at depth 1-2, weak deeper)",
+  "llama_cpp_hipfire": "beat AR with C_B~2 (CUDA dispatch/graph ~10x cheaper per launch); same model/acceptance class."
+ },
+ "conclusion": [
+  "The MTP head is NOT the blocker: target token is in top-8 100% (D32) / 96% (D64) of cycles at depth-1. Root-branching trees could realize ~100% depth-1 acceptance.",
+  "But C_B > B+1 for B<=5 (launch floor), so perfect-accept ceiling <1.0 at every feasible B. At B=7+ the ceiling exceeds 1.0 but the required acceptance (~84%) exceeds the single-layer head deep-draft horizon.",
+  "Therefore MTP-positive requires cutting C_B (~45%, to llama.cpp territory ~2.4), i.e. the megakernel / graph dispatch problem on ROCm. Tree drafts are necessary-but-insufficient: they cannot close a ~2x dispatch gap.",
+  "The model is ready; the ROCm launch-submission floor is the wall. Pivot the deployable-win effort to DFlash routing (sidesteps per-cycle C_B)."
+ ],
+ "commands": {
+  "oracle": "HIPENGINE_VERIFY_GPU_ACCEPT=validate ... scripts/mtp_chain_e2e_smoke.py --decode-tokens 32 --candidate-budget 3 --proposal-impl reload_d2h --chain-attn-mode batched (reads mtp.topk_oracle)",
+  "economics_sweep": "scripts/mtp_verifier_economics.py --candidate-budgets 1,2,3,5 --decode-tokens 48 --chain-attn-mode decode_batched"
+ }
+}
