@@ -119,6 +119,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
     gemv_awq_pack8_output_tiled_bf16,
     gemv_awq_pack8_output_tiled_fp16,
+    gemv_awq_dual_pack8_output_tiled_transposed_fp16,
     gemv_awq_pack8_output_tiled_transposed_bf16,
     gemv_awq_pack8_output_tiled_transposed_fp16,
     gemv_awq_pack8_strided_bf16,
@@ -2401,7 +2402,12 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
-                gemv_awq_dual_pack8_transposed_fp16(
+                kv_dual_fn = (
+                    gemv_awq_dual_pack8_output_tiled_transposed_fp16
+                    if tokens in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_dual_pack8_transposed_fp16
+                )
+                kv_dual_fn(
                     scratch.k_rot.ptr,
                     scratch.v_rot.ptr,
                     k_qweight.ptr,
@@ -2452,7 +2458,12 @@ class Qwen35ParoDecodeState:
                 )
                 self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
             else:
-                gemv_awq_dual_pack8_transposed_fp16(
+                qk_dual_fn = (
+                    gemv_awq_dual_pack8_output_tiled_transposed_fp16
+                    if tokens in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_dual_pack8_transposed_fp16
+                )
+                qk_dual_fn(
                     scratch.q_rot.ptr,
                     scratch.k_rot.ptr,
                     q_qweight.ptr,
@@ -5683,7 +5694,12 @@ class Qwen35ParoDecodeState:
                 )
                 self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
             else:
-                gemv_awq_dual_pack8_transposed_fp16(
+                qkvz_dual_fn = (
+                    gemv_awq_dual_pack8_output_tiled_transposed_fp16
+                    if tokens in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_dual_pack8_transposed_fp16
+                )
+                qkvz_dual_fn(
                     scratch.qkv_rot.ptr,
                     scratch.z_rot.ptr,
                     qkv_qweight.ptr,
@@ -7410,7 +7426,12 @@ class Qwen35ParoDecodeState:
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
         use_batch_gemv = tokens <= 8 or _env_flag("HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV", False)
         if use_batch_gemv:
-            gemv_awq_dual_pack8_transposed_fp16(
+            shared_gateup_fn = (
+                gemv_awq_dual_pack8_output_tiled_transposed_fp16
+                if tokens in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_dual_pack8_transposed_fp16
+            )
+            shared_gateup_fn(
                 scratch.shared_gate_input.ptr,
                 scratch.shared_up_input.ptr,
                 gate_qweight.ptr,

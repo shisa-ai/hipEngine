@@ -1775,6 +1775,188 @@ int launch_pack8_output_tiled(
   return static_cast<int>(hipGetLastError());
 }
 
+
+// Output-column-tiled c>1 decode dual-projection GEMV (C3.0c).  Same structure
+// as gemv_awq_pack8_output_tiled_kernel plus the a/b output-group prologue from
+// gemv_awq_dual_pack8_kernel: one block per global output pack loads its weight
+// pack once and accumulates all C columns.  Bit-exact vs gemv_awq_dual_pack8_kernel.
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int C>
+__launch_bounds__(128, 2) __global__ void gemv_awq_dual_pack8_output_tiled_kernel(
+    const scalar_t* __restrict__ x_a,
+    const scalar_t* __restrict__ x_b,
+    const int32_t* __restrict__ qweight_a,
+    const int32_t* __restrict__ qzeros_a,
+    const scalar_t* __restrict__ scales_a,
+    const int32_t* __restrict__ qweight_b,
+    const int32_t* __restrict__ qzeros_b,
+    const scalar_t* __restrict__ scales_b,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int group_size) {
+  const int64_t global_pack = blockIdx.x;
+  const int tid = threadIdx.x;
+  const bool use_b = global_pack >= out_packed_a;
+  const int64_t local_pack = use_b ? (global_pack - out_packed_a) : global_pack;
+  const int64_t local_out_packed = use_b ? out_packed_b : out_packed_a;
+  const int64_t local_out_features = local_out_packed << 3;
+  const int64_t out_features = (out_packed_a + out_packed_b) << 3;
+  const int64_t out_col = global_pack << 3;
+  const int64_t local_out_col = local_pack << 3;
+  const scalar_t* __restrict__ x = (separate_inputs && use_b) ? x_b : x_a;
+  const int32_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
+  const int32_t* __restrict__ qzeros = use_b ? qzeros_b : qzeros_a;
+  const scalar_t* __restrict__ scales = use_b ? scales_b : scales_a;
+  const int64_t qweight_base = qweight_transposed ? (local_pack * in_features) : local_pack;
+
+  float acc[C][8];
+#pragma unroll
+  for (int r = 0; r < C; ++r) {
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      acc[r][o] = 0.0f;
+    }
+  }
+
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const int64_t group = k_base / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * local_out_packed + local_pack]);
+    int z[8];
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      z[o] = static_cast<int>((pz >> awq_shift_for_pack_lane(o)) & 0xF);
+    }
+    const scalar_t* scale_ptr = &scales[group * local_out_features + local_out_col];
+    float s[8];
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      s[o] = scalar_to_float(scale_ptr[o]);
+    }
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int64_t qw_idx = qweight_transposed ? (qweight_base + k_base + j) : ((k_base + j) * local_out_packed + local_pack);
+      const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+      float w[8];
+#pragma unroll
+      for (int o = 0; o < 8; ++o) {
+        w[o] = static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(o)) & 0xF) - z[o]) * s[o];
+      }
+#pragma unroll
+      for (int r = 0; r < C; ++r) {
+        const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + k_base + j]);
+#pragma unroll
+        for (int o = 0; o < 8; ++o) {
+          acc[r][o] = fmaf(xv, w[o], acc[r][o]);
+        }
+      }
+    }
+  }
+
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    const int64_t group = in_col / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * local_out_packed + local_pack]);
+    const int64_t qw_idx = qweight_transposed ? (qweight_base + in_col) : (in_col * local_out_packed + local_pack);
+    const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+    const scalar_t* scale_ptr = &scales[group * local_out_features + local_out_col];
+    float w[8];
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      w[o] = static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(o)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(o)) & 0xF)) * scalar_to_float(scale_ptr[o]);
+    }
+#pragma unroll
+    for (int r = 0; r < C; ++r) {
+      const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + in_col]);
+#pragma unroll
+      for (int o = 0; o < 8; ++o) {
+        acc[r][o] = fmaf(xv, w[o], acc[r][o]);
+      }
+    }
+  }
+
+  // Within-warp shuffle reduce (offsets 16..1) then ascending-warp cross-warp
+  // sum via shared memory: identical per-output order to gemv_awq_dual_pack8_kernel.
+#pragma unroll
+  for (int r = 0; r < C; ++r) {
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      float a = acc[r][o];
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        a += __shfl_down(a, offset);
+      }
+      acc[r][o] = a;
+    }
+  }
+  __shared__ float xchg[4 * C * 8];
+  const int warp_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int r = 0; r < C; ++r) {
+#pragma unroll
+      for (int o = 0; o < 8; ++o) {
+        xchg[(warp_id * C + r) * 8 + o] = acc[r][o];
+      }
+    }
+  }
+  __syncthreads();
+  if (tid == 0) {
+    const int sub_groups = blockDim.x >> 5;
+#pragma unroll
+    for (int r = 0; r < C; ++r) {
+      scalar_t* out_ptr = &out[static_cast<int64_t>(r) * out_features + out_col];
+#pragma unroll
+      for (int o = 0; o < 8; ++o) {
+        float sum = 0.0f;
+        for (int g = 0; g < sub_groups; ++g) {
+          sum += xchg[(g * C + r) * 8 + o];
+        }
+        out_ptr[o] = float_to_scalar<scalar_t>(sum);
+      }
+    }
+  }
+}
+
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs>
+int launch_dual_pack8_output_tiled(
+    const scalar_t* x_a,
+    const scalar_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const scalar_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const scalar_t* scales_b,
+    scalar_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 || group_size <= 0 ||
+      (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(out_packed_a + out_packed_b));
+  const dim3 block(static_cast<unsigned int>(threads));
+#define PARO_LAUNCH_DUAL_PACK8_OT(CVAL) \
+  hipLaunchKernelGGL((gemv_awq_dual_pack8_output_tiled_kernel<scalar_t, qweight_transposed, separate_inputs, CVAL>), \
+      grid, block, 0, stream, x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b, \
+      out, in_features, out_packed_a, out_packed_b, static_cast<int>(group_size))
+  switch (rows) {
+    case 2: PARO_LAUNCH_DUAL_PACK8_OT(2); break;
+    case 4: PARO_LAUNCH_DUAL_PACK8_OT(4); break;
+    case 8: PARO_LAUNCH_DUAL_PACK8_OT(8); break;
+    default: return static_cast<int>(hipErrorInvalidValue);
+  }
+#undef PARO_LAUNCH_DUAL_PACK8_OT
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 
@@ -2283,6 +2465,94 @@ extern "C" int hipengine_gemv_awq_dual_pack8_transposed_fp16(
       group_size,
       threads,
       stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_transposed_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_output_tiled<half_t, true, true>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_transposed_bf16(
+    const uint16_t* x_a,
+    const uint16_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const uint16_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const uint16_t* scales_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_output_tiled<uint16_t, true, true>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_strided_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_output_tiled<half_t, false, false>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_strided_bf16(
+    const uint16_t* x_a,
+    const uint16_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const uint16_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const uint16_t* scales_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_output_tiled<uint16_t, false, false>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
 }
 
 extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_fp16(
