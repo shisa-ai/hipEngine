@@ -2011,6 +2011,44 @@ What is still not green:
   scoreboard promotion remain open performance/coverage work; native output
   promotion is not the current c2 scaling fix.
 
+### Decode performance levers (2026-06-07 measured)
+
+Native c>1 decode is far from GPU-efficiency limits and scales poorly: measured
+medians (RX 7900 XTX, BF16-KV PARO, 512/128, batched_lm_head) are c1 133, c2 102
+(0.77x c1, *worse* than c1), c4 138 (1.04x), c8 192 tok/s (1.44x). A
+`rocprofv3 --kernel-trace` differential
+(`benchmarks/results/2026-06-07-hipengine-qwen35-decode-dispatch-profile-484/`)
+localized the cause to **dispatch count**, not just missing graph replay:
+
+- Each decode step fires thousands of tiny kernels: **917/step at c1, 5370 at c4,
+  9362 at c8** (c8 = 10.2x c1, worse than the 8x row count). Per-dispatch
+  MEC/SPI overhead on kernels this short dominates the wall.
+- **Graph replay is already on at c=1 by default** (clean delta: 134 tok/s with
+  vs 110 eager = **+21.6%** at 512 context) yet c1 decode is still <=~37%
+  GPU-utilized. So graph replay removes per-dispatch *host* latency / per-step
+  host overhead but cannot remove per-dispatch *device* overhead.
+- **c>1 decode graph replay is not wired** (`graph_bucket_stats.replay_kernel_hits=0`):
+  the batch step is not device-resident (per-step host token list + host
+  positions + per-layer host->device block-table copy in `_batch_full_spans`),
+  so it cannot be captured/replayed as-is.
+
+Levers, in priority:
+
+1. **Wire c-aware (c>1) decode graph replay** — make the batch step
+   device-resident (device token feedback via `batch_lm_out_index`, on-device
+   position/context advance, persistent device block tables/spans), then
+   capture/replay like the c=1 path. Bounded refactor; recovers the eager
+   penalty (>=~20%, likely more at c>1 where 9362 dispatches/step overwhelm
+   eager host issue).
+2. **Reduce decode dispatch count via kernel fusion** — 917/step at c1 is high;
+   fewer launches help c=1 and c>1 beyond graph replay.
+3. **Output-column-tiled c>1 GEMM — its own big lift.** A separate kernel-family
+   effort that loads each weight tile once and reuses it across all `c` columns
+   (caching the quantized activation once), plus per-expert token batching for
+   MoE. This both cuts dispatch count and amortizes weight loads, and is the
+   only lever toward the c>1 roofline (`docs/ROOFLINE.md` §3.2). Track as a
+   large standalone workstream, **not** part of the graph-replay change.
+
 ## Readiness matrix
 
 | Layer | Current status | Evidence / code | Blocks retained c>N |

@@ -1,0 +1,45 @@
+{
+  "iteration": 484,
+  "kind": "decode_dispatch_count_and_graph_replay_profile",
+  "created_at": "2026-06-07T23:59:00+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "question": "Why is c>1 decode far from GPU-efficiency limits, and is missing graph replay the core issue?",
+  "method": "rocprofv3 --kernel-trace differential (decode-tokens 8 vs 40, warmup 8) on native BF16-KV PARO 512-prompt, c1 via qwen35_paro_bench, c4/c8 via retained-bench native_batch. Per-step decode dispatch count and profiled kernel time = (d40-d8)/32. Clean (non-profiled) c1 graph-replay vs eager decode for the authoritative graph-replay delta.",
+  "reliable_findings": {
+    "dispatch_count_per_decode_step": {
+      "c1": 917,
+      "c4": 5370,
+      "c8": 9362,
+      "scaling_vs_c1": {
+        "c1": 1.0,
+        "c4": 5.86,
+        "c8": 10.21
+      },
+      "note": "c8 issues ~10.2x the dispatches of c1, worse than the 8x row count: each decode step fires thousands of tiny kernels; dispatch count is the dominant decode wall."
+    },
+    "c1_graph_replay_clean_delta": {
+      "with_graph_replay_tok_s": 134.23,
+      "eager_tok_s": 110.36,
+      "speedup": "+21.6%",
+      "note": "c1 paro_bench enables graph replay BY DEFAULT; this is the authoritative (non-profiler) measure of what graph replay buys at 512 context. Larger than the doc's +2.6-3.9% at 4K because short-context kernels are smaller relative to per-dispatch overhead."
+    },
+    "c_gt_1_graph_replay_status": "NOT wired (execution.scheduler_metadata.graph_bucket_stats.replay_kernel_hits=0). The native c>1 batch decode step is not device-resident (per-step host token list, host positions, per-layer host->device block-table copy), so it cannot be captured/replayed as-is."
+  },
+  "profiler_caveat": "Profiled kernel-time sums are perturbed (rocprofv3 instrument/serialize short kernels): c4/c8 profiled kernel ns/step exceed the clean wall/step, so they are NOT a clean utilization measure. c1 profiled busy/step ~2.74 ms vs clean 7.5 ms wall implies <=~37% GPU utilization at c1 even WITH graph replay; treat as an upper bound. Reliable signals are dispatch counts and the clean graph-replay delta.",
+  "interpretation": {
+    "core_issue_is_dispatch_count_not_only_graph_replay": "Graph replay is already on at c1 and still leaves the GPU ~63% idle; the wall is the sheer number of tiny dispatches (917/step c1, 9362/step c8), each carrying irreducible per-dispatch MEC/SPI overhead that graph replay cannot remove. Graph replay removes per-dispatch HOST latency and per-step host overhead (worth ~+20% at c1, likely more at c>1 where 9362 dispatches/step overwhelm eager host issue), but the structural fix is fewer/larger kernels.",
+    "levers_in_priority": [
+      "1. Wire c-aware (c>1) decode graph replay: make the batch decode step device-resident (device token feedback via batch_lm_out_index, on-device position/context advance, persistent device block tables/spans instead of per-step host copies), then capture/replay like the c=1 path. Bounded refactor; recovers the eager penalty (~>=20%).",
+      "2. Reduce decode dispatch count via kernel fusion (917/step at c1 is high). Fewer launches help c=1 AND c>1 beyond graph replay.",
+      "3. BIG LIFT (separate kernel-family effort): output-column-tiled c>1 GEMM. Loads each weight tile once and reuses across all c columns (caching the quantized activation once), plus per-expert token batching for MoE. This both cuts dispatch count and amortizes weight loads -- the only lever toward the c>1 roofline. Treat as its own large workstream, not part of the graph-replay change."
+    ]
+  },
+  "raw_trace_dir": "/tmp/prof (kept locally, not committed)",
+  "trace_d40_sha256": {
+    "c1": "050880cef6b53f6e1c90aa21d26ca9af8b54fc0290ac834eb1512be8a4e1e90d",
+    "c4": "ca5848a0d9451ed04a73f1935b9e0836e2136154ea318100b6eca50a5a3bb106",
+    "c8": "0eb0881bb8f15ab43efd106a62a765c6ebd54ddae2f87d2e509c5fcbd95dd5ab"
+  }
+}
