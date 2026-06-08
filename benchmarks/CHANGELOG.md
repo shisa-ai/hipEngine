@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-08
+
+- 2026-06-08 [snapshot non-retained] hipEngine / Qwen3.6-35B-A3B PARO / concurrency decode 512/128: current-code aggregate decode tok/s c1 `133.84`, c2 `131.09`, c4 `181.56`, c8 `225.90` (median of 3; per-sequence `133.84/65.54/45.39/28.24`); c4/c8 exceed the 2026-06-02 retained rows (`155.987`/`212.093`) after the C3.0a host-trim + C3.0b device-resident decode work, but this is a README "Concurrency" throughput snapshot gated only by `native_batch_vs_independent_c1` (0 mismatches c2/c4/c8) + CPU-reference, not the full retained gate suite; `benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json` (driver `scripts/qwen35_concurrency_decode_sweep.py`).
+
 ## 2026-06-02
 
 - 2026-06-02 [accepted native c>1] hipENGINE / Qwen3.6-35B-A3B PARO / c=4 512/128 retained native E2E: aggregate decode `99.890 -> 155.987 tok/s` (+56.2%) and per-request `24.972 -> 38.997 tok/s` after throughput eligibility/provenance gates accepted generated-token equality `[137×4]`, primitive c=4 correctness, profiler, c=1/serial scaling, projection dispatch, observed bucket, and stable block-id evidence; `benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json`.

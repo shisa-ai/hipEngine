@@ -194,6 +194,58 @@ On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
 
+## Concurrency (batched decode)
+
+hipEngine has a native `c>1` decode path: a scheduler-owned compact prefill plus
+a device-resident batched decode step (token feedback through `batch_lm_out_index`,
+device batched LM-head argmax, on-stream position advance) that can be captured
+and replayed as a single HIP graph. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md)
+for the design and the C3.0a/b/c decode-throughput work.
+
+The table below is an **initial** snapshot of PARO decode throughput as the
+number of concurrent sequences `c` grows on a fixed 512-prompt / 128-decode
+shape (gfx1100 / RX 7900 XTX, BF16 KV, median of 3 runs). *Aggregate* is total
+tok/s across the batch; *per-sequence* is tok/s seen by one request. llama.cpp
+and vLLM concurrency baselines are not yet measured on this host and will be
+added later.
+
+### Decode tok/s vs concurrency (Qwen3.6 PARO, 512/128, gfx1100)
+
+| Concurrency `c` | Aggregate decode tok/s | Per-sequence decode tok/s | llama.cpp | vLLM |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 133.84 | 133.84 | _TBD_ | _TBD_ |
+| 2 | 131.09 | 65.54 | _TBD_ | _TBD_ |
+| 4 | 181.56 | 45.39 | _TBD_ | _TBD_ |
+| 8 | **225.90** | 28.24 | _TBD_ | _TBD_ |
+
+Aggregate throughput scales with concurrency (c1 → c8 is **1.69×**) while
+per-sequence latency falls as expected. The `c=2` aggregate dipping slightly
+below `c=1` is a known artifact of the small-context `c>1` regime being
+dispatch-bound: at `c=2` the batched step does not yet amortize per-step
+dispatch over enough rows. Correctness is gated by `native_batch_vs_independent_c1`
+generated-token equality (0 mismatches at c2/c4/c8) plus the per-kernel
+CPU-reference gates — these are throughput measurements, not retained
+performance claims.
+
+Source artifact:
+[`benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json`](benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json).
+Replicate with:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_concurrency_decode_sweep.py \
+    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+    --fixture <8x512-prompt-ids>.json \
+    --compiler-version-file <hipcc-version>.txt \
+    --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
+    --concurrencies 1,2,4,8 --reps 3 \
+    --json benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json
+```
+
+`c=1` is measured with `scripts/qwen35_paro_bench.py --graph-replay-decode`
+(single-sequence generate path); `c>=2` with `scripts/qwen35_batch_retained_bench.py`
+(native batched path). The sweep driver wires both up; see its module docstring
+for the exact per-`c` sub-commands.
+
 ## GGUF Support
 
 As of v0.2.0, hipEngine includes resident Qwen3.6 GGUF support for `Q4_K_M` and

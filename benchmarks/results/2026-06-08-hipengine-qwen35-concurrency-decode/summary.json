@@ -1,0 +1,39 @@
+{
+  "kind": "concurrency_decode_throughput_sweep",
+  "created_at": "2026-06-08T00:00:00+00:00",
+  "performance_claim": false,
+  "retained_ready": false,
+  "host": "AMD Radeon RX 7900 XTX (gfx1100/RDNA3) via HIP_VISIBLE_DEVICES=1, TheRock ROCm",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 (PARO W4A16 AWQ pack8, BF16 KV)",
+  "shape": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "reps": 3,
+    "kv_storage_dtype": "bf16"
+  },
+  "methodology": {
+    "summary": "Aggregate (total across the batch) and per-sequence decode tok/s vs number of concurrent decode sequences c, fixed 512/128 per sequence. Self-consistent within each path; c=1 and c>1 use different harnesses (noted) so read aggregate scaling, not an exact cross-harness ratio at c=1->2.",
+    "c1": "scripts/qwen35_paro_bench.py --graph-replay-decode -> throughput.warmed_decode_tok_s (single-sequence, real generate-time HIP graph replay)",
+    "cN": "scripts/qwen35_batch_retained_bench.py --batch-size N -> measurements.decode_tok_s_aggregate / decode_tok_s_per_request (scheduler-owned compact native prefill + step_batch_native)",
+    "aggregate_across_runs": "median of 3 per-process runs",
+    "driver": "scripts/qwen35_concurrency_decode_sweep.py"
+  },
+  "correctness_gate": "Native c>1 decode is gated by native_batch_vs_independent_c1 generated-token equality (0 mismatches at c2/c4/c8) and the per-kernel CPU-reference / primitive correctness gates; this is a throughput measurement, not a retained performance claim (performance_claim=false).",
+  "rows": {
+    "1": {"concurrency": 1, "decode_tok_s_aggregate_median": 133.84, "decode_tok_s_per_request_median": 133.84, "decode_tok_s_aggregate_runs": [133.01, 133.84, 134.32], "path": "paro_bench_graph_replay"},
+    "2": {"concurrency": 2, "decode_tok_s_aggregate_median": 131.09, "decode_tok_s_per_request_median": 65.54, "decode_tok_s_aggregate_runs": [130.59, 131.50, 131.09], "path": "retained_native_batch"},
+    "4": {"concurrency": 4, "decode_tok_s_aggregate_median": 181.56, "decode_tok_s_per_request_median": 45.39, "decode_tok_s_aggregate_runs": [181.56, 178.24, 181.98], "path": "retained_native_batch"},
+    "8": {"concurrency": 8, "decode_tok_s_aggregate_median": 225.90, "decode_tok_s_per_request_median": 28.24, "decode_tok_s_aggregate_runs": [225.90, 225.42, 227.64], "path": "retained_native_batch"}
+  },
+  "notes": [
+    "Aggregate decode tok/s scales with concurrency: c1 133.8 -> c2 131.1 (0.98x) -> c4 181.6 (1.36x) -> c8 225.9 (1.69x).",
+    "c=2 aggregate sits slightly below c=1: the c>1 native path is dispatch-bound at this small context and c=2 does not yet amortize per-step host/device dispatch over enough rows (see docs/CONCURRENCY.md C3.0b/C3.0c; graph replay removes residual host-side launch latency only, dispatch-count reduction is the remaining lever).",
+    "Per-sequence tok/s falls as expected with more concurrent rows (133.8 / 65.5 / 45.4 / 28.2).",
+    "llama.cpp and vLLM concurrency baselines are not yet measured on this host; columns are TBD."
+  ],
+  "commands": {
+    "sweep": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_concurrency_decode_sweep.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --concurrencies 1,2,4,8 --reps 3 --json benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json"
+  }
+}

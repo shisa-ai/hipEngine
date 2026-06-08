@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-02
+Last updated: 2026-06-08
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -209,6 +209,31 @@ git diff --check
 | Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 512/128 fast-bulk prefill (legacy decode) | 1505.969 | 62.688 | 20.886 | P9.A2 CPU-reference GDN fixture passed (`18 passed`); E2E GDN-isolated parity bit-exact (KL `0.0`, token `4469`); finite deterministic logits in 3 graph runs; cumulative compact-MoE WMMA drift carried over from P8 (KL `0.707`) tracked under tasks #28/#30 | [`2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json`](results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json) | 2026-05-18 | Opt-in `--use-wmma-prefill` on the available RX 7900 XTX/gfx1100. P9.A1 GDN chain (prepare + k2_segments + fused RMSNorm-gate) drops the GDN bucket from `666.9 ms / 30 disp` to `56.3 ms / 90 disp` (~11.85x) and total prefill kernel time `907.8 -> 296.8 ms` (~3.06x). 512/0 wall prefill `534.4 -> 1508.7 tok/s` median (+182.3%). Decode unchanged (`62.6 tok/s`) as expected; the P9.B7 decode-repack row above is the decode-focused successor. W7900 not rerun. |
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 512/128 | 3279.030 | 179.044 | 0.937 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +33.8% vs Qwen3.6 packed PARO comparison row (`2451.2 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 4K/128 | 3599.717 | 85.702 | 1.608 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +35.0% vs Qwen3.6 packed PARO comparison row (`2666.7 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
+
+## Concurrency decode snapshot (non-retained)
+
+Current-code PARO decode throughput vs number of concurrent sequences `c`, fixed
+512/128 per sequence, gfx1100 / RX 7900 XTX, BF16 KV, median of 3 runs. This is
+an **initial throughput snapshot for the top-level README "Concurrency" table**,
+not a retained row: it carries `native_batch_vs_independent_c1` generated-token
+equality (0 mismatches at c2/c4/c8) plus the per-kernel CPU-reference gates, but
+not the full retained gate suite (rocprof provenance / scaling-reference / bucket
+gates) of the accepted c=4/c=8 rows above. Numbers exceed the 2026-06-02 retained
+rows because of the C3.0a host-overhead trim and C3.0b device-resident decode
+work landed since (see [`docs/CONCURRENCY.md`](../docs/CONCURRENCY.md)).
+
+| Concurrency `c` | Aggregate decode tok/s (median 3) | Per-sequence decode tok/s | Path |
+| --- | ---: | ---: | --- |
+| 1 | 133.84 | 133.84 | `qwen35_paro_bench.py --graph-replay-decode` |
+| 2 | 131.09 | 65.54 | `qwen35_batch_retained_bench.py --batch-size 2` |
+| 4 | 181.56 | 45.39 | `qwen35_batch_retained_bench.py --batch-size 4` |
+| 8 | 225.90 | 28.24 | `qwen35_batch_retained_bench.py --batch-size 8` |
+
+Artifact: [`results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json`](results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json).
+Replicate with `scripts/qwen35_concurrency_decode_sweep.py` (see its module
+docstring for the exact per-`c` sub-commands; the top-level `README.md`
+"Concurrency" section has the full command). llama.cpp / vLLM concurrency
+baselines on this host are TBD.
 
 ## Source-lineage target: Qwen3.5-35B-A3B-PARO
 
