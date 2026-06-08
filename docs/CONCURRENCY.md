@@ -3600,15 +3600,23 @@ levers" above and
       decode tok/s up. Evidence:
       `benchmarks/results/2026-06-07-hipengine-qwen35-decode-host-trim-485/`
       (c8 192->230 tok/s +19.9%, c4 +15.9%, c2 +14.7%, c1 unaffected).
-- [ ] **C3.0b Wire c-aware (c>1) decode graph replay.** Make the native batch
-      decode step device-resident (device token feedback via
-      `batch_lm_out_index`, on-device position/context advance, persistent
-      device block tables/spans), then capture/replay like the c=1
-      `capture_decode_graph` path. Acceptance:
+- [ ] **C3.0b Wire c-aware (c>1) decode graph replay.** *(Deferred — revisit
+      AFTER C3.0c.)* Make the native batch decode step device-resident (device
+      token feedback via `batch_lm_out_index`, on-device position/context
+      advance, persistent device block tables/spans), then capture/replay like
+      the c=1 `capture_decode_graph` path. Acceptance:
       `graph_bucket_stats.replay_kernel_hits>0`, generated tokens unchanged
-      (byte-identical / teacher-forced KL/top-1 green), decode tok/s up vs the
-      C3.0a baseline. (c=1 clean delta is +21.6% at 512 ctx; c>1 is currently
-      eager, `replay_kernel_hits=0`.)
+      (byte-identical / teacher-forced KL/top-1 green), decode tok/s up.
+      Sequencing: C3.0c (output-tiled GEMM) changes the c>1 decode kernel set
+      and dispatch structure, so capturing/validating a decode graph now would
+      be redone after C3.0c. Do C3.0c first, then capture the post-GEMM kernel
+      stream once. Scoped 2026-06-07 (pieces A device-token-fed batch
+      embedding, B batch sampler device argmax write, C on-device batch
+      position/context advance, D span capacity baked for the replay span,
+      E `_step_batch_from_device_tokens` + `capture_batch_decode_graph`).
+      Measured headroom is bounded: c=1 is only ~37% GPU-utilized *with* graph
+      replay on (clean c=1 delta +21.6% at 512 ctx), so this removes host-side
+      per-dispatch latency, not the per-dispatch device overhead C3.0c targets.
 - [ ] **C3.0c Output-column-tiled c>1 GEMM kernel family — BIG LIFT, the next
       structural thing.** Replace the c>1 GEMV-per-column projection/MoE path
       with an output-column-tiled GEMM that loads each weight tile once and
