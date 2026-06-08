@@ -18,6 +18,8 @@ _SYMBOL_DUAL_PACK8_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_transposed_bf16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED = "hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_bf16"
 _SYMBOL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_pack8_strided_fp16"
 _SYMBOL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_transposed_fp16"
+_SYMBOL_PACK8_OUTPUT_TILED = "hipengine_gemv_awq_pack8_output_tiled_bf16"
+_SYMBOL_PACK8_OUTPUT_TILED_FP16 = "hipengine_gemv_awq_pack8_output_tiled_fp16"
 _SYMBOL_FUSEDW4_PREFILL_FP16 = "hipengine_awq_fusedw4_prefill_fp16"
 _SYMBOL_FUSEDW4_PREFILL_DUAL_FP16 = "hipengine_awq_fusedw4_prefill_dual_fp16"
 _SYMBOL_FUSEDW4_PREFILL_STRIDED_FP16 = "hipengine_awq_fusedw4_prefill_strided_fp16"
@@ -96,6 +98,82 @@ def gemv_awq_pack8_strided_bf16(
 
     _launch_pack8_single(
         _SYMBOL_PACK8_STRIDED,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_pack8_output_tiled_bf16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Output-column-tiled c>1 decode GEMV (strided qweight); rows in {2,4,8}.
+
+    One block per output pack loads each weight pack once and accumulates all
+    ``rows`` columns; bit-exact vs the per-row ``gemv_awq_pack8_strided`` path.
+    """
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_OUTPUT_TILED,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_pack8_output_tiled_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """FP16 output-column-tiled c>1 decode GEMV (strided qweight); rows in {2,4,8}."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_OUTPUT_TILED_FP16,
         x_ptr,
         qweight_ptr,
         qzeros_ptr,
