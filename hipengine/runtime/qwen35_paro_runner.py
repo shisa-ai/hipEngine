@@ -6251,6 +6251,44 @@ class Qwen35ParoResidentSession:
             if row_buf is not None:
                 free(row_buf, runtime=self.runtime)
 
+    def _set_batch_token_embeddings_from_ptr(
+        self,
+        token_src_ptr: int,
+        *,
+        rows: int,
+        stream: int = 0,
+    ) -> Tensor:
+        """Gather batch token embeddings straight from a device int64 token buffer.
+
+        Device-resident analog of :meth:`_set_batch_token_embeddings` (C3.0b
+        piece A): the next-token ids are read directly from a device buffer
+        (e.g. ``batch_lm_out_index``) with no host token list, host->device
+        copy, or host-side bounds check, so the gather is safe inside a captured
+        c>1 decode graph.  ``out[row] = embedding[token_src[row]]`` for
+        ``row in [0, rows)``; the device argmax that fills ``token_src``
+        guarantees ids in ``[0, vocab_size)`` by construction (the kernel skips
+        any out-of-range id without writing its row).
+        """
+
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if rows > self.max_batch_size:
+            raise ValueError("rows exceed max_batch_size")
+        embedding_lookup_batch_mapped_fp16_i64(
+            self.embedding.tensor.ptr,
+            token_src_ptr,
+            self.batch_hidden.ptr,
+            rows,
+            self.config.hidden_size,
+            self.vocab_size,
+            rows,
+            row_map_i32_ptr=None,
+            stream=stream,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
+        return Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+
     def _set_batch_positions(
         self,
         positions: list[int] | tuple[int, ...],
