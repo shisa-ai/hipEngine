@@ -1328,12 +1328,14 @@ The top-k oracle proved the MTP head is ready: at `C_B ≈ 2` this head + a
 root-branch tree beats AR comfortably. Everything now hinges on cutting `C_B` from
 ~4.25 to ~2.0. **This is achievable on our hardware**: hipfire runs DFlash on the
 same W7900/gfx1100 at multiples of AR (see `DFLASH.md` 2026-06-02), so the ~20 µs/
-launch we measure is *our* orchestration cost, not a hard ROCm floor. **M16.1
-(2026-06-08) measured the floor directly: clean steady-state dispatch is ~5.6 µs/
-node on gfx1100, ~3.7× below the ~20.6 µs/op full-path residual — confirming the
-residual is host-side per-op overhead, not a hardware dispatch wall.** llama.cpp
-gets there on CUDA via whole-trunk graph replay; on gfx1100 a *native launch loop*
-gets the same floor (see M16.1 result). We need that runtime *shape*.
+launch we measure is *our* cost, not a hard ROCm floor. **M16.1 + M16.2 (2026-06-08)
+located that cost precisely:** the 1-block dispatch floor is ~5.6 µs/launch, but
+per-launch cost **scales with grid size** (GPU workgroup scheduling) — real hot
+kernels launch thousands of blocks, which accounts for the ~20 µs/op residual. It is
+**not** host/Python (M14.dispatch.1 removed Python → parity), **not** arg-marshaling,
+and **not** graph-removable. So the lever is **fewer/larger kernels (M16.3)**, not a
+native loop (M16.2, parity) or graphs (M16.5, neutral). llama.cpp's low `C_B` comes
+from its kernel structure + low D2H/sync, which is the *shape* to copy.
 
 ### The C_B budget (what "≤2" requires)
 
@@ -1348,7 +1350,7 @@ fall to **≤ 18 ms** — a ~2.1× cut. A concrete decomposition target:
 
 | Term | now | target | how |
 |---|---:|---:|---|
-| host residual (launch submission) | 19.4 ms | **~5 ms** | native tight launch loop (M16.2) → ~5.3 ms HIP floor at 941 nodes; then launch count → ~300 for less. (M16.1: a HIP graph is *neutral* vs a native loop, so graphs are not the lever.) |
+| host residual (launch submission) | 19.4 ms | **~5 ms** | **launch count → ~300 (M16.3 fewer/larger kernels)** is the only lever. M16.2 showed the per-launch residual is GPU workgroup-scheduling (scales with grid; not host/Python/args), so a native loop is *parity* and a graph is *neutral* (≤1.13×). The residual is ~941 launches × (5.6 µs floor + grid-dispatch); cutting launches is the only way down. |
 | kernel time (B+1 rows) | 18.5 ms | **~12 ms** | finish weight-amortization + larger fused kernels |
 | → verify window | 37.9 ms | **~17 ms** | → `C_3 ≈ 1.9` |
 
@@ -1380,7 +1382,7 @@ higher-B root-branch tree (the oracle's 100%-in-top-8 head) carries the win.
 | # | Track | First concrete step / acceptance gate | Why it can reach ≤2 |
 |---|---|---|---|
 | **M16.1** | **Isolate the ROCm graph-replay per-node cost** ✅ **Done 2026-06-08 — see result below.** | `scripts/graph_node_microbench.py`: trivial fixed-arg one-block kernels issued back-to-back from a C loop (zero Python per-node), same burst captured into one graph + replayed in steady state; µs/node graph vs direct, N∈{50…2000}. | **Resolved (not 2–5 nor 20):** the clean per-node floor is **~5.6 µs/node** and a HIP graph is **1.00×** vs a native launch loop. Graphs don't beat a native loop (the floor is GPU dispatch). → program is **native loop (M16.2) + fewer/larger kernels (M16.3/M16.4); graphs (M16.5) de-prioritized.** |
-| **M16.2** | **Native C++ verify hot loop** (the hipfire shape) | Move the whole 40-layer verify forward into one native translation unit called once per cycle (extend M14.dispatch.1 from MoE-only to the full layer stack), with persistent fixed-address scratch. Gate: exact-AR + cycle wall vs Python orchestration. | Removes all per-kernel Python boundaries and makes the cycle a single capturable native call → enables one clean graph (M16.1) and removes host-side launch gaps. This is exactly hipfire's "native hot loop + persistent scratch" that achieves low `C_B` on gfx1100. |
+| **M16.2** | ~~Native C++ verify hot loop~~ **(predicted PARITY by the M16.2 arg/grid probe — do NOT build) ❌ 2026-06-08** | Was: move the whole 40-layer verify forward into one native TU. | **Disproven as a lever.** The launch residual is GPU command-processor *workgroup-scheduling* (scales with grid size; ~12–20 µs/op for the real kernels' thousand-block grids), which is host-language-independent (M14.dispatch.1 removed Python → parity), arg-count-independent, and graph-neutral. A native loop calls the same `hipLaunchKernelGGL` with the same grids → it cannot reduce this. See the M16.2 result block. Pivot to M16.3. |
 | **M16.3** | **Structural launch-count reduction (megakernels, not op-pairs)** | Fuse a whole MoE op (router→gate_up→silu→down→combine) and a whole attention block into single kernels, sized for the B+1 verifier rows. Gate: exact-AR (bit-exact RED) + launches/pass 941 → ≤ ~400 with flat-or-lower kernel time. | The only fusion class that beats the occupancy/redundancy walls. At ~300–400 launches even ROCm's current per-launch cost gives a ~6 ms residual. |
 | **M16.4** | **Finish weight-amortization of the kernel half** | Land the exact small-batch W4 multi-row GEMV for the prefill-style sites (`shared_gate_up`, `single_full_v`, `single_linear_out`; the `shared_dense_w4` 6.58 ms bucket), matching AR's rows==1 numerics so it survives exact-AR (M15.2's marlin-multi-row was bit-exact-per-row but argmax-fragile — the fix is matching the verifier *input*, or a numerics-compatible kernel). Gate: exact-AR 9-prompt + kernel ms/pass down. | Drives kernel time toward ~flat-in-B, the other ~6 ms of the budget. |
 | **M16.5** | ~~Re-enable graph buckets after M16.2/M16.3~~ **(de-prioritized by M16.1)** | Per `(B+1, kv_bucket)` capture/replay. Gate: ≥X% `C_B` improvement on an exact row. | **M16.1 showed a HIP graph is 1.00× vs a native launch loop**, so graphs add ~nothing over M16.2. Keep the capture infra landed/opt-in, but do not invest here for `C_B` — revisit only if a future ROCm exposes cheaper graph dispatch. |
@@ -1407,33 +1409,83 @@ the *same* C burst is captured into **one HIP graph** and replayed in steady sta
    is GPU-side dispatch; graphs only remove *host* issue cost, which a tight native
    C loop already removes. This re-confirms M12.1/M13.D's "graph neutral" verdict in
    clean isolation and explains *why*.
-3. **Residual decomposition.** The full verify-path residual is ~20.6 µs/op
-   (19.4 ms / 941, B=3). Subtracting the 5.6 µs floor leaves **~15 µs/op (~73%) of
-   host-side per-op overhead** — Python/ctypes marshaling + per-op pointer/bucket
-   setup that a fixed-arg native burst does not pay. A micro-bench-tight native
-   verify loop (M16.2: baked launch sequence, persistent fixed-address scratch)
-   should collapse the residual toward the **~5.3 ms HIP floor at 941 nodes**.
-   *Caveat:* M14.dispatch.1's partial MoE dispatcher measured parity, so M16.2 must
-   match this burst's tightness (no per-op state rebuild) to realize the floor — a
-   half-native dispatcher that still reassembles pointers per op will stay at parity.
+3. **Residual decomposition — CORRECTED by the M16.2 probe (2026-06-08).** This
+   block originally inferred the ~15 µs/op gap above the 1-block floor was "host-side
+   per-op overhead a native loop removes." **That inference was wrong.** The M16.2
+   follow-up (arg-count + grid-size probes, below) shows the gap is GPU
+   *workgroup-scheduling* that scales with grid size — the 1-block micro-bench
+   underestimated real-kernel dispatch because real hot kernels launch thousands of
+   blocks. The gap is **not** Python (M14.dispatch.1 removed Python → parity) and
+   **not** arg-marshaling. So a native verify loop (M16.2) does **not** collapse the
+   residual; **fewer/larger kernels (M16.3)** is the lever. See the M16.2 result block.
 4. Going **below** ~5.3 ms requires **fewer nodes** (M16.3 structural megakernels;
    each removed node saves ~5.6 µs) and lower kernel time (M16.4) — not graphs.
 
 Artifact: `benchmarks/results/2026-06-08-hipengine-m16.1-graph-node-replay-microbench.json`.
 
+### M16.2 result — the launch residual is GPU workgroup-scheduling, so a native loop is PARITY (2026-06-08, measured)
+
+M16.2 was "build a native C++ verify loop to remove host/Python per-op overhead."
+Before building a multi-thousand-line 40-layer C forward, the load-bearing premise
+was tested cheaply by extending `scripts/graph_node_microbench.py` with (a) a
+16-arg kernel (`--kernels tiny,wide`) and (b) a forced grid-size sweep
+(`--grid-sweep`). W7900/gfx1100, require-cached, 80 reps. **The premise was disproven.**
+
+**Arg count is irrelevant.** A 2-arg vs 16-arg kernel are identical: direct `5.62`
+vs `5.62` µs/launch at N=941, graph `1.00×` for both. So the per-launch cost is not
+argument marshaling.
+
+**Per-launch cost scales with GRID SIZE (workgroup count), and graphs barely help:**
+
+| grid blocks | direct µs/launch | graph µs/launch | graph vs direct |
+|---:|---:|---:|---:|
+| 1 | 5.63 | 5.61 | 1.00× |
+| 128 | 5.62 | 5.61 | 1.00× |
+| 1024 | 7.27 | 6.47 | 1.12× |
+| 2048 | 7.97 | 7.08 | 1.13× |
+| 8192 | 12.19 | 11.28 | 1.08× |
+| 65536 | 51.40 | 50.48 | 1.02× |
+
+The hot W4 GEMV launches `dim3(out_packed, rows)` = thousands of blocks (e.g.
+`512 × 4 = 2048` for a hidden-4096 B+1 projection; more for gate_up). At ~2048
+blocks the dispatch is ~8 µs/launch, at ~8192 ~12 µs — exactly matching the real
+path's ~12–20 µs/op residual. So **the launch residual is GPU command-processor
+workgroup scheduling**, exposed because the trivial kernels drain instantly.
+
+**Why M16.2 (native loop) is PARITY** — three independent lines of evidence:
+1. **M14.dispatch.1** already bundled ~13 ctypes calls into 1 per MoE layer
+   (removed the Python boundary for ~480 launches/pass) and measured **parity**
+   (cycle_cost off `3.707` / on `3.696`). Removing Python doesn't help.
+2. **Arg count is irrelevant** (above) — so it isn't ctypes/marshaling either.
+3. **The cost scales with grid and is graph-neutral** (above) — it is GPU-side
+   workgroup dispatch. A native loop issues the **same** `hipLaunchKernelGGL` with
+   the **same** grids, so it pays the **same** dispatch. Predicted parity, and not
+   worth the 40-layer exact-AR rewrite risk.
+
+**Consequence for the M16 program.** The only lever for the launch residual is
+**M16.3 (fewer, larger kernels)**: each fused kernel removes a full dispatch
+payment, and more compute-per-launch lets the GPU hide dispatch behind compute.
+Graphs (M16.5) stay de-prioritized (≤1.13× even at large grids). M16.2 is closed
+as predicted-parity. Artifact:
+`benchmarks/results/2026-06-08-hipengine-m16.2-launch-cost-arg-grid-scaling.json`.
+
 ### Sequencing logic
 
-1. **M16.1 is done (2026-06-08) and resolved the strategy** — see the result block
-   below. The clean floor is **~5.6 µs/node** and a HIP graph is **neutral** vs a
-   native launch loop (1.00×). Neither branch of the original dichotomy held: it is
-   not 2–5 µs *because graphs help* (graphs don't beat a native loop), nor a 20 µs
-   hardware wall (the floor is 5.6 µs). The program is therefore **M16.2 native
-   loop FIRST** (collapses the ~15 µs/op host overhead toward the ~5.3 ms HIP floor
-   at 941 nodes), then **M16.3 + M16.4** to cut node count and kernel time below the
-   floor; **M16.5 graphs are de-prioritized** (no win over the native loop).
-2. hipfire is the proof of feasibility on gfx1100; when in doubt, copy its runtime
-   shape (native hot loop, persistent fixed-address scratch, batched verify,
-   captured graph) — not its non-exact acceptance policy (see the 2026-06-02 audit).
+1. **M16.1 + M16.2 are done (2026-06-08) and resolved the strategy** — see both
+   result blocks below. M16.1 found the clean 1-block floor is **~5.6 µs/node** and a
+   HIP graph is **neutral** (1.00×). M16.2 then probed arg count + grid size and
+   **corrected M16.1's over-optimistic native-loop read**: per-launch cost is
+   arg-independent but **scales with grid size** (GPU workgroup scheduling), so the
+   real ~20 µs/op residual is command-processor-bound, not host/Python. With
+   M14.dispatch.1's Python-removal parity, that means **a native loop (M16.2) is
+   PARITY and graphs (M16.5) are neutral**. The program is therefore **M16.3
+   (fewer/larger kernels) FIRST** as the sole launch-residual lever, then **M16.4**
+   for kernel time. M16.2 and M16.5 are closed/de-prioritized.
+2. hipfire's low `C_B` on gfx1100 therefore comes from **fewer/larger kernels +
+   less D2H/sync**, not from a native hot loop *per se* (the loop language is
+   parity here) — copy its kernel structure, not the assumption that re-hosting the
+   loop in C/C++ is itself the win. Do not copy its non-exact acceptance policy
+   (see the 2026-06-02 audit).
 3. Every track keeps the exact-AR gate; `C_B` improvements are only retained with a
    recorded economics artifact and the bit-exact RED tests that M15 established.
 

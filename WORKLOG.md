@@ -25946,3 +25946,42 @@ docs/MTP.md (M16.1 result block + tracks/sequencing/budget updates), benchmarks/
 results/2026-06-08-hipengine-m16.1-graph-node-replay-microbench.json, benchmarks/
 README.md, benchmarks/CHANGELOG.md. Diagnostic micro-bench (noop kernel, no
 KVLiveSpans/registry); no correctness gate applies. Next: M16.2 (task #41).
+
+## 2026-06-08 measure(mtp): M16.2 — native verify loop predicted PARITY (arg+grid scaling)
+
+Task #41 was "build a native C++ 40-layer verify loop to remove host/Python per-op
+overhead." Before a multi-thousand-line, exact-AR-risky rewrite, I tested the
+load-bearing premise (extending the M16.1 micro-bench), because the existing
+M14.dispatch.1 evidence (MoE C-dispatcher = PARITY: cycle_cost off 3.707 / on 3.696)
+was a strong prior that M16.2 would also be parity.
+
+Two probes added to scripts/graph_node_microbench.py (+ .hip):
+1. 16-arg kernel (--kernels tiny,wide): does per-launch cost scale with ARG COUNT?
+2. forced grid-size sweep (--grid-sweep): does it scale with GRID SIZE?
+
+W7900 GPU0, require-cached, 80 reps. Results:
+- arg count irrelevant: tiny(2-arg) 5.62 = wide(16-arg) 5.62 us/launch at N=941,
+  graph 1.00x for both.
+- grid size IS the variable: 1blk 5.63, 128 5.62, 1024 7.27, 2048 7.97, 8192 12.19,
+  65536 51.40 us/launch; graph replay only 1.02-1.13x even at large grids.
+
+Real hot W4 GEMV launches dim3(out_packed, rows) = thousands of blocks (e.g. 512x4
+=2048 for a hidden-4096 B+1 projection). At ~2048 blocks dispatch is ~8us, at ~8192
+~12us -- matching the real path's ~12-20us/op residual. So the launch residual is
+GPU command-processor WORKGROUP SCHEDULING, exposed because trivial kernels drain
+instantly.
+
+CONCLUSION (3 independent lines): (1) M14.dispatch.1 removed Python -> parity;
+(2) arg count irrelevant -> not marshaling; (3) cost scales with grid + graph-neutral
+-> GPU-side dispatch. A native loop (M16.2) issues the SAME hipLaunchKernelGGL with
+the SAME grids -> predicted PARITY, not worth the 40-layer exact-AR rewrite. Graphs
+(M16.5) neutral (<=1.13x). The ONLY launch-residual lever is M16.3 (fewer/larger
+kernels: fewer dispatch payments + more compute-per-launch to hide dispatch), then
+M16.4 (kernel time). This also CORRECTS M16.1's over-optimistic "native loop is the
+lever" read (the 1-block micro-bench underestimated real-kernel grid dispatch).
+
+Task #41 NOT built (left open): M16.2's mechanism is disproven; recommend re-scope
+to M16.3 (#42) as the priority. Files: scripts/graph_node_microbench.py + .hip,
+benchmarks/results/2026-06-08-hipengine-m16.2-launch-cost-arg-grid-scaling.json,
+docs/MTP.md (M16.2 result block + M16.1 correction + tracks/budget/sequencing),
+benchmarks/README.md, benchmarks/CHANGELOG.md. Diagnostic; no correctness gate.
