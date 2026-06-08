@@ -3600,24 +3600,34 @@ levers" above and
       decode tok/s up. Evidence:
       `benchmarks/results/2026-06-07-hipengine-qwen35-decode-host-trim-485/`
       (c8 192->230 tok/s +19.9%, c4 +15.9%, c2 +14.7%, c1 unaffected).
-- [ ] **C3.0b Wire c-aware (c>1) decode graph replay. >>> NOW THE TOP
-      CONCURRENCY PRIORITY (C3.0c landed but is bandwidth-only; this is the
-      dispatch-count lever the c>1 regime is actually bound by).** Make the
-      native batch decode step device-resident (device
-      token feedback via `batch_lm_out_index`, on-device position/context
-      advance, persistent device block tables/spans), then capture/replay like
-      the c=1 `capture_decode_graph` path. Acceptance:
-      `graph_bucket_stats.replay_kernel_hits>0`, generated tokens unchanged
-      (byte-identical / teacher-forced KL/top-1 green), decode tok/s up.
-      Sequencing: C3.0c (output-tiled GEMM) is now DONE (kernels landed,
-      kill-switch-gated), so the c>1 decode kernel set is settled — capture the
-      decode graph against the current stream. Scoped 2026-06-07 (pieces A device-token-fed batch
-      embedding, B batch sampler device argmax write, C on-device batch
-      position/context advance, D span capacity baked for the replay span,
-      E `_step_batch_from_device_tokens` + `capture_batch_decode_graph`).
-      Measured headroom is bounded: c=1 is only ~37% GPU-utilized *with* graph
-      replay on (clean c=1 delta +21.6% at 512 ctx), so this removes host-side
-      per-dispatch latency, not the per-dispatch device overhead C3.0c targets.
+- [x] **C3.0b Wire c-aware (c>1) decode graph replay — LANDED, correctness
+      GREEN; throughput small/neutral (the regime is device-dispatch-bound, as
+      the bounded-headroom note predicted).** The native batch decode step is
+      now device-resident (token feedback via `batch_lm_out_index`, device
+      batched LM-head argmax, on-stream `advance_decode_positions_i64`,
+      persistent per-`(rows,slots)` block tables + segment metadata), and
+      `capture_batch_decode_graph` / `Qwen35ParoBatchDecodeGraph` capture one
+      step and replay it per token like the c=1 path.
+      *Result (2026-06-08).* Replayed tokens **byte-identical to the eager
+      device-resident reference at c2/c4/c8** (`scripts/qwen35_batch_decode_graph_smoke.py`,
+      two fresh sessions because PARO linear-attn recurrent state advances each
+      step); eager-default and device-resident `native_batch_vs_independent_c1`
+      stay green (0 mismatches, c4/c8). Back-to-back replay vs eager (decode 32,
+      single-run): c2 +1.5%, c4 +2.0%, c8 −0.5% — small/neutral, because the
+      eager device-resident path is already host-lean after C3.0a + C3.0b-1, so
+      replay only removes residual host-side per-dispatch launch latency, not
+      the per-dispatch **device** overhead the c>1 regime is bound by (matches
+      the c=1 ~37%-GPU-utilized finding and C3.0c's null bandwidth result).
+      Pieces delivered: C3.0b-1 persistent segment metadata (cu_seqlens/state),
+      A device-token-fed batch embedding (`_set_batch_token_embeddings_from_ptr`),
+      B device batched-LM-head argmax write (`_write_batch_next_tokens_device`),
+      C/E `_step_batch_from_device_tokens` (+ `step_batch_native device_resident`
+      mode + `--device-resident-decode`), D `capture_batch_decode_graph`.
+      *Follow-ups (deferred, lower priority):* multi-rep retained-bench replay
+      throughput medians (the device-resident decode path can now feed a
+      replay-driven retained row); longer-context / ≥1024-ctx split-K capture
+      (current gate is <1024 non-split); device-resident per-step token
+      recording kernel to drop the replay_collect host readback.
 - [~] **C3.0c Output-column-tiled c>1 GEMM kernel family — DONE for the dense
       pack8 projections (single+dual), but a NULL end-to-end throughput result
       (the regime is dispatch-bound, not bandwidth-bound — see Result below).**
