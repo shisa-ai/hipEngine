@@ -2091,6 +2091,7 @@ def run_same_session_pair(
     drafter_query_mode: str = "block",
     draft_top_k: int = 1,
     draft_p_min: float = 0.0,
+    whole_cycle_gate: float = 0.0,
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
     adaptive_probe_amortization_tokens: int = 128,
@@ -2223,6 +2224,7 @@ def run_same_session_pair(
                 tree_mode=routed_tree_mode,
                 tree_top_k=tree_top_k,
                 draft_p_min=draft_p_min,
+                whole_cycle_gate=whole_cycle_gate,
                 canonical_commit_mode=routed_canonical_commit_mode,
                 roctx=roctx,
                 rocprof_selected_region=rocprof_selected_region,
@@ -2254,6 +2256,7 @@ def _run_dflash_chain_on_session(
     tree_mode: str = "chain",
     tree_top_k: int = 1,
     draft_p_min: float = 0.0,
+    whole_cycle_gate: float = 0.0,
     canonical_commit_mode: str = "replay",
     roctx: _Roctx | None = None,
     rocprof_selected_region: str = "none",
@@ -2274,6 +2277,15 @@ def _run_dflash_chain_on_session(
         raise ValueError("draft_p_min must be in [0, 1]")
     if draft_p_min > 0.0 and tree_mode != "chain":
         raise ValueError("draft_p_min is currently supported only for chain mode")
+    if whole_cycle_gate < 0.0 or whole_cycle_gate > 1.0:
+        raise ValueError("whole_cycle_gate must be in [0, 1]")
+    whole_cycle_gate_threshold = float(whole_cycle_gate)
+    _wc_env = os.environ.get("HIPENGINE_DFLASH_WHOLE_CYCLE_GATE")
+    if whole_cycle_gate_threshold <= 0.0 and _wc_env is not None and _wc_env.strip():
+        # Backward-compat: env var still activates the gate for artifact reproduction.
+        whole_cycle_gate_threshold = float(_wc_env)
+    if whole_cycle_gate_threshold > 0.0 and tree_mode != "chain":
+        raise ValueError("whole_cycle_gate is currently supported only for chain mode")
     t0 = time.perf_counter()
     next_result = None
     for pos, token in enumerate(prompt_ids):
@@ -2425,13 +2437,12 @@ def _run_dflash_chain_on_session(
             draft_nodes_this_cycle = int(compiled_tree.active_count)
             tree_active_nodes_total += draft_nodes_this_cycle
         else:
-            _wc_gate = os.environ.get("HIPENGINE_DFLASH_WHOLE_CYCLE_GATE")
-            if _wc_gate is not None and _wc_gate.strip():
+            if whole_cycle_gate_threshold > 0.0:
                 # Whole-cycle confidence gate (deployable): keep the FULL chain
                 # when the drafter's depth-1 confidence is high, else drop to AR
                 # (active_budget=0 -> verify root only). No mid-chain truncation.
                 _p0 = float(draft.top1_probabilities[0]) if draft.top1_probabilities else 1.0
-                if _p0 < float(_wc_gate):
+                if _p0 < whole_cycle_gate_threshold:
                     active_budget = 0
                     confidence_limited = True
                     confidence_limited_cycles += 1
@@ -2800,6 +2811,7 @@ def _run_dflash_chain_on_session(
         "tree_top_k": int(tree_top_k),
         "draft_top_k": int(drafter.draft_top_k),
         "draft_p_min": float(draft_p_min),
+        "whole_cycle_gate": float(whole_cycle_gate_threshold),
         "terminal_ar_tokens": int(terminal_ar_tokens),
         "terminal_ar_cycles": int(terminal_ar_cycles),
         "drafter_query_mode": drafter.query_mode,
@@ -2967,6 +2979,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "draft_budget": 0 if profile_route == "ar" else budget,
             "topk": 0 if profile_route == "ar" else draft_top_k,
             "draft_p_min": spec_meta.get("draft_p_min"),
+            "whole_cycle_gate": spec_meta.get("whole_cycle_gate"),
             "tree_mode": tree_mode,
             "tree_budget": budget if verify_mode == "verify_tree" else None,
             "profile_route": profile_route or None,
@@ -3010,6 +3023,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "tree_top_k": spec_meta.get("tree_top_k"),
             "draft_top_k": spec_meta.get("draft_top_k"),
             "draft_p_min": spec_meta.get("draft_p_min"),
+            "whole_cycle_gate": spec_meta.get("whole_cycle_gate"),
             "terminal_ar_tokens": spec_meta.get("terminal_ar_tokens"),
             "terminal_ar_cycles": spec_meta.get("terminal_ar_cycles"),
             "drafter_query_mode": spec_meta.get("drafter_query_mode"),
@@ -3102,6 +3116,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tree-top-k", type=int, default=2, help="Top-K per drafter depth row for --tree-mode branching_topk (1..8; ignored by chain modes)")
     parser.add_argument("--draft-top-k", type=int, default=1, help="Top-K readback per DFlash chain draft row (1..8). Use >=2 with --draft-p-min")
     parser.add_argument("--draft-p-min", type=float, default=0.0, help="Optional chain draft confidence floor. Stops verification at the first top-1 probability below this value")
+    parser.add_argument("--whole-cycle-gate", type=float, default=0.0, help="Deployable whole-cycle confidence gate threshold in (0,1]. When the drafter depth-1 top-1 probability is below this value the cycle drops to plain AR (verify root only) instead of running the chain; no mid-chain truncation. Requires --tree-mode chain and --draft-top-k >= 2, and is mutually exclusive with --draft-p-min. Overrides HIPENGINE_DFLASH_WHOLE_CYCLE_GATE when > 0")
     parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
     parser.add_argument("--drafter-fusion", choices=("off", "qkv"), default="off", help="Enable prototype DFlash drafter kernel fusions; qkv fuses query-side Q/K/V projections with unfused fallback available")
     parser.add_argument(
@@ -3229,6 +3244,15 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--draft-p-min currently supports --tree-mode chain only")
         if args.draft_top_k < 2:
             raise ValueError("--draft-p-min requires --draft-top-k >= 2")
+    if args.whole_cycle_gate < 0.0 or args.whole_cycle_gate > 1.0:
+        raise ValueError("--whole-cycle-gate must be in [0, 1]")
+    if args.whole_cycle_gate > 0.0:
+        if args.tree_mode != "chain":
+            raise ValueError("--whole-cycle-gate currently supports --tree-mode chain only")
+        if args.draft_top_k < 2:
+            raise ValueError("--whole-cycle-gate requires --draft-top-k >= 2")
+        if args.draft_p_min > 0.0:
+            raise ValueError("--whole-cycle-gate and --draft-p-min are mutually exclusive")
     if args.tree_mode in {"chain_as_tree", "branching_topk"} and args.verifier_mode != "native_bulk_bplus1":
         raise ValueError("tree modes require --verifier-mode native_bulk_bplus1")
     compiler_version = args.compiler_version_file.read_text(encoding="utf-8") if args.compiler_version_file else None
@@ -3289,6 +3313,7 @@ def main(argv: list[str] | None = None) -> int:
                 drafter_query_mode=args.drafter_query_mode,
                 draft_top_k=args.draft_top_k,
                 draft_p_min=args.draft_p_min,
+                whole_cycle_gate=args.whole_cycle_gate,
                 adaptive_budget_mode=args.adaptive_budget,
                 adaptive_min_remaining_tokens=args.adaptive_min_remaining_tokens,
                 adaptive_probe_amortization_tokens=args.adaptive_probe_amortization_tokens,
@@ -3356,6 +3381,7 @@ def main(argv: list[str] | None = None) -> int:
             "tree_top_k": args.tree_top_k if args.tree_mode == "branching_topk" else 1,
             "draft_top_k": args.tree_top_k if args.tree_mode == "branching_topk" else args.draft_top_k,
             "draft_p_min": args.draft_p_min,
+            "whole_cycle_gate": args.whole_cycle_gate,
             "tree_compiler": "balanced_breadth_first_depth_topk" if args.tree_mode == "branching_topk" else None,
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
             "drafter_graph_mode": args.drafter_graph,

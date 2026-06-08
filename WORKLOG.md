@@ -25873,3 +25873,35 @@ Tracks (cheapest-diagnostic first):
 Known facts not to re-litigate: Python/ctypes isn't the bottleneck (C-dispatcher
 parity, M14.dispatch.1); pairwise fusion can't reach <=2 (occupancy/redundancy).
 Docs-only; no code change.
+
+## 2026-06-08 chore(dflash): promote whole-cycle confidence gate to a CLI flag
+
+Productionization step for the deployable DFlash gate (task #45, minor cleanup
+slice). The whole-cycle confidence gate was env-only
+(HIPENGINE_DFLASH_WHOLE_CYCLE_GATE); promoted it to a first-class CLI flag
+`--whole-cycle-gate <thr>` in scripts/dflash_chain_e2e_bench.py.
+
+Plumbing: new arg -> run_same_session_pair -> _run_dflash_chain_on_session, with
+the same validation as --draft-p-min (in [0,1]; requires --tree-mode chain +
+--draft-top-k 2; mutually exclusive with --draft-p-min). Resolution at the
+function top: explicit flag (>0) wins; if the flag is at its 0.0 default and the
+env var is set, the env var still activates the gate (backward-compat for
+reproducing the committed gate artifact). The loop now reads a precomputed
+`whole_cycle_gate_threshold` instead of os.environ per cycle. Surfaced the
+resolved threshold in the artifact `workload.whole_cycle_gate` (next to
+draft_p_min, the convention for gate knobs; the compacted measurements.rows[]
+schema-strips both, same as draft_p_min).
+
+Validation (W7900 GPU0, 35B PARO packed MTP target + z-lab DFlash, require-cached
+build, no env var set so the flag alone drives the gate):
+- `--whole-cycle-gate 0.90`, 2 prompts D48: all_exact_match_ar=true,
+  target_verify_rows_per_output_token=1.31 (vs ~5 ungated B=4) -> gate active.
+- `--whole-cycle-gate 0.90`, 1 prompt D24: all_exact_match_ar=true,
+  workload.whole_cycle_gate=0.9 recorded. Metric of the retained 9-prompt row is
+  unchanged (still 1.147x exact @0.90); this is a tooling/mechanism change only,
+  not a new perf claim, so no new artifact -- README row mechanism + follow-up
+  text and a CHANGELOG [tooling] one-liner updated instead.
+
+Files: scripts/dflash_chain_e2e_bench.py, docs/DFLASH.md, benchmarks/README.md,
+benchmarks/CHANGELOG.md. Remaining #45 follow-ups: engine DFlash decode API
+integration; online threshold auto-calibration.

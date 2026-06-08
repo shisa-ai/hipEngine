@@ -395,11 +395,16 @@ accepted count. W7900, 27B PARO + z-lab DFlash, 9-prompt D64 (161 cycles):
 `p1∈[0.9,0.97]`, **1.00** for `p1≥0.97`. The cheap drafter confidence is a strong,
 deployable acceptance predictor.
 
-**Whole-cycle gate.** `HIPENGINE_DFLASH_WHOLE_CYCLE_GATE=thr`: if the drafter's
-depth-1 `p1 < thr`, drop the whole cycle to AR (verify root only); else run the
-full chain. This is a *whole-cycle* decision — unlike `--draft-p-min`, which
-truncates the chain mid-stream (cutting good deeper drafts; it measured `0.92x`
-at `p_min=0.8`, worse than all-chain).
+**Whole-cycle gate.** `--whole-cycle-gate thr` (CLI flag; env
+`HIPENGINE_DFLASH_WHOLE_CYCLE_GATE=thr` retained as a backward-compat override for
+artifact reproduction): if the drafter's depth-1 `p1 < thr`, drop the whole cycle
+to AR (verify root only); else run the full chain. This is a *whole-cycle*
+decision — unlike `--draft-p-min`, which truncates the chain mid-stream (cutting
+good deeper drafts; it measured `0.92x` at `p_min=0.8`, worse than all-chain).
+The flag requires `--tree-mode chain --draft-top-k 2` and is mutually exclusive
+with `--draft-p-min`; the resolved threshold is recorded in the artifact
+`workload.whole_cycle_gate`. When both the flag (`>0`) and env are set, the flag
+wins.
 
 W7900, 27B 9-prompt D64, exact `9/9` on every row:
 
@@ -416,9 +421,13 @@ is **fully online and exact** — the first deployable >1.10x exact DFlash row o
 this lane. Threshold is per-model/suite (clean-separation point ~0.9 here),
 calibrated from the oracle. Artifact:
 [`2026-06-08-hipengine-dflash-deployable-confidence-gate.json`](../benchmarks/results/2026-06-08-hipengine-dflash-deployable-confidence-gate.json).
-Follow-ups: promote the env gate to a CLI flag and into the engine DFlash decode
-API; combine with terminal-AR-tail and per-prompt budget levers; revisit
-threshold auto-calibration (a short warmup window to set `thr` online).
+**Promoted to a CLI flag (2026-06-08).** The env gate is now the first-class
+`--whole-cycle-gate` flag (exact-AR re-verified on a 1–2 prompt smoke after the
+promotion; the env var still activates the gate when the flag is left at its `0.0`
+default). Remaining follow-ups: wire it into the engine DFlash decode API;
+threshold auto-calibration (a short warmup window to set `thr` online from the
+oracle's clean-separation point); optionally combine with terminal-AR-tail and
+per-prompt budget levers toward the offline `1.35x` ceiling.
 
 ### 2026-06-02 hipfire replication, exactness audit, and importable lessons
 
