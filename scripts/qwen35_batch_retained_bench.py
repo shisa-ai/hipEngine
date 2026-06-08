@@ -3726,6 +3726,7 @@ def _decode_scheduler_step_native(
     kv_storage_dtype: str = "bf16",
     layer_plan: str = "all",
     scheduler_metadata: dict[str, Any] | None = None,
+    device_resident: bool = False,
 ) -> tuple[int, bool]:
     work = scheduler.next_decode_work(
         kv_storage_dtype=kv_storage_dtype,
@@ -3753,6 +3754,7 @@ def _decode_scheduler_step_native(
         positions=[scheduler.active_batch.requests[request_id].context_len for request_id in request_ids],
         slots=slots,
         sample=True,
+        device_resident=device_resident,
     )
     generated: list[GeneratedToken] = []
     for request_id, result in zip(request_ids, results, strict=True):
@@ -3776,6 +3778,7 @@ def _run_native_bench(
     compiler_version: str | None,
     require_cached_build: bool,
     kv_policy: ResolvedKVPolicy,
+    device_resident: bool = False,
 ) -> dict[str, Any]:
     batch_size = len(prompts)
     prompt_lengths = {len(prompt) for prompt in prompts}
@@ -3857,6 +3860,7 @@ def _run_native_bench(
                 kv_storage_dtype=kv_policy.storage_dtype.value,
                 layer_plan=f"max_layers={int(max_layers)}",
                 scheduler_metadata=scheduler_metadata,
+                device_resident=device_resident,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
             warmup_step_seconds.append(time.perf_counter() - step_start)
@@ -3874,6 +3878,7 @@ def _run_native_bench(
                 kv_storage_dtype=kv_policy.storage_dtype.value,
                 layer_plan=f"max_layers={int(max_layers)}",
                 scheduler_metadata=scheduler_metadata,
+                device_resident=device_resident,
             )
             scheduler_metadata["decode_native_steps"] += int(native)
             measured_step_seconds.append(time.perf_counter() - step_start)
@@ -4988,6 +4993,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--skip-generated-equality", action="store_true")
     parser.add_argument(
+        "--device-resident-decode",
+        action="store_true",
+        help=(
+            "Drive native c>N decode through the device-resident step "
+            "(C3.0b pieces A+B+C: token feedback via batch_lm_out_index, device "
+            "batched LM-head argmax) instead of host-fed step_batch_native. "
+            "Used to gate the capture-ready decode path against independent c1."
+        ),
+    )
+    parser.add_argument(
         "--batch-prefill-linear-path",
         choices=("packed_segments", "per_segment"),
         default="packed_segments",
@@ -5293,6 +5308,7 @@ def main(argv: list[str] | None = None) -> int:
         compiler_version=compiler_version,
         require_cached_build=args.require_cached_build,
         kv_policy=kv_policy,
+        device_resident=bool(getattr(args, "device_resident_decode", False)),
     )
     if projection_dispatch_candidates is not None:
         bench["projection_dispatch_candidates"] = projection_dispatch_candidates

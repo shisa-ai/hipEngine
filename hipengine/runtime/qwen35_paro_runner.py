@@ -42,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsno
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
+    advance_decode_positions_i64,
     embedding_lookup_batch_bf16_i64,
     embedding_lookup_batch_fp16_i64,
     embedding_lookup_batch_mapped_bf16_i64,
@@ -1520,8 +1521,16 @@ class Qwen35ParoResidentSession:
         positions: list[int] | tuple[int, ...],
         slots: list[int] | tuple[int, ...] | None = None,
         sample: bool = True,
+        device_resident: bool = False,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
         """Run one decode token per active row through native c-aware layer kernels.
+
+        When ``device_resident`` is set the step reads its input tokens from the
+        device ``batch_lm_out_index`` buffer, gathers embeddings, runs the layer
+        kernels, and writes the next-token argmax back to ``batch_lm_out_index``
+        with no host token list or sampler readback on the compute path
+        (C3.0b pieces A+B+C) -- the capture-ready decode step.  The eager driver
+        seeds the token buffer and reads the result back for parity testing.
 
         This retained bring-up path runs compact active rows while addressing
         retained KV/linear state through explicit physical slot ids.  Full-
@@ -1558,6 +1567,29 @@ class Qwen35ParoResidentSession:
             raise NotImplementedError("native c>N decode currently requires slots in physical-slot order")
         for position in pos:
             self._check_position(position)
+        if device_resident:
+            if not sample:
+                raise NotImplementedError("device-resident native c>N decode requires sampling")
+            # Seed the device next-token buffer with this step's input tokens,
+            # run the fully device-resident step (pieces A+B), and read the
+            # produced tokens back.  Eager callers re-set positions each step,
+            # so the device position/context counters are not self-advanced.
+            token_arr = np.asarray(tokens, dtype=np.int64)
+            copy_host_to_device(
+                DeviceBuffer(self.batch_lm_out_index.ptr, rows * DType.INT64.itemsize),
+                host_array_ptr(token_arr),
+                token_arr.nbytes,
+                runtime=self.runtime,
+            )
+            self._set_batch_positions(pos, stream=0)
+            self._step_batch_from_device_tokens(
+                rows=rows,
+                positions=pos,
+                slots=slot_ids,
+                advance_positions=False,
+                stream=0,
+            )
+            return self._read_batch_next_tokens(rows=rows)
         self._set_batch_token_embeddings(tokens, stream=0)
         self._set_batch_positions(pos, stream=0)
         hidden = self._run_layers_batch_decode(rows=rows, positions=pos, slots=slot_ids, stream=0)
@@ -7199,6 +7231,142 @@ class Qwen35ParoResidentSession:
         fence["host_reads"] = int(fence["host_reads"]) + step_host_reads
         fence["last_step"] = {"step_index": step_index, "rows": int(rows), "host_reads": step_host_reads}
         return dict(fence)
+
+    def _step_batch_from_device_tokens(
+        self,
+        *,
+        rows: int,
+        positions: tuple[int, ...],
+        slots: tuple[int, ...],
+        advance_positions: bool,
+        stream: int = 0,
+    ) -> None:
+        """Run one device-resident c>1 decode step (C3.0b pieces A+B+C).
+
+        The next-token ids are read straight from ``batch_lm_out_index``
+        (device), gathered into batch embeddings (piece A), passed through the
+        c-aware layer kernels, and the resulting hidden is projected + argmaxed
+        back into ``batch_lm_out_index`` (piece B) -- all device-resident, with
+        no host token list or sampler readback on the compute path.  When
+        ``advance_positions`` is set the device decode position/context counters
+        are incremented on-stream (piece C) so a captured graph can self-advance
+        across replays; eager callers that re-set positions per step pass
+        ``advance_positions=False``.
+        """
+
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if rows > self.max_batch_size:
+            raise ValueError("rows exceed max_batch_size")
+        self._set_batch_token_embeddings_from_ptr(self.batch_lm_out_index.ptr, rows=rows, stream=stream)
+        hidden = self._run_layers_batch_decode(rows=rows, positions=positions, slots=slots, stream=stream)
+        self._write_batch_next_tokens_device(hidden, rows=rows, stream=stream)
+        if advance_positions:
+            advance_decode_positions_i64(
+                self.position_buf.ptr,
+                self.context_buf.ptr,
+                rows,
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+
+    def _read_batch_next_tokens(self, *, rows: int) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
+        """Read the device-resident next-token argmax back into host step results.
+
+        Used by the eager ``device_resident`` driver to materialize the tokens a
+        captured graph would otherwise leave device-resident; not part of the
+        capture region.
+        """
+
+        self.runtime.device_synchronize()
+        index_host = np.empty((rows,), dtype=np.int64)
+        value_host = np.empty((rows,), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(index_host),
+            DeviceBuffer(self.batch_lm_out_index.ptr, rows * DType.INT64.itemsize),
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(value_host),
+            DeviceBuffer(self.batch_lm_out_value.ptr, rows * DType.FP32.itemsize),
+            runtime=self.runtime,
+        )
+        return tuple(
+            Qwen35ParoAutoregressiveStepResult(
+                token_id=int(index_host[row]),
+                token_text=_decode_token_cached(self.tokenizer, int(index_host[row])),
+                logit=float(value_host[row]),
+            )
+            for row in range(rows)
+        )
+
+    def _write_batch_next_tokens_device(self, hidden: Tensor, *, rows: int, stream: int = 0) -> None:
+        """Device-resident batched LM-head -> argmax into ``batch_lm_out_index``.
+
+        C3.0b piece B.  Runs the token-determining core of the row-aware
+        ``batched_lm_head`` sampler -- batch final RMSNorm -> fp16->bf16 cast ->
+        w8a16 LM-head projection -> batch argmax -- writing the next-token id of
+        each active row into ``batch_lm_out_index`` (and its value into
+        ``batch_lm_out_value``) with **no** host synchronize or device->host
+        copy.  This is exactly the kernel sequence the eager
+        :meth:`_sample_batch_from_hidden` batched path executes before its
+        host readback; the readback plus the stabilize/audit fences are
+        eager-only diagnostics that do not affect the argmax result.  Because
+        nothing leaves the device, the write is safe to capture inside a c>1
+        decode graph and feeds straight back into
+        :meth:`_set_batch_token_embeddings_from_ptr` for the next step.
+        """
+
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if rows > self.max_batch_size:
+            raise ValueError("rows exceed max_batch_size")
+        paro_rmsnorm_out_fp16(
+            hidden.ptr,
+            self.norm_weight.tensor.ptr,
+            self.batch_norm_out.ptr,
+            rows,
+            self.config.hidden_size,
+            self.config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries["norm"],
+            runtime=self.runtime,
+        )
+        fp16_to_bf16(
+            self.batch_norm_out.ptr,
+            self.batch_norm_out_bf16.ptr,
+            rows * self.config.hidden_size,
+            stream=stream,
+            library=self.libraries["cast"],
+            runtime=self.runtime,
+        )
+        w8a16_linear_bf16_f32_out(
+            self.batch_norm_out_bf16.ptr,
+            self.lm_head_weight.tensor.ptr,
+            self.lm_head_scale.tensor.ptr,
+            self.batch_lm_logits.ptr,
+            rows,
+            self.config.hidden_size,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            stream=stream,
+            library=self.libraries["w8a16"],
+            runtime=self.runtime,
+        )
+        batch_argmax_f32(
+            self.batch_lm_logits.ptr,
+            self.batch_lm_block_values.ptr,
+            self.batch_lm_block_indices.ptr,
+            self.batch_lm_out_index.ptr,
+            self.batch_lm_out_value.ptr,
+            rows,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            stream=stream,
+            library=self.libraries["lm_head"],
+            runtime=self.runtime,
+        )
 
     def _sample_batch_from_hidden(self, hidden: Tensor, *, rows: int, stream: int = 0) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
         if rows <= 0:
