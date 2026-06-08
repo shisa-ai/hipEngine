@@ -1402,12 +1402,12 @@ def test_qwen35_resident_step_batch_native_rejects_invalid_sparse_slots(monkeypa
 def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.blocks = 3
-    session.prefill_block_table_buf = DeviceBuffer(0x1000, 2 * 3 * DType.INT32.itemsize)
     session.position_buf = DeviceBuffer(0x2000, 2 * DType.INT64.itemsize)
     session.context_buf = DeviceBuffer(0x3000, 2 * DType.INT64.itemsize)
     session.device = Device("hip", 0)
     session.kv_storage_dtype = DType.BF16
     session.runtime = object()
+    session.buffers = []
     captured: list[np.ndarray] = []
 
     def fake_host_array_ptr(array):
@@ -1417,8 +1417,14 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     def fake_copy_host_to_device(*args, **kwargs):
         return None
 
+    # The per-(rows, slots) block-table cache mallocs a dedicated decode buffer
+    # the first time a key is seen (capture-safety: no per-step copy thrash).
+    def fake_malloc(nbytes, *, runtime=None):
+        return DeviceBuffer(0x7000, int(nbytes))
+
     monkeypatch.setattr(runner_module, "host_array_ptr", fake_host_array_ptr)
     monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(runner_module, "malloc", fake_malloc)
 
     position_tensor, append_spans, decode_spans = session._batch_full_spans(
         0,
@@ -1430,8 +1436,8 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     assert len(captured) == 1
     assert np.array_equal(captured[0], np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32))
     assert position_tensor.ptr == 0x2000
-    assert append_spans.base_offsets.ptr == 0x1000
-    assert decode_spans.base_offsets.ptr == 0x1000
+    assert append_spans.base_offsets.ptr == 0x7000
+    assert decode_spans.base_offsets.ptr == 0x7000
     assert append_spans.max_live_count == 6
     assert decode_spans.max_live_count == 7
     assert session._last_batch_full_spans_metadata == {
@@ -1448,6 +1454,15 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
         "block_table_rows": [[0, 1, 2], [3, 4, 5]],
         "storage_dtype": "bf16",
     }
+    # Second call with the same (rows, slots) key reuses the cached buffer
+    # without an additional host->device copy (no new block-table build).
+    second_position, second_append, second_decode = session._batch_full_spans(
+        0, rows=2, positions=(7, 8), slots=(0, 2)
+    )
+    assert len(captured) == 1
+    assert second_append.base_offsets.ptr == 0x7000
+    assert second_decode.base_offsets.ptr == 0x7000
+    assert second_append.max_live_count == 8
 
 
 def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context() -> None:
