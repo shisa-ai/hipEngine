@@ -3839,15 +3839,40 @@ class Qwen35ParoResidentSession:
         rows: int,
         slots: tuple[int, ...],
     ) -> tuple[Tensor, Tensor, tuple[DeviceBuffer, ...]]:
-        cu_arr = np.arange(rows + 1, dtype=np.int32)
-        state_arr = np.asarray(slots, dtype=np.int64)
-        cu_buf = malloc(cu_arr.nbytes, runtime=self.runtime)
-        state_buf = malloc(state_arr.nbytes, runtime=self.runtime)
-        copy_host_to_device(cu_buf, host_array_ptr(cu_arr), runtime=self.runtime)
-        copy_host_to_device(state_buf, host_array_ptr(state_arr), runtime=self.runtime)
-        cu = Tensor.from_handle(cu_buf.ptr, cu_arr.shape, DType.INT32, self.device)
-        state_indices = Tensor.from_handle(state_buf.ptr, state_arr.shape, DType.INT64, self.device)
-        return cu, state_indices, (cu_buf, state_buf)
+        # cu_seqlens (arange(rows+1)) and state_indices (physical slot ids)
+        # depend only on (rows, slots) and are identical across every decode
+        # step for a fixed active batch.  Persist them in dedicated device
+        # buffers and skip the per-step malloc/free + host->device copies when
+        # the (rows, slots) key is unchanged.  This removes the last per-step
+        # device allocation from the batch layer pass -- a capture-safety
+        # prerequisite for c>1 decode graph replay (C3.0b) and an eager
+        # host-overhead trim -- mirroring the cached full-attention block table
+        # in _batch_full_spans.  The third return element is retained as an
+        # (empty) buffer tuple so the call site's release loop is a no-op.
+        seg_key = (int(rows),) + tuple(int(slot) for slot in slots)
+        if getattr(self, "_decode_segment_metadata_key", None) != seg_key:
+            cu_arr = np.arange(rows + 1, dtype=np.int32)
+            state_arr = np.asarray(slots, dtype=np.int64)
+            cu_capacity = int(self.max_batch_size + 1) * DType.INT32.itemsize
+            cu_buf = getattr(self, "_decode_segment_cu_buf", None)
+            if cu_buf is None or cu_buf.nbytes < cu_capacity:
+                cu_buf = malloc(cu_capacity, runtime=self.runtime)
+                self.buffers.append(cu_buf)
+                self._decode_segment_cu_buf = cu_buf
+            state_capacity = int(self.max_batch_size) * DType.INT64.itemsize
+            state_buf = getattr(self, "_decode_segment_state_buf", None)
+            if state_buf is None or state_buf.nbytes < state_capacity:
+                state_buf = malloc(state_capacity, runtime=self.runtime)
+                self.buffers.append(state_buf)
+                self._decode_segment_state_buf = state_buf
+            copy_host_to_device(cu_buf, host_array_ptr(cu_arr), cu_arr.nbytes, runtime=self.runtime)
+            copy_host_to_device(state_buf, host_array_ptr(state_arr), state_arr.nbytes, runtime=self.runtime)
+            self._decode_segment_cu_tensor = Tensor.from_handle(cu_buf.ptr, cu_arr.shape, DType.INT32, self.device)
+            self._decode_segment_state_tensor = Tensor.from_handle(
+                state_buf.ptr, state_arr.shape, DType.INT64, self.device
+            )
+            self._decode_segment_metadata_key = seg_key
+        return self._decode_segment_cu_tensor, self._decode_segment_state_tensor, ()
 
     def _batch_full_spans(
         self,
