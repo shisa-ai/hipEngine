@@ -1598,6 +1598,115 @@ class Qwen35ParoResidentSession:
             return tuple(None for _ in tokens)
         return self._sample_batch_from_hidden(hidden, rows=rows)
 
+    def capture_batch_decode_graph(
+        self,
+        *,
+        rows: int,
+        positions: list[int] | tuple[int, ...],
+        slots: list[int] | tuple[int, ...] | None = None,
+        max_replay_steps: int,
+    ) -> "Qwen35ParoBatchDecodeGraph":
+        """Capture one device-resident c>1 decode step for HIP-graph replay (C3.0b piece D).
+
+        The captured step reads its input tokens from ``batch_lm_out_index``,
+        runs the c-aware layer kernels, writes the next-token argmax back to
+        ``batch_lm_out_index``, and advances the device decode position/context
+        counters on-stream -- so replaying the single captured graph walks the
+        decode forward with no host involvement on the compute path.
+
+        The full-attention span capacity (``max_live_count`` / ``max_context_len``)
+        is baked for the *last* replay step (``start + max_replay_steps - 1``)
+        while the device ``live_counts`` (``position_buf``/``context_buf``) start
+        at ``positions`` and advance each replay; the batch decode kernels read
+        the live count from the device pointer and use the baked count only as a
+        static upper bound, and full attention uses the session-wide
+        ``max_splits`` so no per-step split recompute is needed.
+
+        The caller must have already exercised the eager device-resident path at
+        these ``(rows, slots)`` (e.g. a warmup decode) so every scratch buffer
+        and the segment/block-table caches are allocated -- HIP graph capture
+        forbids ``hipMalloc``/``hipFree`` on the capturing stream.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if not _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"):
+            raise NotImplementedError(
+                "native c>N decode graph replay is experimental; set "
+                "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1"
+            )
+        if self.kv_storage_dtype != DType.BF16:
+            raise NotImplementedError("native c>N decode graph replay currently requires BF16 KV")
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if rows > self.max_batch_size:
+            raise ValueError("rows exceed max_batch_size")
+        if int(max_replay_steps) <= 0:
+            raise ValueError("max_replay_steps must be positive")
+        start_positions = tuple(int(position) for position in positions)
+        if len(start_positions) != rows:
+            raise ValueError("positions must have the same length as rows")
+        slot_ids = tuple(range(rows)) if slots is None else tuple(int(slot) for slot in slots)
+        if len(slot_ids) != rows:
+            raise ValueError("slots must have the same length as rows")
+        if len(set(slot_ids)) != len(slot_ids):
+            raise ValueError("native c>N decode slots must be unique")
+        if tuple(sorted(slot_ids)) != slot_ids:
+            raise NotImplementedError("native c>N decode requires slots in physical-slot order")
+        replay_span = int(max_replay_steps)
+        capacity_positions = tuple(position + replay_span - 1 for position in start_positions)
+        for position in start_positions:
+            self._check_position(position)
+        for position in capacity_positions:
+            self._check_position(position)
+        stream = self.runtime.stream_create()
+        graph = 0
+        try:
+            # Seed the device decode counters to the real start positions before
+            # capture (this runs, not captured); the captured advance walks them
+            # forward each replay.
+            self._set_batch_positions(start_positions, stream=stream)
+            self.runtime.stream_synchronize(stream)
+            self.runtime.stream_begin_capture(stream)
+            try:
+                self._step_batch_from_device_tokens(
+                    rows=rows,
+                    positions=capacity_positions,
+                    slots=slot_ids,
+                    advance_positions=True,
+                    stream=stream,
+                )
+                graph = self.runtime.stream_end_capture(stream)
+            except Exception:
+                try:
+                    self.runtime.stream_end_capture(stream)
+                except Exception:
+                    pass
+                raise
+            graph_exec = self.runtime.graph_instantiate(graph)
+        except Exception:
+            if graph:
+                try:
+                    self.runtime.graph_destroy(graph)
+                except Exception:
+                    pass
+            self.runtime.stream_destroy(stream)
+            raise
+        # Capture does not execute, so the device counters are still at start;
+        # reset explicitly for clarity so the first replay begins at start.
+        self._set_batch_positions(start_positions, stream=stream)
+        self.runtime.stream_synchronize(stream)
+        return Qwen35ParoBatchDecodeGraph(
+            session=self,
+            graph=graph,
+            graph_exec=graph_exec,
+            stream=stream,
+            rows=rows,
+            slots=slot_ids,
+            start_positions=start_positions,
+            max_replay_steps=replay_span,
+        )
+
     def native_prefill_plan(self) -> Qwen35ParoNativePrefillPlan:
         """Return the native prefill coverage currently available for this session."""
 
@@ -3921,12 +4030,23 @@ class Qwen35ParoResidentSession:
         # moving retained KV cache pages after reclaim/compaction.
         #
         # The block table depends only on (rows, slots); it is identical across
-        # every decode step for a fixed active batch.  Cache it in a dedicated
-        # decode-only device buffer and skip the host build + synchronous
-        # host->device copy when the (rows, slots) key is unchanged.  This
-        # removes one synchronous copy per full-attention layer per decode step.
+        # every decode step for a fixed active batch.  Cache one persistent
+        # decode-only device buffer *per distinct (rows, slots) key* so the host
+        # build + synchronous host->device copy happens once per key and never
+        # repeats on the decode hot path.  A single-key cache thrashed under the
+        # row-chunked full-attention path (which calls this with several
+        # (chunk_rows, chunk_slots) within one step) -- re-copying every call,
+        # which is both wasteful eagerly and *fatal under HIP graph capture*
+        # (a host->device copy on a capturing stream is illegal).  Keying per
+        # config means that once the eager warmup has touched every chunk key,
+        # capture performs no allocation or copy.
         slots_key = (int(rows),) + tuple(int(slot) for slot in slots)
-        if getattr(self, "_decode_full_block_table_key", None) != slots_key:
+        block_cache = getattr(self, "_decode_full_block_table_cache", None)
+        if block_cache is None:
+            block_cache = {}
+            self._decode_full_block_table_cache = block_cache
+        block_entry = block_cache.get(slots_key)
+        if block_entry is None:
             logical_blocks = np.arange(self.blocks, dtype=np.int32)
             block_rows = np.empty((rows, self.blocks), dtype=np.int32)
             for row, slot in enumerate(slots):
@@ -3934,20 +4054,17 @@ class Qwen35ParoResidentSession:
                 if delta_blocks < 0:
                     raise ValueError("batch full-attention slots must be in physical-slot order")
                 block_rows[row] = logical_blocks + np.int32(delta_blocks)
-            copy_host_to_device(
-                self.prefill_block_table_buf,
-                host_array_ptr(block_rows),
-                block_rows.nbytes,
-                runtime=self.runtime,
-            )
-            self._decode_full_block_table_key = slots_key
-            self._decode_full_block_rows_list = block_rows.astype(np.int32, copy=False).tolist()
-        block_table = Tensor.from_handle(
-            self.prefill_block_table_buf.ptr,
-            (rows, self.blocks),
-            DType.INT32,
-            self.device,
-        )
+            block_buf = malloc(int(block_rows.nbytes), runtime=self.runtime)
+            self.buffers.append(block_buf)
+            copy_host_to_device(block_buf, host_array_ptr(block_rows), block_rows.nbytes, runtime=self.runtime)
+            block_entry = {
+                "buf": block_buf,
+                "block_table": Tensor.from_handle(block_buf.ptr, (rows, self.blocks), DType.INT32, self.device),
+                "block_rows_list": block_rows.astype(np.int32, copy=False).tolist(),
+            }
+            block_cache[slots_key] = block_entry
+        block_table = block_entry["block_table"]
+        self._decode_full_block_rows_list = block_entry["block_rows_list"]
         position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)
         context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
         append_live_counts = [int(position) for position in positions]
@@ -7837,6 +7954,112 @@ class Qwen35ParoDecodeGraph:
             self.generated = None
 
     def __enter__(self) -> "Qwen35ParoDecodeGraph":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+@dataclass
+class Qwen35ParoBatchDecodeGraph:
+    """Replayable HIP graph for one device-resident c>1 decode step (C3.0b piece D).
+
+    A single captured step is replayed once per generated token: it reads the
+    input tokens from ``batch_lm_out_index``, runs the c-aware layers, writes the
+    next-token argmax back to ``batch_lm_out_index``, and advances the device
+    decode position/context counters.  ``seed_tokens`` primes the first input,
+    ``reset_positions`` rewinds the device counters to the captured start, and
+    ``replay``/``replay_collect`` drive the launches.
+    """
+
+    session: "Qwen35ParoResidentSession"
+    graph: int
+    graph_exec: int
+    stream: int
+    rows: int
+    slots: tuple[int, ...]
+    start_positions: tuple[int, ...]
+    max_replay_steps: int
+    launches: int = 0
+    closed: bool = False
+
+    def seed_tokens(self, token_ids: Sequence[int]) -> None:
+        """Write the first replay step's input tokens into ``batch_lm_out_index``."""
+
+        if self.closed:
+            raise RuntimeError("batch decode graph is closed")
+        tokens = np.asarray([int(token) for token in token_ids], dtype=np.int64)
+        if tokens.size != self.rows:
+            raise ValueError("seed token count must match rows")
+        copy_host_to_device(
+            DeviceBuffer(self.session.batch_lm_out_index.ptr, self.rows * DType.INT64.itemsize),
+            host_array_ptr(tokens),
+            tokens.nbytes,
+            runtime=self.session.runtime,
+        )
+
+    def reset_positions(self) -> None:
+        """Rewind the device decode counters to the captured start positions."""
+
+        if self.closed:
+            raise RuntimeError("batch decode graph is closed")
+        self.session._set_batch_positions(self.start_positions, stream=self.stream)
+        self.session.runtime.stream_synchronize(self.stream)
+
+    def replay(self, steps: int) -> None:
+        """Replay ``steps`` decode tokens back-to-back, syncing once at the end."""
+
+        if self.closed:
+            raise RuntimeError("batch decode graph is closed")
+        if steps < 0:
+            raise ValueError("steps must be non-negative")
+        if steps > self.max_replay_steps:
+            raise ValueError("steps exceed captured max_replay_steps")
+        for _ in range(steps):
+            self.session.runtime.graph_launch(self.graph_exec, self.stream)
+            self.launches += 1
+        self.session.runtime.stream_synchronize(self.stream)
+
+    def step_tokens(self) -> list[int]:
+        """Read the current device next-token ids (one per active row)."""
+
+        if self.closed:
+            raise RuntimeError("batch decode graph is closed")
+        host = np.empty((self.rows,), dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(host),
+            DeviceBuffer(self.session.batch_lm_out_index.ptr, self.rows * DType.INT64.itemsize),
+            runtime=self.session.runtime,
+        )
+        return [int(item) for item in host.tolist()]
+
+    def replay_collect(self, steps: int) -> list[list[int]]:
+        """Replay ``steps`` tokens one launch at a time, collecting each step's row tokens."""
+
+        if self.closed:
+            raise RuntimeError("batch decode graph is closed")
+        if steps < 0:
+            raise ValueError("steps must be non-negative")
+        if steps > self.max_replay_steps:
+            raise ValueError("steps exceed captured max_replay_steps")
+        collected: list[list[int]] = []
+        for _ in range(steps):
+            self.session.runtime.graph_launch(self.graph_exec, self.stream)
+            self.launches += 1
+            self.session.runtime.stream_synchronize(self.stream)
+            collected.append(self.step_tokens())
+        return collected
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.session.runtime.graph_exec_destroy(self.graph_exec)
+        self.session.runtime.graph_destroy(self.graph)
+        if self.stream:
+            self.session.runtime.stream_destroy(self.stream)
+
+    def __enter__(self) -> "Qwen35ParoBatchDecodeGraph":
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
