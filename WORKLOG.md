@@ -76757,3 +76757,46 @@ Conclusion: stable block-id audit is eliminated with concrete c=8 artifact evide
 - **`qwen35_paro_runner.py`** (the hard one): the initial blind line-union concatenated ours' `_allocate_common_buffers` verify-buffer block into main's `_allocate_full_attention_cache` (→ `AttributeError: no attribute 'runtime'`, 8 resident tests red). **Re-resolved via a deterministic semantic per-method 3-way merge** (module header + per-class preamble + per-method `git merge-file`, main's order as skeleton + ours' 40 DFlash-only methods appended + ours' 3 new top-level units). Result: `Qwen35ParoResidentSession` carries BOTH feature sets (178 methods = union), no duplicate methods, verify buffers back in `_allocate_common_buffers`. py_compile + import clean.
 - **Stale dispatch unit tests** (pre-existing red on BOTH parents — feature defaults drifted past the asserted baseline): `tests/test_qwen35_decode_state.py` — pinned output-tiled (`_PACK8_OUTPUT_TILED_ROWS=∅`), multi-row (`HIPENGINE_W4_MULTI_ROW_PACK8=0`), and small-batch (`HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=1`) off per-test so the asserted baseline orchestration is deterministic (variants covered by their own byte/bit-exact kernel tests); fixed `free_releases_workspace` count 37→38 (always-reserved `shared_rotate_fuse_barrier`); fixed `projects_linear_qkv_z_fp16_batch_gemv` threads 64→128 (the kernel default the code actually passes). `tests/test_qwen35_resident_batch_layout.py` grouped-scratch fixture gained the new `shared_rotate_fuse_barrier` field.
 - **Validation**: 2009 tests collect clean; `test_qwen35_decode_state.py` 60/60; `test_qwen35_resident_batch_layout.py` full green; broad plan/runtime/spec batch green; merged-kernel correctness gates green. WORKLOG/CHANGELOG/README/source_lineage/KERNELS unioned; no conflict markers in any staged file.
+
+## 2026-06-09 fix(verify): restore dedicated B+1 verifier trunk buffers (merge regression)
+
+The `origin/main` merge (8b7c763b) silently broke the DFlash chain verifier:
+`verify_chain_bulk_and_commit` hung indefinitely (GPU pegged at 100%, host
+blocked on the first sync). Surfaced as a 9h "smoke" that never completed.
+
+**Root cause.** The semantic 3-way merge of `_allocate_common_buffers` took
+main's version, which replaced ours' EAGER dedicated `prefill_hidden` /
+`prefill_next_hidden` pair (two distinct buffers sized at
+`prefill_capacity_rows`) with main's LAZY scheme: a single, growable
+`prefill_hidden` whose `prefill_next_hidden` aliases it, sized to the last
+decode step's row count (e.g. 1). But ours' verifier forward
+(`_launch_verify_chain_forward_accept`) writes the B+1-row trunk straight into
+`self.prefill_hidden.ptr` and ping-pongs `prefill_hidden`/`prefill_next_hidden`
+as two DISTINCT buffers across the 40-layer stack. So the very first op (the
+batch embedding) wrote `rows*hidden` (e.g. 4*4096) into a 1-row buffer ->
+out-of-bounds write -> GPU page-fault stall -> indefinite hang. The verifier
+orchestration methods were byte-identical to ours' parent; only the buffer
+backing was wrong.
+
+**Diagnosis.** AR forward / native proposer / output-tiled byte-exact gate all
+fast; localized via a phase-timed harness (every phase fast except the first
+`verify_chain_bulk_and_commit`), then `HIP_LAUNCH_BLOCKING=1`+`AMD_LOG_LEVEL=3`
+showed `embedding_lookup_batch_*_i64_kernel` as the lone dispatch with no
+return. Kernel body is loop-free (cannot spin) -> fault from a bad/undersized
+output buffer. Confirmed `state.hip`/metadata byte-identical across the merge;
+isolated to `_allocate_common_buffers` (ours eager pair -> main lazy single).
+
+**Fix.** Added `_allocate_verify_trunk_buffers()` — two DISTINCT device buffers
+each sized for `prefill_capacity_rows` — exposed as
+`verify_trunk_hidden` / `verify_trunk_next_hidden`, kept fully separate from
+main's lazy `prefill_hidden` (untouched, still used by the c>1 batch-decode
+step path via local views). Repointed the 3 verifier-trunk references in
+`_launch_verify_chain_forward_accept`.
+
+**Validation.** Repro `verify_chain_bulk_and_commit`: hang -> 0.058s. Full
+chain smoke (persistent_device, W7900/gfx1100, decode-tokens=8, B=3):
+`exact_ar_match: true` (mtp tokens byte-identical to AR), status passed, 7
+cycles in 0.32s (~46 ms/cycle). New synthetic regression test
+`test_qwen35_resident_verify_trunk_is_distinct_full_capacity_pair` (distinct
+ptrs + full-capacity sizing) + `test_qwen35_decode_state.py` 60/60 +
+`test_qwen35_resident_batch_layout.py` full green. Unblocks M16.x measurement.

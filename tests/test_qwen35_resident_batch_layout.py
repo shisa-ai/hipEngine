@@ -156,6 +156,49 @@ def test_qwen35_resident_prefill_hidden_buffer_is_lazy_single_buffer() -> None:
     assert session.prefill_next_hidden.ptr == 0
 
 
+def test_qwen35_resident_verify_trunk_is_distinct_full_capacity_pair() -> None:
+    # Regression: the origin/main merge replaced ours' eager, dedicated verifier
+    # trunk with main's lazy single (self-aliased) `prefill_hidden` buffer sized
+    # to the last decode step's row count.  The B+1-row chain verifier forward
+    # then wrote out of bounds -> GPU fault -> indefinite hang.  The verifier
+    # trunk must be two DISTINCT buffers, each sized for prefill_capacity_rows.
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.config = SimpleNamespace(hidden_size=8)
+    session.prefill_capacity_rows = 4
+    session.prefill_hidden_nbytes = session.prefill_capacity_rows * 8 * DType.FP16.itemsize
+    session.buffers = []
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.next_ptr = 0x9000
+            self.mallocs: list[tuple[int, int]] = []
+
+        def malloc(self, nbytes: int) -> int:
+            ptr = self.next_ptr
+            self.next_ptr += max(int(nbytes), 1) + 0x100
+            self.mallocs.append((ptr, int(nbytes)))
+            return ptr
+
+        def free(self, ptr: int) -> None:  # pragma: no cover - not exercised here
+            pass
+
+    runtime = FakeRuntime()
+    session.runtime = runtime
+
+    session._allocate_verify_trunk_buffers()
+
+    # Two distinct device allocations, each at the full verifier-row capacity.
+    assert len(runtime.mallocs) == 2
+    assert all(nbytes == session.prefill_hidden_nbytes for _, nbytes in runtime.mallocs)
+    assert session.verify_trunk_hidden.ptr != session.verify_trunk_next_hidden.ptr
+    assert session.verify_trunk_hidden.shape == (4, 8)
+    assert session.verify_trunk_next_hidden.shape == (4, 8)
+    # Both buffers are tracked for teardown.
+    assert len(session.buffers) == 2
+
+
 def test_qwen35_resident_release_decode_scratch_for_prefill_frees_state_workspaces() -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.linear_scratch = {0: object()}

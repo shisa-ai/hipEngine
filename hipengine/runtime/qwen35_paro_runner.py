@@ -6075,6 +6075,32 @@ class Qwen35ParoResidentSession:
         self.prefill_hidden_capacity_rows = 0
         self._set_empty_prefill_hidden_views()
 
+    def _allocate_verify_trunk_buffers(self) -> None:
+        """Allocate the DFlash chain verifier's dedicated trunk hidden pair.
+
+        ``_launch_verify_chain_forward_accept`` writes the B+1-row verifier
+        trunk into ``verify_trunk_hidden`` and ping-pongs it against
+        ``verify_trunk_next_hidden`` across the layer stack, so the two must be
+        DISTINCT device buffers, each sized for the full verifier-row capacity
+        (``prefill_capacity_rows``).
+
+        This is deliberately separate from main's lazy ``prefill_hidden`` (a
+        single, growable, self-aliased buffer sized to the last decode step's
+        row count): reusing ``prefill_hidden`` for the verifier forward writes
+        out of bounds and faults/hangs the GPU.  Regression covered by
+        ``tests/test_qwen35_resident_batch_layout.py``.
+        """
+        verify_trunk_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
+        verify_trunk_next_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
+        self.buffers.extend((verify_trunk_hidden_buf, verify_trunk_next_hidden_buf))
+        trunk_shape = (self.prefill_capacity_rows, self.config.hidden_size)
+        self.verify_trunk_hidden = Tensor.from_handle(
+            verify_trunk_hidden_buf.ptr, trunk_shape, DType.FP16, self.device
+        )
+        self.verify_trunk_next_hidden = Tensor.from_handle(
+            verify_trunk_next_hidden_buf.ptr, trunk_shape, DType.FP16, self.device
+        )
+
     def _allocate_common_buffers(self) -> None:
         hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         next_hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
@@ -6090,6 +6116,11 @@ class Qwen35ParoResidentSession:
         self.norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
         self.norm_out_bf16 = Tensor.from_handle(norm_out_bf16_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
         self._set_empty_prefill_hidden_views()
+        # Merge fix: ours' DFlash chain verifier needs a dedicated, distinct,
+        # full-capacity trunk hidden pair -- it must NOT share main's lazy,
+        # 1-row, self-aliased `prefill_hidden` (out-of-bounds verifier write ->
+        # GPU fault/hang).  See `_allocate_verify_trunk_buffers`.
+        self._allocate_verify_trunk_buffers()
 
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
         prefill_block_table_arr = np.tile(block_table_arr, (self.prefill_capacity_rows, 1))
@@ -8858,7 +8889,7 @@ class Qwen35ParoResidentSession:
         embedding_lookup_batch_fp16_i64(
             self.embedding.tensor.ptr,
             self.verify_token_ids_i64.ptr,
-            self.prefill_hidden.ptr,
+            self.verify_trunk_hidden.ptr,
             rows,
             self.config.hidden_size,
             self.vocab_size,
@@ -8866,8 +8897,8 @@ class Qwen35ParoResidentSession:
             library=self.libraries["runtime_state"],
             runtime=self.runtime,
         )
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        hidden = Tensor.from_handle(self.verify_trunk_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        next_hidden = Tensor.from_handle(self.verify_trunk_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         parent_rows = Tensor.from_handle(self.verify_parent_rows_i64.ptr, (rows,), DType.INT64, self.device)
         capture_offsets = {layer_id: idx for idx, layer_id in enumerate(capture_ids)}
         for layer_id, state in enumerate(self.states):
