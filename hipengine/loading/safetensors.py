@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from hipengine.loading.hf_cache import resolve_model_path
+
 _DTYPE_NBYTES = {
     "BOOL": 1,
     "U8": 1,
@@ -112,31 +114,6 @@ def discover_safetensor_shards(model_path: str | Path) -> tuple[Path, ...]:
     return tuple(shard.resolve() for shard in shards)
 
 
-def _resolve_hf_hub_path(model_path: str | Path) -> Path:
-    """Resolve a Hugging Face model ID to a local snapshot path.
-
-    Accepts filesystem paths (returned as-is) and HF-style model IDs like
-    ``z-lab/Qwen3.5-35B-A3B-PARO`` (resolved via ``huggingface_hub`` to the
-    local cache snapshot). Only locally-cached snapshots are used; this does
-    not download anything.
-    """
-
-    path = Path(model_path)
-    if path.exists():
-        return path
-    # Looks like an HF model ID (e.g. "org/model" or "model")
-    model_id = str(model_path)
-    try:
-        from huggingface_hub import snapshot_download
-
-        resolved = snapshot_download(model_id, local_files_only=True)
-        return Path(resolved)
-    except Exception:
-        pass
-    # Fall through — let the caller raise a clear error for a missing path
-    return path
-
-
 def _parse_safetensors_header(shard: Path) -> dict[str, dict]:
     """Parse the safetensors JSON header without opening the full file.
 
@@ -196,7 +173,7 @@ def read_tensor_storage_bytes(info: TensorInfo) -> bytes:
 
 
 def load_weight_index(model_path: str | Path) -> WeightIndex:
-    path = _resolve_hf_hub_path(model_path)
+    path = resolve_model_path(model_path)
     model_dir = path if path.is_dir() else path.parent
     config = read_config(model_dir)
     shards = discover_safetensor_shards(path)

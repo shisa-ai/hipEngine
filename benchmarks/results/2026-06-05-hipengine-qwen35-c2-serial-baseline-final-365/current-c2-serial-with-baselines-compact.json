@@ -1,0 +1,100 @@
+{
+  "batch_execution": {
+    "blockers": [],
+    "native_caware_decode": true
+  },
+  "decision_reason": "artifact_path must be a repo-relative path under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim; profiler trace was not captured with expected kernels present; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; profiler kernel names must include selected projection_dispatch candidate or variant; execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true; execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true; execution.batch_execution.decode_execution.sampler_execution.equality_rows must be an int; execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+  "decode_execution": {
+    "blockers": [],
+    "full_attention_context_decode_path": "native_batch",
+    "full_attention_decode_path": "native_batch",
+    "full_attention_row_chunk_size": null,
+    "full_attention_row_chunked_layers": null
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "label": "c2_serial_with_baselines_profiler_final_defaults",
+  "performance_claim": false,
+  "primitive_batch_correctness": {
+    "aa_passed": true,
+    "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json",
+    "attn_batch_vs_c1_max_abs": 0.0,
+    "passed": true,
+    "status": "loaded"
+  },
+  "profiler": {
+    "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-serial-profiler-312/summary.json",
+    "expected_kernel_fragments_present": true,
+    "expected_kernels_present": null,
+    "kernel_duration_categories_ns": null,
+    "source_artifact_path": null,
+    "status": "loaded",
+    "total_kernel_duration_ns": 4492258399,
+    "trace_dir": null,
+    "trace_file": "/tmp/hipengine-iter312-c2-serial-profiler/rocprof-c2/epyc/1116851_kernel_trace.csv",
+    "trace_files": null
+  },
+  "projection_dispatch": {
+    "blockers": [],
+    "evidence": {
+      "accepted": true,
+      "aggregate_vs_row_gemv": 1.081395195821912,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+      "per_request_vs_row_gemv": 1.081395195821912
+    },
+    "path": "benchmark_accepted_caware_projection",
+    "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+  },
+  "raw_json": "/tmp/hipengine-iter365-c2-final-baseline/c2-final-serial-with-baselines-profiler.json",
+  "raw_json_sha256": "abb0b571d76cd8ec0ffd50f2845a82003f7021696986b7551502e451d61b66fa",
+  "raw_json_size_bytes": 146907,
+  "raw_log": "/tmp/hipengine-iter365-c2-final-baseline/c2-final-serial-with-baselines-profiler.log",
+  "raw_log_sha256": "abb0b571d76cd8ec0ffd50f2845a82003f7021696986b7551502e451d61b66fa",
+  "raw_log_size_bytes": 146907,
+  "sampler_execution": {
+    "argmax_mode": "serial_per_row",
+    "blockers": [],
+    "final_cast_path": "serial_per_row",
+    "final_norm_path": "serial_per_row",
+    "mode": "serial_lm_head",
+    "native_row_aware_lm_head": false,
+    "requested_mode": "serial_lm_head",
+    "stabilize_cast_elems": 0
+  },
+  "scaling": {
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json",
+      "decode_tok_s_aggregate": 134.35835066115024,
+      "decode_tok_s_per_request": 134.35835066115024,
+      "status": "loaded"
+    },
+    "complete": true,
+    "native": {
+      "decode_tok_s_aggregate": 113.41853716695086,
+      "decode_tok_s_per_request": 56.70926858347543
+    },
+    "ratios": {
+      "aggregate_vs_c1": 0.8441495196155743,
+      "aggregate_vs_serial_bridge": 1.076653785881456,
+      "per_request_vs_c1": 0.42207475980778714,
+      "per_request_vs_serial_bridge": 1.076653785881456
+    },
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c2-serial-bridge-scaling.json",
+      "decode_tok_s_aggregate": 105.3435548681001,
+      "decode_tok_s_per_request": 52.67177743405005,
+      "status": "blocked"
+    }
+  },
+  "status": "blocked"
+}

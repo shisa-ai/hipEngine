@@ -1,0 +1,851 @@
+{
+  "artifacts": {
+    "compact_runs_and_diff": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-interleave-fix-411/compact-runs-and-diff.json",
+      "sha256": "9e081518aedc17ebf26be5587453a5451345946fcc18f336bf5645fdd140415a",
+      "size_bytes": 26999
+    },
+    "raw_active_verify": {
+      "active_default_green": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "786c18c3e1a9de10aceb3133f719edbfae3ce6c9e0f40fb04e8702dab5b2d0f8",
+        "size_bytes": 138438
+      }
+    },
+    "raw_hidden": {
+      "iter409_long_direct_interleaved_green": {
+        "path": "/tmp/hipengine-hidden-bisect-iter409-L40-c2-retained-default-interleaved-warm8-decode32-atol4e-3-focus1269.json",
+        "sha256": "a052b4bbd0da01ccd110a7ffaf6aaf30e4ab723eee7ad4030569b8eabe5d3933",
+        "size_bytes": 90529525
+      },
+      "iter410_direct_interleaved_green": {
+        "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-direct-interleaved-green-atol4e-3-focus1269.json",
+        "sha256": "97564094188712b21d498ee40b704907f2b3aba740b4861e3dfc0bc1189ae171",
+        "size_bytes": 7384897
+      },
+      "iter410_rowchunk1_same_flags_red_before_fix": {
+        "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.json",
+        "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+        "size_bytes": 18752608
+      },
+      "rowchunk1_interleave_l8_greencheck_after_fix": {
+        "path": "/tmp/hipengine-hidden-bisect-iter411-L8-c2-rowchunk1-interleave-flags-greencheck-atol4e-3-focus1269.json",
+        "sha256": "964808b79835f545aa815ac1b6d668c54ced4bb6deb9bd83f0200a12e13a5dfe",
+        "size_bytes": 7448002
+      },
+      "rowchunk1_interleave_l8_l40_green_after_fix": {
+        "path": "/tmp/hipengine-hidden-bisect-iter411-L8-L40-c2-rowchunk1-interleave-flags-atol4e-3-focus1269.json",
+        "sha256": "cafbc44dcf3f9381554ab85f385aa73c08907f8f0f146c5051e9fb7c1402c23b",
+        "size_bytes": 44127142
+      }
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-interleave-fix-411/summary.json"
+    }
+  },
+  "code_change": "Changed the diagnostic append+context interleave branch in hipengine/runtime/qwen35_paro.py so it validates and runs whenever force_per_row_append_context is set, including token-1 rowchunk calls, instead of silently bypassing the branch for tokens==1.",
+  "commands": {
+    "active_verify": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "rowchunk1_interleave_l8_l40_green_after_fix": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --batch-size 2 --decode-tokens 16 --max-layers 40 --layer-limits 8,40 --batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-attn-append-context-order interleaved --json /tmp/hipengine-hidden-bisect-iter411-L8-L40-c2-rowchunk1-interleave-flags-atol4e-3-focus1269.json"
+  },
+  "conclusion": "After the change, rowchunk1 with per-row KV append + per-row context + interleaved ordering is hidden/token green at L8 and L40. Before the change, the same flags under rowchunk1 were token-green/hidden-red. This proves the token-1 chunk bypass was the rowchunk1-specific problem and provides a row-bounded diagnostic path that exercises the same row-local append\u2192context ordering. The default no-flag c2 path remains native and generated-token green; this is not a retained throughput/scaling claim because the green path still uses diagnostic per-row append/context flags.",
+  "created_at": "2026-06-06T03:28:45.488664+00:00",
+  "git_commit_before_commit": "44623ad2767124181b8e087e49be358bfe9c3be2",
+  "guard": {
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      }
+    ]
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 411,
+  "kind": "c2_rowchunk1_interleave_tokens1_fix",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused C2.3 full-attention blocker green with artifact evidence after a small runtime diagnostic fix. Rowchunk1+same per-row append/context flags moved from hidden-red before the change to hidden/token green at L8 and L40 after the change; active default c2 verify remains [137,137] and no retained throughput/scaling claim is made.",
+    "passed": true
+  },
+  "result": {
+    "active_verify": {
+      "active_default_green": {
+        "correctness_passed": false,
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_context_decode_path": "native_batch",
+          "full_attention_decode_path": "native_batch",
+          "full_attention_kv_append_decode_path": "native_batch",
+          "native_caware_decode": true
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+          "sha256": "786c18c3e1a9de10aceb3133f719edbfae3ce6c9e0f40fb04e8702dab5b2d0f8",
+          "size_bytes": 138438
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+          "sha256": "786c18c3e1a9de10aceb3133f719edbfae3ce6c9e0f40fb04e8702dab5b2d0f8",
+          "size_bytes": 138438
+        },
+        "sampler_execution": {
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "serial_lm_head"
+        },
+        "status": "blocked"
+      }
+    },
+    "code_change": {
+      "diff": "diff --git a/hipengine/runtime/qwen35_paro.py b/hipengine/runtime/qwen35_paro.py\nindex 2d318970..b2f0abc5 100644\n--- a/hipengine/runtime/qwen35_paro.py\n+++ b/hipengine/runtime/qwen35_paro.py\n@@ -4614,9 +4614,9 @@ class Qwen35ParoDecodeState:\n                     stream,\n                 )\n             return moe_scratch.moe_out\n-        if force_per_row_append_context and tokens > 1 and not (force_per_row_kv_append and force_per_row_context):\n+        if force_per_row_append_context and not (force_per_row_kv_append and force_per_row_context):\n             raise ValueError(\"per-row append+context interleave requires per-row KV append and context diagnostics\")\n-        if force_per_row_append_context and tokens > 1:\n+        if force_per_row_append_context:\n             if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:\n                 raise ValueError(\"per_row_append_contexts must provide one key/value/span tuple per decode row\")\n             if per_row_contexts is None or len(per_row_contexts) != tokens:\n",
+      "excerpt_after": {
+        "end_line": 4663,
+        "lines": [
+          {
+            "line": 4614,
+            "text": "                    stream,"
+          },
+          {
+            "line": 4615,
+            "text": "                )"
+          },
+          {
+            "line": 4616,
+            "text": "            return moe_scratch.moe_out"
+          },
+          {
+            "line": 4617,
+            "text": "        if force_per_row_append_context and not (force_per_row_kv_append and force_per_row_context):"
+          },
+          {
+            "line": 4618,
+            "text": "            raise ValueError(\"per-row append+context interleave requires per-row KV append and context diagnostics\")"
+          },
+          {
+            "line": 4619,
+            "text": "        if force_per_row_append_context:"
+          },
+          {
+            "line": 4620,
+            "text": "            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:"
+          },
+          {
+            "line": 4621,
+            "text": "                raise ValueError(\"per_row_append_contexts must provide one key/value/span tuple per decode row\")"
+          },
+          {
+            "line": 4622,
+            "text": "            if per_row_contexts is None or len(per_row_contexts) != tokens:"
+          },
+          {
+            "line": 4623,
+            "text": "                raise ValueError(\"per_row_contexts must provide one key/value/span tuple per decode row\")"
+          },
+          {
+            "line": 4624,
+            "text": "            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate("
+          },
+          {
+            "line": 4625,
+            "text": "                zip(per_row_append_contexts, per_row_contexts, strict=True)"
+          },
+          {
+            "line": 4626,
+            "text": "            ):"
+          },
+          {
+            "line": 4627,
+            "text": "                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple"
+          },
+          {
+            "line": 4628,
+            "text": "                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:"
+          },
+          {
+            "line": 4629,
+            "text": "                    raise ValueError(\"per-row append/context diagnostics must use matching row cache views\")"
+          },
+          {
+            "line": 4630,
+            "text": "                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)"
+          },
+          {
+            "line": 4631,
+            "text": "                self.append_full_attention_kv_fp16("
+          },
+          {
+            "line": 4632,
+            "text": "                    row_scratch,"
+          },
+          {
+            "line": 4633,
+            "text": "                    key_cache=row_key_cache,"
+          },
+          {
+            "line": 4634,
+            "text": "                    value_cache=row_value_cache,"
+          },
+          {
+            "line": 4635,
+            "text": "                    spans=row_append_spans,"
+          },
+          {
+            "line": 4636,
+            "text": "                    block_size=block_size,"
+          },
+          {
+            "line": 4637,
+            "text": "                    library=library,"
+          },
+          {
+            "line": 4638,
+            "text": "                    stream=stream,"
+          },
+          {
+            "line": 4639,
+            "text": "                )"
+          },
+          {
+            "line": 4640,
+            "text": "                row_gate = self._row_tensor_view(gate, row)"
+          },
+          {
+            "line": 4641,
+            "text": "                self.decode_full_attention_context_gate_fp16("
+          },
+          {
+            "line": 4642,
+            "text": "                    row_scratch,"
+          },
+          {
+            "line": 4643,
+            "text": "                    key_cache=row_key_cache,"
+          },
+          {
+            "line": 4644,
+            "text": "                    value_cache=row_value_cache,"
+          },
+          {
+            "line": 4645,
+            "text": "                    spans=row_decode_spans,"
+          },
+          {
+            "line": 4646,
+            "text": "                    gate=row_gate,"
+          },
+          {
+            "line": 4647,
+            "text": "                    block_size=block_size,"
+          },
+          {
+            "line": 4648,
+            "text": "                    library=library,"
+          },
+          {
+            "line": 4649,
+            "text": "                    stream=stream,"
+          },
+          {
+            "line": 4650,
+            "text": "                )"
+          },
+          {
+            "line": 4651,
+            "text": "                row_context = self._row_tensor_view(attention_scratch.query_raw, row)"
+          },
+          {
+            "line": 4652,
+            "text": "                self.runtime.memcpy_async("
+          },
+          {
+            "line": 4653,
+            "text": "                    row_context.ptr,"
+          },
+          {
+            "line": 4654,
+            "text": "                    attention_scratch.attn_out.ptr,"
+          },
+          {
+            "line": 4655,
+            "text": "                    self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,"
+          },
+          {
+            "line": 4656,
+            "text": "                    HipMemcpyKind.DEVICE_TO_DEVICE,"
+          },
+          {
+            "line": 4657,
+            "text": "                    stream,"
+          },
+          {
+            "line": 4658,
+            "text": "                )"
+          },
+          {
+            "line": 4659,
+            "text": "            gated = attention_scratch.gated_attn"
+          },
+          {
+            "line": 4660,
+            "text": "        else:"
+          },
+          {
+            "line": 4661,
+            "text": "            if force_per_row_kv_append and tokens > 1:"
+          },
+          {
+            "line": 4662,
+            "text": "                if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:"
+          },
+          {
+            "line": 4663,
+            "text": "                    raise ValueError(\"per_row_append_contexts must provide one key/value/span tuple per decode row\")"
+          }
+        ],
+        "path": "hipengine/runtime/qwen35_paro.py",
+        "sha256": "1c1aa689b611cbbc4b6ec47e5772a33edfe83d93ddd174ccee957eef7d82b192",
+        "start_line": 4614
+      }
+    },
+    "hidden_runs": {
+      "iter409_long_direct_interleaved_green": {
+        "correctness": {
+          "failure_modes": [],
+          "hidden_passed": true,
+          "passed": true,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 0,
+            "hidden_failure_rows": [],
+            "layer_limits": [
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 40,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 0,
+            "strict_hidden_bit_drift_rows": [],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": false,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": {
+              "comparison": "batch_context_vs_numpy",
+              "context_len": 514,
+              "context_len_match": true,
+              "decode_step": 1,
+              "elements_over_atol": 1,
+              "generated_index": 2,
+              "layer_index": 15,
+              "max_abs": 4.00543212890625e-05,
+              "max_abs_flat_index": 2033,
+              "max_abs_index": [
+                0,
+                2033
+              ],
+              "row": 1
+            },
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 40,
+            "token_failure_rows": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter409-L40-c2-retained-default-interleaved-warm8-decode32-atol4e-3-focus1269.json",
+          "sha256": "a052b4bbd0da01ccd110a7ffaf6aaf30e4ab723eee7ad4030569b8eabe5d3933",
+          "size_bytes": 90529525
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter409-L40-c2-retained-default-interleaved-warm8-decode32-atol4e-3-focus1269.log",
+          "sha256": "a052b4bbd0da01ccd110a7ffaf6aaf30e4ab723eee7ad4030569b8eabe5d3933",
+          "size_bytes": 90529525
+        },
+        "status": "eq_ok",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 0,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 32,
+          "full_attention_decode_path": "batch_context",
+          "warmup_decode_tokens": 8
+        }
+      },
+      "iter410_direct_interleaved_green": {
+        "correctness": {
+          "failure_modes": [],
+          "hidden_passed": true,
+          "passed": true,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 0,
+            "hidden_failure_rows": [],
+            "layer_limits": [
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 8,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 0,
+            "strict_hidden_bit_drift_rows": [],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": true,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": null,
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 8,
+            "token_failure_rows": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-direct-interleaved-green-atol4e-3-focus1269.json",
+          "sha256": "97564094188712b21d498ee40b704907f2b3aba740b4861e3dfc0bc1189ae171",
+          "size_bytes": 7384897
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-direct-interleaved-green-atol4e-3-focus1269.log",
+          "sha256": "97564094188712b21d498ee40b704907f2b3aba740b4861e3dfc0bc1189ae171",
+          "size_bytes": 7384897
+        },
+        "status": "eq_ok",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 0,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 16,
+          "full_attention_decode_path": "batch_context",
+          "warmup_decode_tokens": 0
+        }
+      },
+      "iter410_rowchunk1_same_flags_red_before_fix": {
+        "correctness": {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_passed": false,
+          "passed": false,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 2,
+            "hidden_failure_rows": [
+              0,
+              1
+            ],
+            "layer_limits": [
+              {
+                "failure_modes": [
+                  "hidden"
+                ],
+                "hidden_failure_row_count": 2,
+                "hidden_failure_rows": [
+                  0,
+                  1
+                ],
+                "layer_limit": 8,
+                "strict_hidden_bit_drift_row_count": 2,
+                "strict_hidden_bit_drift_rows": [
+                  0,
+                  1
+                ],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 2,
+            "strict_hidden_bit_drift_rows": [
+              0,
+              1
+            ],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": false,
+            "decode_full_context_oracle_passed": false,
+            "decode_full_kv_sample_passed": false,
+            "decode_linear_stage_passed": false,
+            "decode_linear_state_passed": false,
+            "first_context_oracle_failure": {
+              "comparison": "batch_numpy_vs_c1_numpy",
+              "context_len": 513,
+              "context_len_match": true,
+              "decode_step": 0,
+              "elements_over_atol": 3142,
+              "generated_index": 1,
+              "layer_index": 7,
+              "max_abs": 0.007256507873535156,
+              "max_abs_flat_index": 2812,
+              "max_abs_index": [
+                0,
+                2812
+              ],
+              "row": 0
+            },
+            "first_full_attention_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 3,
+              "generated_index": 1,
+              "layer_index": 7,
+              "max_abs": 0.015625,
+              "max_abs_flat_index": 1269,
+              "max_abs_index": [
+                0,
+                1269
+              ],
+              "row": 0,
+              "stage": "attn_input_pre_qkv"
+            },
+            "first_kv_sample_failure": {
+              "bit_mismatch": 143,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 143,
+              "generated_index": 1,
+              "kind": "key",
+              "layer_index": 7,
+              "max_abs": 0.03125,
+              "max_abs_flat_index": 214,
+              "max_abs_index": [
+                214
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "key_after_prepare"
+            },
+            "hidden_failure_rows": [
+              0,
+              1
+            ],
+            "hidden_passed": false,
+            "layer_limit": 8,
+            "token_failure_rows": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.json",
+          "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+          "size_bytes": 18752608
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.log",
+          "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+          "size_bytes": 18752608
+        },
+        "status": "mismatch_found",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 16,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "warmup_decode_tokens": 0
+        }
+      },
+      "rowchunk1_interleave_l8_greencheck_after_fix": {
+        "correctness": {
+          "failure_modes": [],
+          "hidden_passed": true,
+          "passed": true,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 0,
+            "hidden_failure_rows": [],
+            "layer_limits": [
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 8,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 0,
+            "strict_hidden_bit_drift_rows": [],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": true,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": null,
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 8,
+            "token_failure_rows": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter411-L8-c2-rowchunk1-interleave-flags-greencheck-atol4e-3-focus1269.json",
+          "sha256": "964808b79835f545aa815ac1b6d668c54ced4bb6deb9bd83f0200a12e13a5dfe",
+          "size_bytes": 7448002
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter411-L8-c2-rowchunk1-interleave-flags-greencheck-atol4e-3-focus1269.log",
+          "sha256": "964808b79835f545aa815ac1b6d668c54ced4bb6deb9bd83f0200a12e13a5dfe",
+          "size_bytes": 7448002
+        },
+        "status": "eq_ok",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 16,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "warmup_decode_tokens": 0
+        }
+      },
+      "rowchunk1_interleave_l8_l40_green_after_fix": {
+        "correctness": {
+          "failure_modes": [],
+          "hidden_passed": true,
+          "passed": true,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 0,
+            "hidden_failure_rows": [],
+            "layer_limits": [
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 8,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              },
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 40,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 0,
+            "strict_hidden_bit_drift_rows": [],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": true,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": null,
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 8,
+            "token_failure_rows": [],
+            "token_passed": true
+          },
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": false,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": {
+              "comparison": "batch_context_vs_numpy",
+              "context_len": 514,
+              "context_len_match": true,
+              "decode_step": 1,
+              "elements_over_atol": 1,
+              "generated_index": 2,
+              "layer_index": 15,
+              "max_abs": 4.00543212890625e-05,
+              "max_abs_flat_index": 2033,
+              "max_abs_index": [
+                0,
+                2033
+              ],
+              "row": 1
+            },
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 40,
+            "token_failure_rows": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter411-L8-L40-c2-rowchunk1-interleave-flags-atol4e-3-focus1269.json",
+          "sha256": "cafbc44dcf3f9381554ab85f385aa73c08907f8f0f146c5051e9fb7c1402c23b",
+          "size_bytes": 44127142
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter411-L8-L40-c2-rowchunk1-interleave-flags-atol4e-3-focus1269.log",
+          "sha256": "cafbc44dcf3f9381554ab85f385aa73c08907f8f0f146c5051e9fb7c1402c23b",
+          "size_bytes": 44127142
+        },
+        "status": "eq_ok",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 16,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "warmup_decode_tokens": 0
+        }
+      }
+    }
+  },
+  "schema": 1
+}

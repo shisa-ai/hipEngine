@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import hipengine.generation.qwen35_paro as qwen35
 from hipengine.generation import GenerationRequest
-from hipengine.runtime.qwen35_paro_runner import Qwen35ParoAutoregressiveStepResult
+from hipengine.runtime.qwen35_paro_runner import (
+    Qwen35ParoAutoregressiveStepResult,
+    estimate_qwen35_paro_kv_capacity,
+    qwen35_paro_kv_bytes_per_token,
+)
 
 
 def _request(prompts=("hello",), max_tokens=1, *, ignore_eos=False) -> GenerationRequest:
@@ -19,6 +23,69 @@ def _request(prompts=("hello",), max_tokens=1, *, ignore_eos=False) -> Generatio
 
 def _result(token_id: int, text: str) -> Qwen35ParoAutoregressiveStepResult:
     return Qwen35ParoAutoregressiveStepResult(token_id=token_id, token_text=text, logit=float(token_id))
+
+
+def test_qwen35_paro_kv_capacity_estimate_reports_int8_max_below_model_context() -> None:
+    config = SimpleNamespace(
+        layer_types=("linear_attention",) * 30 + ("full_attention",) * 10,
+        num_key_value_heads=2,
+        head_dim=256,
+        max_position_embeddings=262144,
+    )
+    bytes_per_token = qwen35_paro_kv_bytes_per_token(
+        config,
+        storage_dtype="int8_per_token_head",
+        scale_dtype="fp16",
+    )
+    estimate = estimate_qwen35_paro_kv_capacity(
+        config,
+        available_bytes=bytes_per_token * 131072 + 512 * 1024**2,
+        requested_context_tokens=8192,
+        storage_dtype="int8_per_token_head",
+        scale_dtype="fp16",
+        reserve_bytes=512 * 1024**2,
+    )
+
+    assert bytes_per_token == 10320
+    assert 0 < estimate.allocatable_context_tokens < 131072
+    assert estimate.requested_context_overhead_bytes > 0
+    assert estimate.requested_total_bytes == estimate.requested_kv_bytes + estimate.requested_context_overhead_bytes
+    assert estimate.model_max_context_tokens == 262144
+    assert estimate.fits_requested is True
+    assert estimate.fits_model_max is False
+
+
+def test_qwen35_paro_prepare_allocates_configured_resident_session(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length, kwargs["kv_policy"].storage_dtype.value))
+
+        def close(self):
+            calls.append(("close",))
+
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    generator.prepare(
+        max_sequence_length=131072,
+        sampling_params=SimpleNamespace(
+            kv_storage="int8_per_token_head",
+            kv_scale_dtype="fp16",
+            kv_scale_granularity="per_token_head",
+        ),
+    )
+
+    assert calls == [("init", runner, 131072, "int8_per_token_head")]
 
 
 def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatch) -> None:
@@ -45,7 +112,7 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatc
             decode=lambda ids: {101: "B", 102: "C"}[int(ids[0])],
         )
 
-        def __init__(self, runner, *, max_sequence_length):
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
             calls.append(("init", runner, max_sequence_length))
 
         def __enter__(self):
@@ -85,15 +152,200 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatc
 
     assert out == ["ABC"]
     assert calls == [
-        ("init", runner, 6),
+        ("init", runner, 4096),
         ("prefill_native", (10, 11), True),
         ("capture_decode_graph", 2, 1, 2, 2),
         ("graph_enter",),
         ("graph_replay", 2),
         ("graph_read", 2),
         ("graph_close",),
-        ("close",),
     ]
+
+
+def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(monkeypatch) -> None:
+    calls = []
+    token_rows = {"alpha": [10, 11], "beta": [20]}
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+        block_size = 256
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(
+                (
+                    "init",
+                    runner,
+                    max_sequence_length,
+                    kwargs.get("max_batch_size"),
+                    kwargs["kv_policy"].storage_dtype.value,
+                )
+            )
+            self.max_sequence_length = max_sequence_length
+            self.max_batch_size = kwargs.get("max_batch_size", 1)
+
+        def prefill_native_packed(self, slab, *, sample: bool = True):
+            calls.append(
+                (
+                    "prefill_native_packed",
+                    slab.request_ids,
+                    slab.token_rows,
+                    slab.physical_slot_ids,
+                    sample,
+                )
+            )
+            return tuple(
+                _result(100 + request_id, {0: "A", 1: "B"}[request_id])
+                for request_id in slab.request_ids
+            )
+
+        def step_batch_serial(self, token_ids, *, positions, slots, sample: bool = True):
+            calls.append(
+                ("step_batch_serial", tuple(token_ids), tuple(positions), tuple(slots), sample)
+            )
+            return (_result(200, "C"), _result(201, "D"))
+
+        def batch_execution_metadata(
+            self, *, scheduler_owned: bool = False, native_decode: bool = False
+        ):
+            calls.append(("batch_execution_metadata", scheduler_owned, native_decode))
+            return SimpleNamespace(
+                native_compact_prefill=True,
+                native_caware_decode=False,
+                throughput_claim_eligible=False,
+            )
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    out = generator.generate(_request(prompts=("alpha", "beta"), max_tokens=2))
+
+    assert out == ["AC", "BD"]
+    assert calls == [
+        ("init", runner, 4096, 2, "bf16"),
+        ("prefill_native_packed", (0, 1), ((10, 11), (20,)), (0, 1), True),
+        ("step_batch_serial", (100, 101), (2, 1), (0, 1), True),
+        ("batch_execution_metadata", True, False),
+    ]
+    assert generator.last_batch_generation == {
+        "path": "scheduler_native_packed_prefill_serial_decode",
+        "batch_size": 2,
+        "request_ids": [0, 1],
+        "prompt_lengths": [2, 1],
+        "packed_prefill_slabs": [
+            {
+                "request_ids": [0, 1],
+                "slot_ids": [0, 1],
+                "rows": 3,
+                "request_count": 2,
+                "block_count": 1,
+            }
+        ],
+        "decode_steps": 1,
+        "native_decode_steps": 0,
+        "serial_decode_fallback": True,
+        "native_compact_prefill": True,
+        "native_caware_decode": False,
+        "throughput_claim_eligible": False,
+    }
+
+
+def test_qwen35_paro_generator_reuses_resident_session(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length))
+
+        def reset(self):
+            calls.append(("reset",))
+
+        def close(self):
+            calls.append(("close",))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    assert generator.generate(_request(max_tokens=1)) == ["A"]
+    assert generator.generate(_request(max_tokens=1)) == ["A"]
+    assert calls == [
+        ("init", runner, 4096),
+        ("prefill_native", (10, 11), True),
+        ("reset",),
+        ("prefill_native", (10, 11), True),
+    ]
+
+
+def test_qwen35_paro_generator_passes_int8_kv_policy_to_session(monkeypatch) -> None:
+    captured = {}
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, kv_policy, kv_scale_dtype, kv_scale_granularity):
+            captured["storage_dtype"] = kv_policy.storage_dtype.value
+            captured["scale_dtype"] = kv_scale_dtype.value
+            captured["scale_granularity"] = kv_scale_granularity
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            return _result(100, "A") if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    out = generator.generate(_request(max_tokens=1).__class__(
+        prompts=("hello",),
+        max_tokens=1,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+        kv_storage="int8_per_token_head",
+        kv_scale_dtype="fp32",
+        kv_scale_granularity="per_token_head",
+    ))
+
+    assert out == ["A"]
+    assert captured == {
+        "storage_dtype": "int8_per_token_head",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+    }
+
 
 
 def test_qwen35_paro_generator_handles_zero_tokens_without_loading(monkeypatch) -> None:
@@ -111,7 +363,7 @@ def test_qwen35_paro_generator_stops_on_eos(monkeypatch) -> None:
     class FakeSession:
         tokenizer = SimpleNamespace(token_to_id=lambda token: 100 if token == "<|endoftext|>" else None)
 
-        def __init__(self, runner, *, max_sequence_length):
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
             pass
 
         def __enter__(self):

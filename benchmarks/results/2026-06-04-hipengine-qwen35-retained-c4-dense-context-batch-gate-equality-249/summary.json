@@ -1,0 +1,506 @@
+{
+  "active_verify": {
+    "command": "bash -lc 'set -euo pipefail; OUT=/tmp/hipengine-e2e-native-c2-512-128.json; LOG=/tmp/hipengine-e2e-native-c2-512-128.log; HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json \"$OUT\" >\"$LOG\" 2>&1 || true; compute min_equal_prefix_tokens'",
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+    "result_metric": 137
+  },
+  "change": {
+    "description": "Expose the dense-context plus batch-gate diagnostic in retained-bench and run c4 no-rowchunk 512/128 generated-token equality controls.",
+    "files": [
+      "scripts/qwen35_batch_retained_bench.py",
+      "tests/test_generation_batch_scheduler.py",
+      "docs/CONCURRENCY.md",
+      "WORKLOG.md"
+    ],
+    "new_cli_mode": "--batch-decode-attn-context-path per_row_dense_context_batch_gate",
+    "new_env": "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE"
+  },
+  "finding_table": [
+    {
+      "context_path": "per_row_dense_context_batch_gate_fallback",
+      "generated_token_equality_passed": true,
+      "label": "dense_context_batch_gate_native_o",
+      "output_path": "batch",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "status": "blocked"
+    },
+    {
+      "context_path": "per_row_dense_context_only_fallback",
+      "generated_token_equality_passed": true,
+      "label": "dense_context_row_gate_native_o",
+      "output_path": "batch",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "status": "blocked"
+    },
+    {
+      "context_path": "native_batch",
+      "generated_token_equality_passed": false,
+      "label": "native_paged_context_native_o",
+      "output_path": "batch",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "status": "rejected_correctness"
+    },
+    {
+      "context_path": "per_row_dense_context_batch_gate_fallback",
+      "generated_token_equality_passed": false,
+      "label": "dense_context_batch_gate_batch_gemv_o",
+      "output_path": "batch_gemv",
+      "prefix_lengths": [
+        137,
+        104,
+        137,
+        137
+      ],
+      "status": "rejected_correctness"
+    },
+    {
+      "context_path": "native_batch",
+      "generated_token_equality_passed": false,
+      "label": "native_paged_context_batch_gemv_o",
+      "output_path": "batch_gemv",
+      "prefix_lengths": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "status": "rejected_correctness"
+    }
+  ],
+  "findings": [
+    "The retained-bench path now accepts the dense-context/batch-gate diagnostic mode, matching hidden-bisect runtime wiring.",
+    "For c4 no-rowchunk 512/128 with native full-attention O output, dense row-local context plus the normal batch gate passes generated-token equality at [137,137,137,137]. The row-local dense context/row-local gate control also passes.",
+    "The native paged-context/no-rowchunk control with the same native O output remains red at [137,137,137,118], so dense context removes the native paged-context blocker for this correctness-only c4 gate.",
+    "When full-attention O output is forced to batch-GEMV, the dense-context/batch-gate diagnostic is still red at [137,104,137,137], matching prior output-path sensitivity; the green c4 no-rowchunk diagnostic therefore requires dense context plus native O output."
+  ],
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 249,
+  "mode": "qwen35_retained_bench_c4_nochunk_dense_context_batch_gate_equality",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Materially advances real c>1 E2E correctness evidence: retained-bench c4 no-rowchunk generated-token equality is green under the dense-context/batch-gate diagnostic with native O output, while native paged context remains red. No performance claim.",
+    "passed": true
+  },
+  "runs": {
+    "dense_context_batch_gate_batch_gemv_o": {
+      "blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate"
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_decode_path": "batch_gemv",
+      "generated_token_equality_passed": false,
+      "label": "dense_context_batch_gate_batch_gemv_o",
+      "min_equal_prefix_tokens": 104,
+      "mismatch_summaries": [
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 104,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            }
+          ],
+          "batch_token_at_mismatch": 2713,
+          "batch_window": [
+            198,
+            256,
+            471,
+            561,
+            1483,
+            2713,
+            74988,
+            16,
+            25,
+            16,
+            17
+          ],
+          "c1_token_at_mismatch": 799,
+          "c1_window": [
+            198,
+            256,
+            471,
+            561,
+            1483,
+            799,
+            369,
+            3799,
+            974,
+            25,
+            74988
+          ],
+          "first_mismatch_index": 104,
+          "row": 1
+        }
+      ],
+      "native_caware_decode": false,
+      "note": "Output-path contrast: same dense-context/batch-gate diagnostic with batch-GEMV full-attention O output.",
+      "prefix_lengths": [
+        137,
+        104,
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter249-retained-c4-nochunk-dense-bg-serial_lm_head.json",
+      "raw_log": "/tmp/hipengine-iter249-retained-c4-nochunk-dense-bg-serial_lm_head.log",
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_dense_context_batch_gate",
+        "batch_decode_attention_gate_path": "batch",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "native_caware_decode": false,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "dense_context_batch_gate_native_o": {
+      "blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate"
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_decode_path": "batch",
+      "generated_token_equality_passed": true,
+      "label": "dense_context_batch_gate_native_o",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_summaries": [],
+      "native_caware_decode": false,
+      "note": "Primary green diagnostic: dense row-local context copied to batch scratch, normal batch gate, native full-attention O output.",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter249-retained-c4-nochunk-nativeO-per_row_dense_context_batch_gate.json",
+      "raw_log": "/tmp/hipengine-iter249-retained-c4-nochunk-nativeO-per_row_dense_context_batch_gate.log",
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_dense_context_batch_gate",
+        "batch_decode_attention_gate_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "native_caware_decode": false,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "dense_context_row_gate_native_o": {
+      "blockers": [
+        "full-attention context forced to row-local dense diagnostic path with diagnostic gate"
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_only_fallback",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_decode_path": "batch",
+      "generated_token_equality_passed": true,
+      "label": "dense_context_row_gate_native_o",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_summaries": [],
+      "native_caware_decode": false,
+      "note": "Control: dense row-local context plus row-local diagnostic gate, native full-attention O output.",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter249-retained-c4-nochunk-nativeO-per_row_dense_context_only.json",
+      "raw_log": "/tmp/hipengine-iter249-retained-c4-nochunk-nativeO-per_row_dense_context_only.log",
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_dense_context_only",
+        "batch_decode_attention_gate_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "native_caware_decode": false,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "native_paged_context_batch_gemv_o": {
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_decode_path": "batch_gemv",
+      "generated_token_equality_passed": false,
+      "label": "native_paged_context_batch_gemv_o",
+      "min_equal_prefix_tokens": 82,
+      "mismatch_summaries": [
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 82,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 3
+            }
+          ],
+          "batch_token_at_mismatch": 27502,
+          "batch_window": [
+            19,
+            60,
+            48306,
+            32907,
+            27502,
+            27502,
+            9640,
+            2713,
+            220,
+            15,
+            13
+          ],
+          "c1_token_at_mismatch": 8204,
+          "c1_window": [
+            19,
+            60,
+            48306,
+            32907,
+            27502,
+            8204,
+            1228,
+            9640,
+            2713,
+            220,
+            15
+          ],
+          "first_mismatch_index": 82,
+          "row": 0
+        }
+      ],
+      "native_caware_decode": true,
+      "note": "Red control: native paged context with batch-GEMV full-attention O output.",
+      "prefix_lengths": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter249-retained-c4-nochunk-batch.json",
+      "raw_log": "/tmp/hipengine-iter249-retained-c4-nochunk-batch.log",
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_gate_path": "batch",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "native_caware_decode": true,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "native_paged_context_native_o": {
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_decode_path": "batch",
+      "generated_token_equality_passed": false,
+      "label": "native_paged_context_native_o",
+      "min_equal_prefix_tokens": 118,
+      "mismatch_summaries": [
+        {
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "equal_prefix_tokens": 118,
+              "row": 3
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 0
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 1
+            },
+            {
+              "equal_prefix_tokens": 0,
+              "row": 2
+            }
+          ],
+          "batch_token_at_mismatch": 4203,
+          "batch_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            4203,
+            9781,
+            310,
+            328,
+            2078,
+            1
+          ],
+          "c1_token_at_mismatch": 9781,
+          "c1_window": [
+            318,
+            3002,
+            220,
+            16,
+            17,
+            9781,
+            80086,
+            279,
+            1483,
+            11316,
+            310
+          ],
+          "first_mismatch_index": 118,
+          "row": 3
+        }
+      ],
+      "native_caware_decode": true,
+      "note": "Red control: native paged batch context plus native full-attention O output.",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "raw_json": "/tmp/hipengine-iter249-retained-c4-nochunk-nativeO-batch.json",
+      "raw_log": "/tmp/hipengine-iter249-retained-c4-nochunk-nativeO-batch.log",
+      "status": "rejected_correctness",
+      "workload": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_attention_gate_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "native_caware_decode": true,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    }
+  },
+  "schema": 1,
+  "timestamp": "2026-06-04T08:41:41.559627+00:00",
+  "workload": {
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_size": 0,
+    "batch_decode_linear_output_path": "batch_gemv",
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_sample_mode": "serial_lm_head",
+    "concurrency": 4,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "gen_tokens_per_request": 128,
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_tokens_per_request": 512,
+    "warmup_decode_tokens": 8
+  }
+}

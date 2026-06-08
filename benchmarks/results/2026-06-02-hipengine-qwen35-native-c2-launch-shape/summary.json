@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-launch-shape/summary.json",
+  "created_at": "2026-06-02T21:48:57.783754Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "c=2 native batch full-attention launch-shape experiment: 1024-thread small-row launch improves traced context-kernel time and modestly improves unprofiled native c=2 decode, but retained c2 promotion remains blocked by c1 scaling.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "5a06c0e85872404f33f756dbe90aa07b4aaab785",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "code_change": {
+    "file": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+    "description": "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans uses 1024 threads for rows<=2 and max_context_len<1024; c>=4 rows keep 256 threads. Shared-memory warp buffer allocation follows the selected launch shape."
+  },
+  "workload": {
+    "rows": 2,
+    "shape": "c=2 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "correctness": {
+    "primary_equal_prefix": 137,
+    "primary_prefixes": [
+      137,
+      137
+    ],
+    "projection_check_prefixes": [
+      137,
+      137
+    ],
+    "profiled_prefixes": [
+      137,
+      137
+    ],
+    "primitive_c2_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json"
+  },
+  "measurements": {
+    "primary_verify_decode_tok_s_aggregate": 106.28445280444502,
+    "primary_verify_decode_tok_s_per_request": 53.14222640222251,
+    "projection_check_decode_tok_s_aggregate": 106.69509415348118,
+    "projection_check_decode_tok_s_per_request": 53.34754707674059,
+    "prior_projection_check_decode_tok_s_aggregate": 104.20504173451897,
+    "projection_check_delta_vs_prior": 1.0238957000305806,
+    "c1_decode_tok_s_aggregate": 134.1118139970783,
+    "projection_check_vs_c1": 0.7955681977115424,
+    "serial_bridge_decode_tok_s_aggregate": 79.85063957880106,
+    "projection_check_vs_serial_bridge": 1.3361833382460075
+  },
+  "profiler": {
+    "raw_trace_tmp_path": "/tmp/hipengine-e2e-native-c2-launch1024-profile-clean-iter109/epyc/179859_kernel_trace.csv",
+    "raw_trace_sha256": "fc51123f4be36fb032b63ff413fd2fd02a3d655a6b350d6d6d3d7c07388fa85e",
+    "raw_trace_size_bytes": 127848746,
+    "raw_trace_not_retained_reason": "raw rocprof CSV is large and intentionally left under /tmp; this compact artifact records aggregate evidence only",
+    "profiled_decode_tok_s_aggregate": 90.25242487452694,
+    "attention_context_kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+    "attention_context_duration_ns": 800689703,
+    "attention_context_calls": 4080,
+    "prior_attention_context_duration_ns": 971758509,
+    "attention_context_duration_delta_vs_prior": 0.8239595491928952,
+    "top_kernels": [
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        "duration_ns": 800689703,
+        "calls": 4080
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 326827732,
+        "calls": 16320
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "duration_ns": 320475326,
+        "calls": 29920
+      },
+      {
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "duration_ns": 304689724,
+        "calls": 412
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "duration_ns": 288397531,
+        "calls": 16320
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "duration_ns": 236163883,
+        "calls": 4080
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "duration_ns": 228251076,
+        "calls": 24480
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "duration_ns": 209289515,
+        "calls": 21760
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 185244872,
+        "calls": 32970
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "duration_ns": 171348990,
+        "calls": 90
+      }
+    ]
+  },
+  "source_tmp_artifacts": {
+    "primary_verify": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "projection_check": "/tmp/hipengine-e2e-native-c2-launch1024-projcheck-clean-iter109.json",
+    "profiled_projection_check": "/tmp/hipengine-e2e-native-c2-launch1024-profiled-clean-iter109.json"
+  },
+  "source_artifacts": {
+    "prior_current_profile": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-current-profile-evidence/summary.json",
+    "prior_scaling_blocker": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/scaling-blocker-c2.json",
+    "projection_evidence": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json"
+  },
+  "conclusion": {
+    "accepted": false,
+    "reason": "1024-thread native batch full-attention launch improves the traced context kernel to 0.824x of prior and unprofiled projection-check aggregate decode to 1.026x of prior, but c2 aggregate remains only 0.796x c1, so no retained c2 performance claim is made."
+  },
+  "commands": {
+    "primary_verify": "active loop verify command after commit 5a06c0e",
+    "projection_check": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-size 2 --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json --json /tmp/hipengine-e2e-native-c2-launch1024-projcheck-clean-iter109.json",
+    "profiled": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-e2e-native-c2-launch1024-profile-clean-iter109 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --json /tmp/hipengine-e2e-native-c2-launch1024-profiled-clean-iter109.json"
+  }
+}

@@ -1,0 +1,279 @@
+{
+  "artifacts": {
+    "c2_default_equality": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/diagnostics/c2-default-equality.json",
+      "sha256": "5654d37420b3340c83f3121c2381d2f1e6f69ef0bb0895e8bc28b4bc162f474e",
+      "size_bytes": 1862
+    },
+    "c4_default_equality": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/diagnostics/c4-default-equality.json",
+      "sha256": "14a48e89478edc5105907f93c309d0302d3b1b58089624d75d7632e0c7231e63",
+      "size_bytes": 2520
+    },
+    "c8_default_equality": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/diagnostics/c8-default-equality.json",
+      "sha256": "ffb27638f9b6aac21fb6768bea7e14f90a650ba6e5369adda497bd959a5ef453",
+      "size_bytes": 2596
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    }
+  },
+  "code_change": null,
+  "conclusion": "The post-argmax-diagnostic no-flag c2/c4/c8 equality matrix remains generated-token green vs independent c1: c2 [137,137] with serial_lm_head and full-native native_caware_decode=true, c4 [137]*4 and c8 [137]*8 with retained batched_lm_head sampler evidence and rowchunk2 full-attention diagnostics. The new argmax diagnostic fields are inactive by default (argmax_audit_enabled=false). This is correctness evidence only; c4/c8 remain not retained/scaling-ready because rowchunk2 reports native_caware_decode=false.",
+  "created_at": "2026-06-04T02:40:30Z",
+  "git_commit_before_result_commit": "f0568b1ade56fdeb1df766f7097f1a6ab5f6b034",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 230,
+  "kind": "native_c248_post_argmax_audit_default_equality_matrix",
+  "observations": {
+    "all_generated_token_equality_passed": true,
+    "full_attention_path_by_rows": {
+      "2": "native_batch",
+      "4": "native_batch_row_chunks",
+      "8": "native_batch_row_chunks"
+    },
+    "native_caware_decode_by_rows": {
+      "2": true,
+      "4": false,
+      "8": false
+    },
+    "prefixes_by_rows": {
+      "2": [
+        137,
+        137
+      ],
+      "4": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "rowchunk_by_rows": {
+      "2": null,
+      "4": 2,
+      "8": 2
+    },
+    "sampler_argmax_audit_enabled_by_rows": {
+      "2": false,
+      "4": false,
+      "8": false
+    },
+    "sampler_argmax_modes_by_rows": {
+      "2": "serial_per_row",
+      "4": "batch",
+      "8": "batch"
+    },
+    "sampler_modes_by_rows": {
+      "2": "serial_lm_head",
+      "4": "batched_lm_head",
+      "8": "batched_lm_head"
+    }
+  },
+  "performance_claim": false,
+  "remaining_blockers": [
+    "c4/c8 full-native/no-rowchunk grouped full-attention remains red and blocks retained c4/c8 throughput claims",
+    "explicit c2 batched_lm_head historical post-c9 flake remains blocked despite non-reproduction under audit",
+    "no performance/scaling claim until generated-token equality, primitive correctness, profiler evidence, c1/serial baselines, and docs/BENCHMARK gates all pass"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/diagnostics/c2-default-equality.json",
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c2-default-equality-post-argmax-audit",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "rows": 2,
+      "sampler_execution": {
+        "argmax_audit_enabled": false,
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "rows": 2
+      },
+      "workload_batch_sample_argmax_audit": false,
+      "workload_batch_sample_argmax_mode": "batch",
+      "workload_batch_sample_eq_artifact": "",
+      "workload_batch_sample_eq_ok": false,
+      "workload_batch_sample_eq_rows": null,
+      "workload_batch_sample_mode": "serial_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/diagnostics/c4-default-equality.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c4-default-equality-post-argmax-audit",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "rows": 4,
+      "sampler_execution": {
+        "argmax_audit_enabled": false,
+        "argmax_mode": "batch",
+        "blockers": [],
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "equality_rows": 4,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "rows": 4
+      },
+      "workload_batch_sample_argmax_audit": false,
+      "workload_batch_sample_argmax_mode": "batch",
+      "workload_batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_eq_rows": 4,
+      "workload_batch_sample_mode": "batched_lm_head"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-post-argmax-audit-default-matrix230/diagnostics/c8-default-equality.json",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention O projection forced to batch GEMV for nonzero row chunks"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_layer_paths": [],
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "full_attention_segment_output_paths": [],
+      "generated_token_equality_passed": true,
+      "label": "c8-default-equality-post-argmax-audit",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "rows": 8,
+      "sampler_execution": {
+        "argmax_audit_enabled": false,
+        "argmax_mode": "batch",
+        "blockers": [],
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+        "equality_rows": 8,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "rows": 8
+      },
+      "workload_batch_sample_argmax_audit": false,
+      "workload_batch_sample_argmax_mode": "batch",
+      "workload_batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+      "workload_batch_sample_eq_ok": true,
+      "workload_batch_sample_eq_rows": 8,
+      "workload_batch_sample_mode": "batched_lm_head"
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "command_shape": "no-flag retained bench for batch sizes 2, 4, and 8 after argmax diagnostic instrumentation landed",
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

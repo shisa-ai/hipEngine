@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "date": "2026-05-20",
+  "task": "P9.D2 bf16 key RoPE cast-fold diagnostic",
+  "status": "rejected",
+  "reason": "Correctness passed, but graph replay 512/128 median decode regressed versus retained P9.D1 split-router baseline; patch reverted and not retained.",
+  "hardware": "local RX 7900 XTX / gfx1100 (W7900 not rerun)",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "change_tested": {
+    "summary": "Added BF16-key variants of GGUF head RMSNorm+partial-RoPE and routed full-attention key normalization directly from BF16 full_k, removing the separate bf16_to_f32 key cast.",
+    "retained": false,
+    "patch_snapshot": "/tmp/p9_d2_bf16_key_rope_rejected.patch"
+  },
+  "correctness_gate": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/p9_d2_bf16_key_rope_e2e.json",
+    "status": "accepted",
+    "passed": true,
+    "kl_mean_worst": 0.0,
+    "kl_max_worst": 0.0,
+    "top1_agreement_worst": 1.0,
+    "deterministic_tail": true,
+    "finite_final_logits": true
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d2_bf16_key_rope_512x128_bench.json",
+    "baseline": {
+      "label": "P9.D1 split-router retained baseline",
+      "decode_tok_s_median": 85.817,
+      "source": "WORKLOG.md 2026-05-20 P9.D1 task #28"
+    },
+    "candidate": {
+      "prefill_tok_s": {
+        "samples": [
+          500.00208691297047,
+          501.2689643620248,
+          500.87914123143565
+        ],
+        "median": 500.87914123143565,
+        "p95": 500.87914123143565,
+        "min": 500.00208691297047,
+        "max": 501.2689643620248,
+        "stdev": 0.6488662961405803,
+        "stdev_pct_of_median": 0.12954548167953472
+      },
+      "decode_tok_s": {
+        "samples": [
+          85.63697842393624,
+          85.52282271643524,
+          85.58212439284677
+        ],
+        "median": 85.58212439284677,
+        "p95": 85.58212439284677,
+        "min": 85.52282271643524,
+        "max": 85.63697842393624,
+        "stdev": 0.05709229239724575,
+        "stdev_pct_of_median": 0.06671053424097721
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          21.343075528740883,
+          21.343075528740883,
+          21.343075528740883
+        ],
+        "median": 21.343075528740883,
+        "p95": 21.343075528740883,
+        "min": 21.343075528740883,
+        "max": 21.343075528740883,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "finite_final_logits_all": true
+    },
+    "delta_vs_baseline": {
+      "decode_tok_s": -0.23487560715322786,
+      "decode_pct": -0.27369356555604124
+    }
+  },
+  "source_full_outputs": {
+    "benchmark_json": "/tmp/p9_d2_bf16_key_rope_512x128_bench.json",
+    "correctness_json": "/tmp/p9_d2_bf16_key_rope_e2e.json"
+  }
+}

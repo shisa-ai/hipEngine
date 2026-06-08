@@ -1,0 +1,417 @@
+{
+  "failed_count": 2,
+  "min_prefix": 82,
+  "passed_count": 6,
+  "runs": [
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r1",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r1.json",
+        "sha256": "caa8290204bb085595d3d8627558e0e53a732058d5c1e18550fd598eea2ac49b",
+        "size_bytes": 136602
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r1.log",
+        "sha256": "caa8290204bb085595d3d8627558e0e53a732058d5c1e18550fd598eea2ac49b",
+        "size_bytes": 136602
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        104
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r2",
+      "mismatch_summary": [
+        {
+          "batch_window": [
+            321,
+            81347,
+            1149,
+            198,
+            256,
+            471,
+            561,
+            1483,
+            2713,
+            74988,
+            16,
+            25,
+            16,
+            17,
+            60,
+            63,
+            369,
+            3799,
+            974,
+            25
+          ],
+          "c1_window": [
+            321,
+            81347,
+            1149,
+            198,
+            256,
+            471,
+            561,
+            1483,
+            799,
+            369,
+            3799,
+            974,
+            25,
+            74988,
+            16,
+            25,
+            16,
+            17,
+            60,
+            48306
+          ],
+          "first_mismatch_index": 104,
+          "row": 1
+        }
+      ],
+      "native_caware_decode": true,
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        104
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r2.json",
+        "sha256": "26806aa06e1c4d6955cc34fa82168fd41aad83f5a799550242d8af23c1aa18ad",
+        "size_bytes": 143107
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r2.log",
+        "sha256": "26806aa06e1c4d6955cc34fa82168fd41aad83f5a799550242d8af23c1aa18ad",
+        "size_bytes": 143107
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r3",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r3.json",
+        "sha256": "a5d7c471051e098a51343c08762e35ea410ac00d7f072932579e322b744e17ad",
+        "size_bytes": 136605
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r3.log",
+        "sha256": "a5d7c471051e098a51343c08762e35ea410ac00d7f072932579e322b744e17ad",
+        "size_bytes": 136605
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r4",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r4.json",
+        "sha256": "f22541b3997f5152f0ed766dd161613f5a143ed1133bee8a2ee8e02d8432da16",
+        "size_bytes": 136587
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r4.log",
+        "sha256": "f22541b3997f5152f0ed766dd161613f5a143ed1133bee8a2ee8e02d8432da16",
+        "size_bytes": 136587
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r5",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r5.json",
+        "sha256": "d7b66fa83270fd1cce815ac3fe97c9026c7f29f6a4ad3b52e52db8b790a7556d",
+        "size_bytes": 136588
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r5.log",
+        "sha256": "d7b66fa83270fd1cce815ac3fe97c9026c7f29f6a4ad3b52e52db8b790a7556d",
+        "size_bytes": 136588
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r6",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r6.json",
+        "sha256": "d84c23cc4d8ba1363879500069dbd83f6871627e3568504b0faf51ac79a075d6",
+        "size_bytes": 136593
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r6.log",
+        "sha256": "d84c23cc4d8ba1363879500069dbd83f6871627e3568504b0faf51ac79a075d6",
+        "size_bytes": 136593
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r7",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r7.json",
+        "sha256": "e11557a63807fbbaf5a873962550ee0683b5cac67052853f27b4f7777f8a2c97",
+        "size_bytes": 136586
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r7.log",
+        "sha256": "e11557a63807fbbaf5a873962550ee0683b5cac67052853f27b4f7777f8a2c97",
+        "size_bytes": 136586
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        82,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "pre-fix-active-c2-repeat-r8",
+      "mismatch_summary": [
+        {
+          "batch_window": [
+            15,
+            25,
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            27502,
+            9640,
+            2713,
+            220,
+            15,
+            13,
+            271,
+            248068,
+            271,
+            248069,
+            271,
+            23658,
+            3440
+          ],
+          "c1_window": [
+            15,
+            25,
+            16,
+            19,
+            60,
+            48306,
+            32907,
+            27502,
+            8204,
+            1228,
+            9640,
+            2713,
+            220,
+            15,
+            13,
+            1165,
+            513,
+            7262,
+            17603,
+            4422
+          ],
+          "first_mismatch_index": 82,
+          "row": 0
+        }
+      ],
+      "native_caware_decode": true,
+      "passed": false,
+      "prefix_lengths": [
+        82,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r8.json",
+        "sha256": "8c458e460f92b140b9ed5d106651a395e8358f0ff91a28a58b7c3ae1801dde4b",
+        "size_bytes": 143194
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-repeat-stability/active-c2-repeat-r8.log",
+        "sha256": "8c458e460f92b140b9ed5d106651a395e8358f0ff91a28a58b7c3ae1801dde4b",
+        "size_bytes": 143194
+      },
+      "sampler_execution": {
+        "argmax_mode": "batch",
+        "blockers": [],
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head"
+      },
+      "status": "rejected_correctness"
+    }
+  ]
+}

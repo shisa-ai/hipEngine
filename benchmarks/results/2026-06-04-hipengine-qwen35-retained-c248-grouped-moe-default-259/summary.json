@@ -1,0 +1,375 @@
+{
+  "active_verify": {
+    "first_full_layer_output_decode_path": "batch_gemv_auto",
+    "moe_decode_path": "grouped_compact",
+    "moe_grouped_compact_layers": 40,
+    "moe_selected_c1_fallback_layers": 0,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "result_metric": 137
+  },
+  "change": {
+    "auto_moe_path": "grouped_compact",
+    "description": "Promote retained-bench auto MoE to grouped_compact for the c=2/c=4/c=8 correctness frontier; selected_c1 remains explicit diagnostic/speed override.",
+    "files": [
+      "scripts/qwen35_batch_retained_bench.py",
+      "tests/test_generation_batch_scheduler.py",
+      "docs/CONCURRENCY.md",
+      "WORKLOG.md",
+      "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-grouped-moe-default-259/summary.json"
+    ]
+  },
+  "finding_table": [
+    {
+      "batch_size": 2,
+      "blockers": [],
+      "context_path": "native_batch",
+      "first_full_layer_output_decode_path": "batch_gemv_auto",
+      "full_attention_decode_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "row_chunk_size": null
+    },
+    {
+      "batch_size": 4,
+      "blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate"
+      ],
+      "context_path": "per_row_dense_context_batch_gate_fallback",
+      "first_full_layer_output_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "row_chunk_size": null
+    },
+    {
+      "batch_size": 8,
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "context_path": "native_batch",
+      "first_full_layer_output_decode_path": "native_batch_row_chunks_with_batch_gemv_auto",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "row_chunk_size": 2
+    }
+  ],
+  "findings": [
+    "Default c=2/c=4/c=8 retained-bench 512/128 generated-token equality remains green vs independent c1 with prefix 137 for every row and empty mismatch summaries.",
+    "The default auto MoE path is now grouped_compact for all three covered concurrencies: each run reports moe_grouped_compact_layers=40 and moe_selected_c1_fallback_layers=0.",
+    "c2 now has native_batch full attention, batch_gemv_auto O, grouped_compact MoE, native_caware_decode=true, and no decode blockers. c4 still has the dense-context batch-gate blocker; c8 still has the rowchunk full-attention blocker. No throughput claim is made."
+  ],
+  "fixture": {
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  },
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 259,
+  "mode": "qwen35_retained_bench_grouped_moe_auto_default",
+  "negative_frontier_checks": [
+    {
+      "blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate"
+      ],
+      "first_mismatches": [
+        {
+          "batch_token_at_mismatch": 220,
+          "best_other_c1_prefix": 0,
+          "c1_token_at_mismatch": 264,
+          "first_mismatch_index": 45,
+          "row": 4
+        },
+        {
+          "batch_token_at_mismatch": 81726,
+          "best_other_c1_prefix": 47,
+          "c1_token_at_mismatch": 61369,
+          "first_mismatch_index": 11,
+          "row": 5
+        }
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": false,
+      "label": "c8_no_rowchunk_dense_context_batch_gate_grouped_compact",
+      "min_equal_prefix_tokens": 11,
+      "moe_decode_path": "grouped_compact",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        45,
+        11,
+        83,
+        137
+      ],
+      "status": "rejected_correctness"
+    },
+    {
+      "blockers": [],
+      "first_mismatches": [
+        {
+          "batch_token_at_mismatch": 81726,
+          "best_other_c1_prefix": 31,
+          "c1_token_at_mismatch": 328,
+          "first_mismatch_index": 11,
+          "row": 3
+        },
+        {
+          "batch_token_at_mismatch": 61369,
+          "best_other_c1_prefix": 0,
+          "c1_token_at_mismatch": 81726,
+          "first_mismatch_index": 11,
+          "row": 4
+        }
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": false,
+      "label": "c8_no_rowchunk_native_selected_c1",
+      "min_equal_prefix_tokens": 11,
+      "moe_decode_path": "selected_c1_batch",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        11,
+        11,
+        64,
+        40,
+        137
+      ],
+      "status": "rejected_correctness"
+    },
+    {
+      "blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate"
+      ],
+      "first_mismatches": [
+        {
+          "batch_token_at_mismatch": 6007,
+          "best_other_c1_prefix": 28,
+          "c1_token_at_mismatch": 1483,
+          "first_mismatch_index": 103,
+          "row": 0
+        },
+        {
+          "batch_token_at_mismatch": 61369,
+          "best_other_c1_prefix": 0,
+          "c1_token_at_mismatch": 81726,
+          "first_mismatch_index": 11,
+          "row": 4
+        }
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": false,
+      "label": "c8_no_rowchunk_dense_context_batch_gate_selected_c1",
+      "min_equal_prefix_tokens": 11,
+      "moe_decode_path": "selected_c1_batch",
+      "prefix_lengths": [
+        103,
+        137,
+        137,
+        137,
+        11,
+        60,
+        68,
+        137
+      ],
+      "status": "rejected_correctness"
+    }
+  ],
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: c2/c4/c8 default generated-token equality remains green while auto MoE now uses grouped_compact for every covered concurrency, eliminating selected-c1 MoE fallback from the default frontier. No throughput claim.",
+    "passed": true
+  },
+  "runs": [
+    {
+      "batch_size": 2,
+      "blockers": [],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-grouped-moe-default-259/c2_default.json",
+      "first_full_layer_output_decode_path": "batch_gemv_auto",
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "generated_token_equality_passed": true,
+      "label": "c2_default",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "serial_lm_head",
+        "concurrency": 2,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    {
+      "batch_size": 4,
+      "blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-grouped-moe-default-259/c4_default.json",
+      "first_full_layer_output_decode_path": "native_batch",
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunk_size": null,
+      "full_attention_row_chunk_source": null,
+      "generated_token_equality_passed": true,
+      "label": "c4_default",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_context_path": "per_row_dense_context_batch_gate",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    {
+      "batch_size": 8,
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ],
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-grouped-moe-default-259/c8_default.json",
+      "first_full_layer_output_decode_path": "native_batch_row_chunks_with_batch_gemv_auto",
+      "first_mismatches": [],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_row_chunk_source": "env",
+      "generated_token_equality_passed": true,
+      "label": "c8_default",
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "status": "blocked",
+      "workload": {
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_output_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_moe_path": "grouped_compact",
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 8,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    }
+  ],
+  "schema": 1,
+  "timestamp": "2026-06-04T11:14:37.805712+00:00"
+}

@@ -1,0 +1,50 @@
+{
+  "schema": "hipengine_rejected_probe_v1",
+  "status": "rejected_correctness_and_perf_reverted",
+  "performance_claim": false,
+  "task_ids": [
+    51
+  ],
+  "label": "p9_h3_rejected_q4_t16_selected_silu_256_threads",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "change": "Prototype launched q4_k_t16_selected_dual_silu_direct_gemv_kernel with 256 threads instead of the retained 128-thread topology.",
+  "validation": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q --tb=short",
+    "result": "65 passed while prototype was present"
+  },
+  "baseline": {
+    "label": "P9.D10 retained",
+    "local_512x16_decode_tok_s_single_run": 78.74516104209006,
+    "final_token_id": 38118
+  },
+  "measurement": {
+    "benchmark_json": "/tmp/p9_d12_q4silu256_512x16_bench.json",
+    "decode_tok_s_512x16": 76.3645786938725,
+    "prefill_tok_s_512": 505.12615440374947,
+    "final_token_id": 37065,
+    "generated_tail_token_ids": [
+      227237,
+      100763,
+      11,
+      235,
+      80039,
+      98,
+      248046,
+      220,
+      220,
+      220,
+      754,
+      220,
+      220,
+      220,
+      13,
+      37065
+    ],
+    "finite_final_logits": true
+  },
+  "decision": "Reject and revert. Synthetic selected-GEMV fixtures passed, but full 512/16 graph replay regressed 78.745 -> 76.365 tok/s and changed the generated final token 38118 -> 37065; the retained 128-thread reduction topology remains required for P9.E2 alignment."
+}

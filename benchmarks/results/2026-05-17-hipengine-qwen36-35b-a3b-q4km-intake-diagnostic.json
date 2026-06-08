@@ -1,0 +1,388 @@
+{
+  "schema": 1,
+  "mode": "qwen36_35b_a3b_gguf_q4_k_m_intake_diagnostic",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "file_size_bytes": 22134528992,
+  "gguf": {
+    "path": "/data/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "version": 3,
+    "alignment": 32,
+    "architecture": "qwen35moe",
+    "file_type": 15,
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "quantization_version": 2,
+    "tensor_count": 733,
+    "total_tensor_nbytes": 22123538944,
+    "tensor_count_by_type": {
+      "F32": 361,
+      "Q4_K": 80,
+      "Q5_K": 37,
+      "Q6_K": 4,
+      "Q8_0": 251
+    },
+    "tensor_bytes_by_type": {
+      "F32": 104581632,
+      "Q4_K": 12079595520,
+      "Q5_K": 6828326912,
+      "Q6_K": 1077780480,
+      "Q8_0": 2033254400
+    },
+    "unsupported_dequant_types": [],
+    "metadata_subset": {
+      "name": "Qwen3.6-35B-A3B",
+      "size_label": "35B-A3B",
+      "block_count": 40,
+      "embedding_length": 2048,
+      "context_length": 262144,
+      "expert_count": 256,
+      "expert_used_count": 8,
+      "expert_feed_forward_length": 512,
+      "expert_shared_feed_forward_length": 512,
+      "full_attention_interval": 4,
+      "ssm_inner_size": 4096
+    },
+    "first_tensors": [
+      {
+        "name": "output.weight",
+        "type": "Q6_K",
+        "shape": [
+          248320,
+          2048
+        ],
+        "byte_shape": [
+          248320,
+          1680
+        ],
+        "nbytes": 417177600
+      },
+      {
+        "name": "output_norm.weight",
+        "type": "F32",
+        "shape": [
+          2048
+        ],
+        "byte_shape": [
+          2048
+        ],
+        "nbytes": 8192
+      },
+      {
+        "name": "token_embd.weight",
+        "type": "Q8_0",
+        "shape": [
+          248320,
+          2048
+        ],
+        "byte_shape": [
+          248320,
+          2176
+        ],
+        "nbytes": 540344320
+      },
+      {
+        "name": "blk.0.attn_gate.weight",
+        "type": "Q8_0",
+        "shape": [
+          4096,
+          2048
+        ],
+        "byte_shape": [
+          4096,
+          2176
+        ],
+        "nbytes": 8912896
+      },
+      {
+        "name": "blk.0.attn_norm.weight",
+        "type": "F32",
+        "shape": [
+          2048
+        ],
+        "byte_shape": [
+          2048
+        ],
+        "nbytes": 8192
+      },
+      {
+        "name": "blk.0.attn_qkv.weight",
+        "type": "Q8_0",
+        "shape": [
+          8192,
+          2048
+        ],
+        "byte_shape": [
+          8192,
+          2176
+        ],
+        "nbytes": 17825792
+      },
+      {
+        "name": "blk.0.ffn_down_exps.weight",
+        "type": "Q5_K",
+        "shape": [
+          256,
+          2048,
+          512
+        ],
+        "byte_shape": [
+          256,
+          2048,
+          352
+        ],
+        "nbytes": 184549376
+      },
+      {
+        "name": "blk.0.ffn_down_shexp.weight",
+        "type": "Q8_0",
+        "shape": [
+          2048,
+          512
+        ],
+        "byte_shape": [
+          2048,
+          544
+        ],
+        "nbytes": 1114112
+      },
+      {
+        "name": "blk.0.ffn_gate_exps.weight",
+        "type": "Q4_K",
+        "shape": [
+          256,
+          512,
+          2048
+        ],
+        "byte_shape": [
+          256,
+          512,
+          1152
+        ],
+        "nbytes": 150994944
+      },
+      {
+        "name": "blk.0.ffn_gate_inp.weight",
+        "type": "F32",
+        "shape": [
+          256,
+          2048
+        ],
+        "byte_shape": [
+          256,
+          2048
+        ],
+        "nbytes": 2097152
+      },
+      {
+        "name": "blk.0.ffn_gate_inp_shexp.weight",
+        "type": "F32",
+        "shape": [
+          2048
+        ],
+        "byte_shape": [
+          2048
+        ],
+        "nbytes": 8192
+      },
+      {
+        "name": "blk.0.ffn_gate_shexp.weight",
+        "type": "Q8_0",
+        "shape": [
+          512,
+          2048
+        ],
+        "byte_shape": [
+          512,
+          2176
+        ],
+        "nbytes": 1114112
+      },
+      {
+        "name": "blk.0.ffn_up_exps.weight",
+        "type": "Q4_K",
+        "shape": [
+          256,
+          512,
+          2048
+        ],
+        "byte_shape": [
+          256,
+          512,
+          1152
+        ],
+        "nbytes": 150994944
+      },
+      {
+        "name": "blk.0.ffn_up_shexp.weight",
+        "type": "Q8_0",
+        "shape": [
+          512,
+          2048
+        ],
+        "byte_shape": [
+          512,
+          2176
+        ],
+        "nbytes": 1114112
+      },
+      {
+        "name": "blk.0.post_attention_norm.weight",
+        "type": "F32",
+        "shape": [
+          2048
+        ],
+        "byte_shape": [
+          2048
+        ],
+        "nbytes": 8192
+      },
+      {
+        "name": "blk.0.ssm_a",
+        "type": "F32",
+        "shape": [
+          32
+        ],
+        "byte_shape": [
+          32
+        ],
+        "nbytes": 128
+      }
+    ],
+    "dequant_smoke": [
+      {
+        "type": "Q6_K",
+        "tensor": "output.weight",
+        "sample_shape": [
+          1,
+          1680
+        ],
+        "dequant_shape": [
+          1,
+          2048
+        ],
+        "finite": true,
+        "min": -0.0771026611328125,
+        "max": 0.08254241943359375
+      },
+      {
+        "type": "F32",
+        "tensor": "output_norm.weight",
+        "sample_shape": [
+          1
+        ],
+        "dequant_shape": [
+          1
+        ],
+        "finite": true,
+        "min": 2.734375,
+        "max": 2.734375
+      },
+      {
+        "type": "Q8_0",
+        "tensor": "token_embd.weight",
+        "sample_shape": [
+          1,
+          2176
+        ],
+        "dequant_shape": [
+          1,
+          2048
+        ],
+        "finite": true,
+        "min": -0.06643247604370117,
+        "max": 0.12886810302734375
+      },
+      {
+        "type": "Q5_K",
+        "tensor": "blk.0.ffn_down_exps.weight",
+        "sample_shape": [
+          1,
+          352
+        ],
+        "dequant_shape": [
+          1,
+          512
+        ],
+        "finite": true,
+        "min": -0.03382587432861328,
+        "max": 0.024935483932495117
+      },
+      {
+        "type": "Q4_K",
+        "tensor": "blk.0.ffn_gate_exps.weight",
+        "sample_shape": [
+          1,
+          1152
+        ],
+        "dequant_shape": [
+          1,
+          2048
+        ],
+        "finite": true,
+        "min": -0.05909013748168945,
+        "max": 0.06562221050262451
+      }
+    ]
+  },
+  "tokenizer_smoke": {
+    "tokenizer_model": "gpt2",
+    "tokenizer_pre": "qwen35",
+    "prompt": "The answer is",
+    "prompt_ids": [
+      760,
+      4087,
+      369
+    ],
+    "roundtrip": "The answer is",
+    "vocab_size": 248320
+  },
+  "hipengine_public_generate_attempt": {
+    "schema": 1,
+    "mode": "gguf_true_llm_generate_e2e_correctness",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "fixture": "/home/lhl/hipENGINE/tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json",
+    "prompt": "The answer is",
+    "prompt_ids": [
+      760,
+      4087,
+      369
+    ],
+    "max_new_tokens": 1,
+    "repeat": 1,
+    "expected_generated_text": " 1.\n\n",
+    "outputs": [],
+    "deterministic": false,
+    "expected_text_match": false,
+    "expected_generated_token_ids": [
+      220,
+      16,
+      13,
+      271
+    ],
+    "generated_token_ids": null,
+    "expected_token_ids_match": false,
+    "tokenization_error": null,
+    "torch_preloaded": false,
+    "torch_loaded_by_generate": false,
+    "errors": [
+      "MissingModelError: model architecture 'qwen35moe' not registered; known: HipEngineToyForCausalLM, Qwen3_5MoeForCausalLM, Qwen3_5MoeForConditionalGeneration, qwen35, qwen3_5_gguf, qwen3_5_moe_paro, toy_one_layer"
+    ],
+    "passed": false,
+    "notes": [
+      "Hard gate for GGUF E2E: this must call hipengine.LLM.generate(), not a lower-level runner.",
+      "Passing requires deterministic repeated generation, expected text/token match, and no torch import by the generate path.",
+      "Finite-logit and kernel-trace evidence are recorded by the GGUF runner/profile tasks once the public API path is wired."
+    ]
+  },
+  "result": {
+    "passed": false,
+    "blocker": "hipENGINE public GGUF generation currently has no qwen35moe model/generator mapping; current qwen35 GGUF mapper also rejects architecture qwen35moe and does not cover rank-3 MoE expert tensors.",
+    "intake_ok": true
+  },
+  "commands": [
+    "PYTHONPATH=. python3 scripts/inspect_gguf.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --check-dequant --smoke-rows 1",
+    "PYTHONPATH=. python3 - <<'PY'  # tokenizer smoke",
+    "PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --max-new-tokens 1 --repeat 1 --skip-tokenize-check --json /tmp/hipengine-qwen36-35b-q4km-e2e-attempt.json"
+  ]
+}

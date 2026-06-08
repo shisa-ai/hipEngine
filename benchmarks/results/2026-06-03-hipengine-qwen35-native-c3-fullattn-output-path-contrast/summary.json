@@ -1,0 +1,121 @@
+{
+  "artifacts": {
+    "c3-fullattn-output-batch": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-fullattn-output-path-contrast/diagnostics/c3-fullattn-output-batch.json",
+      "sha256": "9f7d01dc84997828aa00a53c0aad33272725d1acf9018ff5ccf8cc0f15d62dc9",
+      "size_bytes": 2775
+    },
+    "c3-fullattn-output-batch_gemv": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-fullattn-output-path-contrast/diagnostics/c3-fullattn-output-batch_gemv.json",
+      "sha256": "492b5139dc59550ec791b4b2b54ac356284ec1896ee0b4657956af7d8433fbb9",
+      "size_bytes": 2790
+    },
+    "c3_realshape_primitive": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/summary.json",
+      "sha256": "26b3e4cbdd10ab3a6b79fd40cd4c1d0f52a9d3385465def55c62ee2543368958",
+      "size_bytes": 8081
+    },
+    "c4_c8_output_contrast": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-fullattn-output-batch-control/summary.json",
+      "sha256": "c2035317be5f8eec18dad80d21e447412a57ead547126200ec00489202e0cd7a",
+      "size_bytes": 10176
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-fullattn-output-path-contrast/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    }
+  },
+  "batch_gemv_control_green": true,
+  "conclusion": "At the exact grouped>=3 threshold, both full-attention O-output paths preserve c3 rowchunk2 generated-token equality [137,137,137]: row-aware batch_gemv and native batch output are both green. This narrows the c4/c8 native batch O-output bug to row counts above c3 (or to retained c4/c8 interactions) rather than the first grouped>=3 row count. No throughput claim is made because this c3 run still uses rowchunk2/native_caware_decode=false and has no c-aware projection candidate.",
+  "created_at": "2026-06-03T19:38:24Z",
+  "git_commit": "716688f2b4ffced8f6a38c6d8275cc8bb04dce29",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 206,
+  "kind": "native_c3_full_attention_output_path_contrast",
+  "native_batch_output_green": true,
+  "native_batch_output_red": false,
+  "performance_claim": false,
+  "remaining_blockers": [
+    "native batch full-attention O-output path is red for c4/c8 but not reproduced at c3 rowchunk2",
+    "full-native grouped>=3 attention remains blocked separately",
+    "rowchunk2 batch_gemv remains the c4/c8 correctness path"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-fullattn-output-path-contrast/diagnostics/c3-fullattn-output-batch.json",
+      "artifact_sha256": "9f7d01dc84997828aa00a53c0aad33272725d1acf9018ff5ccf8cc0f15d62dc9",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_path": null,
+      "full_attention_row_chunk_size": 2,
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "output_mode": "batch",
+      "prefix_lengths": [
+        137,
+        137,
+        137
+      ]
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-fullattn-output-path-contrast/diagnostics/c3-fullattn-output-batch_gemv.json",
+      "artifact_sha256": "492b5139dc59550ec791b4b2b54ac356284ec1896ee0b4657956af7d8433fbb9",
+      "batch_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_output_path": null,
+      "full_attention_row_chunk_size": 2,
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": false,
+      "output_mode": "batch_gemv",
+      "prefix_lengths": [
+        137,
+        137,
+        137
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "batch_decode_full_attention_output_paths": [
+      "batch_gemv",
+      "batch"
+    ],
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_size": 2,
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_sample_mode": "serial_lm_head",
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "rows": 3,
+    "warmup_decode_tokens": 8
+  }
+}

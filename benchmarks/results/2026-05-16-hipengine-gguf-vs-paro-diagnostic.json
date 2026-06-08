@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "date": "2026-05-16",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "scope": "cross_model_timing_memory_comparison",
+  "summary": "Diagnostic GGUF-vs-PARO timing/memory comparison. Not apples-to-apples: GGUF is Qwen3.5-0.8B-Q4_K_M; PARO rows are Qwen3.5-35B-A3B-PARO and include retained prior artifacts.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device_note": "local gfx1100 ROCm device; exact GPU depends on runner session notes in source artifacts"
+  },
+  "caveats": [
+    "Do not promote as a throughput row. performance_claim=false.",
+    "GGUF path is correctness-first and uses a CPU-hosted small-context full-attention bridge after native GGUF projections.",
+    "GGUF decode recomputes the full context through the full-stack runner for each generated token; no persistent KV/recurrent decode cache at the public API level yet.",
+    "PARO rows are from existing retained Qwen3.5-35B-A3B-PARO artifacts, not rerun for this comparison, and are a different model/quant/size from the 0.8B GGUF row.",
+    "Use HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt for GGUF timing; otherwise fresh Python runs repeatedly probe hipcc --version and look much slower."
+  ],
+  "gguf_qwen35_0_8b_q4_k_m": {
+    "model_path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "file_size_bytes": 532517120,
+    "file_size_gib": 0.4959452152252197,
+    "command_setup": "hipcc --version > /tmp/hipengine-hipcc-version.txt; export HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt",
+    "load_materialize": {
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY' ... Qwen35GGUFFullStackRunner(model) ... PY",
+      "runner_init_materialize_seconds": 10.86981940199621,
+      "close_free_seconds": 0.068075122020673
+    },
+    "memory": {
+      "estimated_resident_bytes": 380980480,
+      "estimated_resident_gib": 0.3548157215118408,
+      "by_layout_bytes": {
+        "raw_gguf": 350871552,
+        "dense_f32": 1993984,
+        "q4_k_pack8": 28114944
+      },
+      "by_quant_bytes": {
+        "gguf_q6_k": 246435840,
+        "f32": 1993984,
+        "gguf_q4_k": 28114944,
+        "gguf_q5_k": 103809024,
+        "gguf_q8_0": 626688
+      }
+    },
+    "prefill": {
+      "command": "runner.run_prompt_hidden(tokenizer.encode(\"The answer is\"))",
+      "prompt": "The answer is",
+      "prompt_ids": [
+        760,
+        4087,
+        369
+      ],
+      "prompt_tokens": 3,
+      "seconds": 0.19097889598924667,
+      "tok_s": 15.708541954127325,
+      "lm_head_seconds": 0.0023021940141916275
+    },
+    "decode": {
+      "command": "for 4 greedy steps: runner.sample_next_token(context_ids), append generated id, detokenize generated ids",
+      "generated_ids": [
+        220,
+        16,
+        13,
+        271
+      ],
+      "generated_text": " 1.\n\n",
+      "steps": [
+        {
+          "step": 1,
+          "ctx_len": 3,
+          "seconds": 0.17910020798444748,
+          "tok_s": 5.58346643621339,
+          "token_id": 220,
+          "text": " "
+        },
+        {
+          "step": 2,
+          "ctx_len": 4,
+          "seconds": 0.23712244498892687,
+          "tok_s": 4.217230469459346,
+          "token_id": 16,
+          "text": "1"
+        },
+        {
+          "step": 3,
+          "ctx_len": 5,
+          "seconds": 0.2940176450065337,
+          "tok_s": 3.4011564169142905,
+          "token_id": 13,
+          "text": "."
+        },
+        {
+          "step": 4,
+          "ctx_len": 6,
+          "seconds": 0.3547834760101978,
+          "tok_s": 2.8186205604774455,
+          "token_id": 271,
+          "text": "\n\n"
+        }
+      ]
+    }
+  },
+  "paro_existing_artifact_rows": {
+    "hipengine_native_single_request_fixture": {
+      "source_artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json",
+      "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "quant": "w4_paro",
+      "workload": {
+        "prompt_tokens": 512,
+        "decode_tokens": 32
+      },
+      "correctness": {
+        "status": "accepted",
+        "max_kl": null,
+        "top1_agreement": null
+      },
+      "prefill_seconds": 10.903746998868883,
+      "prefill_tok_s": 46.95633529034681,
+      "decode_seconds": 0.31493937596678734,
+      "decode_tok_s": 101.60685656332359,
+      "owned_device_bytes": 1625645909,
+      "owned_device_gib": 1.514000733383
+    },
+    "hipengine_aotriton_v3_diagnostic": {
+      "source_artifact": "benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-prefill-diagnostic.json",
+      "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "quant": "w4_paro",
+      "validation_owned_device_bytes": 1625645917,
+      "validation_owned_device_gib": 1.5140007408335805,
+      "measurements": [
+        {
+          "workload": "512/128",
+          "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task14-v3-aotriton-512-128.json",
+          "prefill_tok_s": 2183.259595109745,
+          "decode_tok_s": 101.46153703174342,
+          "prefill_seconds": 0.2345117370132357,
+          "decode_seconds": 1.2615618070121855,
+          "prefill_execution_detail": {
+            "path": "single_request_native_full",
+            "tokens": 512,
+            "full_native": true,
+            "linear_prefix_layers": 3,
+            "layer_limit": 40,
+            "aotriton_attention": true,
+            "attn_aotriton_min_tokens": 512
+          }
+        },
+        {
+          "workload": "4K/128",
+          "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task14-v3-aotriton-4k-128.json",
+          "prefill_tok_s": 2377.9402308413432,
+          "decode_tok_s": 102.85992953740318,
+          "prefill_seconds": 1.7224991389084607,
+          "decode_seconds": 1.2444107299670577,
+          "prefill_execution_detail": {
+            "path": "single_request_native_full",
+            "tokens": 4096,
+            "full_native": true,
+            "linear_prefix_layers": 3,
+            "layer_limit": 40,
+            "aotriton_attention": true,
+            "attn_aotriton_min_tokens": 512
+          }
+        }
+      ]
+    },
+    "parent_lineage_target_from_artifacts": {
+      "source": "parent metrics embedded in retained PARO artifacts / ~/amd-gpu-tuning/docs/OPTIMAL.md",
+      "prefill_tok_s": 2682.660298904437,
+      "decode_tok_s": 116.25779530736419,
+      "prefill_seconds": 0.19085532380267978,
+      "decode_seconds": 0.275250359904021,
+      "peak_allocated_bytes": 20183255040,
+      "peak_allocated_gib": 18.797121047973633,
+      "allocated_after_load_bytes": 19644673536,
+      "allocated_after_load_gib": 18.295527935028076
+    }
+  },
+  "comparison_tables": {
+    "prefill": [
+      {
+        "path": "GGUF current correctness path",
+        "model": "Qwen3.5-0.8B-Q4_K_M",
+        "workload": "3-token fixture prompt hidden",
+        "tok_s": 15.708541954127325,
+        "seconds": 0.19097889598924667,
+        "source": "rerun diagnostic /tmp/gguf_diag_probe.json"
+      },
+      {
+        "path": "PARO native single-request diagnostic",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "workload": "512-token fixture",
+        "tok_s": 46.95633529034681,
+        "seconds": 10.903746998868883,
+        "source": "2026-05-15 native fixture artifact"
+      },
+      {
+        "path": "PARO AOTriton V3 diagnostic",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "workload": "512/128",
+        "tok_s": 2183.259595109745,
+        "seconds": 0.2345117370132357,
+        "source": "2026-05-16 AOTriton diagnostic artifact"
+      },
+      {
+        "path": "PARO AOTriton V3 diagnostic",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "workload": "4K/128",
+        "tok_s": 2377.9402308413432,
+        "seconds": 1.7224991389084607,
+        "source": "2026-05-16 AOTriton diagnostic artifact"
+      },
+      {
+        "path": "PARO parent lineage target",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "workload": "512/32-ish fixture",
+        "tok_s": 2682.660298904437,
+        "seconds": 0.19085532380267978,
+        "source": "parent metrics embedded in artifact"
+      }
+    ],
+    "decode": [
+      {
+        "path": "GGUF current correctness path step 1",
+        "model": "Qwen3.5-0.8B-Q4_K_M",
+        "workload": "ctx_len=3 -> 1 token",
+        "tok_s": 5.58346643621339,
+        "seconds": 0.17910020798444748,
+        "source": "rerun diagnostic /tmp/gguf_diag_probe.json"
+      },
+      {
+        "path": "GGUF current correctness path step 4",
+        "model": "Qwen3.5-0.8B-Q4_K_M",
+        "workload": "ctx_len=6 -> 1 token",
+        "tok_s": 2.8186205604774455,
+        "seconds": 0.3547834760101978,
+        "source": "rerun diagnostic /tmp/gguf_diag_probe.json"
+      },
+      {
+        "path": "PARO native single-request diagnostic",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "workload": "32 decode tokens",
+        "tok_s": 101.60685656332359,
+        "seconds": 0.31493937596678734,
+        "source": "2026-05-15 native fixture artifact"
+      },
+      {
+        "path": "PARO AOTriton V3 diagnostic",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "workload": "512/128",
+        "tok_s": 101.46153703174342,
+        "seconds": 1.2615618070121855,
+        "source": "2026-05-16 AOTriton diagnostic artifact"
+      },
+      {
+        "path": "PARO parent lineage target",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "workload": "fixture decode",
+        "tok_s": 116.25779530736419,
+        "seconds": 0.275250359904021,
+        "source": "parent metrics embedded in artifact"
+      }
+    ],
+    "memory": [
+      {
+        "path": "GGUF resident estimate",
+        "model": "Qwen3.5-0.8B-Q4_K_M",
+        "bytes": 380980480,
+        "gib": 0.3548157215118408,
+        "source": "materialization-plan byte estimate"
+      },
+      {
+        "path": "GGUF file size",
+        "model": "Qwen3.5-0.8B-Q4_K_M",
+        "bytes": 532517120,
+        "gib": 0.4959452152252197,
+        "source": "stat model file"
+      },
+      {
+        "path": "PARO hipENGINE owned device bytes",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "bytes": 1625645909,
+        "gib": 1.514000733383,
+        "source": "2026-05-15 native fixture artifact"
+      },
+      {
+        "path": "PARO parent peak allocated",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "bytes": 20183255040,
+        "gib": 18.797121047973633,
+        "source": "parent metrics embedded in artifact"
+      }
+    ]
+  }
+}

@@ -1,0 +1,255 @@
+{
+  "conclusion": "Current c2 profiler evidence shows projection kernels dominate the filtered trace (~45.3%), followed by fused norm/rotary/other (~34.8%), attention (~13.5%), MoE (~6.3%), and sampling (<0.1%). Correctness remains green and scaling references are complete, but native c2 remains below both c1 and serial-bridge thresholds; do not update retained performance rollups.",
+  "created_at": "2026-06-07T03:38:30.660430+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 420,
+  "performance_claim": false,
+  "profiler_top_kernels": [
+    {
+      "duration_ns": 468433659.0,
+      "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+      "share": 0.10501704029351525
+    },
+    {
+      "duration_ns": 356875763.0,
+      "kernel": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+      "share": 0.08000713796433231
+    },
+    {
+      "duration_ns": 327578519.0,
+      "kernel": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+      "share": 0.0734390577366966
+    },
+    {
+      "duration_ns": 306036945.0,
+      "kernel": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+      "share": 0.0686097029256587
+    },
+    {
+      "duration_ns": 294624656.0,
+      "kernel": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+      "share": 0.06605120869552003
+    },
+    {
+      "duration_ns": 260848425.0,
+      "kernel": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+      "share": 0.058478994906565815
+    },
+    {
+      "duration_ns": 236826967.0,
+      "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+      "share": 0.05309368073405247
+    },
+    {
+      "duration_ns": 223132909.0,
+      "kernel": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+      "share": 0.05002364207833807
+    },
+    {
+      "duration_ns": 218467267.0,
+      "kernel": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+      "share": 0.04897766277156687
+    },
+    {
+      "duration_ns": 195692752.0,
+      "kernel": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "share": 0.043871897817515465
+    },
+    {
+      "duration_ns": 172199905.0,
+      "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+      "share": 0.03860509170184224
+    },
+    {
+      "duration_ns": 145224555.0,
+      "kernel": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+      "share": 0.032557551429161544
+    }
+  ],
+  "prompt_verifier": {
+    "evidence": "PASS: collected current-commit rocprofv3 kernel-trace evidence for the correctness-green c2 retained path on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX; profiler.status=captured and expected kernels are present. The retained run remains blocked because scaling ratios are below 1 and profiler command label is smoke-shaped, so no performance claim.",
+    "passed": true
+  },
+  "result": {
+    "active_c2_prefix_lengths": [
+      137,
+      137
+    ],
+    "active_c2_verify_metric": 137,
+    "expected_kernels_present": true,
+    "generated_token_equality_passed": true,
+    "guard_primitive_c2_passed": true,
+    "guard_primitive_c8_passed": true,
+    "kernel_duration_categories_ns": {
+      "attention": 603692023.0,
+      "graph_replay": 0.0,
+      "moe": 282955497.0,
+      "other": 1550442191.0,
+      "projection": 2020169226.0,
+      "sampling": 3290110.0
+    },
+    "kernel_duration_category_shares": {
+      "attention": 0.13534029480205378,
+      "graph_replay": 0.0,
+      "moe": 0.06343512738421862,
+      "other": 0.3475899882869285,
+      "projection": 0.45289698750396906,
+      "sampling": 0.0007376020228300833
+    },
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "profiler_status": "captured",
+    "ratios": {
+      "aggregate_vs_c1": 0.8398050303196104,
+      "aggregate_vs_serial_bridge": 0.9974693500801112,
+      "per_request_vs_c1": 0.4199025151598052,
+      "per_request_vs_serial_bridge": 0.9974693500801112
+    },
+    "retained_correctness_passed": true,
+    "retained_with_profiler_status": "blocked",
+    "scaling_complete": true,
+    "top_kernels_ns": [
+      [
+        "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        468433659.0
+      ],
+      [
+        "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        356875763.0
+      ],
+      [
+        "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        327578519.0
+      ],
+      [
+        "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        306036945.0
+      ],
+      [
+        "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        294624656.0
+      ],
+      [
+        "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        260848425.0
+      ],
+      [
+        "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        236826967.0
+      ],
+      [
+        "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        223132909.0
+      ],
+      [
+        "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        218467267.0
+      ],
+      [
+        "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        195692752.0
+      ],
+      [
+        "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        172199905.0
+      ],
+      [
+        "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        145224555.0
+      ]
+    ],
+    "total_kernel_duration_ns": 4460549047.0,
+    "unique_trace_kernel_names": 57
+  },
+  "retained_with_profiler": {
+    "correctness_passed": true,
+    "decision": {
+      "accepted": false,
+      "reason": "compiler_version_file must be a repo-relative path under benchmarks/results; scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim; scaling.ratios.aggregate_vs_serial_bridge must be > 1.0 for retained performance claim; profiler command --batch-sample-mode must match retained sampler mode; profiler command must include --batch-sample-eq-ok; profiler command --batch-sample-eq-artifact must match retained sampler equality artifact; profiler command --batch-sample-eq-rows must match retained sampler equality rows; profiler command must start with rocprofv3; profiler command device env prefix must match retained command; profiler command --profiler-json must match profiler.artifact_path; profiler command --json must match retained artifact path; profiler command --c1-baseline-json must match retained reference artifact; profiler command --serial-bridge-json must match retained reference artifact; profiler command --primitive-correctness-json must match retained reference artifact; profiler command --batch-sample-mode must match retained sampler mode; profiler command must include --batch-sample-eq-ok; profiler command --batch-sample-eq-artifact must match retained sampler equality artifact; profiler command --batch-sample-eq-rows must match retained sampler equality rows"
+    },
+    "generated_token_equality": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "rows": 2,
+      "tokens_per_sequence": 137
+    },
+    "profiler": {
+      "expected_kernels_present": true,
+      "kernel_duration_categories_ns": {
+        "attention": 603692023.0,
+        "graph_replay": 0.0,
+        "moe": 282955497.0,
+        "other": 1550442191.0,
+        "projection": 2020169226.0,
+        "sampling": 3290110.0
+      },
+      "kernel_duration_category_shares": {
+        "attention": 0.13534029480205378,
+        "graph_replay": 0.0,
+        "moe": 0.06343512738421862,
+        "other": 0.3475899882869285,
+        "projection": 0.45289698750396906,
+        "sampling": 0.0007376020228300833
+      },
+      "status": "captured",
+      "total_kernel_duration_ns": 4460549047.0,
+      "trace_files": [
+        "/tmp/hipengine-iter420-c2-profiler/raw/c2-current-retained-filtered_kernel_trace.csv"
+      ]
+    },
+    "raw_json": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-profiler-420/retained-c2-with-profiler.json",
+      "sha256": "90a8d0411e0cb986c87d530c27a846e43a4923e2ad520991ea4014fdc0c0d8bb",
+      "size_bytes": 193661
+    },
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "decode_tok_s_aggregate": 133.90142644926902,
+        "decode_tok_s_per_request": 133.90142644926902,
+        "gen_tokens_per_request": 128,
+        "prompt_tokens_per_request": 512,
+        "reason": null,
+        "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "run_tag": "qwen35-paro-c1-native-baseline-iter419",
+        "status": "loaded",
+        "workload_concurrency": 1
+      },
+      "complete": true,
+      "native": {
+        "decode_tok_s_aggregate": 112.45109149906746,
+        "decode_tok_s_per_request": 56.22554574953373
+      },
+      "ratios": {
+        "aggregate_vs_c1": 0.8398050303196104,
+        "aggregate_vs_serial_bridge": 0.9974693500801112,
+        "per_request_vs_c1": 0.4199025151598052,
+        "per_request_vs_serial_bridge": 0.9974693500801112
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c2-serial-bridge-scaling.json",
+        "decode_tok_s_aggregate": 112.73638782989775,
+        "decode_tok_s_per_request": 56.368193914948876,
+        "gen_tokens_per_request": 128,
+        "prompt_tokens_per_request": 512,
+        "reason": null,
+        "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c2-serial-bridge-scaling.json",
+        "run_tag": "qwen35-paro-c2-scheduler-serial-bridge",
+        "status": "blocked",
+        "workload_concurrency": 2
+      }
+    },
+    "status": "blocked"
+  }
+}

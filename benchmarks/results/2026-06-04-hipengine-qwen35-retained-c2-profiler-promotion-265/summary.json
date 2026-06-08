@@ -1,0 +1,184 @@
+{
+  "active_verify": {
+    "artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "decode_blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "metric": 137,
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "artifacts": {
+    "hipcc-version.txt": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "native-profiled-c2-retained.json": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/native-profiled-c2-retained.json",
+      "sha256": "96c1f0f6ce1b8915c57177c60184668384d66c6835659114ead4049c828b325a",
+      "size_bytes": 184946
+    },
+    "profile-c2-retained/hipengine_kernel_trace.csv": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profile-c2-retained/hipengine_kernel_trace.csv",
+      "sha256": "80e000e2db00ade8e827b1861f583ce5e074e2921aab49c6835cfd7542da4dc5",
+      "size_bytes": 10304
+    },
+    "profiler-c2-retained.json": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profiler-c2-retained.json",
+      "sha256": "5c6344d59787154770fc3e527097e32f9b7e894ae04d08357c61dce61e49e03b",
+      "size_bytes": 46681
+    }
+  },
+  "commands": {
+    "retained_attach": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path batch --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --c1-baseline-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/serial-bridge-c2.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json --profiler-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profiler-c2-retained.json --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/native-profiled-c2-retained.json",
+    "rocprof": "rocprofv3 --kernel-trace --output-format csv -d benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profile-c2-retained -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path batch --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --c1-baseline-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json --serial-bridge-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/serial-bridge-c2.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json --profiler-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profiler-c2-retained.json --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/native-profiled-c2-retained.json"
+  },
+  "conclusion": "Current GPU1/XTX c2 profiler promotion evidence is green: profiler provenance, expected/trace/duration kernel names, projection-dispatch kernel evidence, graph histogram, and native batched sampler batch_argmax durations all validate. The retained artifact remains blocked only by aggregate_vs_c1 scaling, so no c>N throughput claim is made.",
+  "created_utc": "2026-06-04T12:18:26Z",
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    }
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 265,
+  "kind": "c2_profiler_promotion_evidence",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "profiler_evidence": {
+    "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profiler-c2-retained.json",
+    "expected_kernels_present": true,
+    "kernel_duration_categories_ns": {
+      "attention": 591148137.0,
+      "graph_replay": 0.0,
+      "moe": 281242064.0,
+      "other": 1675213042.0,
+      "projection": 1991256392.0,
+      "sampling": 3344634.0
+    },
+    "projection_dispatch_kernel_names": [
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+    ],
+    "raw_trace_not_committed": true,
+    "raw_trace_sha1_first_16m": "7b2ce4c6af0794bf261c613fa9144cf09d58a912",
+    "sampler_kernel_names": [
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)",
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+    ],
+    "source_artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profiler-c2-retained.json",
+    "status": "captured",
+    "total_kernel_duration_ns": 4542204269,
+    "trace_file": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/profile-c2-retained/hipengine_kernel_trace.csv",
+    "unique_kernel_count": 61
+  },
+  "prompt_verifier": {
+    "evidence": "Pass: focused required runtime evidence advanced; current c2 profiler-promotion artifact validates profiler provenance, projection-dispatch kernel evidence, graph histogram, and native batch_argmax sampler durations while preserving equality [137,137] and making no retained throughput claim.",
+    "passed": true
+  },
+  "retained_validation": {
+    "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-profiler-promotion-265/native-profiled-c2-retained.json",
+    "batch_blockers": [],
+    "decision": {
+      "accepted": false,
+      "reason": "scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim"
+    },
+    "decode_execution": {
+      "blockers": [],
+      "full_attention_decode_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_state_path": "native_segments",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": true
+    },
+    "generated_token_equality": {
+      "min_equal_prefix_tokens": 137,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ]
+    },
+    "graph_bucket_stats": {
+      "entries": 1,
+      "hits": 1,
+      "kernel_time_histogram_ns": {
+        "gt_10ms": 42,
+        "le_100us": 4,
+        "le_10ms": 12,
+        "le_10us": 0,
+        "le_1ms": 3
+      },
+      "miss_reasons": {
+        "cache_absent": 1
+      },
+      "misses": 1,
+      "replay_hit_rate": 0.5,
+      "replay_kernel_hits": 0
+    },
+    "projection_dispatch": {
+      "blockers": [],
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.081395195821912,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+        "per_request_vs_row_gemv": 1.081395195821912
+      },
+      "path": "benchmark_accepted_caware_projection",
+      "rows": 2,
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "gemv_awq_selected_dual_pack8_strided"
+      },
+      "throughput_claim_eligible": true
+    },
+    "sampler_execution": {
+      "argmax_audit_enabled": false,
+      "argmax_mode": "batch",
+      "blockers": [],
+      "c2_equality_green": true,
+      "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+      "equality_rows": 2,
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true,
+      "requested_mode": "batched_lm_head",
+      "rows": 2
+    },
+    "scaling_ratios": {
+      "aggregate_vs_c1": 0.8239734193186404,
+      "aggregate_vs_serial_bridge": 1.0009175282150127,
+      "per_request_vs_c1": 0.4119867096593202,
+      "per_request_vs_serial_bridge": 1.0009175282150127
+    },
+    "status": "blocked"
+  },
+  "schema": 1,
+  "workload": {
+    "concurrency": 2,
+    "gen_tokens_per_request": 128,
+    "max_layers": 40,
+    "prompt_tokens_per_request": 512,
+    "warmup_decode_tokens": 8
+  }
+}

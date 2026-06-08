@@ -1,0 +1,73 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for nonzero row chunks",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for nonzero row chunks"
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_output_layer_paths": [],
+  "full_attention_row_chunk_size": 2,
+  "full_attention_row_chunk_source": "env",
+  "full_attention_segment_output_paths": [],
+  "generated_token_equality_passed": true,
+  "label": "c8-default-equality-post-argmax-audit",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "log_path": "/tmp/hipengine-iter230-c8-default-equality.log",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "selected_c1_batch",
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "aadfd23374c1031e52ff507ba53d4129d4399d0ee75a744d0f3771eba46bad74",
+  "raw_size_bytes": 416959,
+  "raw_source_path": "/tmp/hipengine-iter230-c8-default-equality.json",
+  "rows": 8,
+  "sampler_execution": {
+    "argmax_audit_enabled": false,
+    "argmax_mode": "batch",
+    "blockers": [],
+    "c2_equality_green": true,
+    "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+    "equality_rows": 8,
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true,
+    "requested_mode": "batched_lm_head",
+    "rows": 8
+  },
+  "status": "blocked",
+  "workload_batch_sample_argmax_audit": false,
+  "workload_batch_sample_argmax_mode": "batch",
+  "workload_batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+  "workload_batch_sample_eq_ok": true,
+  "workload_batch_sample_eq_rows": 8,
+  "workload_batch_sample_mode": "batched_lm_head",
+  "workload_batch_size": 8,
+  "workload_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json"
+}

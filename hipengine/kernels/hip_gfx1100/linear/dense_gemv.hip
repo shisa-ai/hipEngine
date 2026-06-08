@@ -166,6 +166,57 @@ __global__ void dense_gemv_out_kernel(
 }
 
 
+template <typename scalar_t, int TILE_M, int TILE_N, int TILE_K>
+__global__ void dense_prefill_gemm_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ weight,
+    scalar_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int local_col = threadIdx.x;
+  const int local_row = threadIdx.y;
+  const int64_t row = static_cast<int64_t>(blockIdx.y) * TILE_M + local_row;
+  const int64_t out_col = static_cast<int64_t>(blockIdx.x) * TILE_N + local_col;
+  const int linear_tid = local_row * blockDim.x + local_col;
+
+  __shared__ scalar_t sx[TILE_M][TILE_K];
+  __shared__ scalar_t sw[TILE_N][TILE_K];
+
+  float acc = 0.0f;
+  for (int64_t k0 = 0; k0 < in_features; k0 += TILE_K) {
+    for (int idx = linear_tid; idx < TILE_M * TILE_K; idx += TILE_M * TILE_N) {
+      const int r = idx / TILE_K;
+      const int k = idx - r * TILE_K;
+      const int64_t global_row = static_cast<int64_t>(blockIdx.y) * TILE_M + r;
+      const int64_t global_k = k0 + k;
+      sx[r][k] = (global_row < rows && global_k < in_features) ? x[global_row * in_features + global_k] : scalar_t{0};
+    }
+    for (int idx = linear_tid; idx < TILE_N * TILE_K; idx += TILE_M * TILE_N) {
+      const int c = idx / TILE_K;
+      const int k = idx - c * TILE_K;
+      const int64_t global_col = static_cast<int64_t>(blockIdx.x) * TILE_N + c;
+      const int64_t global_k = k0 + k;
+      sw[c][k] = (global_col < out_features && global_k < in_features) ? weight[global_col * in_features + global_k] : scalar_t{0};
+    }
+    __syncthreads();
+
+    if (row < rows && out_col < out_features) {
+      const int64_t remaining_k = in_features - k0;
+      const int tile_k = remaining_k < TILE_K ? static_cast<int>(remaining_k) : TILE_K;
+#pragma unroll
+      for (int k = 0; k < tile_k; ++k) {
+        acc = fmaf(scalar_to_float(sx[local_row][k]), scalar_to_float(sw[local_col][k]), acc);
+      }
+    }
+    __syncthreads();
+  }
+  if (row < rows && out_col < out_features) {
+    out[row * out_features + out_col] = float_to_scalar<scalar_t>(acc);
+  }
+}
+
+
 template <typename scalar_t>
 __global__ void dense_dual_gemv_out_kernel(
     const scalar_t* __restrict__ x,
@@ -417,6 +468,39 @@ extern "C" int hipengine_dense_gemv_out_bf16(
       (dense_gemv_out_kernel<uint16_t>),
       dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_prefill_gemm_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;
+  if (rows <= 0 || in_features <= 0 || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int TILE_M = 32;
+  constexpr int TILE_N = 8;
+  constexpr int TILE_K = 16;
+  hipLaunchKernelGGL(
+      (dense_prefill_gemm_out_kernel<uint16_t, TILE_M, TILE_N, TILE_K>),
+      dim3(
+          static_cast<unsigned int>((out_features + TILE_N - 1) / TILE_N),
+          static_cast<unsigned int>((rows + TILE_M - 1) / TILE_M)),
+      dim3(TILE_N, TILE_M),
       0,
       stream,
       x,

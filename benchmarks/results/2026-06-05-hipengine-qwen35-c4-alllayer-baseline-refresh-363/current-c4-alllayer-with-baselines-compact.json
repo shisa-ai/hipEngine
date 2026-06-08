@@ -1,0 +1,127 @@
+{
+  "batch_execution": {
+    "blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "native_caware_decode": false
+  },
+  "decision_reason": "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; profiler artifact must include command or profiler_command; profiler command must start with rocprofv3; profiler command device env prefix must match retained command; profiler command --profiler-json must match profiler.artifact_path; profiler command --json must match retained artifact path; profiler command --c1-baseline-json must match retained reference artifact; profiler command --serial-bridge-json must match retained reference artifact; profiler command --primitive-correctness-json must match retained reference artifact; profiler command --batch-sample-mode must match retained sampler mode; profiler command must include --batch-sample-eq-ok; profiler command --batch-sample-eq-artifact must match retained sampler equality artifact; profiler command --batch-sample-eq-rows must match retained sampler equality rows; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[39].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[39].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty",
+  "decode_execution": {
+    "blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "full_attention_context_decode_path": "native_batch",
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_row_chunk_size": 2,
+    "full_attention_row_chunk_source": "env",
+    "full_attention_row_chunked_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31,
+      35,
+      39
+    ]
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null,
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ]
+  },
+  "label": "c4_alllayer_with_baselines_profiler_current",
+  "performance_claim": false,
+  "primitive_batch_correctness": {
+    "aa_passed": true,
+    "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json",
+    "attn_batch_vs_c1_max_abs": 0.0,
+    "passed": true,
+    "status": "loaded"
+  },
+  "profiler": {
+    "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-default-baseline-350/profiler-c4-retained.json",
+    "expected_kernels_present": true,
+    "kernel_duration_categories_ns": {
+      "attention": 1026683598,
+      "graph_replay": 0,
+      "moe": 59541023,
+      "other": 18256846,
+      "projection": 1225422514,
+      "sampling": 5604971
+    },
+    "status": "captured",
+    "total_kernel_duration_ns": 2335508952,
+    "trace_dir": "/tmp/hipengine-iter342-c4-profiler-smoke/raw",
+    "trace_files": [
+      "/tmp/hipengine-iter342-c4-profiler-smoke/raw/c4-default_kernel_trace.csv"
+    ]
+  },
+  "projection_dispatch": {
+    "blockers": [],
+    "evidence": {
+      "accepted": true,
+      "aggregate_vs_row_gemv": 1.214849947729695,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+      "per_request_vs_row_gemv": 1.214849947729695
+    },
+    "path": "benchmark_accepted_caware_projection",
+    "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4"
+  },
+  "raw_json": "/tmp/hipengine-iter363-c4-current-alllayer-baseline/c4-current-alllayer-with-baselines-profiler.json",
+  "raw_json_sha256": "f4bc0ade26a767d9fce7d2d9ab117bac6b00003f3bdf304ec627e72f4674464b",
+  "raw_json_size_bytes": 253399,
+  "raw_log": "/tmp/hipengine-iter363-c4-current-alllayer-baseline/c4-current-alllayer-with-baselines-profiler.log",
+  "raw_log_sha256": "f4bc0ade26a767d9fce7d2d9ab117bac6b00003f3bdf304ec627e72f4674464b",
+  "raw_log_size_bytes": 253399,
+  "sampler_execution": {
+    "argmax_mode": "batch",
+    "blockers": [],
+    "final_cast_path": "batch",
+    "final_norm_path": "batch",
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true,
+    "requested_mode": "batched_lm_head",
+    "stabilize_cast_elems": 0
+  },
+  "scaling": {
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json",
+      "decode_tok_s_aggregate": 134.35835066115024,
+      "decode_tok_s_per_request": 134.35835066115024,
+      "status": "loaded"
+    },
+    "complete": true,
+    "native": {
+      "decode_tok_s_aggregate": 143.3093470640579,
+      "decode_tok_s_per_request": 35.827336766014476
+    },
+    "ratios": {
+      "aggregate_vs_c1": 1.0666203206489333,
+      "aggregate_vs_serial_bridge": 1.320530135787129,
+      "per_request_vs_c1": 0.2666550801622333,
+      "per_request_vs_serial_bridge": 1.320530135787129
+    },
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-serial-baseline-refresh-286/c4-serial-bridge-scaling.json",
+      "decode_tok_s_aggregate": 108.52410193473959,
+      "decode_tok_s_per_request": 27.131025483684898,
+      "status": "blocked"
+    }
+  },
+  "status": "blocked"
+}

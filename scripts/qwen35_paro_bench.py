@@ -13,7 +13,10 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import os
+import shlex
 import statistics
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -27,11 +30,126 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
     "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
 )
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _command_env_prefix_parts() -> list[str]:
+    assignments = [
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key)) is not None
+    ]
+    return ["env", *assignments] if assignments else []
+
+
+def _visible_hip_device_context() -> dict[str, Any]:
+    env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
+    context: dict[str, Any] = {"env": {key: os.environ.get(key) for key in env_keys if os.environ.get(key) is not None}}
+    try:
+        hip = ctypes.CDLL("libamdhip64.so")
+        count = ctypes.c_int()
+        count_error = int(hip.hipGetDeviceCount(ctypes.byref(count)))
+        context["hipGetDeviceCount_error"] = count_error
+        context["visible_device_count"] = int(count.value)
+        if count_error != 0 or count.value <= 0:
+            return context
+        device = ctypes.c_int()
+        device_error = int(hip.hipGetDevice(ctypes.byref(device)))
+        context["hipGetDevice_error"] = device_error
+        context["current_device"] = int(device.value)
+        if device_error != 0:
+            return context
+        name = ctypes.create_string_buffer(256)
+        name_error = int(hip.hipDeviceGetName(name, len(name), device))
+        context["hipDeviceGetName_error"] = name_error
+        if name_error == 0:
+            context["device_name"] = name.value.decode("utf-8", errors="replace")
+    except Exception as exc:  # pragma: no cover - best-effort benchmark provenance.
+        context["error"] = f"{type(exc).__name__}: {exc}"
+    return context
+
+
+def _hardware_context() -> dict[str, Any]:
+    visible_device = _visible_hip_device_context()
+    visible_device_name = visible_device.get("device_name")
+    gpu_name = visible_device_name if isinstance(visible_device_name, str) and visible_device_name else "AMD Radeon Pro W7900"
+    return {
+        "gpu": gpu_name,
+        "arch": "gfx1100",
+        "default_hardware": gpu_name == "AMD Radeon Pro W7900",
+        "visible_device": visible_device,
+        "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
+        "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
+    }
+
+
+def _run_capture(command: list[str], *, timeout: float = 5.0) -> dict[str, Any]:
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+        return {"command": " ".join(shlex.quote(part) for part in command), "returncode": proc.returncode, "output": proc.stdout.strip()}
+    except Exception as exc:  # pragma: no cover - best-effort benchmark provenance.
+        return {"command": " ".join(shlex.quote(part) for part in command), "returncode": None, "output": f"{type(exc).__name__}: {exc}"}
+
+
+def _software_context() -> dict[str, Any]:
+    commit = _run_capture(["git", "rev-parse", "--short", "HEAD"])
+    dirty = subprocess.run(["git", "diff", "--quiet"], cwd=REPO_ROOT, check=False).returncode != 0
+    return {
+        "python": sys.version.split()[0],
+        "hipcc_version": _run_capture(["hipcc", "--version"], timeout=10.0)["output"],
+        "hipengine_commit": commit["output"],
+        "hipengine_dirty": dirty,
+    }
+
+
+def _command(argv: list[str] | None) -> str:
+    parts = [*_command_env_prefix_parts(), "python3", "scripts/qwen35_paro_bench.py"]
+    parts.extend(sys.argv[1:] if argv is None else list(argv))
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def _artifact_path(path: Path | None) -> str | None:
+    return str(path) if path is not None else None
+
+
+def _workload_summary(
+    *,
+    model: Path,
+    prompt_length: int,
+    decode_tokens: int,
+    warmup_decode_tokens: int,
+    max_layers: int,
+    kv_policy_summary: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "shape": f"c=1 prompt={int(prompt_length)} decode={int(decode_tokens)}",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "model_path": str(model),
+        "quant": "w4_paro",
+        "prompt_tokens_per_request": int(prompt_length),
+        "prompt_tokens_aggregate": int(prompt_length),
+        "gen_tokens_per_request": int(decode_tokens),
+        "gen_tokens_aggregate": int(decode_tokens),
+        "warmup_decode_tokens": int(warmup_decode_tokens),
+        "concurrency": 1,
+        "prompt_lengths": [int(prompt_length)],
+        "max_layers": int(max_layers),
+        "kv_policy": kv_policy_summary,
+    }
 
 
 def main() -> int:
@@ -110,6 +228,11 @@ def main() -> int:
         default=0.0,
         help="Optional resident high-water budget for long-context chunk tuning; 0 derives a budget from device VRAM.",
     )
+    add_kv_policy_args(
+        parser,
+        legacy_storage_flags=("--kv-storage-dtype",),
+        help_prefix="Resident full-attention KV storage for prefill and decode",
+    )
     parser.add_argument(
         "--native-prefill",
         action="store_true",
@@ -165,6 +288,7 @@ def main() -> int:
         shared_expert_format=shared_expert_format,
         backend=args.backend,
     )
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     reset_memory_stats()
     memory_snapshots: dict[str, Any] = {
         "before_load": _memory_snapshot("before_load", runner.runtime),
@@ -189,6 +313,9 @@ def main() -> int:
                 auto_tune_chunk_sizes=args.prefill_chunk_autotune,
                 chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
             ),
+            kv_policy=kv_policy.create_policy(),
+            kv_scale_dtype=kv_policy.scale_dtype,
+            kv_scale_granularity=kv_policy.scale_granularity,
         )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", session.runtime, session)
@@ -275,11 +402,15 @@ def main() -> int:
 
     output = {
         "schema": 1,
+        "artifact_path": _artifact_path(args.json),
         "model": str(model),
         "quant": "w4_paro",
         "backend": runner.backend,
         "requested_backend": args.backend,
         "target_arch": runner.target_arch,
+        "hardware": _hardware_context(),
+        "software": _software_context(),
+        "commands": {"benchmark": _command(None)},
         "mode": "actual_autoregressive_resident",
         "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",
         "prompt": args.prompt,
@@ -287,6 +418,14 @@ def main() -> int:
         "decode_tokens": args.decode_tokens,
         "warmup_decode_tokens": args.warmup_decode_tokens,
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
+        "workload": _workload_summary(
+            model=model,
+            prompt_length=len(prompt_tokens),
+            decode_tokens=args.decode_tokens,
+            warmup_decode_tokens=args.warmup_decode_tokens,
+            max_layers=args.max_layers or runner.config.num_hidden_layers,
+            kv_policy_summary=kv_policy_json(kv_policy),
+        ),
         "shared_expert_format": args.shared_expert_format,
         "tokens_per_step": 1,
         "native_batched_prefill": not bool(args.serial_prefill_diagnostic),
@@ -296,6 +435,8 @@ def main() -> int:
         "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "attn_aotriton_min_tokens": args.attn_aotriton_min_tokens,
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(kv_policy),
         "requested_prefill_chunk_sizes": {
             "linear": args.prefill_linear_chunk_size,
             "moe": args.prefill_moe_chunk_size,
@@ -474,7 +615,9 @@ def _owned_device_bytes(session: Qwen35ParoResidentSession) -> int:
             int(prefill_workspace.allocation(name).buffer.nbytes)
             for name in prefill_workspace.names
         )
-    return allocation_bytes + buffer_bytes + state_workspace_bytes + prefill_workspace_bytes
+    prefill_hidden = getattr(session, "prefill_hidden_buffer", None)
+    prefill_hidden_bytes = int(prefill_hidden.nbytes) if prefill_hidden is not None else 0
+    return allocation_bytes + buffer_bytes + state_workspace_bytes + prefill_workspace_bytes + prefill_hidden_bytes
 
 
 def _memory_snapshot(
@@ -490,6 +633,10 @@ def _memory_snapshot(
     if session is not None:
         payload["owned_session_bytes"] = _owned_device_bytes(session)
         payload["owned_session_gib"] = _bytes_to_gib(payload["owned_session_bytes"])
+        if hasattr(session, "owned_buffer_summary"):
+            payload["owned_buffer_summary"] = session.owned_buffer_summary()
+        if hasattr(session, "kv_memory_audit"):
+            payload["kv_memory_audit"] = session.kv_memory_audit()
     return payload
 
 
@@ -531,6 +678,15 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
         if snapshot.get("hip", {}).get("available")
     ]
     hip_used_peak = max(hip_used_values) if hip_used_values else None
+    kv_audit_snapshots = {
+        label: snapshot["kv_memory_audit"]
+        for label, snapshot in snapshots.items()
+        if "kv_memory_audit" in snapshot
+    }
+    latest_kv_audit_label = next(
+        (label for label in ("before_close", "after_decode", "after_warmup_decode", "after_prefill", "after_load") if label in kv_audit_snapshots),
+        None,
+    )
     summary = {
         "tracked_peak_allocated_bytes": tracked_peak,
         "tracked_peak_allocated_gib": _bytes_to_gib(tracked_peak),
@@ -542,6 +698,16 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
         "owned_session_peak_gib": _bytes_to_gib(owned_peak),
         "hip_used_peak_sampled_bytes": hip_used_peak,
         "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
+        "kv_memory_audit": {
+            "passed": all(bool(audit.get("passed", True)) for audit in kv_audit_snapshots.values()),
+            "latest_label": latest_kv_audit_label,
+            "latest": kv_audit_snapshots.get(latest_kv_audit_label) if latest_kv_audit_label is not None else None,
+            "snapshots": kv_audit_snapshots,
+            "tracked_peak_allocated_bytes": tracked_peak,
+            "tracked_peak_allocated_gib": _bytes_to_gib(tracked_peak),
+            "hip_used_peak_sampled_bytes": hip_used_peak,
+            "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
+        },
         "notes": [
             "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",

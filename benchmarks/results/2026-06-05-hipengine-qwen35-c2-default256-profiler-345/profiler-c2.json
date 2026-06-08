@@ -1,0 +1,191 @@
+{
+  "agent_dispatch_counts": {
+    "Agent 2": 473083
+  },
+  "dispatches": 473083,
+  "expected_kernel_fragments": [
+    "full_attention_context",
+    "kv_append",
+    "grouped_moe",
+    "caware_projection",
+    "row_aware_output_gemv",
+    "linear_attention_segment_decode",
+    "batch_residual_combine",
+    "batched_sampler_argmax",
+    "final_cast_or_stabilizer"
+  ],
+  "expected_kernel_fragments_present": true,
+  "fragments": {
+    "batch_residual_combine": {
+      "calls": 5560,
+      "duration_ns": 15264739,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 5560,
+          "duration_ns": 15264739,
+          "kernel_name": "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)"
+        }
+      ]
+    },
+    "batched_sampler_argmax": {
+      "calls": 816,
+      "duration_ns": 3314463,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 408,
+          "duration_ns": 2134379,
+          "kernel_name": "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)"
+        },
+        {
+          "calls": 408,
+          "duration_ns": 1180084,
+          "kernel_name": "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+        }
+      ]
+    },
+    "caware_projection": {
+      "calls": 32640,
+      "duration_ns": 624688430,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 16320,
+          "duration_ns": 329051602,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+        },
+        {
+          "calls": 16320,
+          "duration_ns": 295636828,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+        }
+      ]
+    },
+    "final_cast_or_stabilizer": {
+      "calls": 986,
+      "duration_ns": 2366857,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 986,
+          "duration_ns": 2366857,
+          "kernel_name": "(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)"
+        }
+      ]
+    },
+    "full_attention_context": {
+      "calls": 4080,
+      "duration_ns": 468230697,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 4080,
+          "duration_ns": 468230697,
+          "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+        }
+      ]
+    },
+    "grouped_moe": {
+      "calls": 16680,
+      "duration_ns": 46736492,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 5560,
+          "duration_ns": 8550143,
+          "kernel_name": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)"
+        },
+        {
+          "calls": 5560,
+          "duration_ns": 14753817,
+          "kernel_name": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)"
+        },
+        {
+          "calls": 5560,
+          "duration_ns": 23432532,
+          "kernel_name": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)"
+        }
+      ]
+    },
+    "kv_append": {
+      "calls": 4110,
+      "duration_ns": 14047161,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 4080,
+          "duration_ns": 13867158,
+          "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+        },
+        {
+          "calls": 30,
+          "duration_ns": 180003,
+          "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+        }
+      ]
+    },
+    "linear_attention_segment_decode": {
+      "calls": 8160,
+      "duration_ns": 35106596,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 8160,
+          "duration_ns": 35106596,
+          "kernel_name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)"
+        }
+      ]
+    },
+    "row_aware_output_gemv": {
+      "calls": 8160,
+      "duration_ns": 29240885,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 8160,
+          "duration_ns": 29240885,
+          "kernel_name": "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)"
+        }
+      ]
+    },
+    "selected_projection_candidate": {
+      "calls": 16320,
+      "duration_ns": 329051602,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 16320,
+          "duration_ns": 329051602,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+        }
+      ]
+    },
+    "serial_reference_argmax": {
+      "calls": 8,
+      "duration_ns": 31522,
+      "present": true,
+      "top_kernels": [
+        {
+          "calls": 4,
+          "duration_ns": 18882,
+          "kernel_name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)"
+        },
+        {
+          "calls": 4,
+          "duration_ns": 12640,
+          "kernel_name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+        }
+      ]
+    }
+  },
+  "present": true,
+  "raw_trace_not_committed": true,
+  "returncode": 1,
+  "returncode_note": "rocprofv3 returned the retained bench child status (blocked/non-retained); benchmark JSON and kernel_trace CSV were produced and generated-token equality passed.",
+  "sha256": "ca3938d8f3b636a21f87dfaa33fd9b927c025740ca094be7a24914287fa85f68",
+  "size_bytes": 128435253,
+  "total_kernel_duration_ns": 4578434211,
+  "trace_file": "/tmp/hipengine-iter345-c2-default256-profiler/raw/c2-default256_kernel_trace.csv",
+  "unique_kernel_count": 61
+}

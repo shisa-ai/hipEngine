@@ -1,0 +1,158 @@
+{
+  "iteration": 442,
+  "kind": "c8_fullnative_output_batch_contrast",
+  "created_at": "2026-06-07T07:31:07.131045+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "00d3b71dfa61d2b09242f2dfb95eb9a8e43b5b55",
+  "performance_claim": false,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --warmup-decode-tokens 8 --decode-tokens 1 --max-layers 8 --layer-limits 8 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-full-attn-output-path batch --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter442-L8-c8-fullnative-output-batch-nativec1-warm8-decode1-trace0-1.json",
+  "result": {
+    "status": "mismatch_found",
+    "hidden_passed": false,
+    "token_passed": false,
+    "hidden_failure_rows": [
+      4,
+      6,
+      5,
+      0
+    ],
+    "token_failure_rows": [
+      6
+    ],
+    "linear_drift_stage_count": 5,
+    "full_attention_failed_stage_count": 19,
+    "layer3_full_attention_first_failure": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 3,
+      "stage": "mlp_input",
+      "row": 0,
+      "max_abs": 0.00390625,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "elements_over_atol": 10
+    },
+    "layer4_attn_input_first_drift": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "stage": "attn_input",
+      "row": 0,
+      "comparison_kind": "fp16_bits",
+      "passed_under_atol": false,
+      "bit_mismatch": 1139,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 859,
+      "max_abs_index": [
+        0,
+        859
+      ],
+      "elements_over_atol": 21
+    },
+    "linear_input_passed": true,
+    "linear_input_worst_diff": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "row": 0,
+      "passed": true,
+      "max_abs": 0.00048828125,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "elements_over_atol": 0
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": false,
+      "attn_input_after_rotate": false,
+      "attn_input_after_project": false,
+      "q_proj_key_after_project": false,
+      "value_after_project": false,
+      "query_raw_after_split": false,
+      "key_raw_after_cast": false,
+      "gate_after_split": false,
+      "query_after_prepare": false,
+      "key_after_prepare": false,
+      "attn_input_after_prepare": false,
+      "attn_input": false,
+      "gate": false,
+      "query": false,
+      "attn_context": false,
+      "gated_attn": false,
+      "o_proj": true,
+      "residual": false,
+      "mlp_input": false,
+      "output": false
+    },
+    "linear_stage_passed": {
+      "attn_input": false,
+      "qkv": false,
+      "z": false,
+      "conv_out": false,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": false,
+      "output": true
+    },
+    "workload": {
+      "batch_decode_full_attention_output_path": "batch",
+      "batch_decode_full_attention_row_chunk_size": 0,
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_attention_context_path": "batch",
+      "full_attention_decode_path": "batch_context"
+    }
+  },
+  "interpretation": {
+    "negative_result": "Native full-attention O/output path=batch is not a c8 fullnative fix. It keeps hidden/token checks red and makes layer3 full-attention mlp_input the first over-atol failure (max_abs 0.00390625), while the linear attn_input stage still drifts at layer4 (max_abs 0.0078125).",
+    "target_update": "The hidden-bisect default already exercises row-aware batch_gemv O projection; switching to native batch O does not close the suffix/handoff issue. Continue targeting rowchunk/grouped ordering or layer4 RMSNorm sensitivity, not O-projection path promotion."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused minimal c8 no-rowchunk O-output contrast eliminates native batch O projection as a hidden/token fix; no performance claim."
+  },
+  "conclusion": "Changing full-attention O/output from batch_gemv to native batch is red and worsens layer3 suffix failure shape; it is not a fix for c8 fullnative grouping drift.",
+  "references": {
+    "direct_layer3_439": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-direct-layer3-fullattn-439/summary.json",
+      "exists": true,
+      "sha256": "5c5d73044817c93420bf2ad27b1288959548db33f2e1dc8d008f06f024003beb",
+      "size_bytes": 133883
+    },
+    "context_only_441": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-contextonly-441/summary.json",
+      "exists": true,
+      "sha256": "d00e55d0cc0fd0257043aaa5d47f4192eafaba1aa9ea70f2bd1660138a1c2377",
+      "size_bytes": 4480
+    },
+    "output_batch_hidden": {
+      "path": "/tmp/hipengine-hidden-bisect-iter442-L8-c8-fullnative-output-batch-nativec1-warm8-decode1-trace0-1.json",
+      "exists": true,
+      "sha256": "ed37b3a86c0689be80253c54dbbdca1250cbd1182f00cccfacdb702bc3669434",
+      "size_bytes": 4980648
+    },
+    "output_batch_log": {
+      "path": "/tmp/hipengine-hidden-bisect-iter442-L8-c8-fullnative-output-batch-nativec1-warm8-decode1-trace0-1.log",
+      "exists": true,
+      "sha256": "ed37b3a86c0689be80253c54dbbdca1250cbd1182f00cccfacdb702bc3669434",
+      "size_bytes": 4980648
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-output-batch-442/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-output-batch-442/compact-runs.json",
+      "exists": true,
+      "sha256": "ccdc8f2aefa4e3de7dccc2def5444b2ea651bf6c006a5f791bf0d9eb7d539a3f",
+      "size_bytes": 3824
+    }
+  }
+}

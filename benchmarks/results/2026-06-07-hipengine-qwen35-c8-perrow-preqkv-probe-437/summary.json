@@ -1,0 +1,681 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-preqkv-probe-437/compact-runs.json",
+      "sha256": "84cc64a1837ca89577fc99f4209da428f7c3fb85b665443c6ac3324c4f82f6bb",
+      "size_bytes": 2806
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-preqkv-probe-437/summary.json"
+    }
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --warmup-decode-tokens 8 --decode-tokens 1 --max-layers 8 --layer-limits 1-8 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path per_row --batch-decode-attn-qkv-path per_row --batch-decode-attn-scratch-path per_row --json /tmp/hipengine-hidden-bisect-iter437-L8-c8-fullnative-perrow-preqkv-nativec1-warm8-decode1-trace0-1.json",
+  "comparisons": {
+    "baseline_fullnative_minimal": {
+      "correctness_passed": true,
+      "decode_full_attention_stage_failure_summary": {
+        "drift_stage_count": null,
+        "drift_stages": null,
+        "failed_stage_count": 12,
+        "failed_stages": [
+          "attn_input_pre_qkv",
+          "attn_input_after_rotate",
+          "attn_input_after_project",
+          "q_proj_key_after_project",
+          "query_raw_after_split",
+          "query_after_prepare",
+          "key_after_prepare",
+          "attn_input_after_prepare",
+          "attn_input",
+          "query",
+          "attn_context",
+          "mlp_input"
+        ],
+        "first_bit_drift": null,
+        "first_failure": {
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 1,
+          "generated_index": 1,
+          "layer_index": 7,
+          "layer_limit": 8,
+          "max_abs": 0.015625,
+          "max_abs_flat_index": 1269,
+          "max_abs_index": [
+            0,
+            1269
+          ],
+          "row": 0,
+          "stage": "attn_input_pre_qkv"
+        }
+      },
+      "decode_linear_stage_bit_drift_summary": {
+        "drift_stage_count": 9,
+        "drift_stages": [
+          "attn_input",
+          "qkv",
+          "z",
+          "conv_out",
+          "recurrent_out",
+          "out_proj",
+          "residual",
+          "mlp_input",
+          "output"
+        ],
+        "failed_stage_count": null,
+        "failed_stages": null,
+        "first_bit_drift": {
+          "bit_mismatch": 491,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 1,
+          "generated_index": 1,
+          "layer_index": 4,
+          "layer_limit": 8,
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 1296,
+          "max_abs_index": [
+            0,
+            1296
+          ],
+          "passed_under_atol": false,
+          "row": 0,
+          "stage": "attn_input"
+        },
+        "first_failure": null
+      },
+      "failure_modes": [],
+      "first_failing_limits": [],
+      "hidden_passed": true,
+      "status": "eq_ok",
+      "token_passed": true,
+      "workload": {
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "batch",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_size": 8,
+        "decode_tokens": 1,
+        "max_layers": 8,
+        "prompt_length": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "perrow_preqkv_fullnative": {
+      "correctness_passed": false,
+      "decode_full_attention_stage_failure_summary": {
+        "drift_stage_count": null,
+        "drift_stages": null,
+        "failed_stage_count": 20,
+        "failed_stages": [
+          "attn_input_pre_qkv",
+          "attn_input_after_rotate",
+          "attn_input_after_project",
+          "q_proj_key_after_project",
+          "value_after_project",
+          "query_raw_after_split",
+          "key_raw_after_cast",
+          "gate_after_split",
+          "query_after_prepare",
+          "key_after_prepare",
+          "attn_input_after_prepare",
+          "attn_input",
+          "gate",
+          "query",
+          "attn_context",
+          "gated_attn",
+          "o_proj",
+          "residual",
+          "mlp_input",
+          "output"
+        ],
+        "first_bit_drift": null,
+        "first_failure": {
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 4096,
+          "generated_index": 1,
+          "layer_index": 3,
+          "layer_limit": 4,
+          "max_abs": 7.73046875,
+          "max_abs_flat_index": 512,
+          "max_abs_index": [
+            0,
+            512
+          ],
+          "row": 0,
+          "stage": "gate"
+        }
+      },
+      "decode_linear_stage_bit_drift_summary": {
+        "drift_stage_count": 9,
+        "drift_stages": [
+          "attn_input",
+          "qkv",
+          "z",
+          "conv_out",
+          "recurrent_out",
+          "out_proj",
+          "residual",
+          "mlp_input",
+          "output"
+        ],
+        "failed_stage_count": null,
+        "failed_stages": null,
+        "first_bit_drift": {
+          "bit_mismatch": 765,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 7,
+          "generated_index": 1,
+          "layer_index": 4,
+          "layer_limit": 5,
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 1296,
+          "max_abs_index": [
+            0,
+            1296
+          ],
+          "passed_under_atol": false,
+          "row": 0,
+          "stage": "attn_input"
+        },
+        "first_failure": null
+      },
+      "failure_modes": [
+        "hidden",
+        "token"
+      ],
+      "first_failing_limits": [
+        {
+          "decode_linear_inputs": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 0,
+              "max_abs": 0.0,
+              "max_abs_flat_index": 0,
+              "max_abs_index": [
+                0,
+                0
+              ],
+              "passed": true,
+              "row": 0
+            }
+          },
+          "decode_linear_stages": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": null
+          },
+          "decode_linear_states": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 0,
+              "max_abs": 0.0,
+              "max_abs_flat_index": 0,
+              "max_abs_index": [
+                0,
+                0
+              ],
+              "passed": true,
+              "row": 0,
+              "state": "conv"
+            }
+          },
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_passed": false,
+          "layer_limit": 1,
+          "token_passed": true
+        },
+        {
+          "decode_linear_inputs": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 0,
+              "max_abs": 0.0,
+              "max_abs_flat_index": 0,
+              "max_abs_index": [
+                0,
+                0
+              ],
+              "passed": true,
+              "row": 0
+            }
+          },
+          "decode_linear_stages": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": null
+          },
+          "decode_linear_states": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 0,
+              "max_abs": 0.0,
+              "max_abs_flat_index": 0,
+              "max_abs_index": [
+                0,
+                0
+              ],
+              "passed": true,
+              "row": 0,
+              "state": "conv"
+            }
+          },
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_passed": false,
+          "layer_limit": 3,
+          "token_passed": true
+        },
+        {
+          "decode_full_attention": {
+            "first_mismatch": {
+              "decode_step": 0,
+              "elements_over_atol": 4096,
+              "generated_index": 1,
+              "layer_index": 3,
+              "max_abs": 7.73046875,
+              "max_abs_flat_index": 512,
+              "max_abs_index": [
+                0,
+                512
+              ],
+              "row": 0,
+              "stage": "gate"
+            },
+            "passed": false,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 4094,
+              "generated_index": 1,
+              "layer_index": 3,
+              "max_abs": 9.45050048828125,
+              "max_abs_flat_index": 2837,
+              "max_abs_index": [
+                0,
+                2837
+              ],
+              "passed": false,
+              "row": 1,
+              "stage": "query"
+            }
+          },
+          "decode_linear_inputs": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "max_abs": 0.0001220703125,
+              "max_abs_flat_index": 100,
+              "max_abs_index": [
+                0,
+                100
+              ],
+              "passed": true,
+              "row": 0
+            }
+          },
+          "decode_linear_stages": {
+            "first_mismatch": {
+              "bit_mismatch": 765,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 7,
+              "generated_index": 1,
+              "layer_index": 4,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1296,
+              "max_abs_index": [
+                0,
+                1296
+              ],
+              "row": 0,
+              "stage": "attn_input"
+            },
+            "passed": false,
+            "worst_diff": null
+          },
+          "decode_linear_states": {
+            "first_mismatch": {
+              "decode_step": 0,
+              "elements_over_atol": 4390,
+              "generated_index": 1,
+              "layer_index": 4,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 31255,
+              "max_abs_index": [
+                7813,
+                3
+              ],
+              "row": 0,
+              "state": "conv"
+            },
+            "passed": false,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 4390,
+              "generated_index": 1,
+              "layer_index": 4,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 31255,
+              "max_abs_index": [
+                7813,
+                3
+              ],
+              "passed": false,
+              "row": 0,
+              "state": "conv"
+            }
+          },
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_passed": false,
+          "layer_limit": 5,
+          "token_passed": true
+        },
+        {
+          "decode_full_attention": {
+            "first_mismatch": {
+              "decode_step": 0,
+              "elements_over_atol": 4096,
+              "generated_index": 1,
+              "layer_index": 3,
+              "max_abs": 7.73046875,
+              "max_abs_flat_index": 512,
+              "max_abs_index": [
+                0,
+                512
+              ],
+              "row": 0,
+              "stage": "gate"
+            },
+            "passed": false,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 4094,
+              "generated_index": 1,
+              "layer_index": 3,
+              "max_abs": 9.45050048828125,
+              "max_abs_flat_index": 2837,
+              "max_abs_index": [
+                0,
+                2837
+              ],
+              "passed": false,
+              "row": 1,
+              "stage": "query"
+            }
+          },
+          "decode_linear_inputs": {
+            "first_mismatch": null,
+            "passed": true,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 5,
+              "max_abs": 0.00048828125,
+              "max_abs_flat_index": 1269,
+              "max_abs_index": [
+                0,
+                1269
+              ],
+              "passed": true,
+              "row": 5
+            }
+          },
+          "decode_linear_stages": {
+            "first_mismatch": {
+              "bit_mismatch": 765,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 7,
+              "generated_index": 1,
+              "layer_index": 4,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1296,
+              "max_abs_index": [
+                0,
+                1296
+              ],
+              "row": 0,
+              "stage": "attn_input"
+            },
+            "passed": false,
+            "worst_diff": null
+          },
+          "decode_linear_states": {
+            "first_mismatch": {
+              "decode_step": 0,
+              "elements_over_atol": 4390,
+              "generated_index": 1,
+              "layer_index": 4,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 31255,
+              "max_abs_index": [
+                7813,
+                3
+              ],
+              "row": 0,
+              "state": "conv"
+            },
+            "passed": false,
+            "worst_diff": {
+              "decode_step": 0,
+              "elements_over_atol": 4390,
+              "generated_index": 1,
+              "layer_index": 4,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 31255,
+              "max_abs_index": [
+                7813,
+                3
+              ],
+              "passed": false,
+              "row": 0,
+              "state": "conv"
+            }
+          },
+          "failure_modes": [
+            "hidden",
+            "token"
+          ],
+          "hidden_passed": false,
+          "layer_limit": 6,
+          "token_passed": false
+        }
+      ],
+      "hidden_passed": false,
+      "status": "mismatch_found",
+      "token_passed": false,
+      "workload": {
+        "batch_decode_attention_input_path": "per_row",
+        "batch_decode_attention_qkv_path": "per_row",
+        "batch_decode_attention_scratch_path": "per_row",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_size": 8,
+        "decode_tokens": 1,
+        "max_layers": 8,
+        "prompt_length": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    "rowchunk2_control": {
+      "correctness_passed": true,
+      "decode_full_attention_stage_failure_summary": {
+        "drift_stage_count": null,
+        "drift_stages": null,
+        "failed_stage_count": 0,
+        "failed_stages": [],
+        "first_bit_drift": null,
+        "first_failure": null
+      },
+      "decode_linear_stage_bit_drift_summary": {
+        "drift_stage_count": 0,
+        "drift_stages": [],
+        "failed_stage_count": null,
+        "failed_stages": null,
+        "first_bit_drift": null,
+        "first_failure": null
+      },
+      "failure_modes": [],
+      "first_failing_limits": [],
+      "hidden_passed": true,
+      "status": "eq_ok",
+      "token_passed": true,
+      "workload": {
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "batch",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_size": 8,
+        "decode_tokens": 8,
+        "max_layers": 40,
+        "prompt_length": 512,
+        "warmup_decode_tokens": 8
+      }
+    }
+  },
+  "conclusion": "Combined pre-QKV per-row replay is red for c8 and duplicates the scratch-only failure shape. Rowchunk2 remains the only exact c8 control; further progress needs direct rowchunk/fullnative comparison or grouped full-attention math/composition changes.",
+  "created_at": "2026-06-07T07:01:57.880436+00:00",
+  "git_commit_before_commit": "27228cf5b368527439bbc3b3050fc1ab2b83a1ce",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "contrast_to_c2": "The c2 pre-QKV/scratch split does not generalize to c8 fullnative grouping. The c8 root is not repaired by local pre-QKV replay and remains tied to row grouping/composition.",
+    "negative_result": "Combined input+QKV+scratch per-row replay is not the c8 fix. Its failure shape matches scratch-only: mismatch_found, layer4 attn_input max_abs 0.0078125, layer3 gate max_abs 7.73046875, failed full-attention stage count 20.",
+    "next_target": "Avoid further one-off per-row pre-QKV toggles for c8; the remaining useful route is a direct rowchunk-vs-fullnative comparator or a true grouped full-attention numerical/composition fix."
+  },
+  "iteration": 437,
+  "kind": "c8_fullnative_perrow_preqkv_probe",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused c8 combined pre-QKV diagnostic tests the c2-derived green split and eliminates it for c8 with concrete artifact evidence; no performance claim.",
+    "passed": true
+  },
+  "references": {
+    "c2_preqkv_split_395": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-preqkv-context-split-395/summary.json",
+      "sha256": "6f2b9c38d63e03c81ecaed13cbdf80470cf91dccd4e1cd4c10946b85339d72bd",
+      "size_bytes": 11230
+    },
+    "c2_scratch_split_396": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-attn-scratch-split-396/summary.json",
+      "sha256": "b3e8dfddc46b2b53c73470c11ae9fb048e7faff0284b6fe551ac48ab6da55289",
+      "size_bytes": 10731
+    },
+    "fullnative_minimal_hidden": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter430-L8-c8-full-native-nativec1-warm8-decode1-trace0-1.json",
+      "sha256": "f61328b0013a1ac6ae46f1ea6275e6bcc93fcb3af6d26365c3ab79cfdca5f994",
+      "size_bytes": 4743829
+    },
+    "perrow_input_probe_435": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-input-probe-435/summary.json",
+      "sha256": "2e8eaab6a8f19401eb4dd9f2f9bb5855aa1492a0a5e0cf192934b9c12a9fca1c",
+      "size_bytes": 20460
+    },
+    "perrow_preqkv_hidden": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter437-L8-c8-fullnative-perrow-preqkv-nativec1-warm8-decode1-trace0-1.json",
+      "sha256": "e45e4e6b067070f204a0b9bc23aa3f9d943dd4b1c9f9844b563698995d9ff3a6",
+      "size_bytes": 15814314
+    },
+    "perrow_preqkv_log": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter437-L8-c8-fullnative-perrow-preqkv-nativec1-warm8-decode1-trace0-1.log",
+      "sha256": "e45e4e6b067070f204a0b9bc23aa3f9d943dd4b1c9f9844b563698995d9ff3a6",
+      "size_bytes": 15814314
+    },
+    "perrow_scratch_probe_436": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-scratch-probe-436/summary.json",
+      "sha256": "8644539681c03cd94dd577a12633f2a10ff868f4bfe072a40989da5bbd2c9a21",
+      "size_bytes": 21292
+    },
+    "rowchunk2_hidden": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter430-L40-c8-rowchunk2-nativec1-warm8-decode8-trace0-8.json",
+      "sha256": "f18010fe5e2baf58a6c1cf216d6119a8e4c45653b18dae03371f66567456694e",
+      "size_bytes": 61884805
+    }
+  },
+  "result": {
+    "baseline_fullnative_full_attention_failed_stage_count": 12,
+    "baseline_fullnative_linear_drift_stage_count": 9,
+    "baseline_fullnative_status": "eq_ok",
+    "matches_scratch_only_shape": true,
+    "perrow_preqkv_first_full_attention_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 4096,
+      "generated_index": 1,
+      "layer_index": 3,
+      "layer_limit": 4,
+      "max_abs": 7.73046875,
+      "max_abs_flat_index": 512,
+      "max_abs_index": [
+        0,
+        512
+      ],
+      "row": 0,
+      "stage": "gate"
+    },
+    "perrow_preqkv_first_linear_bit_drift": {
+      "bit_mismatch": 765,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 7,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 5,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "passed_under_atol": false,
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "perrow_preqkv_full_attention_failed_stage_count": 20,
+    "perrow_preqkv_hidden_passed": false,
+    "perrow_preqkv_linear_drift_stage_count": 9,
+    "perrow_preqkv_status": "mismatch_found",
+    "perrow_preqkv_token_passed": false,
+    "rowchunk2_full_attention_failed_stage_count": 0,
+    "rowchunk2_linear_drift_stage_count": 0,
+    "rowchunk2_status": "eq_ok"
+  }
+}

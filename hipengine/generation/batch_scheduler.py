@@ -8,9 +8,12 @@ back through ``record_generated``.
 
 from __future__ import annotations
 
-from collections import deque
-from dataclasses import dataclass
+import time
+from collections import Counter, deque
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from math import ceil
+from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
@@ -30,10 +33,134 @@ class BatchGenerateRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class PerRowSamplingParams:
+    """Torch-free per-request sampling row for native sampler launches."""
+
+    temperature: float = 0.0
+    top_k: int = 0
+    top_p: float = 1.0
+    repetition_penalty: float = 1.0
+    seed: int | None = None
+    stop_tokens: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.temperature < 0.0:
+            raise ValueError("temperature must be non-negative")
+        if self.top_k < 0:
+            raise ValueError("top_k must be non-negative")
+        if self.top_p < 0.0 or self.top_p > 1.0:
+            raise ValueError("top_p must be between 0 and 1")
+        if self.repetition_penalty <= 0.0:
+            raise ValueError("repetition_penalty must be positive")
+        if self.seed is not None and self.seed < 0:
+            raise ValueError("seed must be non-negative")
+        stops = tuple(int(token) for token in self.stop_tokens)
+        if any(token < 0 for token in stops):
+            raise ValueError("stop_tokens must be non-negative")
+        object.__setattr__(self, "temperature", float(self.temperature))
+        object.__setattr__(self, "top_k", int(self.top_k))
+        object.__setattr__(self, "top_p", float(self.top_p))
+        object.__setattr__(self, "repetition_penalty", float(self.repetition_penalty))
+        object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
+        object.__setattr__(self, "stop_tokens", stops)
+
+    def resolved_seed(self, *, request_id: int, row_index: int) -> int:
+        base = int(self.seed) if self.seed is not None else 0
+        return _stable_sampler_seed(base_seed=base, request_id=int(request_id), row_index=int(row_index))
+
+
+@dataclass(frozen=True, slots=True)
+class SamplerParamsBlock:
+    """Columnar per-row sampler params aligned with a decode work item."""
+
+    request_ids: tuple[int, ...]
+    temperatures: tuple[float, ...]
+    top_ks: tuple[int, ...]
+    top_ps: tuple[float, ...]
+    repetition_penalties: tuple[float, ...]
+    seeds: tuple[int, ...]
+    stop_token_rows: tuple[tuple[int, ...], ...]
+
+    def __post_init__(self) -> None:
+        rows = len(self.request_ids)
+        if rows <= 0:
+            raise ValueError("sampler params block must include at least one row")
+        _check_len("temperatures", self.temperatures, rows)
+        _check_len("top_ks", self.top_ks, rows)
+        _check_len("top_ps", self.top_ps, rows)
+        _check_len("repetition_penalties", self.repetition_penalties, rows)
+        _check_len("seeds", self.seeds, rows)
+        _check_len("stop_token_rows", self.stop_token_rows, rows)
+        if len(set(self.request_ids)) != rows:
+            raise ValueError("sampler params block request_ids must be unique")
+
+    @classmethod
+    def from_rows(
+        cls,
+        request_ids: Sequence[int],
+        rows: Mapping[int, PerRowSamplingParams],
+    ) -> "SamplerParamsBlock":
+        ids = tuple(int(request_id) for request_id in request_ids)
+        params = tuple(rows[request_id] for request_id in ids)
+        return cls(
+            request_ids=ids,
+            temperatures=tuple(row.temperature for row in params),
+            top_ks=tuple(row.top_k for row in params),
+            top_ps=tuple(row.top_p for row in params),
+            repetition_penalties=tuple(row.repetition_penalty for row in params),
+            seeds=tuple(row.resolved_seed(request_id=request_id, row_index=index) for index, (request_id, row) in enumerate(zip(ids, params, strict=True))),
+            stop_token_rows=tuple(row.stop_tokens for row in params),
+        )
+
+    def params_for(self, request_id: int) -> PerRowSamplingParams:
+        index = self.request_ids.index(int(request_id))
+        return PerRowSamplingParams(
+            temperature=self.temperatures[index],
+            top_k=self.top_ks[index],
+            top_p=self.top_ps[index],
+            repetition_penalty=self.repetition_penalties[index],
+            seed=self.seeds[index],
+            stop_tokens=self.stop_token_rows[index],
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class GeneratedToken:
     request_id: int
     token_id: int
     finished: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class RequestObservability:
+    """Per-request timing/KV fields emitted with completion metadata."""
+
+    queue_seconds: float
+    prefill_seconds: float
+    decode_seconds: float
+    kv_pages_owned: int
+    kv_pages_peak: int
+    bucket_key: str | None
+    admission_blocked_reason: str | None
+    finish_reason: str
+    submitted_timestamp: float
+    admitted_timestamp: float | None
+    completion_timestamp: float
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "queue_seconds": self.queue_seconds,
+            "prefill_seconds": self.prefill_seconds,
+            "decode_seconds": self.decode_seconds,
+            "kv_pages_owned": self.kv_pages_owned,
+            "kv_pages_peak": self.kv_pages_peak,
+            "bucket_key": self.bucket_key,
+            "admission_blocked_reason": self.admission_blocked_reason,
+            "finish_reason": self.finish_reason,
+            "submitted_timestamp": self.submitted_timestamp,
+            "admitted_timestamp": self.admitted_timestamp,
+            "completion_timestamp": self.completion_timestamp,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +169,31 @@ class CompletedRequest:
     prompt_tokens: tuple[int, ...]
     generated_tokens: tuple[int, ...]
     finished: bool
+    finish_reason: str
+    observability: RequestObservability
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "prompt_tokens": list(self.prompt_tokens),
+            "generated_tokens": list(self.generated_tokens),
+            "finished": self.finished,
+            "finish_reason": self.finish_reason,
+            "observability": self.observability.to_json_dict(),
+        }
+
+
+@dataclass(slots=True)
+class _RequestObservabilityState:
+    submitted_at: float
+    admitted_at: float | None = None
+    queue_seconds: float = 0.0
+    prefill_seconds: float = 0.0
+    decode_seconds: float = 0.0
+    kv_pages_owned: int = 0
+    kv_pages_peak: int = 0
+    bucket_key: str | None = None
+    admission_blocked_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,11 +392,34 @@ class SpeculativeStateCommitPlan:
     buffers: TargetStateCommitBuffers
 
 
+GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS = ("le_10us", "le_100us", "le_1ms", "le_10ms", "gt_10ms")
+
+
 @dataclass(frozen=True, slots=True)
 class GraphBucketStats:
     entries: int
     hits: int
     misses: int
+    replay_kernel_hits: int = 0
+    miss_reasons: Mapping[str, int] = field(default_factory=dict)
+    kernel_time_histogram_ns: Mapping[str, int] = field(default_factory=dict)
+
+    def to_json_dict(self) -> dict[str, object]:
+        lookup_count = int(self.hits) + int(self.misses)
+        replay_hit_rate = float(self.hits) / float(lookup_count) if lookup_count > 0 else 0.0
+        kernel_time_histogram = {bucket: 0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
+        for key, value in self.kernel_time_histogram_ns.items():
+            if key in kernel_time_histogram:
+                kernel_time_histogram[str(key)] = int(value)
+        return {
+            "entries": int(self.entries),
+            "hits": int(self.hits),
+            "misses": int(self.misses),
+            "replay_kernel_hits": int(self.replay_kernel_hits),
+            "replay_hit_rate": replay_hit_rate,
+            "miss_reasons": {str(key): int(value) for key, value in sorted(self.miss_reasons.items())},
+            "kernel_time_histogram_ns": kernel_time_histogram,
+        }
 
 
 class GraphBucketCache:
@@ -254,50 +429,104 @@ class GraphBucketCache:
         self._cache: dict[BatchShapeKey, object] = {}
         self._hits = 0
         self._misses = 0
+        self._replay_kernel_hits = 0
+        self._miss_reasons: Counter[str] = Counter()
+        self._kernel_time_histogram_ns: Counter[str] = Counter()
 
     @property
     def stats(self) -> GraphBucketStats:
-        return GraphBucketStats(entries=len(self._cache), hits=self._hits, misses=self._misses)
+        return GraphBucketStats(
+            entries=len(self._cache),
+            hits=self._hits,
+            misses=self._misses,
+            replay_kernel_hits=self._replay_kernel_hits,
+            miss_reasons=dict(self._miss_reasons),
+            kernel_time_histogram_ns=dict(self._kernel_time_histogram_ns),
+        )
 
-    def get(self, key: BatchShapeKey) -> object | None:
+    def get(self, key: BatchShapeKey, *, miss_reason: str = "cache_absent") -> object | None:
         if key in self._cache:
             self._hits += 1
             return self._cache[key]
         self._misses += 1
+        self._miss_reasons[str(miss_reason or "unspecified")] += 1
         return None
 
     def put(self, key: BatchShapeKey, graph: object) -> None:
         self._cache[key] = graph
 
-    def get_or_create(self, key: BatchShapeKey, factory) -> object:
-        cached = self.get(key)
+    def get_or_create(self, key: BatchShapeKey, factory, *, miss_reason: str = "cache_absent") -> object:
+        cached = self.get(key, miss_reason=miss_reason)
         if cached is not None:
             return cached
         graph = factory(key)
         self.put(key, graph)
         return graph
 
+    def record_kernel_time_ns(self, duration_ns: int) -> None:
+        if not isinstance(duration_ns, Integral) or isinstance(duration_ns, bool):
+            raise ValueError("duration_ns must be a non-negative integer")
+        ns = int(duration_ns)
+        if ns < 0:
+            raise ValueError("duration_ns must be a non-negative integer")
+        self._kernel_time_histogram_ns[_kernel_time_histogram_bucket_ns(ns)] += 1
+
+    def record_replay_kernel_hit(self) -> None:
+        """Record an actual graph replay kernel execution, not just a cache lookup."""
+
+        self._replay_kernel_hits += 1
+
     def clear(self) -> None:
         self._cache.clear()
         self._hits = 0
         self._misses = 0
+        self._replay_kernel_hits = 0
+        self._miss_reasons.clear()
+        self._kernel_time_histogram_ns.clear()
+
+
+def _kernel_time_histogram_bucket_ns(duration_ns: int) -> str:
+    if duration_ns <= 10_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[0]
+    if duration_ns <= 100_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[1]
+    if duration_ns <= 1_000_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[2]
+    if duration_ns <= 10_000_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[3]
+    return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[4]
 
 
 class ResidentBatchScheduler:
     """Continuous-batching scheduler shell for resident decode runners."""
 
-    def __init__(self, *, capacity: int, context_bucket_size: int = 256) -> None:
+    def __init__(
+        self,
+        *,
+        capacity: int,
+        context_bucket_size: int = 256,
+        clock: Callable[[], float] | None = None,
+        reclaim_callback: Callable[[CompletedRequest], None] | None = None,
+        max_pending_requests: int | None = None,
+    ) -> None:
         if capacity <= 0:
             raise ValueError("capacity must be positive")
         if context_bucket_size <= 0:
             raise ValueError("context_bucket_size must be positive")
+        if max_pending_requests is not None and max_pending_requests <= 0:
+            raise ValueError("max_pending_requests must be positive when set")
         self.capacity = int(capacity)
         self.context_bucket_size = int(context_bucket_size)
+        self.max_pending_requests = None if max_pending_requests is None else int(max_pending_requests)
         self.active_batch = ActiveBatch(self.capacity)
         self.graph_buckets = GraphBucketCache()
         self._pending: deque[RequestState] = deque()
         self._completed: dict[int, CompletedRequest] = {}
+        self._observability: dict[int, _RequestObservabilityState] = {}
+        self._sampling: dict[int, PerRowSamplingParams] = {}
         self._next_request_id = 0
+        self._clock = time.monotonic if clock is None else clock
+        self._reclaim_callback = reclaim_callback
 
     @property
     def pending_count(self) -> int:
@@ -311,11 +540,25 @@ class ResidentBatchScheduler:
     def completed(self) -> Mapping[int, CompletedRequest]:
         return self._completed
 
-    def submit(self, prompt_tokens: Iterable[int], *, max_new_tokens: int, request_id: int | None = None) -> int:
+    def submit(
+        self,
+        prompt_tokens: Iterable[int],
+        *,
+        max_new_tokens: int,
+        request_id: int | None = None,
+        sampling: PerRowSamplingParams | None = None,
+    ) -> int:
+        if self.max_pending_requests is not None and len(self._pending) >= self.max_pending_requests:
+            raise ValueError(f"pending request queue is full (max_pending_requests={self.max_pending_requests})")
         rid = self._allocate_request_id() if request_id is None else int(request_id)
         if rid in self.active_batch.requests or any(req.request_id == rid for req in self._pending) or rid in self._completed:
             raise ValueError(f"request_id {rid} already exists")
         self._pending.append(RequestState.from_tokens(rid, prompt_tokens, max_new_tokens=max_new_tokens))
+        self._sampling[rid] = sampling or PerRowSamplingParams()
+        self._observability[rid] = _RequestObservabilityState(
+            submitted_at=self._clock(),
+            admission_blocked_reason="capacity" if self.active_batch.active_count >= self.capacity else None,
+        )
         return rid
 
     def admit_pending(self) -> tuple[int, ...]:
@@ -325,7 +568,17 @@ class ResidentBatchScheduler:
         while self._pending and self.active_batch.active_count < self.capacity:
             request = self._pending.popleft()
             self.active_batch.admit(request)
+            state = self._observability.get(request.request_id)
+            if state is not None:
+                now = self._clock()
+                state.admitted_at = now
+                state.queue_seconds = max(0.0, now - state.submitted_at)
             admitted.append(request.request_id)
+        if self._pending and self.active_batch.active_count >= self.capacity:
+            for request in self._pending:
+                state = self._observability.get(request.request_id)
+                if state is not None and state.admission_blocked_reason is None:
+                    state.admission_blocked_reason = "capacity"
         return tuple(admitted)
 
     def compact(self, order: Sequence[int] | None = None):
@@ -342,6 +595,8 @@ class ResidentBatchScheduler:
                 continue
             updated, chunk = request.take_prefill(chunk_size)
             self.active_batch.update_request(updated)
+            self._update_kv_pages(updated)
+            self._set_bucket_key((request_id,), self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)))
             return WorkItem(
                 kind=WorkKind.PREFILL,
                 request_ids=(request_id,),
@@ -407,20 +662,40 @@ class ResidentBatchScheduler:
                 start_positions.append(request.next_prompt_index)
                 updated, chunk = request.take_prefill(chunk_size)
                 self.active_batch.update_request(updated)
+                self._update_kv_pages(updated, block_size=block_size)
                 token_rows.append(chunk)
-            slabs.append(
-                CompactPromptSlab.from_token_rows(
-                    request_ids=bucket.request_ids,
-                    token_rows=token_rows,
-                    start_positions=start_positions,
-                    block_count=bucket.block_count,
-                    block_size=block_size,
-                    slot_ids=tuple(self.active_batch.slot_for(request_id) for request_id in bucket.request_ids),
-                )
+            slab = CompactPromptSlab.from_token_rows(
+                request_ids=bucket.request_ids,
+                token_rows=token_rows,
+                start_positions=start_positions,
+                block_count=bucket.block_count,
+                block_size=block_size,
+                slot_ids=tuple(self.active_batch.slot_for(request_id) for request_id in bucket.request_ids),
             )
+            self._set_bucket_key(
+                bucket.request_ids,
+                f"prefill:compact:blocks={slab.block_count}:rows={slab.rows}:block_size={slab.block_size}",
+            )
+            slabs.append(slab)
         return tuple(slabs)
 
-    def next_decode_work(self) -> WorkItem | None:
+    def has_prefill_work(self) -> bool:
+        """Return whether any active request still needs prompt prefill."""
+
+        return any(
+            request.remaining_prefill > 0 and not request.finished
+            for request in self.active_batch.requests.values()
+        )
+
+    def next_decode_work(
+        self,
+        *,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+        kv_storage_dtype: str = "bf16",
+        layer_plan: str = "all",
+    ) -> WorkItem | None:
         """Emit one decode step over active requests with completed prefill."""
 
         request_ids = tuple(
@@ -432,7 +707,50 @@ class ResidentBatchScheduler:
         )
         if not request_ids:
             return None
+        self._set_bucket_key(
+            request_ids,
+            self._bucket_key(
+                self.shape_key(
+                    mode=WorkKind.DECODE,
+                    top_k=top_k,
+                    experts_per_token=experts_per_token,
+                    replay_steps=replay_steps,
+                    kv_storage_dtype=kv_storage_dtype,
+                    layer_plan=layer_plan,
+                )
+            ),
+        )
         return WorkItem(kind=WorkKind.DECODE, request_ids=request_ids, row_to_request=request_ids)
+
+    def sampler_params_block(self, request_ids: Sequence[int]) -> SamplerParamsBlock:
+        """Return a columnar per-row sampler block for a native decode launch."""
+
+        ids = tuple(int(request_id) for request_id in request_ids)
+        for request_id in ids:
+            if request_id not in self._sampling:
+                raise KeyError(f"no sampler params for request_id {request_id}")
+        return SamplerParamsBlock.from_rows(ids, self._sampling)
+
+    def record_work_duration(self, work: WorkItem, seconds: float) -> None:
+        """Attach measured runner time to the request observability rows."""
+
+        elapsed = float(seconds)
+        if elapsed < 0.0:
+            raise ValueError("work duration must be non-negative")
+        if work.kind is WorkKind.PREFILL:
+            field = "prefill_seconds"
+        elif work.kind is WorkKind.DECODE:
+            field = "decode_seconds"
+        else:
+            return
+        for request_id in work.request_ids:
+            state = self._observability.get(request_id)
+            if state is None:
+                continue
+            if field == "prefill_seconds":
+                state.prefill_seconds += elapsed
+            elif field == "decode_seconds":
+                state.decode_seconds += elapsed
 
     def next_speculative_verify_work(
         self,
@@ -477,6 +795,29 @@ class ResidentBatchScheduler:
             if done is not None:
                 completed.append(done)
         return tuple(completed)
+
+    def cancel(self, request_id: int, *, reason: str = "cancel") -> CompletedRequest | None:
+        """Cancel a pending or active request through the unified reclaim path."""
+
+        if reason not in {"cancel", "disconnect", "timeout"}:
+            raise ValueError("cancel reason must be cancel, disconnect, or timeout")
+        rid = int(request_id)
+        pending = self._pop_pending_request(rid)
+        if pending is not None:
+            return self._complete_request(pending, finish_reason=reason)
+        if rid not in self.active_batch.requests:
+            return None
+        return self._reclaim_active_request(rid, finish_reason=reason)
+
+    def disconnect(self, request_id: int) -> CompletedRequest | None:
+        """Mark a client disconnect through the same reclaim path as cancel."""
+
+        return self.cancel(request_id, reason="disconnect")
+
+    def timeout(self, request_id: int) -> CompletedRequest | None:
+        """Mark a per-request timeout through the same reclaim path as cancel."""
+
+        return self.cancel(request_id, reason="timeout")
 
     def record_speculative_accept(self, summary: TargetAcceptSummary) -> tuple[CompletedRequest, ...]:
         """Record accepted speculative tokens plus optional target next tokens."""
@@ -739,14 +1080,48 @@ class ResidentBatchScheduler:
             raise ValueError("committed KV accepted_counts must match speculative commit plan")
         return self.record_speculative_accept(plan.commit_plan.summary)
 
-    def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
+    def shape_key(
+        self,
+        *,
+        mode: WorkKind | str,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+        kv_storage_dtype: str = "bf16",
+        layer_plan: str = "all",
+    ) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
             context_bucket_size=self.context_bucket_size,
             top_k=top_k,
             experts_per_token=experts_per_token,
             replay_steps=replay_steps,
+            kv_storage_dtype=kv_storage_dtype,
+            layer_plan=layer_plan,
         )
+
+    def _bucket_key(self, key: BatchShapeKey) -> str:
+        mask = "".join("1" if active else "0" for active in key.active_mask)
+        return (
+            f"{key.mode.value}:c={key.active_c}:ctx={key.context_bucket}:mask={mask}:"
+            f"kv={key.kv_storage_dtype}:layers={key.layer_plan}:"
+            f"top_k={key.top_k}:experts={key.experts_per_token}:replay={key.replay_steps}:"
+            f"draft={key.draft_depth}"
+        )
+
+    def _set_bucket_key(self, request_ids: Sequence[int], bucket_key: str) -> None:
+        for request_id in request_ids:
+            state = self._observability.get(int(request_id))
+            if state is not None:
+                state.bucket_key = bucket_key
+
+    def _update_kv_pages(self, request: RequestState, *, block_size: int = 256) -> None:
+        state = self._observability.get(request.request_id)
+        if state is None:
+            return
+        pages = max(0, ceil(request.context_len / int(block_size)))
+        state.kv_pages_owned = pages
+        state.kv_pages_peak = max(state.kv_pages_peak, pages)
 
     def _allocate_request_id(self) -> int:
         rid = self._next_request_id
@@ -755,20 +1130,71 @@ class ResidentBatchScheduler:
 
     def _append_generated_token(self, token: GeneratedToken) -> CompletedRequest | None:
         request = self.active_batch.requests[token.request_id]
+        finish_reason = "stop" if token.finished else "length"
         updated = request.append_generated(token.token_id, finished=token.finished)
         self.active_batch.update_request(updated)
+        self._update_kv_pages(updated)
         if not updated.finished:
             return None
-        self.active_batch.finish(updated.request_id)
-        reclaimed = self.active_batch.reclaim(updated.request_id)
-        done = CompletedRequest(
-            request_id=reclaimed.request_id,
-            prompt_tokens=reclaimed.prompt_tokens,
-            generated_tokens=reclaimed.generated_tokens,
-            finished=reclaimed.finished,
+        return self._reclaim_active_request(updated.request_id, finish_reason=finish_reason)
+
+    def _pop_pending_request(self, request_id: int) -> RequestState | None:
+        for pending in tuple(self._pending):
+            if pending.request_id == request_id:
+                self._pending = deque(item for item in self._pending if item.request_id != request_id)
+                return pending
+        return None
+
+    def _reclaim_active_request(self, request_id: int, *, finish_reason: str) -> CompletedRequest:
+        self.active_batch.finish(request_id)
+        reclaimed = self.active_batch.reclaim(request_id)
+        return self._complete_request(reclaimed, finish_reason=finish_reason)
+
+    def _complete_request(self, request: RequestState, *, finish_reason: str) -> CompletedRequest:
+        now = self._clock()
+        self._update_kv_pages(request)
+        state = self._observability.pop(
+            request.request_id,
+            _RequestObservabilityState(submitted_at=now, admitted_at=now),
         )
+        if state.admitted_at is None:
+            state.queue_seconds = max(0.0, now - state.submitted_at)
+        observability = RequestObservability(
+            queue_seconds=state.queue_seconds,
+            prefill_seconds=state.prefill_seconds,
+            decode_seconds=state.decode_seconds,
+            kv_pages_owned=state.kv_pages_owned,
+            kv_pages_peak=state.kv_pages_peak,
+            bucket_key=state.bucket_key,
+            admission_blocked_reason=state.admission_blocked_reason,
+            finish_reason=finish_reason,
+            submitted_timestamp=state.submitted_at,
+            admitted_timestamp=state.admitted_at,
+            completion_timestamp=now,
+        )
+        done = CompletedRequest(
+            request_id=request.request_id,
+            prompt_tokens=request.prompt_tokens,
+            generated_tokens=request.generated_tokens,
+            finished=True,
+            finish_reason=finish_reason,
+            observability=observability,
+        )
+        self._sampling.pop(done.request_id, None)
         self._completed[done.request_id] = done
+        if self._reclaim_callback is not None:
+            self._reclaim_callback(done)
         return done
+
+
+def _stable_sampler_seed(*, base_seed: int, request_id: int, row_index: int) -> int:
+    """Derive a deterministic uint64-ish row seed without process-random hash()."""
+
+    value = (int(base_seed) + 0x9E3779B97F4A7C15) & ((1 << 64) - 1)
+    value ^= (int(request_id) + 0xBF58476D1CE4E5B9) & ((1 << 64) - 1)
+    value = (value * 0x94D049BB133111EB) & ((1 << 64) - 1)
+    value ^= (int(row_index) + 0xD6E8FEB86659FD93) & ((1 << 64) - 1)
+    return value & ((1 << 63) - 1)
 
 
 def _coerce_generated_token(item: GeneratedToken | tuple[int, int] | tuple[int, int, bool]) -> GeneratedToken:
@@ -794,7 +1220,10 @@ __all__ = [
     "GeneratedToken",
     "GraphBucketCache",
     "GraphBucketStats",
+    "PerRowSamplingParams",
+    "RequestObservability",
     "ResidentBatchScheduler",
+    "SamplerParamsBlock",
     "SpeculativeCommitPlan",
     "SpeculativeStateCommitPlan",
     "SpeculativeVerifyBufferPlan",

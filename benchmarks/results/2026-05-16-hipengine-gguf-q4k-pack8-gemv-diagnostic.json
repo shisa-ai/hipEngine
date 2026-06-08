@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "date": "2026-05-16",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "scope": "kernel_microbench",
+  "model": "synthetic GEMV fixture",
+  "quant": "gguf_q4_k",
+  "backend": "hip_gfx1100",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "gfx": "gfx1100",
+    "rocm_hip": "7.13.60940"
+  },
+  "command": "PYTHONPATH=. python3 /tmp/bench_gemv_compare_pack8.py",
+  "timing_method": "HIP events around graph execution; 500 kernel launches captured per graph; rows=1; BF16 activations for all compared paths",
+  "correctness": {
+    "synthetic_smoke_command": "python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip --rows 2 --hidden-size 512",
+    "synthetic_smoke_result": {
+      "f32_max_abs": 0.0,
+      "fp16_max_abs": 0.0,
+      "bf16_max_abs": 0.0
+    },
+    "real_tensor": {
+      "file": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "tensor": "blk.0.attn_gate.weight",
+      "shape": [2048, 1024],
+      "cpu_pack8_vs_raw_max_abs": 0.0,
+      "gpu_pack8_vs_cpu_pack8_max_abs": 1.7881393432617188e-7,
+      "gpu_pack8_vs_cpu_pack8_mean_abs": 2.7773694455390796e-8
+    }
+  },
+  "measurements": [
+    {
+      "shape": {"rows": 1, "in_features": 512, "out_features": 128},
+      "repeats": 20000,
+      "warmup_graph_launches": 1000,
+      "kernels": {
+        "bf16_dense": {"us": 3.32452507019043, "threads": 256, "out_dtype": "bf16"},
+        "paro_awq_pack8_transposed_bf16": {"us": 3.8137256622314455, "threads": 128, "out_dtype": "bf16"},
+        "gguf_q4_k_raw_bf16_f32_out": {"us": 3.494474411010742, "threads": 128, "out_dtype": "fp32"},
+        "gguf_q4_k_pack8_bf16_f32_out": {"us": 3.0325050354003906, "threads": 64, "out_dtype": "fp32"}
+      },
+      "ratios": {
+        "pack8_vs_raw_time": 0.8678000404997296,
+        "pack8_vs_paro_time": 0.7951555261125008,
+        "pack8_vs_dense_time": 0.9121618791783356
+      }
+    },
+    {
+      "shape": {"rows": 1, "in_features": 4096, "out_features": 128},
+      "repeats": 10000,
+      "warmup_graph_launches": 1000,
+      "kernels": {
+        "bf16_dense": {"us": 3.434276580810547, "threads": 256, "out_dtype": "bf16"},
+        "paro_awq_pack8_transposed_bf16": {"us": 6.654200744628906, "threads": 128, "out_dtype": "bf16"},
+        "gguf_q4_k_raw_bf16_f32_out": {"us": 9.489835357666015, "threads": 128, "out_dtype": "fp32"},
+        "gguf_q4_k_pack8_bf16_f32_out": {"us": 4.261749649047852, "threads": 128, "out_dtype": "fp32"}
+      },
+      "ratios": {
+        "pack8_vs_raw_time": 0.4490857310401232,
+        "pack8_vs_paro_time": 0.6404600360889056,
+        "pack8_vs_dense_time": 1.2409453778012276
+      }
+    }
+  ],
+  "notes": [
+    "Diagnostic kernel microbench only; not an accepted LLM.generate throughput row.",
+    "GGUF Q4_K pack8 is lossless relative to raw GGUF Q4_K dequant math; it is not PARO/AWQ re-quantization.",
+    "Pack8 wrapper auto-selects 64 threads for in_features <= 1024 and 128 threads otherwise."
+  ]
+}

@@ -1,0 +1,1304 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-block-table-audit/summary.json",
+  "created_at": "2026-06-03T07:32:41.160135Z",
+  "status": "block_table_metadata_suspect_eliminated",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Focused audit of the apparent duplicate block_table_rows in native c3 full-attention metadata. The duplicates are expected row-relative physical-slot offsets from _batch_full_spans, not block-table corruption: for contiguous active slots, every row stores the same logical table because the kernels add the active row internally; when rowchunk2 runs a tail chunk with slot 2 as compact row 0, the expected row-relative table shifts to slot2 offsets. All audited c2/c3 native/rowchunk2 retained and L40 trace segments match this formula. Since active c2 is green with the same expected duplicate rows, duplicate block-table metadata is not sufficient to explain the c3 grouping>=3 red path. The fix target remains hidden/pre-QKV grouped full-attention behavior, not block-table construction.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "fcc292652407a74e5a5fbbe3596922c10812ce54",
+    "hipengine_dirty": false,
+    "source_function": "hipengine/runtime/qwen35_paro_runner.py::_batch_full_spans"
+  },
+  "workload": {
+    "audited_artifacts": {
+      "active_c2_full_native": "/tmp/hipengine-e2e-native-c2-512-128-postcommit-iter142.json",
+      "rows456_c3_full_native_retained": "/tmp/hipengine-e2e-native-c3-rows456-native-iter142.json",
+      "rows456_c3_rowchunk2_retained": "/tmp/hipengine-e2e-native-c3-rows456-rowchunk2-iter142.json",
+      "rows456_c3_full_native_l40_trace": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-native-step0-iter142.json",
+      "rows456_c3_rowchunk2_l40_trace": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-rowchunk2-step0-iter142.json"
+    },
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixtures": [
+      "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json"
+    ],
+    "logical_rows": [
+      4,
+      5,
+      6
+    ],
+    "block_table_encoding": "row_relative_physical_slot_offsets: block_rows[row] = arange(blocks) + (slot - compact_row) * blocks; kernels add compact active-row base internally"
+  },
+  "records": [
+    {
+      "label": "active_c2_full_native",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-512-128-postcommit-iter142.json",
+      "tmp_artifact_sha256": "1a54b66435c8a19ce79b9b674cbddeb444abb098951f82632a5a1afc0e7854f7",
+      "tmp_artifact_size_bytes": 139374,
+      "status": "blocked",
+      "top_level_path": "native_batch",
+      "top_level_native_caware": true,
+      "generated_token_equality_passed": true,
+      "prefixes": [
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "trace_token_passed": null,
+      "trace_hidden_passed": null,
+      "segments": [
+        {
+          "layer_index": 3,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ],
+      "all_segments_row_relative_formula_match": true,
+      "segments_with_duplicate_rows": [
+        {
+          "layer_index": 3,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ]
+    },
+    {
+      "label": "rows456_c3_full_native_retained",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c3-rows456-native-iter142.json",
+      "tmp_artifact_sha256": "3010b141aae835455657e80f366975717bfad5c124ac7211ec6ed9ad2473c24b",
+      "tmp_artifact_size_bytes": 186360,
+      "status": "rejected_correctness",
+      "top_level_path": "native_batch",
+      "top_level_native_caware": true,
+      "generated_token_equality_passed": false,
+      "prefixes": [
+        45,
+        11,
+        137
+      ],
+      "min_equal_prefix_tokens": 11,
+      "trace_token_passed": null,
+      "trace_hidden_passed": null,
+      "segments": [
+        {
+          "layer_index": 3,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            647,
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            647,
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ],
+      "all_segments_row_relative_formula_match": true,
+      "segments_with_duplicate_rows": [
+        {
+          "layer_index": 3,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            647,
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            647,
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ]
+    },
+    {
+      "label": "rows456_c3_rowchunk2_retained",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c3-rows456-rowchunk2-iter142.json",
+      "tmp_artifact_sha256": "98f44119bcd8b92d653d82829d2b061e63e677345a6dc7bb4309d70a1ac53a6e",
+      "tmp_artifact_size_bytes": 193918,
+      "status": "blocked",
+      "top_level_path": "native_batch_row_chunks",
+      "top_level_native_caware": false,
+      "generated_token_equality_passed": true,
+      "prefixes": [
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "trace_token_passed": null,
+      "trace_hidden_passed": null,
+      "segments": [
+        {
+          "layer_index": 3,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 3,
+          "path": "native_batch_row_chunks",
+          "row_start": 2,
+          "chunk_index": 1,
+          "rows": 1,
+          "slots": [
+            2
+          ],
+          "positions": [
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              6,
+              7,
+              8
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              6,
+              7,
+              8
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 0,
+          "duplicates_expected_for_contiguous_slots": false
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch_row_chunks",
+          "row_start": 2,
+          "chunk_index": 1,
+          "rows": 1,
+          "slots": [
+            2
+          ],
+          "positions": [
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              6,
+              7,
+              8
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              6,
+              7,
+              8
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 0,
+          "duplicates_expected_for_contiguous_slots": false
+        }
+      ],
+      "all_segments_row_relative_formula_match": true,
+      "segments_with_duplicate_rows": [
+        {
+          "layer_index": 3,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            647,
+            647
+          ],
+          "block_table_len_per_row": 3,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ]
+    },
+    {
+      "label": "rows456_c3_full_native_l40_trace",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-native-step0-iter142.json",
+      "tmp_artifact_sha256": "ddb36c1375a823575e7743c01a47085af5c54ce4fc3422d1e1c56484c3066639",
+      "tmp_artifact_size_bytes": 12377799,
+      "status": "mismatch_found",
+      "top_level_path": "native_batch",
+      "top_level_native_caware": true,
+      "generated_token_equality_passed": null,
+      "prefixes": null,
+      "min_equal_prefix_tokens": null,
+      "trace_token_passed": true,
+      "trace_hidden_passed": false,
+      "segments": [
+        {
+          "layer_index": 3,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            512,
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            512,
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ],
+      "all_segments_row_relative_formula_match": true,
+      "segments_with_duplicate_rows": [
+        {
+          "layer_index": 3,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            512,
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch",
+          "row_start": null,
+          "chunk_index": null,
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "positions": [
+            512,
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 2,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ]
+    },
+    {
+      "label": "rows456_c3_rowchunk2_l40_trace",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-rowchunk2-step0-iter142.json",
+      "tmp_artifact_sha256": "8c2cb166a79a46e60c382e474c98ffadd536497377689c66073a53951a2cd891",
+      "tmp_artifact_size_bytes": 10474283,
+      "status": "mismatch_found",
+      "top_level_path": "native_batch_row_chunks",
+      "top_level_native_caware": false,
+      "generated_token_equality_passed": null,
+      "prefixes": null,
+      "min_equal_prefix_tokens": null,
+      "trace_token_passed": true,
+      "trace_hidden_passed": false,
+      "segments": [
+        {
+          "layer_index": 3,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 3,
+          "path": "native_batch_row_chunks",
+          "row_start": 2,
+          "chunk_index": 1,
+          "rows": 1,
+          "slots": [
+            2
+          ],
+          "positions": [
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              8,
+              9,
+              10,
+              11
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              8,
+              9,
+              10,
+              11
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 0,
+          "duplicates_expected_for_contiguous_slots": false
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch_row_chunks",
+          "row_start": 2,
+          "chunk_index": 1,
+          "rows": 1,
+          "slots": [
+            2
+          ],
+          "positions": [
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              8,
+              9,
+              10,
+              11
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              8,
+              9,
+              10,
+              11
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 0,
+          "duplicates_expected_for_contiguous_slots": false
+        }
+      ],
+      "all_segments_row_relative_formula_match": true,
+      "segments_with_duplicate_rows": [
+        {
+          "layer_index": 3,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        },
+        {
+          "layer_index": 7,
+          "path": "native_batch_row_chunks",
+          "row_start": 0,
+          "chunk_index": 0,
+          "rows": 2,
+          "slots": [
+            0,
+            1
+          ],
+          "positions": [
+            512,
+            512
+          ],
+          "block_table_len_per_row": 4,
+          "block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected_row_relative_block_table_rows": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "row_relative_formula_matches": true,
+          "duplicate_block_table_row_count": 1,
+          "duplicates_expected_for_contiguous_slots": true
+        }
+      ]
+    }
+  ],
+  "measurements": {
+    "active_native_c2_512x128_min_equal_prefix_tokens": [
+      137
+    ],
+    "native_c3_512x128_min_equal_prefix_tokens": [
+      11
+    ],
+    "rowchunk2_c3_512x128_min_equal_prefix_tokens": [
+      137
+    ]
+  },
+  "verdicts": {
+    "all_audited_segments_match_row_relative_formula": true,
+    "active_c2_full_native_has_expected_duplicate_block_rows_and_is_green": true,
+    "c3_full_native_has_expected_duplicate_block_rows_but_is_red": true,
+    "c3_rowchunk2_tail_chunk_uses_distinct_slot2_block_offsets_and_is_green": true,
+    "duplicate_block_rows_are_not_sufficient_to_explain_failure": true,
+    "metadata_block_table_corruption_suspect_eliminated": true,
+    "retained_ready": false
+  },
+  "commands": {
+    "audit": "python3 inline audit over /tmp/hipengine-e2e-native-c2-512-128-postcommit-iter142.json, /tmp/hipengine-e2e-native-c3-rows456-native-iter142.json, /tmp/hipengine-e2e-native-c3-rows456-rowchunk2-iter142.json, /tmp/hipengine-hidden-bisect-L40-c3-rows456-native-step0-iter142.json, /tmp/hipengine-hidden-bisect-L40-c3-rows456-rowchunk2-step0-iter142.json"
+  },
+  "prior_related_artifacts": [
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-boundary-contrast/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-mismatch-summary-matrix/summary.json"
+  ],
+  "retained_claim_blockers": [
+    "native c3 full-attention grouping is still generated-token red even though block-table metadata is formula-consistent",
+    "rowchunk2 remains a diagnostic fallback and records native_caware_decode=false",
+    "no retained c>N throughput/scaling claim is made"
+  ]
+}

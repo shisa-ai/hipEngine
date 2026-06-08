@@ -1,33 +1,37 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-05-18
+Last updated: 2026-05-26
 
-hipEngine ships a thin optional FastAPI layer that adapts OpenAI-style requests
-to the torch-free `hipengine.LLM.generate()` library API. It is installed only
-with the `server` extra and is intentionally serialized today because the
-current runnable Qwen/PARO path is still single-request / `c=1`.
+hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
+torch-free `hipengine.LLM.generate()` library API. Server dependencies are
+installed by default, and execution is intentionally serialized today because
+the current runnable Qwen/PARO path is still single-request / `c=1`.
 
 ## Install
 
 ```bash
-pip install -e ".[server]"
+pip install hipengine
 ```
 
 ## Run
 
 ```bash
-python -m hipengine.server \
-  --model /path/to/qwen-paro-model \
+hipengine serve \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
   --quant w4_paro \
   --served-model-name qwen-paro \
   --host 127.0.0.1 \
   --port 8000
 ```
 
-After installation, the console script is equivalent:
+`--model` accepts a local filesystem path or a Hugging Face model ID that is
+already present in the local HF cache. hipEngine resolves IDs with local cache
+lookups only; it does not download weights during server startup.
+
+The module entry point is equivalent for environments that prefer `python -m`:
 
 ```bash
-hipengine-server --model /path/to/model --served-model-name qwen-paro
+python -m hipengine serve --model /path/to/model --served-model-name qwen-paro
 ```
 
 The server defaults to `--backend auto`, which maps exact `gfx1100`/`gfx1151`
@@ -35,6 +39,25 @@ ROCm detections to `hip_gfx1100`/`hip_gfx1151`. Unknown HIP targets warn and
 select `cpu_reference` where a CPU implementation exists; nearby targets such as
 `gfx1101`/`gfx1102` can force a backend with `--backend hip_gfx1100` or
 `HIPENGINE_BACKEND=hip_gfx1100` after local validation.
+
+By default the server eagerly loads the model, loads resident weights, estimates
+remaining HIP memory for KV cache plus persistent context metadata, then
+preallocates `min(model max context, estimated allocatable context)`. Pass
+`--max-context-tokens` (or `HIPENGINE_MAX_CONTEXT_TOKENS`) to force a lower cap.
+Startup fails with a clear error if the requested cap cannot be allocated; lower
+`--max-context-tokens` or use `--kv-storage int8_per_token_head`. Disable eager
+startup with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt and
+token count are configurable via `--eager-load-prompt` and
+`--eager-load-max-tokens`.
+
+The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
+`int8_per_token_head`), `--kv-scale-dtype`, and `--kv-scale-granularity` at
+startup. Requests that ask for a different KV policy are rejected instead of
+rebuilding the resident model. Startup logs include a compact KVCache summary
+from current HIP free memory and warn when even INT8 KV is below the model's
+advertised max context. Chat requests that omit `max_tokens` use
+`max_tokens=auto`, meaning the remaining admitted context
+(`max_context_tokens - prompt_tokens - 1`).
 
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
@@ -50,8 +73,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | --- | --- | --- |
 | `GET /health` | Built in | Unauthenticated health/model probe. |
 | `GET /v1/models` | Built in | Returns the single served model id. |
-| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. Supports `stream=true` as one server-sent event chunk plus `[DONE]`. |
-| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()`. Supports `stream=true` as one server-sent event chunk plus `[DONE]`. |
+| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. Supports `stream=true` (one SSE chunk plus `[DONE]`). |
+| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()`. Supports token-level `stream=true` SSE. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). |
 
 ## Examples
 

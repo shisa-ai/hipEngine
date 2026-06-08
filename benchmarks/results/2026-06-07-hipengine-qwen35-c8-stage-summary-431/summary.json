@@ -1,0 +1,427 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-stage-summary-431/compact-runs.json",
+      "sha256": "a869c113209e38ec0b99fca23768103348e041206849d120f01cc79d22c3075a",
+      "size_bytes": 3679
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-stage-summary-431/summary.json"
+    }
+  },
+  "conclusion": "Existing hidden-bisect artifacts are enough to prove rowchunk vs native-c1 is all-stage green and minimal full-native has immediate all-row stage drift, but not enough to compute a direct rowchunk-vs-fullnative tensor delta. To fix the blocker, add/run a lightweight comparator that records stage tensors (or direct deltas) for layer4 attn_input and layer7 pre-QKV at decode_step0.",
+  "created_at": "2026-06-07T06:21:20.749246+00:00",
+  "full_native_l8_stage_snapshot": {
+    "full_failed_stage_count": 12,
+    "full_failed_stages": [
+      "attn_input_pre_qkv",
+      "attn_input_after_rotate",
+      "attn_input_after_project",
+      "q_proj_key_after_project",
+      "query_raw_after_split",
+      "query_after_prepare",
+      "key_after_prepare",
+      "attn_input_after_prepare",
+      "attn_input",
+      "query",
+      "attn_context",
+      "mlp_input"
+    ],
+    "full_first_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 7,
+      "layer_limit": 8,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "full_stage_passed": {
+      "attn_context": false,
+      "attn_input": false,
+      "attn_input_after_prepare": false,
+      "attn_input_after_project": false,
+      "attn_input_after_rotate": false,
+      "attn_input_pre_qkv": false,
+      "gate": true,
+      "gate_after_split": true,
+      "gated_attn": true,
+      "input": true,
+      "key_after_prepare": false,
+      "key_raw_after_cast": true,
+      "mlp_input": false,
+      "o_proj": true,
+      "output": true,
+      "q_proj_key_after_project": false,
+      "query": false,
+      "query_after_prepare": false,
+      "query_raw_after_split": false,
+      "residual": true,
+      "value_after_project": true
+    },
+    "full_stage_rows": {
+      "attn_context": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "attn_input": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "attn_input_after_prepare": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "attn_input_after_project": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "attn_input_after_rotate": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "attn_input_pre_qkv": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "key_after_prepare": [
+        3,
+        4,
+        5,
+        7
+      ],
+      "mlp_input": [
+        2,
+        4,
+        6
+      ],
+      "q_proj_key_after_project": [
+        5
+      ],
+      "query": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "query_after_prepare": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "query_raw_after_split": [
+        5
+      ]
+    },
+    "linear_drift_stage_count": 9,
+    "linear_drift_stages": [
+      "attn_input",
+      "qkv",
+      "z",
+      "conv_out",
+      "recurrent_out",
+      "out_proj",
+      "residual",
+      "mlp_input",
+      "output"
+    ],
+    "linear_first_bit_drift": {
+      "bit_mismatch": 491,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 8,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "passed_under_atol": false,
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "linear_stage_passed": {
+      "attn_input": false,
+      "conv_out": false,
+      "mlp_input": false,
+      "out_proj": false,
+      "output": false,
+      "qkv": false,
+      "recurrent_out": false,
+      "residual": false,
+      "z": false
+    },
+    "linear_stage_rows": {
+      "attn_input": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "conv_out": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "mlp_input": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "out_proj": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "output": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "qkv": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "recurrent_out": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "residual": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "z": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    }
+  },
+  "git_commit_before_commit": "665be1bdde33a43a14a282b37f140f6233a779c1",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 431,
+  "kind": "c8_stage_summary_comparator_design",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused comparator-design artifact confirms existing c8 hidden summaries already show rowchunk all-stage green and full-native all-row layer4/7 drift, but raw stage tensors are not stored, so a purpose-built stage comparator is required for direct rowchunk-vs-fullnative deltas.",
+    "passed": true
+  },
+  "references": {
+    "full_native_l8_hidden": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter430-L8-c8-full-native-nativec1-warm8-decode1-trace0-1.json",
+      "sha256": "f61328b0013a1ac6ae46f1ea6275e6bcc93fcb3af6d26365c3ab79cfdca5f994",
+      "size_bytes": 4743829
+    },
+    "iter430_summary": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-nativec1-hidden-430/summary.json",
+      "sha256": "2b0bb6fa4a7335ab66b4f21658fcc051620b2b57692e903c0d636ef5dcd73f24",
+      "size_bytes": 50706
+    },
+    "rowchunk_nativec1_hidden": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter430-L40-c8-rowchunk2-nativec1-warm8-decode8-trace0-8.json",
+      "sha256": "f18010fe5e2baf58a6c1cf216d6119a8e4c45653b18dae03371f66567456694e",
+      "size_bytes": 61884805
+    }
+  },
+  "result": {
+    "direct_rowchunk_vs_fullnative_delta_computable_from_existing_json": false,
+    "full_native_l8_first_full_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 7,
+      "layer_limit": 8,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "full_native_l8_first_linear_bit_drift": {
+      "bit_mismatch": 491,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 8,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "passed_under_atol": false,
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "full_native_l8_full_failed_stage_count": 12,
+    "full_native_l8_hidden_passed": true,
+    "full_native_l8_linear_drift_stage_count": 9,
+    "full_native_l8_status": "eq_ok",
+    "full_native_l8_token_passed": true,
+    "raw_stage_tensors_available": false,
+    "rowchunk_full_failed_stage_count": 0,
+    "rowchunk_hidden_passed": true,
+    "rowchunk_linear_drift_stage_count": 0,
+    "rowchunk_status": "eq_ok",
+    "rowchunk_token_passed": true
+  },
+  "rowchunk_stage_snapshot": {
+    "full_failed_stage_count": 0,
+    "full_failed_stages": [],
+    "full_first_failure": null,
+    "full_stage_passed": {
+      "attn_context": true,
+      "attn_input": true,
+      "attn_input_after_prepare": true,
+      "attn_input_after_project": true,
+      "attn_input_after_rotate": true,
+      "attn_input_pre_qkv": true,
+      "gate": true,
+      "gate_after_split": true,
+      "gated_attn": true,
+      "input": true,
+      "key_after_prepare": true,
+      "key_raw_after_cast": true,
+      "mlp_input": true,
+      "o_proj": true,
+      "output": true,
+      "q_proj_key_after_project": true,
+      "query": true,
+      "query_after_prepare": true,
+      "query_raw_after_split": true,
+      "residual": true,
+      "value_after_project": true
+    },
+    "full_stage_rows": {},
+    "linear_drift_stage_count": 0,
+    "linear_drift_stages": [],
+    "linear_first_bit_drift": null,
+    "linear_stage_passed": {
+      "attn_input": true,
+      "conv_out": true,
+      "mlp_input": true,
+      "out_proj": true,
+      "output": true,
+      "qkv": true,
+      "recurrent_out": true,
+      "residual": true,
+      "z": true
+    },
+    "linear_stage_rows": {}
+  },
+  "schema_observation": {
+    "available_data": "per-stage pass/fail, first failure/drift, row sets, mismatch counts; no raw tensor values for direct rowchunk-vs-fullnative delta",
+    "has_decode_stage_records": false,
+    "has_raw_stage_values": false,
+    "has_trace_records": false
+  }
+}

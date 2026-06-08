@@ -1,0 +1,600 @@
+{
+  "conclusion": "Layer3 full-attention produces under-tolerance but bit-different outputs in fullnative vs rowchunk2; layer4 RMSNorm then amplifies to over-atol. The actionable target is grouped full-attention bit-level composition/order or the sensitive handoff, not additional per-row pre-QKV diagnostics.",
+  "created_at": "2026-06-07T07:12:17.141658+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "fix_target": "This points toward making grouped full-attention output bit-identical enough to rowchunk/c1 or handling the layer3->4 sensitivity; rowchunk grouping remains the exact control.",
+    "layer3_origin": "Layer3 fullnative and rowchunk2 are bit-different at captured pre-QKV/QKV stages but remain under tolerance through the layer3 output. The first over-atol c8 split still manifests after the layer3 output feeds layer4 linear-attention RMSNorm, not as an over-atol layer3 full-attention substage failure."
+  },
+  "iteration": 439,
+  "kind": "c8_direct_layer3_fullattention_stage_delta",
+  "layer3_stage_deltas": {
+    "attn_context": {
+      "available": true,
+      "bit_mismatch_total": 29217,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "max_abs": 1.9073486328125e-06,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ]
+    },
+    "attn_input": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "attn_input_after_prepare": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "attn_input_after_project": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "attn_input_after_rotate": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "attn_input_pre_qkv": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "gate": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ]
+    },
+    "gate_after_split": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ]
+    },
+    "gated_attn": {
+      "available": true,
+      "bit_mismatch_total": 16,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "max_abs": 7.62939453125e-06,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ]
+    },
+    "input": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "key_after_prepare": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        512
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        512
+      ]
+    },
+    "key_raw_after_cast": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        512
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        512
+      ]
+    },
+    "mlp_input": {
+      "available": true,
+      "bit_mismatch_total": 198,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0009765625,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "o_proj": {
+      "available": true,
+      "bit_mismatch_total": 886,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 1.52587890625e-05,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "output": {
+      "available": true,
+      "bit_mismatch_total": 4303,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 0.0001220703125,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "q_proj_key_after_project": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        8704
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        8704
+      ]
+    },
+    "query": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ]
+    },
+    "query_after_prepare": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ]
+    },
+    "query_raw_after_split": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        4096
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        4096
+      ]
+    },
+    "residual": {
+      "available": true,
+      "bit_mismatch_total": 213,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        2048
+      ],
+      "max_abs": 3.0517578125e-05,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        2048
+      ]
+    },
+    "value_after_project": {
+      "available": true,
+      "bit_mismatch_total": 0,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "fullnative_shape": [
+        8,
+        512
+      ],
+      "max_abs": 0.0,
+      "passed": true,
+      "rowchunk2_shape": [
+        8,
+        512
+      ]
+    }
+  },
+  "payload_summaries": {
+    "fullnative": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "token_passed": true
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false,
+        "trace_decode_window": [
+          0,
+          1
+        ]
+      }
+    },
+    "rowchunk2": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "token_passed": true
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "trace_decode_window": [
+          0,
+          1
+        ]
+      }
+    }
+  },
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused direct layer3 full-attention substage comparator narrows the rowchunk/fullnative split to under-atol bit drift through layer3 output and confirms where over-atol begins; no performance claim.",
+    "passed": true
+  },
+  "result": {
+    "fullnative_status": "mismatch_found",
+    "layer3_first_bit_drift_stage": {
+      "bit_mismatch_total": 29217,
+      "elements_over_atol_total": 0,
+      "failed_rows": [],
+      "max_abs": 1.9073486328125e-06,
+      "passed": true,
+      "stage": "attn_context"
+    },
+    "layer3_first_over_atol_stage": null,
+    "layer3_stage_order": [
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "input"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "attn_input_pre_qkv"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "attn_input_after_rotate"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "attn_input_after_project"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "q_proj_key_after_project"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "value_after_project"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "query_raw_after_split"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "key_raw_after_cast"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "gate_after_split"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "query_after_prepare"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "key_after_prepare"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "attn_input_after_prepare"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "attn_input"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "gate"
+      },
+      {
+        "bit_mismatch_total": 0,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0,
+        "passed": true,
+        "stage": "query"
+      },
+      {
+        "bit_mismatch_total": 29217,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 1.9073486328125e-06,
+        "passed": true,
+        "stage": "attn_context"
+      },
+      {
+        "bit_mismatch_total": 16,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 7.62939453125e-06,
+        "passed": true,
+        "stage": "gated_attn"
+      },
+      {
+        "bit_mismatch_total": 886,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 1.52587890625e-05,
+        "passed": true,
+        "stage": "o_proj"
+      },
+      {
+        "bit_mismatch_total": 213,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 3.0517578125e-05,
+        "passed": true,
+        "stage": "residual"
+      },
+      {
+        "bit_mismatch_total": 198,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0009765625,
+        "passed": true,
+        "stage": "mlp_input"
+      },
+      {
+        "bit_mismatch_total": 4303,
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0001220703125,
+        "passed": true,
+        "stage": "output"
+      }
+    ],
+    "layer7_stage_max_abs": {
+      "attn_context": 0.012756586074829102,
+      "attn_input": 0.015625,
+      "attn_input_after_prepare": 0.015625,
+      "attn_input_after_project": 0.015625,
+      "attn_input_after_rotate": 0.015625,
+      "attn_input_pre_qkv": 0.015625,
+      "gate": 0.00390625,
+      "gate_after_split": 0.00390625,
+      "gated_attn": 0.000732421875,
+      "input": 0.0009765625,
+      "key_after_prepare": 0.004484653472900391,
+      "key_raw_after_cast": 0.001953125,
+      "mlp_input": 0.0078125,
+      "o_proj": 0.00048828125,
+      "output": 0.001708984375,
+      "q_proj_key_after_project": 0.0078125,
+      "query": 0.005515575408935547,
+      "query_after_prepare": 0.005515575408935547,
+      "query_raw_after_split": 0.0078125,
+      "residual": 0.001953125,
+      "value_after_project": 0.00390625
+    },
+    "rowchunk2_status": "eq_ok"
+  }
+}

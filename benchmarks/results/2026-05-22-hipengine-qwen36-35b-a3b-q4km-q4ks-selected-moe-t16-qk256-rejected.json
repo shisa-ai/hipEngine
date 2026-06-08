@@ -1,0 +1,37 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "rejected_perf",
+  "performance_claim": false,
+  "label": "selected_moe_t16_qk_direct_256_threads_rejected",
+  "date": "2026-05-22",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "note": "local diagnostic; W7900 not rerun"
+  },
+  "scope": "Task #3 selected-MoE GGUF decode probe for Q4_K_M and Q4_K_S.",
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m_decode_tok_s": 96.26374663160384,
+    "gguf_q4_k_s_decode_tok_s": 97.12117731314792
+  },
+  "probe": {
+    "name": "qk_t16_selected_direct_gemv_256_threads",
+    "change": "Temporary launch-shape probe for selected down GEMV: qk_t16_selected_direct_gemv_kernel launch_bounds 128/4 -> 256/2, launch block 128 -> 256, shared exchange 4 -> 8 waves. Affects Q4_K_S Q4_T16 down and Q4_K_M Q5/Q6_T16 down.",
+    "validation_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py -q",
+    "validation_result": "97 passed",
+    "benchmark_command_q4ks": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-q4ks-selected-t16-qk256-candidate-4096-128.json",
+    "result_q4ks_4k_128_single_run": {
+      "prefill_tok_s": 2630.321007485118,
+      "decode_tok_s": 92.69922311272896,
+      "tracked_peak_gib": 21.415610380470753,
+      "json": "/tmp/hipengine-q4ks-selected-t16-qk256-candidate-4096-128.json",
+      "decode_delta_vs_baseline_pct": -4.552000966257132
+    },
+    "decision": "rejected_and_reverted",
+    "reason": "Q4_K_S decode regressed before the Q4_K_M gate was attempted. The current 128-thread selected-down shape is still better for the T16 direct path."
+  },
+  "final_source_state": "Temporary selected-MoE T16 qk direct launch-shape edits reverted; git diff for hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip is empty after the probe.",
+  "post_revert_validation": "same targeted pytest bundle passed (97 passed)",
+  "decision": "No selected-MoE T16 launch-shape change retained. Future selected-MoE work needs a larger fused kernel design rather than widening the existing down GEMV launch."
+}

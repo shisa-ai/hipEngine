@@ -1,0 +1,37 @@
+{
+  "batch_blockers": [
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "native_batch",
+  "full_attention_decode_path": "native_batch",
+  "full_attention_gate_decode_path": null,
+  "generated_token_equality_passed": true,
+  "label": "post_native",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "selected_c1_batch",
+  "native_caware_decode": true,
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "bd0178cc59c679c27a826c11d11fafb021c9358cfa16e0dfc42ddd6da72c1ad5",
+  "raw_size_bytes": 139260,
+  "raw_source_path": "/tmp/hipengine-iter239-post-native.json",
+  "repeat": 1,
+  "status": "blocked",
+  "variant": "native",
+  "workload_batch_decode_attention_context_path": "batch",
+  "workload_batch_decode_attention_gate_path": "batch",
+  "workload_batch_decode_moe_path": "selected_c1",
+  "workload_batch_sample_mode": "serial_lm_head"
+}

@@ -25,8 +25,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.kvcache import ResolvedKVPolicy, resolve_kv_policy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, append_kv_policy_flags, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -81,15 +83,20 @@ def _run_once(
     max_layers: int,
     prefill_mode: str,
     prefill_config: PrefillConfig | None = None,
+    kv_policy: ResolvedKVPolicy | None = None,
 ) -> dict[str, Any]:
     max_sequence = len(prompt_tokens) + decode_tokens + 2
     logits: list[np.ndarray] = []
     generated: list[dict[str, Any]] = []
+    resolved_kv_policy = kv_policy or resolve_kv_policy("bf16")
     with Qwen35ParoResidentSession(
         runner,
         max_sequence_length=max_sequence,
         max_layers=max_layers,
         prefill_config=prefill_config,
+        kv_policy=resolved_kv_policy.create_policy(),
+        kv_scale_dtype=resolved_kv_policy.scale_dtype,
+        kv_scale_granularity=resolved_kv_policy.scale_granularity,
     ) as session:
         owned_device_bytes = _owned_device_bytes(session)
         prefill_start = time.perf_counter()
@@ -104,6 +111,7 @@ def _run_once(
         prefill_seconds = time.perf_counter() - prefill_start
         if seed is None:
             raise RuntimeError(f"{prefill_mode} prefill did not produce a seed token")
+        owned_buffer_summary_after_prefill = session.owned_buffer_summary()
         logits.append(_read_logits(session))
         current = seed
         decode_start = time.perf_counter()
@@ -125,12 +133,14 @@ def _run_once(
         chunk_tuning = getattr(session, "prefill_chunk_tuning", None)
     return {
         "prefill_mode": prefill_mode,
+        "kv_policy": kv_policy_json(resolved_kv_policy),
         "seed": _result_dict(seed),
         "generated": generated,
         "logits": logits,
         "prefill_seconds": prefill_seconds,
         "decode_seconds": decode_seconds,
         "owned_device_bytes": owned_device_bytes,
+        "owned_buffer_summary_after_prefill": owned_buffer_summary_after_prefill,
         "prefill_execution_detail": detail,
         "prefill_chunk_sizes": resolved_chunk_sizes,
         "prefill_chunk_tuning": chunk_tuning,
@@ -180,6 +190,30 @@ def _strip_logits(run: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in run.items() if key != "logits"}
 
 
+def _native_kv_memory_audit(summary: dict[str, Any], storage_dtype: str) -> dict[str, Any]:
+    full_layers = list(summary.get("full_attention_layers", ()))
+    if storage_dtype != "int8_per_token_head":
+        return {"required": False, "passed": True, "persistent_bf16_kv_layers": []}
+    persistent_bf16 = [
+        int(layer.get("layer_id", -1))
+        for layer in full_layers
+        if layer.get("storage_dtype") == "bf16" or layer.get("payload_dtype") == "bf16"
+    ]
+    missing_scales = [
+        int(layer.get("layer_id", -1))
+        for layer in full_layers
+        if not layer.get("scale_metadata") or int(layer.get("scale_metadata", {}).get("scale_bytes", 0)) <= 0
+    ]
+    return {
+        "required": True,
+        "passed": not persistent_bf16 and not missing_scales,
+        "persistent_bf16_kv_layers": persistent_bf16,
+        "missing_int8_scale_layers": missing_scales,
+        "full_attention_kv_payload_bytes": int(summary.get("full_attention_kv_payload_bytes", 0)),
+        "full_attention_kv_scale_bytes": int(summary.get("full_attention_kv_scale_bytes", 0)),
+    }
+
+
 def _command(args: argparse.Namespace) -> str:
     command = f"python3 scripts/qwen35_native_prefill_fixture_gate.py --model {args.model} --fixture {args.fixture}"
     if args.max_layers:
@@ -206,6 +240,7 @@ def _command(args: argparse.Namespace) -> str:
         command += " --no-prefill-chunk-autotune"
     if getattr(args, "prefill_chunk_memory_budget_gib", 0.0):
         command += f" --prefill-chunk-memory-budget-gib {args.prefill_chunk_memory_budget_gib}"
+    command = append_kv_policy_flags(command, args)
     if args.json is not None:
         command += f" --json {args.json}"
     return command
@@ -217,7 +252,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     decode_tokens = int(fixture["decode_len"] if args.max_new_tokens is None else args.max_new_tokens)
     expected = [int(item) for item in fixture["expected_generated_token_ids"][:decode_tokens]]
     runner = Qwen35ParoNextTokenRunner(args.model)
-    serial = _run_once(runner, prompt_tokens, decode_tokens=decode_tokens, max_layers=args.max_layers, prefill_mode="serial")
+    serial_kv_policy = resolve_kv_policy("bf16")
+    native_kv_policy = resolve_args_kv_policy(args, block_size=256)
+    serial = _run_once(runner, prompt_tokens, decode_tokens=decode_tokens, max_layers=args.max_layers, prefill_mode="serial", kv_policy=serial_kv_policy)
     native = _run_once(
         runner,
         prompt_tokens,
@@ -234,6 +271,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             auto_tune_chunk_sizes=args.prefill_chunk_autotune,
             chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
         ),
+        kv_policy=native_kv_policy,
     )
     comparison = _compare_logits(serial["logits"], native["logits"])
     serial_generated_ids = [int(item["token_id"]) for item in serial["generated"]]
@@ -244,7 +282,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     finite_logits = all(np.isfinite(item).all() for item in serial["logits"] + native["logits"])
     kl_pass = comparison["max_kl"] <= float(args.kl_threshold)
     top1_pass = comparison["top1_agreement"] >= float(args.top1_threshold)
-    passed = bool(seed_match and generated_match and expected_match and finite_logits and kl_pass and top1_pass)
+    memory_audit = _native_kv_memory_audit(native["owned_buffer_summary_after_prefill"], native_kv_policy.storage_dtype.value)
+    memory_audit_pass = bool(memory_audit["passed"])
+    passed = bool(seed_match and generated_match and expected_match and finite_logits and kl_pass and top1_pass and memory_audit_pass)
     return {
         "schema": 1,
         "status": "accepted" if passed else "rejected_correctness",
@@ -260,6 +300,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "decode_tokens": decode_tokens,
         "max_layers": int(args.max_layers),
         "attn_aotriton_min_tokens": int(args.attn_aotriton_min_tokens),
+        "native_kv_storage_dtype": native_kv_policy.storage_dtype.value,
+        "kv_storage_dtype": native_kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(native_kv_policy),
+        "serial_reference_kv_policy": kv_policy_json(serial_kv_policy),
         "requested_prefill_chunk_sizes": {
             "linear": int(args.prefill_linear_chunk_size),
             "moe": int(args.prefill_moe_chunk_size),
@@ -287,6 +331,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "logit_gate": comparison,
         "kl_pass": kl_pass,
         "top1_pass": top1_pass,
+        "native_kv_memory_audit": memory_audit,
+        "memory_audit_pass": memory_audit_pass,
         "passed": passed,
         "parent_metrics": fixture.get("parent_metrics"),
         "notes": [
@@ -318,10 +364,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0)
     parser.add_argument("--prefill-chunk-autotune", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--prefill-chunk-memory-budget-gib", type=float, default=0.0)
+    add_kv_policy_args(
+        parser,
+        legacy_storage_flags=("--native-kv-storage-dtype",),
+        help_prefix="KV storage policy for the native prefill candidate; serial reference remains BF16",
+    )
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
-    if args.max_new_tokens is not None and args.max_new_tokens <= 0:
-        raise ValueError("--max-new-tokens must be positive")
+    if args.max_new_tokens is not None and args.max_new_tokens < 0:
+        raise ValueError("--max-new-tokens must be non-negative")
     if args.attn_aotriton_min_tokens < 0:
         raise ValueError("--attn-aotriton-min-tokens must be non-negative")
     if args.prefill_chunk_memory_budget_gib < 0.0:

@@ -1,0 +1,60 @@
+{
+  "schema": "p9_c14_q4t16_selected_wmma_prototype_v1",
+  "date": "2026-05-20",
+  "task": "#45 P9.C14: Prototype repacked Q4 selected-dual WMMA kernel",
+  "status": "accepted_prototype_diagnostic",
+  "performance_claim": false,
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "git": {
+    "commit": "d50a04324c5283327c632e63dee2b4b1735784f8",
+    "status": "## gguf-bulk-prefill\n M scripts/qwen35_gguf_moe_replay.py\n?? hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.hip\n?? hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py\n?? tests/test_gguf_q4_k_t16_selected_wmma_prefill.py\n?? uv.lock"
+  },
+  "prototype": {
+    "kernel": "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<scalar_t>",
+    "layout": "Q4T16 tiles[E,out_tiles16,blocks_per_row,2368] from repack_gguf_q4_k_tile16",
+    "output_abi": "compact selected-MoE row-major concatenated gate+up output [compact_rows,out_features_a+out_features_b]",
+    "limitations": "diagnostic only; not wired into default runtime, no P9.E2/full-throughput promotion claimed"
+  },
+  "correctness": {
+    "command": "PYTHONPATH=. python3 -m pytest tests/test_gguf_q4_k_tile16_repack.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py -q --tb=short",
+    "result": "28 passed",
+    "gate": "synthetic BF16/FP16 selected-MoE fixtures compare against CPU selected GGUF Q4_K reference; max tolerance inherited from raw selected WMMA tests"
+  },
+  "rocprof_smoke": {
+    "command": "rm -rf /tmp/p9_c14_q4t16_wmma_unit_rocprof_csv && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/p9_c14_q4t16_wmma_unit_rocprof_csv -f csv -- python3 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q -k runs_exported_bf16_symbol_on_w7900 --tb=short",
+    "csv": "/tmp/p9_c14_q4t16_wmma_unit_rocprof_csv/rocm/2084030_kernel_trace.csv",
+    "dispatch_count": 1,
+    "rows": [
+      {
+        "kernel_name": "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+        "duration_ns": 41516,
+        "vgpr_count": 64,
+        "sgpr_count": 128,
+        "scratch_size": 0,
+        "lds_block_size": 0
+      }
+    ]
+  },
+  "first_layer_replay_microbench": {
+    "note": "unsafe WMMA prefill gate enabled for kernel R&D only; full P9.E2 acceptance is not claimed",
+    "baseline_command": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 0 --replay-iters 1 --sample-groups 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c14_q4t16_wmma_first_layer_baseline_replay.json",
+    "t16_command": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 0 --replay-iters 1 --sample-groups 1 --q4-tile16-wmma-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c14_q4t16_wmma_first_layer_replay.json",
+    "baseline_first_layer_gate_up_ms": 5.273926013614982,
+    "t16_first_layer_gate_up_ms": 3.897492017131299,
+    "delta_ms": -1.3764339964836836,
+    "delta_pct": -26.098849186172313,
+    "t16_materialized_bytes_first_layer_gate_plus_up": 310378496,
+    "t16_materialized_mib_first_layer_gate_plus_up": 296.0,
+    "baseline_json": "/tmp/p9_c14_q4t16_wmma_first_layer_baseline_replay.json",
+    "t16_json": "/tmp/p9_c14_q4t16_wmma_first_layer_replay.json"
+  },
+  "validation_commands": [
+    "PYTHONPATH=. python3 -m py_compile scripts/qwen35_gguf_moe_replay.py hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py",
+    "PYTHONPATH=. python3 -m pytest tests/test_gguf_q4_k_tile16_repack.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py -q --tb=short"
+  ]
+}

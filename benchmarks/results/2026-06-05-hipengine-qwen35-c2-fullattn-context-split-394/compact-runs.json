@@ -1,0 +1,952 @@
+{
+  "active_verify": {
+    "equality": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ]
+    },
+    "raw_json": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "sha256": "7a852fbbb100c20b47a0db38be47866337a038cb6dd7899d4f28553c324c5644",
+      "size_bytes": 138443
+    },
+    "raw_log": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+      "sha256": "7a852fbbb100c20b47a0db38be47866337a038cb6dd7899d4f28553c324c5644",
+      "size_bytes": 138443
+    },
+    "sampler": {
+      "mode": "serial_lm_head",
+      "native_row_aware_lm_head": false,
+      "stabilize_cast_elems": 0
+    }
+  },
+  "hidden_runs": {
+    "native_full_perrow_context_only": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --hidden-atol 4e-3 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-context-path per_row_context_only --batch-decode-full-attn-output-path batch_gemv --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-context-only-atol4e-3-focus1269.json",
+      "context_oracle_failure_summary": {
+        "comparisons": {
+          "batch_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "batch_numpy_vs_c1_numpy": {
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "comparison": "batch_numpy_vs_c1_numpy",
+              "context_len": 513,
+              "context_len_match": true,
+              "decode_step": 0,
+              "elements_over_atol": 3288,
+              "generated_index": 1,
+              "layer_index": 7,
+              "max_abs": 0.011104345321655273,
+              "max_abs_flat_index": 2812,
+              "max_abs_index": [
+                0,
+                2812
+              ],
+              "row": 0
+            },
+            "passed": false
+          },
+          "c1_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "context_len_match": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          }
+        },
+        "failed_comparison_count": 1,
+        "failed_comparisons": [
+          "batch_numpy_vs_c1_numpy"
+        ],
+        "first_failure": {
+          "comparison": "batch_numpy_vs_c1_numpy",
+          "context_len": 513,
+          "context_len_match": true,
+          "decode_step": 0,
+          "elements_over_atol": 3288,
+          "generated_index": 1,
+          "layer_index": 7,
+          "max_abs": 0.011104345321655273,
+          "max_abs_flat_index": 2812,
+          "max_abs_index": [
+            0,
+            2812
+          ],
+          "row": 0
+        }
+      },
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "full_attention_stage_passed": {
+        "attn_context": false,
+        "attn_input": false,
+        "attn_input_after_prepare": false,
+        "attn_input_after_project": false,
+        "attn_input_after_rotate": false,
+        "attn_input_pre_qkv": false,
+        "gate": false,
+        "gate_after_split": false,
+        "gated_attn": true,
+        "input": true,
+        "key_after_prepare": false,
+        "key_raw_after_cast": true,
+        "mlp_input": false,
+        "o_proj": true,
+        "output": false,
+        "q_proj_key_after_project": false,
+        "query": false,
+        "query_after_prepare": false,
+        "query_raw_after_split": false,
+        "residual": true,
+        "value_after_project": true
+      },
+      "kv_sample_failure_summary": {
+        "failed_kind_count": 2,
+        "failed_kinds": [
+          "key",
+          "value"
+        ],
+        "first_failure": {
+          "bit_mismatch": 138,
+          "check": "batch_source_vs_c1_source",
+          "decode_step": 0,
+          "elements_over_atol": 138,
+          "generated_index": 1,
+          "kind": "key",
+          "layer_index": 7,
+          "max_abs": 0.03125,
+          "max_abs_flat_index": 214,
+          "max_abs_index": [
+            214
+          ],
+          "row": 0,
+          "sample_index": 4,
+          "sample_label": "current",
+          "sample_position": 512,
+          "source_stage": "key_after_prepare"
+        },
+        "kinds": {
+          "key": {
+            "failed_checks": [
+              "batch_source_vs_c1_source"
+            ],
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "bit_mismatch": 138,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 138,
+              "generated_index": 1,
+              "kind": "key",
+              "layer_index": 7,
+              "max_abs": 0.03125,
+              "max_abs_flat_index": 214,
+              "max_abs_index": [
+                214
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "key_after_prepare"
+            },
+            "passed": false
+          },
+          "value": {
+            "failed_checks": [
+              "batch_source_vs_c1_source"
+            ],
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "bit_mismatch": 123,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 123,
+              "generated_index": 1,
+              "kind": "value",
+              "layer_index": 7,
+              "max_abs": 0.00390625,
+              "max_abs_flat_index": 196,
+              "max_abs_index": [
+                196
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "value_after_project"
+            },
+            "passed": false
+          }
+        }
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": false,
+        "decode_full_context_oracle_passed": false,
+        "decode_full_kv_sample_passed": false,
+        "decode_linear_stage_passed": false,
+        "decode_linear_state_passed": false,
+        "hidden_failure_rows": [
+          0,
+          1
+        ],
+        "hidden_passed": false,
+        "layer_limit": 8,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "linear_stage_passed": {
+        "attn_input": false,
+        "conv_out": true,
+        "mlp_input": false,
+        "out_proj": true,
+        "output": true,
+        "qkv": false,
+        "recurrent_out": true,
+        "residual": true,
+        "z": false
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-context-only-atol4e-3-focus1269.json",
+        "sha256": "48f58ee7b4b04ab9c7e1b5fb7e902cc295aeaf1570c3b195505558cb69c3acfa",
+        "size_bytes": 18651613
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-context-only-atol4e-3-focus1269.log",
+        "sha256": "48f58ee7b4b04ab9c7e1b5fb7e902cc295aeaf1570c3b195505558cb69c3acfa",
+        "size_bytes": 18651613
+      },
+      "status": "mismatch_found"
+    },
+    "native_full_perrow_kvappend_context_only": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --hidden-atol 4e-3 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row_context_only --batch-decode-full-attn-output-path batch_gemv --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-kvappend-context-only-atol4e-3-focus1269.json",
+      "context_oracle_failure_summary": {
+        "comparisons": {
+          "batch_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "batch_numpy_vs_c1_numpy": {
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "comparison": "batch_numpy_vs_c1_numpy",
+              "context_len": 513,
+              "context_len_match": true,
+              "decode_step": 0,
+              "elements_over_atol": 3288,
+              "generated_index": 1,
+              "layer_index": 7,
+              "max_abs": 0.011104345321655273,
+              "max_abs_flat_index": 2812,
+              "max_abs_index": [
+                0,
+                2812
+              ],
+              "row": 0
+            },
+            "passed": false
+          },
+          "c1_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "context_len_match": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          }
+        },
+        "failed_comparison_count": 1,
+        "failed_comparisons": [
+          "batch_numpy_vs_c1_numpy"
+        ],
+        "first_failure": {
+          "comparison": "batch_numpy_vs_c1_numpy",
+          "context_len": 513,
+          "context_len_match": true,
+          "decode_step": 0,
+          "elements_over_atol": 3288,
+          "generated_index": 1,
+          "layer_index": 7,
+          "max_abs": 0.011104345321655273,
+          "max_abs_flat_index": 2812,
+          "max_abs_index": [
+            0,
+            2812
+          ],
+          "row": 0
+        }
+      },
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "full_attention_stage_passed": {
+        "attn_context": false,
+        "attn_input": false,
+        "attn_input_after_prepare": false,
+        "attn_input_after_project": false,
+        "attn_input_after_rotate": false,
+        "attn_input_pre_qkv": false,
+        "gate": false,
+        "gate_after_split": false,
+        "gated_attn": true,
+        "input": true,
+        "key_after_prepare": false,
+        "key_raw_after_cast": true,
+        "mlp_input": false,
+        "o_proj": true,
+        "output": false,
+        "q_proj_key_after_project": false,
+        "query": false,
+        "query_after_prepare": false,
+        "query_raw_after_split": false,
+        "residual": true,
+        "value_after_project": true
+      },
+      "kv_sample_failure_summary": {
+        "failed_kind_count": 2,
+        "failed_kinds": [
+          "key",
+          "value"
+        ],
+        "first_failure": {
+          "bit_mismatch": 138,
+          "check": "batch_source_vs_c1_source",
+          "decode_step": 0,
+          "elements_over_atol": 138,
+          "generated_index": 1,
+          "kind": "key",
+          "layer_index": 7,
+          "max_abs": 0.03125,
+          "max_abs_flat_index": 214,
+          "max_abs_index": [
+            214
+          ],
+          "row": 0,
+          "sample_index": 4,
+          "sample_label": "current",
+          "sample_position": 512,
+          "source_stage": "key_after_prepare"
+        },
+        "kinds": {
+          "key": {
+            "failed_checks": [
+              "batch_source_vs_c1_source"
+            ],
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "bit_mismatch": 138,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 138,
+              "generated_index": 1,
+              "kind": "key",
+              "layer_index": 7,
+              "max_abs": 0.03125,
+              "max_abs_flat_index": 214,
+              "max_abs_index": [
+                214
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "key_after_prepare"
+            },
+            "passed": false
+          },
+          "value": {
+            "failed_checks": [
+              "batch_source_vs_c1_source"
+            ],
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "bit_mismatch": 123,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 123,
+              "generated_index": 1,
+              "kind": "value",
+              "layer_index": 7,
+              "max_abs": 0.00390625,
+              "max_abs_flat_index": 196,
+              "max_abs_index": [
+                196
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "value_after_project"
+            },
+            "passed": false
+          }
+        }
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": false,
+        "decode_full_context_oracle_passed": false,
+        "decode_full_kv_sample_passed": false,
+        "decode_linear_stage_passed": false,
+        "decode_linear_state_passed": false,
+        "hidden_failure_rows": [
+          0,
+          1
+        ],
+        "hidden_passed": false,
+        "layer_limit": 8,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "linear_stage_passed": {
+        "attn_input": false,
+        "conv_out": true,
+        "mlp_input": false,
+        "out_proj": true,
+        "output": true,
+        "qkv": false,
+        "recurrent_out": true,
+        "residual": true,
+        "z": false
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-kvappend-context-only-atol4e-3-focus1269.json",
+        "sha256": "d29dec7ff5040b5eae74112db87f9f5fdb0b430be7f7a78343f4243de662182a",
+        "size_bytes": 18657800
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-kvappend-context-only-atol4e-3-focus1269.log",
+        "sha256": "d29dec7ff5040b5eae74112db87f9f5fdb0b430be7f7a78343f4243de662182a",
+        "size_bytes": 18657800
+      },
+      "status": "mismatch_found"
+    },
+    "native_full_perrow_qkv_context_only": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --hidden-atol 4e-3 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-qkv-path per_row --batch-decode-attn-context-path per_row_context_only --batch-decode-full-attn-output-path batch_gemv --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-qkv-context-only-atol4e-3-focus1269.json",
+      "context_oracle_failure_summary": {
+        "comparisons": {
+          "batch_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "batch_numpy_vs_c1_numpy": {
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "comparison": "batch_numpy_vs_c1_numpy",
+              "context_len": 513,
+              "context_len_match": true,
+              "decode_step": 0,
+              "elements_over_atol": 3288,
+              "generated_index": 1,
+              "layer_index": 7,
+              "max_abs": 0.011104345321655273,
+              "max_abs_flat_index": 2812,
+              "max_abs_index": [
+                0,
+                2812
+              ],
+              "row": 0
+            },
+            "passed": false
+          },
+          "c1_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "context_len_match": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          }
+        },
+        "failed_comparison_count": 1,
+        "failed_comparisons": [
+          "batch_numpy_vs_c1_numpy"
+        ],
+        "first_failure": {
+          "comparison": "batch_numpy_vs_c1_numpy",
+          "context_len": 513,
+          "context_len_match": true,
+          "decode_step": 0,
+          "elements_over_atol": 3288,
+          "generated_index": 1,
+          "layer_index": 7,
+          "max_abs": 0.011104345321655273,
+          "max_abs_flat_index": 2812,
+          "max_abs_index": [
+            0,
+            2812
+          ],
+          "row": 0
+        }
+      },
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "full_attention_stage_passed": {
+        "attn_context": false,
+        "attn_input": false,
+        "attn_input_after_prepare": false,
+        "attn_input_after_project": false,
+        "attn_input_after_rotate": false,
+        "attn_input_pre_qkv": false,
+        "gate": false,
+        "gate_after_split": false,
+        "gated_attn": true,
+        "input": true,
+        "key_after_prepare": false,
+        "key_raw_after_cast": true,
+        "mlp_input": false,
+        "o_proj": true,
+        "output": false,
+        "q_proj_key_after_project": false,
+        "query": false,
+        "query_after_prepare": false,
+        "query_raw_after_split": false,
+        "residual": true,
+        "value_after_project": true
+      },
+      "kv_sample_failure_summary": {
+        "failed_kind_count": 2,
+        "failed_kinds": [
+          "key",
+          "value"
+        ],
+        "first_failure": {
+          "bit_mismatch": 138,
+          "check": "batch_source_vs_c1_source",
+          "decode_step": 0,
+          "elements_over_atol": 138,
+          "generated_index": 1,
+          "kind": "key",
+          "layer_index": 7,
+          "max_abs": 0.03125,
+          "max_abs_flat_index": 214,
+          "max_abs_index": [
+            214
+          ],
+          "row": 0,
+          "sample_index": 4,
+          "sample_label": "current",
+          "sample_position": 512,
+          "source_stage": "key_after_prepare"
+        },
+        "kinds": {
+          "key": {
+            "failed_checks": [
+              "batch_source_vs_c1_source"
+            ],
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "bit_mismatch": 138,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 138,
+              "generated_index": 1,
+              "kind": "key",
+              "layer_index": 7,
+              "max_abs": 0.03125,
+              "max_abs_flat_index": 214,
+              "max_abs_index": [
+                214
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "key_after_prepare"
+            },
+            "passed": false
+          },
+          "value": {
+            "failed_checks": [
+              "batch_source_vs_c1_source"
+            ],
+            "failure_row_count": 2,
+            "failure_rows": [
+              0,
+              1
+            ],
+            "first_failure": {
+              "bit_mismatch": 123,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 123,
+              "generated_index": 1,
+              "kind": "value",
+              "layer_index": 7,
+              "max_abs": 0.00390625,
+              "max_abs_flat_index": 196,
+              "max_abs_index": [
+                196
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "value_after_project"
+            },
+            "passed": false
+          }
+        }
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": false,
+        "decode_full_context_oracle_passed": false,
+        "decode_full_kv_sample_passed": false,
+        "decode_linear_stage_passed": false,
+        "decode_linear_state_passed": false,
+        "hidden_failure_rows": [
+          0,
+          1
+        ],
+        "hidden_passed": false,
+        "layer_limit": 8,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "linear_stage_passed": {
+        "attn_input": false,
+        "conv_out": true,
+        "mlp_input": false,
+        "out_proj": true,
+        "output": true,
+        "qkv": false,
+        "recurrent_out": true,
+        "residual": true,
+        "z": false
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-qkv-context-only-atol4e-3-focus1269.json",
+        "sha256": "bf7c50c0b61413936fd1087a8ea3455d8f9885faf773086c11afe6572261f83b",
+        "size_bytes": 18657786
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-qkv-context-only-atol4e-3-focus1269.log",
+        "sha256": "bf7c50c0b61413936fd1087a8ea3455d8f9885faf773086c11afe6572261f83b",
+        "size_bytes": 18657786
+      },
+      "status": "mismatch_found"
+    },
+    "perrow_full_attention_positive_control": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --hidden-atol 4e-3 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --batch-decode-full-attn-output-path batch_gemv --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-perrow-full-positive-atol4e-3-focus1269.json",
+      "context_oracle_failure_summary": {
+        "comparisons": {
+          "batch_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "batch_numpy_vs_c1_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "c1_context_vs_numpy": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "context_len_match": {
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          }
+        },
+        "failed_comparison_count": 0,
+        "failed_comparisons": [],
+        "first_failure": null
+      },
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 0,
+          "hidden_failure_rows": [],
+          "layer_limits": [
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 0,
+          "strict_hidden_bit_drift_rows": [],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "full_attention_stage_passed": {
+        "attn_context": true,
+        "attn_input": true,
+        "attn_input_after_prepare": true,
+        "attn_input_after_project": true,
+        "attn_input_after_rotate": true,
+        "attn_input_pre_qkv": true,
+        "gate": true,
+        "gate_after_split": true,
+        "gated_attn": true,
+        "input": true,
+        "key_after_prepare": true,
+        "key_raw_after_cast": true,
+        "mlp_input": true,
+        "o_proj": true,
+        "output": true,
+        "q_proj_key_after_project": true,
+        "query": true,
+        "query_after_prepare": true,
+        "query_raw_after_split": true,
+        "residual": true,
+        "value_after_project": true
+      },
+      "kv_sample_failure_summary": {
+        "failed_kind_count": 0,
+        "failed_kinds": [],
+        "first_failure": null,
+        "kinds": {
+          "key": {
+            "failed_checks": [],
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          },
+          "value": {
+            "failed_checks": [],
+            "failure_row_count": 0,
+            "failure_rows": [],
+            "first_failure": null,
+            "passed": true
+          }
+        }
+      },
+      "layer": {
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": true,
+        "decode_full_context_oracle_passed": true,
+        "decode_full_kv_sample_passed": true,
+        "decode_linear_stage_passed": true,
+        "decode_linear_state_passed": true,
+        "hidden_failure_rows": [],
+        "hidden_passed": true,
+        "layer_limit": 8,
+        "token_failure_rows": [],
+        "token_passed": true
+      },
+      "linear_stage_passed": {
+        "attn_input": true,
+        "conv_out": true,
+        "mlp_input": true,
+        "out_proj": true,
+        "output": true,
+        "qkv": true,
+        "recurrent_out": true,
+        "residual": true,
+        "z": true
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-perrow-full-positive-atol4e-3-focus1269.json",
+        "sha256": "34e24d32808252fe5e508e3fa3f242a10cb265d46e6d491a973d61bdc49dbdd3",
+        "size_bytes": 6107559
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter394-L8-c2-selected-proj-native-state-batch-gemv-out-perrow-full-positive-atol4e-3-focus1269.log",
+        "sha256": "34e24d32808252fe5e508e3fa3f242a10cb265d46e6d491a973d61bdc49dbdd3",
+        "size_bytes": 6107559
+      },
+      "status": "eq_ok"
+    }
+  }
+}

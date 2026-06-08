@@ -11,8 +11,10 @@ correctness/protocol gates in ``docs/BENCHMARK.md`` pass.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import math
+import os
 import shlex
 import statistics
 import subprocess
@@ -27,13 +29,30 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.generation import GeneratedToken, ResidentBatchScheduler
+from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_batch_artifact_schema import _load_payload, validate_cn_diagnostic_artifact_payload
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
     "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
 )
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False)
+
+
+def _command_env_prefix_parts() -> list[str]:
+    assignments = [
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key)) is not None and value.strip()
+    ]
+    return ["env", *assignments] if assignments else []
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
@@ -41,7 +60,7 @@ def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> l
         raise ValueError("prompt_length must be positive")
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
-    fixture = json.loads(path.read_text())
+    fixture = _load_payload(path)
     tokens = [int(token) for token in fixture["prompt_ids"]]
     needed = int(prompt_length) * int(batch_size)
     if len(tokens) < needed:
@@ -55,6 +74,8 @@ def _shape_key_payload(key) -> dict[str, Any]:
         "active_c": key.active_c,
         "context_bucket": key.context_bucket,
         "active_mask": list(key.active_mask),
+        "kv_storage_dtype": key.kv_storage_dtype,
+        "layer_plan": key.layer_plan,
         "top_k": key.top_k,
         "experts_per_token": key.experts_per_token,
         "replay_steps": key.replay_steps,
@@ -122,18 +143,54 @@ def _software_context() -> dict[str, Any]:
     }
 
 
+def _visible_hip_device_context() -> dict[str, Any]:
+    env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
+    visible_env: dict[str, str] = {}
+    for key in env_keys:
+        value = os.environ.get(key)
+        if value is not None and value.strip():
+            visible_env[key] = value
+    context: dict[str, Any] = {"env": visible_env}
+    try:
+        hip = ctypes.CDLL("libamdhip64.so")
+        count = ctypes.c_int()
+        count_error = int(hip.hipGetDeviceCount(ctypes.byref(count)))
+        context["hipGetDeviceCount_error"] = count_error
+        context["visible_device_count"] = int(count.value)
+        if count_error != 0 or count.value <= 0:
+            return context
+        device = ctypes.c_int()
+        device_error = int(hip.hipGetDevice(ctypes.byref(device)))
+        context["hipGetDevice_error"] = device_error
+        context["current_device"] = int(device.value)
+        if device_error != 0:
+            return context
+        name = ctypes.create_string_buffer(256)
+        name_error = int(hip.hipDeviceGetName(name, len(name), device))
+        context["hipDeviceGetName_error"] = name_error
+        if name_error == 0:
+            context["device_name"] = name.value.decode("utf-8", errors="replace")
+    except Exception as exc:  # pragma: no cover - best-effort benchmark provenance.
+        context["error"] = f"{type(exc).__name__}: {exc}"
+    return context
+
+
 def _hardware_context() -> dict[str, Any]:
+    visible_device = _visible_hip_device_context()
+    visible_device_name = visible_device.get("device_name")
+    gpu_name = visible_device_name if isinstance(visible_device_name, str) and visible_device_name else "AMD Radeon Pro W7900"
     return {
-        "gpu": "AMD Radeon Pro W7900",
+        "gpu": gpu_name,
         "arch": "gfx1100",
-        "default_hardware": True,
+        "default_hardware": gpu_name == "AMD Radeon Pro W7900",
+        "visible_device": visible_device,
         "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
         "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
     }
 
 
 def _command(argv: Sequence[str] | None) -> str:
-    parts = ["python3", "scripts/qwen35_batch_serial_bench.py"]
+    parts = [*_command_env_prefix_parts(), "python3", "scripts/qwen35_batch_serial_bench.py"]
     parts.extend(sys.argv[1:] if argv is None else list(argv))
     return " ".join(shlex.quote(part) for part in parts)
 
@@ -153,6 +210,7 @@ def _run_scheduler_serial_bench(
     decode_tokens: int,
     compiler_version: str | None,
     require_cached_build: bool,
+    kv_policy: ResolvedKVPolicy,
 ) -> dict[str, Any]:
     batch_size = len(prompts)
     prompt_lengths = {len(prompt) for prompt in prompts}
@@ -187,6 +245,9 @@ def _run_scheduler_serial_bench(
         max_batch_size=batch_size,
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     ) as session:
         load_seconds = time.perf_counter() - load_start
         batch_execution = session.batch_execution_metadata(scheduler_owned=True).to_json_dict()
@@ -216,12 +277,19 @@ def _run_scheduler_serial_bench(
 
         scheduler_metadata["slot_to_request_at_decode"] = list(scheduler.active_batch.slot_to_request)
         scheduler_metadata["active_count_at_decode"] = scheduler.active_count
-        shape_key = scheduler.shape_key(mode="decode", top_k=8, experts_per_token=8, replay_steps=1)
-        scheduler.graph_buckets.get_or_create(shape_key, lambda bucket: _shape_key_payload(bucket))
+        shape_key = scheduler.shape_key(
+            mode="decode",
+            top_k=8,
+            experts_per_token=8,
+            replay_steps=1,
+            kv_storage_dtype=kv_policy.storage_dtype.value,
+            layer_plan=f"max_layers={int(max_layers)}",
+        )
+        scheduler.graph_buckets.get_or_create(shape_key, _shape_key_payload)
         scheduler.graph_buckets.get(shape_key)
         stats = scheduler.graph_buckets.stats
         scheduler_metadata["decode_shape_key"] = _shape_key_payload(shape_key)
-        scheduler_metadata["graph_bucket_stats"] = {"entries": stats.entries, "hits": stats.hits, "misses": stats.misses}
+        scheduler_metadata["graph_bucket_stats"] = stats.to_json_dict()
 
         next_token_by_request = {request_id: seed_by_request[request_id].token_id for request_id in request_ids}
         warmup_start = time.perf_counter()
@@ -298,6 +366,7 @@ def _decode_scheduler_step(
 
 
 def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: dict[str, Any], prompt_lengths: list[int]) -> dict[str, Any]:
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     aggregate_prefill_tokens = args.batch_size * args.prompt_length
     aggregate_decode_tokens = args.batch_size * args.decode_tokens
     prefill_tok_s = aggregate_prefill_tokens / bench["prefill_seconds"] if bench["prefill_seconds"] > 0 else None
@@ -313,9 +382,10 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
         blocked_reasons.append("max_layers is not the full 40-layer Qwen3.5/PARO model")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
-    return {
+    payload = {
         "schema": 2,
         "status": "accepted" if accepted else "blocked",
+        "artifact_path": str(args.json) if args.json is not None else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_tag": f"qwen35-paro-c{args.batch_size}-scheduler-serial-bridge",
         "summary": "Qwen3.5/PARO scheduler serial c>N bridge diagnostic benchmark",
@@ -335,7 +405,8 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
             "concurrency": args.batch_size,
             "prompt_lengths": prompt_lengths,
             "max_layers": args.max_layers,
-            "kv_policy": "dense_paged",
+            "kv_policy": kv_policy_json(kv_policy),
+            "kv_storage_dtype": kv_policy.storage_dtype.value,
             "scheduler_path": "scheduler_serial_slot_bridge",
             "native_compact_prefill": False,
             "native_caware_decode": False,
@@ -379,7 +450,8 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
         "memory": {
             "max_batch_size": args.batch_size,
             "max_sequence_length": args.prompt_length + args.warmup_decode_tokens + args.decode_tokens + 1,
-            "kv_policy": "dense_paged",
+            "kv_policy": kv_policy_json(kv_policy),
+            "kv_storage_dtype": kv_policy.storage_dtype.value,
             "allocator_reserved_peak_bytes": None,
         },
         "profiler": {"status": "not_captured", "notes": "No kernel port or retained performance claim in this diagnostic iteration."},
@@ -392,6 +464,8 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
             "The c>N path uses step_batch_serial over batch-shaped state/KV slots and is blocked on native compact prefill plus c-aware decode kernels.",
         ],
     }
+    validate_cn_diagnostic_artifact_payload(payload)
+    return payload
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -405,6 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-layers", type=int, default=40)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    add_kv_policy_args(parser, help_prefix="Resident KV storage for scheduler serial benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)
 
@@ -419,6 +494,7 @@ def main(argv: list[str] | None = None) -> int:
 
     prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     bench = _run_scheduler_serial_bench(
         runner,
         prompts,
@@ -427,9 +503,10 @@ def main(argv: list[str] | None = None) -> int:
         decode_tokens=args.decode_tokens,
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached_build=args.require_cached_build,
+        kv_policy=kv_policy,
     )
     payload = _build_payload(args, argv, bench, [len(prompt) for prompt in prompts])
-    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    text = _payload_json(payload)
     print(text)
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)

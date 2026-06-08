@@ -1,0 +1,1404 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk-hidden-425/compact-runs.json",
+      "sha256": "a36d2ccd0e00513e1729277f685c01af74f5d1c0e20b1b4c8bc0d6eca7dbbd6a",
+      "size_bytes": 37401
+    },
+    "raw": {
+      "active_c2_verify": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "6b247e49b41cee0f963e3ffcace0491c6e3d226d7b384b3d4d81655006233b2e",
+        "size_bytes": 137977
+      },
+      "active_c2_verify_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "6b247e49b41cee0f963e3ffcace0491c6e3d226d7b384b3d4d81655006233b2e",
+        "size_bytes": 137977
+      },
+      "full_native_hidden_early_summary": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-full-native-hidden-early-424/summary.json",
+        "sha256": "bac5de61351feb7571529fb4b0b03d5406608622ea85761fcbdbad274385f872",
+        "size_bytes": 42425
+      },
+      "full_native_retained_summary": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-full-native-422/summary.json",
+        "sha256": "6cbf28472558d22c798c0a77ebde84c723cf7b9881e995995d67e45148ac00c7",
+        "size_bytes": 13958
+      },
+      "guard_primitive_c2": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      "guard_primitive_c8": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      },
+      "rowchunk_hidden": {
+        "exists": true,
+        "path": "/tmp/hipengine-hidden-bisect-iter425-L40-c4-rowchunk2-warm8-decode128-trace0-8.json",
+        "sha256": "e9df214f57d8fcae3fa42d4dfecee06127934a85d069bdd4e9771454996c6d2d",
+        "size_bytes": 122646087
+      },
+      "rowchunk_hidden_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-hidden-bisect-iter425-L40-c4-rowchunk2-warm8-decode128-trace0-8.log",
+        "sha256": "e9df214f57d8fcae3fa42d4dfecee06127934a85d069bdd4e9771454996c6d2d",
+        "size_bytes": 122646087
+      },
+      "rowchunk_retained_summary": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-baselines-421/summary.json",
+        "sha256": "21527024987d42877141b07e5fcd35678416e3141c534f1af49e8dcd87f34e30",
+        "size_bytes": 17427
+      }
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk-hidden-425/summary.json"
+    }
+  },
+  "commands": {
+    "active_verify": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "rowchunk_hidden_bisect": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --warmup-decode-tokens 8 --decode-tokens 128 --max-layers 40 --layer-limits 40 --max-sequence-length 649 --hidden-atol 4e-3 --trace-decode-start 0 --trace-decode-end 8 --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter425-L40-c4-rowchunk2-warm8-decode128-trace0-8.json"
+  },
+  "conclusion": "Row-chunk2 does not make the serial-c1 hidden-bisect green: it has the same immediate layer4 under-atol bit drift and an over-atol layer7 pre-QKV drift (smaller than full-native), plus the known row1 token104 serial/native oracle split. Since row-chunk retained equality is green vs native-batch c1 while full-native retained is red at row3 token118, the next useful diagnostic needs a native-batch-c1 or rowchunk-vs-fullnative hidden comparator rather than the default serial-c1 hidden-bisect.",
+  "created_at": "2026-06-07T04:59:22.649137+00:00",
+  "git_commit_before_commit": "fb83482b32d83b2be6208217c5571d37cadd22e2",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 425,
+  "kind": "c4_rowchunk_vs_full_native_hidden_oracle_diagnostic",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused c4 row-chunk hidden comparison shows the correctness-green row-chunk path still drifts vs serial-c1 hidden oracle at decode_step0 and repeats the known row1 token104 serial/native split. This explains that hidden-bisect with the serial oracle is not sufficient to decide row-chunk vs full-native c4; the retained native-batch equality artifact remains authoritative. No performance claim.",
+    "passed": true
+  },
+  "references": {
+    "full_native_hidden_early_summary": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-full-native-hidden-early-424/summary.json",
+      "sha256": "bac5de61351feb7571529fb4b0b03d5406608622ea85761fcbdbad274385f872",
+      "size_bytes": 42425
+    },
+    "full_native_retained_summary": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-full-native-422/summary.json",
+      "sha256": "6cbf28472558d22c798c0a77ebde84c723cf7b9881e995995d67e45148ac00c7",
+      "size_bytes": 13958
+    },
+    "rowchunk_retained_summary": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-baselines-421/summary.json",
+      "sha256": "21527024987d42877141b07e5fcd35678416e3141c534f1af49e8dcd87f34e30",
+      "size_bytes": 17427
+    }
+  },
+  "result": {
+    "active_c2_prefix_lengths": [
+      137,
+      137
+    ],
+    "active_c2_verify_metric": 137,
+    "full_native_first_full_attention_stage_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 4,
+      "generated_index": 1,
+      "layer_index": 7,
+      "layer_limit": 40,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 803,
+      "max_abs_index": [
+        0,
+        803
+      ],
+      "row": 2,
+      "stage": "attn_input_pre_qkv"
+    },
+    "full_native_first_linear_stage_bit_drift": {
+      "bit_mismatch": 582,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 40,
+      "max_abs": 0.001953125,
+      "max_abs_flat_index": 774,
+      "max_abs_index": [
+        0,
+        774
+      ],
+      "passed_under_atol": true,
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "full_native_retained_first_mismatch": [
+      null,
+      null,
+      null,
+      118
+    ],
+    "full_native_retained_prefix_lengths": [
+      137,
+      137,
+      137,
+      118
+    ],
+    "guard_primitive_c2_passed": true,
+    "guard_primitive_c8_passed": true,
+    "rowchunk_failure_modes": [
+      "hidden",
+      "token"
+    ],
+    "rowchunk_first_full_attention_stage_failure": {
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 1,
+      "generated_index": 1,
+      "layer_index": 7,
+      "layer_limit": 40,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1197,
+      "max_abs_index": [
+        0,
+        1197
+      ],
+      "row": 0,
+      "stage": "attn_input_pre_qkv"
+    },
+    "rowchunk_first_linear_stage_bit_drift": {
+      "bit_mismatch": 524,
+      "comparison_kind": "fp16_bits",
+      "decode_step": 0,
+      "elements_over_atol": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "layer_limit": 40,
+      "max_abs": 0.001953125,
+      "max_abs_flat_index": 1885,
+      "max_abs_index": [
+        0,
+        1885
+      ],
+      "passed_under_atol": true,
+      "row": 0,
+      "stage": "attn_input"
+    },
+    "rowchunk_hidden_passed": false,
+    "rowchunk_hidden_status": "mismatch_found",
+    "rowchunk_layer_first_token_mismatch": null,
+    "rowchunk_layer_token_mismatches_compact": [
+      {
+        "first_index": 104,
+        "row": 1
+      }
+    ],
+    "rowchunk_retained_prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "rowchunk_retained_scaling_ratios": {
+      "aggregate_vs_c1": 1.1106987404412205,
+      "aggregate_vs_serial_bridge": 1.3186107255357988,
+      "per_request_vs_c1": 0.27767468511030513,
+      "per_request_vs_serial_bridge": 1.3186107255357988
+    },
+    "rowchunk_token_passed": false
+  },
+  "rowchunk_hidden_compact": {
+    "correctness": {
+      "decode_full_attention_stage_failure_summary": {
+        "failed_stage_count": 21,
+        "failed_stages": [
+          "input",
+          "attn_input_pre_qkv",
+          "attn_input_after_rotate",
+          "attn_input_after_project",
+          "q_proj_key_after_project",
+          "value_after_project",
+          "query_raw_after_split",
+          "key_raw_after_cast",
+          "gate_after_split",
+          "query_after_prepare",
+          "key_after_prepare",
+          "attn_input_after_prepare",
+          "attn_input",
+          "gate",
+          "query",
+          "attn_context",
+          "gated_attn",
+          "o_proj",
+          "residual",
+          "mlp_input",
+          "output"
+        ],
+        "first_failure": {
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 1,
+          "generated_index": 1,
+          "layer_index": 7,
+          "layer_limit": 40,
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 1197,
+          "max_abs_index": [
+            0,
+            1197
+          ],
+          "row": 0,
+          "stage": "attn_input_pre_qkv"
+        },
+        "input_passed": false,
+        "layer_limits": [
+          {
+            "failed_stages": [
+              "input",
+              "attn_input_pre_qkv",
+              "attn_input_after_rotate",
+              "attn_input_after_project",
+              "q_proj_key_after_project",
+              "value_after_project",
+              "query_raw_after_split",
+              "key_raw_after_cast",
+              "gate_after_split",
+              "query_after_prepare",
+              "key_after_prepare",
+              "attn_input_after_prepare",
+              "attn_input",
+              "gate",
+              "query",
+              "attn_context",
+              "gated_attn",
+              "o_proj",
+              "residual",
+              "mlp_input",
+              "output"
+            ],
+            "layer_limit": 40,
+            "passed": false
+          }
+        ],
+        "output_passed": false,
+        "stages": {
+          "attn_context": {
+            "failure_comparison_kinds": [
+              "fp32"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 3,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.007391929626464844,
+              "max_abs_flat_index": 2485,
+              "max_abs_index": [
+                0,
+                2485
+              ],
+              "row": 0,
+              "stage": "attn_context"
+            },
+            "passed": false
+          },
+          "attn_input": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              3,
+              1
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1197,
+              "max_abs_index": [
+                0,
+                1197
+              ],
+              "row": 0,
+              "stage": "attn_input"
+            },
+            "passed": false
+          },
+          "attn_input_after_prepare": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              3,
+              1
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1197,
+              "max_abs_index": [
+                0,
+                1197
+              ],
+              "row": 0,
+              "stage": "attn_input_after_prepare"
+            },
+            "passed": false
+          },
+          "attn_input_after_project": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              3,
+              1
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1197,
+              "max_abs_index": [
+                0,
+                1197
+              ],
+              "row": 0,
+              "stage": "attn_input_after_project"
+            },
+            "passed": false
+          },
+          "attn_input_after_rotate": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              3,
+              1
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1197,
+              "max_abs_index": [
+                0,
+                1197
+              ],
+              "row": 0,
+              "stage": "attn_input_after_rotate"
+            },
+            "passed": false
+          },
+          "attn_input_pre_qkv": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              3,
+              1
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1197,
+              "max_abs_index": [
+                0,
+                1197
+              ],
+              "row": 0,
+              "stage": "attn_input_pre_qkv"
+            },
+            "passed": false
+          },
+          "gate": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              1,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 35,
+              "layer_limit": 40,
+              "max_abs": 0.005859375,
+              "max_abs_flat_index": 2897,
+              "max_abs_index": [
+                0,
+                2897
+              ],
+              "row": 0,
+              "stage": "gate"
+            },
+            "passed": false
+          },
+          "gate_after_split": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              1,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 35,
+              "layer_limit": 40,
+              "max_abs": 0.005859375,
+              "max_abs_flat_index": 2897,
+              "max_abs_index": [
+                0,
+                2897
+              ],
+              "row": 0,
+              "stage": "gate_after_split"
+            },
+            "passed": false
+          },
+          "gated_attn": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 31,
+              "layer_limit": 40,
+              "max_abs": 0.00439453125,
+              "max_abs_flat_index": 544,
+              "max_abs_index": [
+                0,
+                544
+              ],
+              "row": 0,
+              "stage": "gated_attn"
+            },
+            "passed": false
+          },
+          "input": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 2,
+              "elements_over_atol": 1297,
+              "generated_index": 3,
+              "layer_index": 35,
+              "layer_limit": 40,
+              "max_abs": 0.0326995849609375,
+              "max_abs_flat_index": 936,
+              "max_abs_index": [
+                0,
+                936
+              ],
+              "row": 0,
+              "stage": "input"
+            },
+            "passed": false
+          },
+          "key_after_prepare": {
+            "failure_comparison_kinds": [
+              "fp32"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 4,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.005062103271484375,
+              "max_abs_flat_index": 26,
+              "max_abs_index": [
+                0,
+                26
+              ],
+              "row": 0,
+              "stage": "key_after_prepare"
+            },
+            "passed": false
+          },
+          "key_raw_after_cast": {
+            "failure_comparison_kinds": [
+              "fp32"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              2,
+              3,
+              1,
+              0
+            ],
+            "first_failure": {
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 23,
+              "layer_limit": 40,
+              "max_abs": 0.00439453125,
+              "max_abs_flat_index": 231,
+              "max_abs_index": [
+                0,
+                231
+              ],
+              "row": 2,
+              "stage": "key_raw_after_cast"
+            },
+            "passed": false
+          },
+          "mlp_input": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              2,
+              3,
+              1
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 2,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.005859375,
+              "max_abs_flat_index": 1197,
+              "max_abs_index": [
+                0,
+                1197
+              ],
+              "row": 0,
+              "stage": "mlp_input"
+            },
+            "passed": false
+          },
+          "o_proj": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              1,
+              0,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 39,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 1269,
+              "max_abs_index": [
+                0,
+                1269
+              ],
+              "row": 1,
+              "stage": "o_proj"
+            },
+            "passed": false
+          },
+          "output": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              1,
+              0,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 2,
+              "generated_index": 1,
+              "layer_index": 39,
+              "layer_limit": 40,
+              "max_abs": 0.005859375,
+              "max_abs_flat_index": 1735,
+              "max_abs_index": [
+                0,
+                1735
+              ],
+              "row": 1,
+              "stage": "output"
+            },
+            "passed": false
+          },
+          "q_proj_key_after_project": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              1,
+              2,
+              0,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 6204,
+              "max_abs_index": [
+                0,
+                6204
+              ],
+              "row": 1,
+              "stage": "q_proj_key_after_project"
+            },
+            "passed": false
+          },
+          "query": {
+            "failure_comparison_kinds": [
+              "fp32"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.004965305328369141,
+              "max_abs_flat_index": 1695,
+              "max_abs_index": [
+                0,
+                1695
+              ],
+              "row": 0,
+              "stage": "query"
+            },
+            "passed": false
+          },
+          "query_after_prepare": {
+            "failure_comparison_kinds": [
+              "fp32"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.004965305328369141,
+              "max_abs_flat_index": 1695,
+              "max_abs_index": [
+                0,
+                1695
+              ],
+              "row": 0,
+              "stage": "query_after_prepare"
+            },
+            "passed": false
+          },
+          "query_raw_after_split": {
+            "failure_comparison_kinds": [
+              "fp32"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              1,
+              2,
+              0,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 7,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 3132,
+              "max_abs_index": [
+                0,
+                3132
+              ],
+              "row": 1,
+              "stage": "query_raw_after_split"
+            },
+            "passed": false
+          },
+          "residual": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 2,
+              "elements_over_atol": 1360,
+              "generated_index": 3,
+              "layer_index": 35,
+              "layer_limit": 40,
+              "max_abs": 0.07421875,
+              "max_abs_flat_index": 1269,
+              "max_abs_index": [
+                0,
+                1269
+              ],
+              "row": 0,
+              "stage": "residual"
+            },
+            "passed": false
+          },
+          "value_after_project": {
+            "failure_comparison_kinds": [
+              "fp16_bits"
+            ],
+            "failure_row_count": 4,
+            "failure_rows": [
+              1,
+              2,
+              0,
+              3
+            ],
+            "first_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 1,
+              "generated_index": 1,
+              "layer_index": 31,
+              "layer_limit": 40,
+              "max_abs": 0.0078125,
+              "max_abs_flat_index": 32,
+              "max_abs_index": [
+                0,
+                32
+              ],
+              "row": 1,
+              "stage": "value_after_project"
+            },
+            "passed": false
+          }
+        }
+      },
+      "decode_linear_handoff_summary": {
+        "copy_passed": true,
+        "first_copy_mismatch": null,
+        "first_producer_bit_drift": {
+          "bit_mismatch": 1169,
+          "comparison_kind": "producer_batch_vs_c1",
+          "decode_step": 0,
+          "elements_over_atol": 0,
+          "generated_index": 1,
+          "layer_limit": 40,
+          "max_abs": 0.00048828125,
+          "max_abs_flat_index": 859,
+          "max_abs_index": [
+            0,
+            859
+          ],
+          "passed_under_atol": true,
+          "producer_layer_index": 4,
+          "row": 0,
+          "target_layer_index": 5
+        },
+        "layer_limits": [
+          {
+            "copy_passed": true,
+            "first_copy_mismatch": null,
+            "first_producer_bit_drift": {
+              "bit_mismatch": 1169,
+              "comparison_kind": "producer_batch_vs_c1",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "max_abs": 0.00048828125,
+              "max_abs_flat_index": 859,
+              "max_abs_index": [
+                0,
+                859
+              ],
+              "passed_under_atol": true,
+              "producer_layer_index": 4,
+              "row": 0,
+              "target_layer_index": 5
+            },
+            "layer_limit": 40,
+            "producer_batch_vs_c1_passed": false,
+            "target_input_batch_vs_c1_passed": false
+          }
+        ],
+        "producer_batch_vs_c1_passed": false,
+        "target_input_batch_vs_c1_passed": false
+      },
+      "decode_linear_stage_bit_drift_summary": {
+        "drift_stage_count": 9,
+        "drift_stages": [
+          "attn_input",
+          "qkv",
+          "z",
+          "conv_out",
+          "recurrent_out",
+          "out_proj",
+          "residual",
+          "mlp_input",
+          "output"
+        ],
+        "first_bit_drift": {
+          "bit_mismatch": 524,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 0,
+          "generated_index": 1,
+          "layer_index": 4,
+          "layer_limit": 40,
+          "max_abs": 0.001953125,
+          "max_abs_flat_index": 1885,
+          "max_abs_index": [
+            0,
+            1885
+          ],
+          "passed_under_atol": true,
+          "row": 0,
+          "stage": "attn_input"
+        },
+        "stages": {
+          "attn_input": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 524,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.001953125,
+              "max_abs_flat_index": 1885,
+              "max_abs_index": [
+                0,
+                1885
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "attn_input"
+            },
+            "passed": false,
+            "total_bit_mismatch": 1497793
+          },
+          "conv_out": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 3641,
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.00041234493255615234,
+              "max_abs_flat_index": 6432,
+              "max_abs_index": [
+                0,
+                6432
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "conv_out"
+            },
+            "passed": false,
+            "total_bit_mismatch": 6756288
+          },
+          "mlp_input": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 842,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.00390625,
+              "max_abs_flat_index": 1307,
+              "max_abs_index": [
+                0,
+                1307
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "mlp_input"
+            },
+            "passed": false,
+            "total_bit_mismatch": 1507519
+          },
+          "out_proj": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 1317,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 3.0517578125e-05,
+              "max_abs_flat_index": 36,
+              "max_abs_index": [
+                0,
+                36
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "out_proj"
+            },
+            "passed": false,
+            "total_bit_mismatch": 1574966
+          },
+          "output": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 1169,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.00048828125,
+              "max_abs_flat_index": 859,
+              "max_abs_index": [
+                0,
+                859
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "output"
+            },
+            "passed": false,
+            "total_bit_mismatch": 1535286
+          },
+          "qkv": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 3642,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.00390625,
+              "max_abs_flat_index": 3607,
+              "max_abs_index": [
+                0,
+                3607
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "qkv"
+            },
+            "passed": false,
+            "total_bit_mismatch": 5808137
+          },
+          "recurrent_out": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 4096,
+              "comparison_kind": "fp32",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.00013336539268493652,
+              "max_abs_flat_index": 646,
+              "max_abs_index": [
+                0,
+                646
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "recurrent_out"
+            },
+            "passed": false,
+            "total_bit_mismatch": 3538864
+          },
+          "residual": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 876,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.0001220703125,
+              "max_abs_flat_index": 1617,
+              "max_abs_index": [
+                0,
+                1617
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "residual"
+            },
+            "passed": false,
+            "total_bit_mismatch": 1499781
+          },
+          "z": {
+            "bit_drift_row_count": 4,
+            "bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "first_bit_drift": {
+              "bit_mismatch": 1596,
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 0,
+              "generated_index": 1,
+              "layer_index": 4,
+              "layer_limit": 40,
+              "max_abs": 0.00390625,
+              "max_abs_flat_index": 235,
+              "max_abs_index": [
+                0,
+                235
+              ],
+              "passed_under_atol": true,
+              "row": 0,
+              "stage": "z"
+            },
+            "passed": false,
+            "total_bit_mismatch": 2460785
+          }
+        }
+      },
+      "failure_modes": [
+        "hidden",
+        "token"
+      ],
+      "hidden_passed": false,
+      "passed": false,
+      "row_failure_summary": {
+        "hidden_failure_row_count": 4,
+        "hidden_failure_rows": [
+          1,
+          0,
+          2,
+          3
+        ],
+        "layer_limits": [
+          {
+            "failure_modes": [
+              "hidden",
+              "token"
+            ],
+            "hidden_failure_row_count": 4,
+            "hidden_failure_rows": [
+              1,
+              0,
+              2,
+              3
+            ],
+            "layer_limit": 40,
+            "strict_hidden_bit_drift_row_count": 4,
+            "strict_hidden_bit_drift_rows": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "token_failure_row_count": 1,
+            "token_failure_rows": [
+              1
+            ]
+          }
+        ],
+        "strict_hidden_bit_drift_row_count": 4,
+        "strict_hidden_bit_drift_rows": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "token_failure_row_count": 1,
+        "token_failure_rows": [
+          1
+        ]
+      },
+      "token_passed": false
+    },
+    "layer_summary": {
+      "decode_full_attention_input_passed": false,
+      "decode_full_attention_output_passed": false,
+      "decode_full_context_oracle_passed": false,
+      "decode_full_kv_sample_passed": false,
+      "failure_modes": [
+        "hidden",
+        "token"
+      ],
+      "first_hidden_mismatch": null,
+      "first_token_mismatch": null,
+      "hidden_failure_rows": [
+        1,
+        0,
+        2,
+        3
+      ],
+      "hidden_passed": false,
+      "layer_limit": 40,
+      "token_failure_rows": [
+        1
+      ],
+      "token_passed": false
+    },
+    "raw_json": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter425-L40-c4-rowchunk2-warm8-decode128-trace0-8.json",
+      "sha256": "e9df214f57d8fcae3fa42d4dfecee06127934a85d069bdd4e9771454996c6d2d",
+      "size_bytes": 122646087
+    },
+    "raw_log": {
+      "exists": true,
+      "path": "/tmp/hipengine-hidden-bisect-iter425-L40-c4-rowchunk2-warm8-decode128-trace0-8.log",
+      "sha256": "e9df214f57d8fcae3fa42d4dfecee06127934a85d069bdd4e9771454996c6d2d",
+      "size_bytes": 122646087
+    },
+    "status": "mismatch_found"
+  },
+  "workload": {
+    "batch_decode_attention_append_context_order": "phased",
+    "batch_decode_attention_context_path": "batch",
+    "batch_decode_attention_dense_context_batch_gate_layers": "",
+    "batch_decode_attention_dense_context_layers": "",
+    "batch_decode_attention_gate_path": "batch",
+    "batch_decode_attention_input_path": "batch",
+    "batch_decode_attention_qkv_path": "batch",
+    "batch_decode_attention_scratch_path": "batch",
+    "batch_decode_attention_suffix_order": "phased",
+    "batch_decode_full_attention_kv_append_path": "batch",
+    "batch_decode_full_attention_layer_copy": "batch",
+    "batch_decode_full_attention_moe_path": "grouped_compact",
+    "batch_decode_full_attention_output_path": "batch_gemv",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunk_layers": "",
+    "batch_decode_full_attention_row_chunk_size": 2,
+    "batch_decode_linear_moe_path": "grouped_compact",
+    "batch_decode_linear_output_path": "batch_gemv",
+    "batch_decode_linear_path": "batch_segments",
+    "batch_decode_linear_projection_path": "batch",
+    "batch_decode_linear_state_path": "batch_segments",
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_decode_post_attention_path": "batch",
+    "batch_prefill_full_attention_path": "packed_varlen",
+    "batch_prefill_linear_path": "packed_segments",
+    "batch_size": 4,
+    "c1_decode_path": "serial",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "focus_hidden_flat_indices": [],
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "kv_storage_dtype": "bf16",
+    "layer_limits": [
+      40
+    ],
+    "linear_state_atol": 1e-06,
+    "max_layers": 40,
+    "max_sequence_length": 649,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "native_caware_decode": false,
+    "native_compact_prefill": true,
+    "prefill_linear_state_atol": 1e-06,
+    "prompt_length": 512,
+    "prompt_lengths": [
+      512,
+      512,
+      512,
+      512
+    ],
+    "repeat_runs": 1,
+    "total_decode_tokens": 136,
+    "trace_decode_end": 8,
+    "trace_decode_start": 0,
+    "trace_decode_window": [
+      0,
+      8
+    ],
+    "warmup_decode_tokens": 8
+  }
+}

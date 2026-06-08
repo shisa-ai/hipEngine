@@ -1,0 +1,264 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/qwen35_batch_retained_bench.py",
+        "--model",
+        "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "--fixture",
+        "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "--prompt-length",
+        "512",
+        "--batch-size",
+        "2",
+        "--decode-tokens",
+        "128",
+        "--warmup-decode-tokens",
+        "8",
+        "--max-layers",
+        "40",
+        "--compiler-version-file",
+        "/tmp/hipengine-retained/hipcc-version.txt",
+        "--require-cached-build",
+        "--batch-decode-moe-path",
+        "grouped_compact",
+        "--json",
+        "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/global_grouped_per_row_submoe-c2-p512-d128.json"
+      ],
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/global_grouped_per_row_submoe-c2-p512-d128.json",
+      "batch_execution_blockers": [
+        "linear-attention MoE forced to per-row selected-c1 diagnostic path",
+        "full-attention MoE forced to per-row selected-c1 diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "selected_c1_per_row_moe_fallback",
+        "moe_grouped_compact_layers": 0,
+        "moe_selected_c1_fallback_layers": 40,
+        "native_caware_decode": false
+      },
+      "duration_seconds": 53.74473479797598,
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "name": "global_grouped_per_row_submoe",
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "returncode": 1
+    },
+    {
+      "argv": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/qwen35_batch_retained_bench.py",
+        "--model",
+        "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "--fixture",
+        "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "--prompt-length",
+        "512",
+        "--batch-size",
+        "2",
+        "--decode-tokens",
+        "128",
+        "--warmup-decode-tokens",
+        "8",
+        "--max-layers",
+        "40",
+        "--compiler-version-file",
+        "/tmp/hipengine-retained/hipcc-version.txt",
+        "--require-cached-build",
+        "--batch-decode-moe-path",
+        "grouped_compact",
+        "--batch-decode-linear-moe-path",
+        "grouped_compact",
+        "--json",
+        "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/linear_grouped_only-c2-p512-d128.json"
+      ],
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/linear_grouped_only-c2-p512-d128.json",
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "full-attention MoE forced to per-row selected-c1 diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "selected_c1_per_row_moe_fallback",
+        "moe_grouped_compact_layers": 30,
+        "moe_selected_c1_fallback_layers": 10,
+        "native_caware_decode": false
+      },
+      "duration_seconds": 53.724398604012094,
+      "first_mismatch_indices": [
+        82,
+        null
+      ],
+      "min_equal_prefix_tokens": 82,
+      "name": "linear_grouped_only",
+      "passed": false,
+      "prefix_lengths": [
+        82,
+        137
+      ],
+      "returncode": 1
+    },
+    {
+      "argv": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/qwen35_batch_retained_bench.py",
+        "--model",
+        "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "--fixture",
+        "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "--prompt-length",
+        "512",
+        "--batch-size",
+        "2",
+        "--decode-tokens",
+        "128",
+        "--warmup-decode-tokens",
+        "8",
+        "--max-layers",
+        "40",
+        "--compiler-version-file",
+        "/tmp/hipengine-retained/hipcc-version.txt",
+        "--require-cached-build",
+        "--batch-decode-moe-path",
+        "grouped_compact",
+        "--batch-decode-full-attn-moe-path",
+        "grouped_compact",
+        "--json",
+        "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/full_grouped_only-c2-p512-d128.json"
+      ],
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/full_grouped_only-c2-p512-d128.json",
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "linear-attention MoE forced to per-row selected-c1 diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "selected_c1_per_row_moe_fallback",
+        "moe_grouped_compact_layers": 10,
+        "moe_selected_c1_fallback_layers": 30,
+        "native_caware_decode": false
+      },
+      "duration_seconds": 54.66440555010922,
+      "first_mismatch_indices": [
+        82,
+        null
+      ],
+      "min_equal_prefix_tokens": 82,
+      "name": "full_grouped_only",
+      "passed": false,
+      "prefix_lengths": [
+        82,
+        137
+      ],
+      "returncode": 1
+    },
+    {
+      "argv": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "scripts/qwen35_batch_retained_bench.py",
+        "--model",
+        "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "--fixture",
+        "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+        "--prompt-length",
+        "512",
+        "--batch-size",
+        "2",
+        "--decode-tokens",
+        "128",
+        "--warmup-decode-tokens",
+        "8",
+        "--max-layers",
+        "40",
+        "--compiler-version-file",
+        "/tmp/hipengine-retained/hipcc-version.txt",
+        "--require-cached-build",
+        "--batch-decode-moe-path",
+        "grouped_compact",
+        "--batch-decode-linear-moe-path",
+        "grouped_compact",
+        "--batch-decode-full-attn-moe-path",
+        "grouped_compact",
+        "--json",
+        "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/all_grouped-c2-p512-d128.json"
+      ],
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/artifacts/all_grouped-c2-p512-d128.json",
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "native c>N decode used a diagnostic fallback",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "moe_grouped_compact_layers": 40,
+        "moe_selected_c1_fallback_layers": 0,
+        "native_caware_decode": false
+      },
+      "duration_seconds": 53.60949016199447,
+      "first_mismatch_indices": [
+        82,
+        null
+      ],
+      "min_equal_prefix_tokens": 82,
+      "name": "all_grouped",
+      "passed": false,
+      "prefix_lengths": [
+        82,
+        137
+      ],
+      "returncode": 1
+    }
+  ],
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "performance_claim": false,
+  "purpose": "Focused grouped-compact MoE retained-path probe. Keep selected-QKV/Z/native-state/batch-output/full-attention gates fixed and vary only grouped-vs-per-row MoE subpaths.",
+  "result": "Grouped-compact MoE is still red: enabling grouped MoE in either linear-attention or full-attention layers causes row0 generated-token equality to fail at prefix 82; per-row selected-c1 sub-MoE fallback remains green.",
+  "retained_ready": false,
+  "schema": 1,
+  "status": "blocked",
+  "workload": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

@@ -4,17 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from typing import Callable, Sequence
 
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.rocblas import rocblas_gemm_ex_rowmajor_nt_fp16_compute_f32
 from hipengine.core.tensor import Tensor
+from hipengine.dispatch import (
+    PagedAttnDecodeKind,
+    PagedKVWriteKind,
+    resolve_paged_attn_decode,
+    resolve_paged_kv_write,
+)
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_v3_compact_varlen,
     aotriton_gate_mul_bf16_to_fp16,
     qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
+    qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_fp16_spans,
@@ -26,10 +34,6 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans,
     qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
-    qwen35_write_paged_kv_mixed_value_bf16_spans,
-    qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
-    qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
-    qwen35_write_paged_kv_mixed_value_fp16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import tensor1 as aotriton_tensor1
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import tensor2 as aotriton_tensor2
@@ -79,6 +83,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16,
     qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16,
+    qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_fp16,
 )
@@ -129,6 +134,11 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
     gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
     gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16,
+    gemv_awq_pack8_output_tiled_bf16,
+    gemv_awq_pack8_output_tiled_fp16,
+    gemv_awq_dual_pack8_output_tiled_transposed_fp16,
+    gemv_awq_pack8_output_tiled_transposed_bf16,
+    gemv_awq_pack8_output_tiled_transposed_fp16,
     gemv_awq_pack8_strided_bf16,
     gemv_awq_pack8_strided_fp16,
     gemv_awq_pack8_transposed_bf16,
@@ -177,6 +187,193 @@ def _reset_shared_rotate_fuse_barrier_state() -> None:
     """Clear process-local keyed barrier counters for a new resident session."""
 
     _SHARED_ROTATE_FUSE_BARRIER_STATE.clear()
+_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"
+
+# C3.0c: row counts for which the output-column-tiled pack8 GEMV is instantiated
+# (templated C in the kernel). Other c>1 row counts fall back to the per-row
+# strided GEMV. Byte-exact equivalence is gated in
+# tests/test_paro_awq_output_tiled_gemv.py.
+_PACK8_OUTPUT_TILED_ROWS = (
+    frozenset()
+    if os.environ.get("HIPENGINE_DISABLE_PACK8_OUTPUT_TILED")
+    else frozenset({2, 4, 8})
+)
+
+
+def qwen35_grouped_moe_lane_rows(tokens: int, top_k: int) -> tuple[int, ...]:
+    """Return the token row for each token-major routed MoE lane."""
+
+    if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens <= 0:
+        raise ValueError("tokens must be a positive int")
+    if not isinstance(top_k, int) or isinstance(top_k, bool) or top_k <= 0:
+        raise ValueError("top_k must be a positive int")
+    return tuple(lane // top_k for lane in range(tokens * top_k))
+
+
+def qwen35_grouped_moe_sorted_token_rows(
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[int, ...]:
+    """Return token rows in grouped-MoE sorted-lane order."""
+
+    lane_rows = qwen35_grouped_moe_lane_rows(tokens, top_k)
+    total_lanes = len(lane_rows)
+    if len(sorted_lanes) != total_lanes:
+        raise ValueError("sorted_lanes length must match tokens * top_k")
+    rows: list[int] = []
+    seen: set[int] = set()
+    for lane in sorted_lanes:
+        if not isinstance(lane, int) or isinstance(lane, bool) or lane < 0 or lane >= total_lanes:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        if lane in seen:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        seen.add(lane)
+        rows.append(lane_rows[lane])
+    return tuple(rows)
+
+
+def qwen35_grouped_moe_lane_to_sorted_row(
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[int, ...]:
+    """Mirror the grouped-MoE combine kernel's lane-to-sorted-row inverse map."""
+
+    total_lanes = len(qwen35_grouped_moe_lane_rows(tokens, top_k))
+    if len(sorted_lanes) != total_lanes:
+        raise ValueError("sorted_lanes length must match tokens * top_k")
+    lane_to_row = [-1] * total_lanes
+    for sorted_row, lane in enumerate(sorted_lanes):
+        if not isinstance(lane, int) or isinstance(lane, bool) or lane < 0 or lane >= total_lanes:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        if lane_to_row[lane] != -1:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        lane_to_row[lane] = sorted_row
+    return tuple(lane_to_row)
+
+
+def _qwen35_grouped_moe_route_shape(selected_experts: Sequence[Sequence[int]]) -> tuple[int, int]:
+    tokens = len(selected_experts)
+    if tokens <= 0:
+        raise ValueError("selected_experts must contain at least one token row")
+    top_k = len(selected_experts[0])
+    if top_k <= 0:
+        raise ValueError("selected_experts rows must contain at least one expert")
+    if any(len(row) != top_k for row in selected_experts):
+        raise ValueError("selected_experts rows must have a consistent top_k")
+    return tokens, top_k
+
+
+def qwen35_grouped_moe_expert_lane_groups(
+    selected_experts: Sequence[Sequence[int]],
+    *,
+    num_experts: int,
+) -> tuple[tuple[int, ...], ...]:
+    """Group token-major routed lanes by expert for the compact MoE path."""
+
+    if not isinstance(num_experts, int) or isinstance(num_experts, bool) or num_experts <= 0:
+        raise ValueError("num_experts must be a positive int")
+    tokens, top_k = _qwen35_grouped_moe_route_shape(selected_experts)
+    groups: list[list[int]] = [[] for _ in range(num_experts)]
+    for token_row, row in enumerate(selected_experts):
+        for expert_rank, expert in enumerate(row):
+            if not isinstance(expert, int) or isinstance(expert, bool) or expert < 0 or expert >= num_experts:
+                raise ValueError("selected_experts entries must be expert ints in range")
+            groups[expert].append(token_row * top_k + expert_rank)
+    expected_total_lanes = tokens * top_k
+    if sum(len(group) for group in groups) != expected_total_lanes:
+        raise ValueError("selected_experts lane grouping did not cover all routed lanes")
+    return tuple(tuple(group) for group in groups)
+
+
+def qwen35_grouped_moe_expert_starts(
+    selected_experts: Sequence[Sequence[int]],
+    *,
+    num_experts: int,
+) -> tuple[int, ...]:
+    """Return compact grouped-MoE expert-start offsets for token-major lanes."""
+
+    groups = qwen35_grouped_moe_expert_lane_groups(selected_experts, num_experts=num_experts)
+    starts = [0]
+    for group in groups:
+        starts.append(starts[-1] + len(group))
+    return tuple(starts)
+
+
+def qwen35_grouped_moe_sorted_lanes_from_selected_experts(
+    selected_experts: Sequence[Sequence[int]],
+    *,
+    num_experts: int,
+) -> tuple[int, ...]:
+    """Return token-major lane ids in compact grouped-MoE expert order."""
+
+    groups = qwen35_grouped_moe_expert_lane_groups(selected_experts, num_experts=num_experts)
+    return tuple(lane for group in groups for lane in group)
+
+
+def qwen35_grouped_moe_sorted_routing_weights(
+    routing_weights: Sequence[Sequence[float]],
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[float, ...]:
+    """Return routing weights in grouped-MoE sorted-lane order."""
+
+    if len(routing_weights) != tokens or any(len(row) != top_k for row in routing_weights):
+        raise ValueError("routing_weights shape must match tokens * top_k")
+    lane_to_row_rank = tuple((lane // top_k, lane % top_k) for lane in range(tokens * top_k))
+    lane_to_sorted_row = qwen35_grouped_moe_lane_to_sorted_row(sorted_lanes, tokens=tokens, top_k=top_k)
+    sorted_weights = [0.0] * len(sorted_lanes)
+    for lane, sorted_row in enumerate(lane_to_sorted_row):
+        token_row, expert_rank = lane_to_row_rank[lane]
+        weight = routing_weights[token_row][expert_rank]
+        if isinstance(weight, bool) or not isinstance(weight, int | float):
+            raise ValueError("routing_weights entries must be numeric")
+        sorted_weights[sorted_row] = float(weight)
+    return tuple(sorted_weights)
+
+
+def qwen35_grouped_moe_weighted_token_sums(
+    sorted_values: Sequence[Sequence[float]],
+    sorted_weights: Sequence[float],
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[tuple[float, ...], ...]:
+    """Mirror grouped-MoE weighted selected-branch accumulation on CPU."""
+
+    total_lanes = tokens * top_k
+    if len(sorted_values) != total_lanes:
+        raise ValueError("sorted_values length must match tokens * top_k")
+    if len(sorted_weights) != total_lanes:
+        raise ValueError("sorted_weights length must match tokens * top_k")
+    feature_size = len(sorted_values[0]) if sorted_values else 0
+    if feature_size <= 0 or any(len(row) != feature_size for row in sorted_values):
+        raise ValueError("sorted_values rows must have a consistent non-empty feature size")
+    lane_to_sorted_row = qwen35_grouped_moe_lane_to_sorted_row(sorted_lanes, tokens=tokens, top_k=top_k)
+    out: list[tuple[float, ...]] = []
+    for token in range(tokens):
+        features: list[float] = []
+        for col in range(feature_size):
+            acc = 0.0
+            for expert_rank in range(top_k):
+                lane = token * top_k + expert_rank
+                sorted_row = lane_to_sorted_row[lane]
+                value = sorted_values[sorted_row][col]
+                weight = sorted_weights[sorted_row]
+                if isinstance(value, bool) or not isinstance(value, int | float):
+                    raise ValueError("sorted_values entries must be numeric")
+                if isinstance(weight, bool) or not isinstance(weight, int | float):
+                    raise ValueError("sorted_weights entries must be numeric")
+                acc += float(value) * float(weight)
+            features.append(acc)
+        out.append(tuple(features))
+    return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -375,6 +572,7 @@ class Qwen35ParoDecodeState:
         num_splits: int = 1,
         activation_dtype: str | DType = DType.BF16,
         gated_dtype: str | DType | None = None,
+        query_dtype: str | DType = DType.FP32,
     ) -> Qwen35ParoAttentionScratch:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
@@ -389,6 +587,9 @@ class Qwen35ParoDecodeState:
         gated = lowp if gated_dtype is None else DType.parse(gated_dtype)
         if gated not in {DType.BF16, DType.FP16, DType.FP32}:
             raise ValueError("gated_dtype must be bf16, fp16, or fp32")
+        query_out_dtype = DType.parse(query_dtype)
+        if query_out_dtype not in {DType.BF16, DType.FP32}:
+            raise ValueError("query_dtype must be bf16 or fp32")
         q_proj_key = self.workspace.reserve_tensor("attn.q_proj_key", (tokens, 2 * q_width + kv_width), lowp)
         q_proj = Tensor.from_handle(q_proj_key.ptr, (tokens, 2 * q_width), lowp, q_proj_key.device)
         key_bf16 = Tensor.from_handle(
@@ -420,7 +621,7 @@ class Qwen35ParoDecodeState:
             key_bf16=key_bf16,
             query_raw=self.workspace.reserve_tensor("attn.query_raw", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             key_raw=self.workspace.reserve_tensor("attn.key_raw", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
-            query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
+            query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), query_out_dtype),
             key=self.workspace.reserve_tensor("attn.key", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
             value=value,
             kv_proj=kv_proj,
@@ -460,7 +661,15 @@ class Qwen35ParoDecodeState:
             qweight = self.tensor(f"{prefix}.qweight")
             if not qweight.shape:
                 raise ValueError(f"{prefix}.qweight must have at least one dimension")
-            gemv_awq_pack8_strided_bf16(
+            # C3.0c: output-column-tiled GEMV amortizes the weight load across all
+            # c active columns for c in {2,4,8}; byte-exact vs the per-row strided
+            # kernel (tests/test_paro_awq_output_tiled_gemv.py).
+            pack8_fn = (
+                gemv_awq_pack8_output_tiled_bf16
+                if rows in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_strided_bf16
+            )
+            pack8_fn(
                 x.ptr,
                 qweight.ptr,
                 qzeros.ptr,
@@ -477,7 +686,12 @@ class Qwen35ParoDecodeState:
             )
         else:
             qweight = self.tensor(f"{prefix}.qweight_pack8_decode")
-            gemv_awq_pack8_transposed_bf16(
+            pack8_t_fn = (
+                gemv_awq_pack8_output_tiled_transposed_bf16
+                if rows in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_transposed_bf16
+            )
+            pack8_t_fn(
                 x.ptr,
                 qweight.ptr,
                 qzeros.ptr,
@@ -504,6 +718,7 @@ class Qwen35ParoDecodeState:
         in_features: int | None = None,
         group_size: int = 128,
         threads: int = 128,
+        force_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -513,8 +728,14 @@ class Qwen35ParoDecodeState:
         width = x.shape[-1] if in_features is None else in_features
         awq_library = _library_for(library, "awq")
         if (
-            rows == 1 or (rows > 1 and rows <= 8 and _marlin_k_multi_row_site_enabled(prefix))
+            rows == 1
+            or force_gemv
+            or (rows > 1 and rows <= 8 and _marlin_k_multi_row_site_enabled(prefix))
         ) and self.has_tensor(f"{prefix}.qweight_mk"):
+            # The Marlin-K GEMV kernel has a row grid and matches token-1 output
+            # projection numerics for c>N diagnostic GEMV paths.  Keep normal
+            # rows>1 prefill on the fused prefill kernels unless force_gemv asks
+            # for a decode-style row-aware GEMV projection.
             qweight_mk = self.tensor(f"{prefix}.qweight_mk")
             out_packed = _out_packed_from_marlin_qweight(qweight_mk)
             marlin_args = (
@@ -562,6 +783,7 @@ class Qwen35ParoDecodeState:
             if (
                 rows > 1
                 and rows <= 8
+                and not force_gemv
                 and _w4_multi_row_single_site_enabled(prefix)
                 and group_size % 16 == 0
                 and width % group_size == 0
@@ -583,7 +805,7 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
-            elif rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+            elif rows > 1 and not force_gemv and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_strided_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -599,7 +821,12 @@ class Qwen35ParoDecodeState:
                     runtime=self.runtime,
                 )
             else:
-                gemv_awq_pack8_strided_fp16(
+                pack8_fn = (
+                    gemv_awq_pack8_output_tiled_fp16
+                    if rows in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_pack8_strided_fp16
+                )
+                pack8_fn(
                     x.ptr,
                     qweight.ptr,
                     qzeros.ptr,
@@ -624,6 +851,7 @@ class Qwen35ParoDecodeState:
             if (
                 rows > 1
                 and rows <= 8
+                and not force_gemv
                 and _w4_multi_row_single_site_enabled(prefix)
                 and group_size % 16 == 0
                 and width % group_size == 0
@@ -643,7 +871,7 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
-            elif rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+            elif rows > 1 and not force_gemv and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -659,7 +887,12 @@ class Qwen35ParoDecodeState:
                     runtime=self.runtime,
                 )
             else:
-                gemv_awq_pack8_transposed_fp16(
+                pack8_t_fn = (
+                    gemv_awq_pack8_output_tiled_transposed_fp16
+                    if rows in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_pack8_transposed_fp16
+                )
+                pack8_t_fn(
                     x.ptr,
                     qweight.ptr,
                     qzeros.ptr,
@@ -1754,6 +1987,100 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
 
+    def _full_attention_value_for_kv_write(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        spans: KVLiveSpans,
+        rows: int,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[DType, Tensor]:
+        if spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            return scratch.value.dtype, scratch.value
+        if scratch.value.dtype is DType.FP32:
+            return DType.FP32, scratch.value
+        value_f32 = scratch.key_raw
+        if value_f32.dtype is not DType.FP32 or value_f32.shape != scratch.value.shape:
+            raise ValueError("INT8 KV append expects an FP32 key_raw scratch matching value shape")
+        count = int(rows) * self.config.num_key_value_heads * self.config.head_dim
+        cast_library = _library_for(library, "cast")
+        if scratch.value.dtype is DType.FP16:
+            fp16_to_f32(
+                scratch.value.ptr,
+                value_f32.ptr,
+                count,
+                stream=stream,
+                library=cast_library,
+                runtime=self.runtime,
+            )
+        elif scratch.value.dtype is DType.BF16:
+            bf16_to_f32(
+                scratch.value.ptr,
+                value_f32.ptr,
+                count,
+                stream=stream,
+                library=cast_library,
+                runtime=self.runtime,
+            )
+        else:
+            raise ValueError("INT8 KV append value scratch must be fp16, bf16, or fp32")
+        return DType.FP32, value_f32
+
+    def _append_full_attention_kv_resolved(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        kind: PagedKVWriteKind,
+        rows: int = 1,
+        block_size: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> None:
+        source_dtype, value_source = self._full_attention_value_for_kv_write(
+            scratch,
+            spans=spans,
+            rows=rows,
+            library=library,
+            stream=stream,
+        )
+        write_fn = resolve_paged_kv_write(
+            backend=_PAGED_KV_REGISTRY_BACKEND,
+            spans=spans,
+            kind=kind,
+            source_dtype=source_dtype,
+        )
+        if spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            if key_cache.dtype is not DType.INT8 or value_cache.dtype is not DType.INT8:
+                raise ValueError("INT8 KV append requires INT8 key/value cache tensors")
+            metadata = spans.scale_metadata
+            if metadata is None:
+                raise ValueError("INT8 KV append requires scale metadata")
+            args = [
+                scratch.key.ptr,
+                value_source.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                metadata.k_scale.ptr,
+                metadata.v_scale.ptr,
+                spans,
+            ]
+        else:
+            args = [scratch.key.ptr, value_source.ptr, key_cache.ptr, value_cache.ptr, spans]
+        if kind is PagedKVWriteKind.DECODE:
+            args.extend([block_size, self.config.num_key_value_heads, self.config.head_dim])
+        else:
+            args.extend([rows, block_size, self.config.num_key_value_heads, self.config.head_dim])
+        write_fn(
+            *args,
+            stream=stream,
+            library=_library_for(library, "kv"),
+            runtime=self.runtime,
+        )
+
     def append_full_attention_kv(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -1765,18 +2092,16 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> None:
-        qwen35_write_paged_kv_mixed_value_bf16_spans(
-            scratch.key.ptr,
-            scratch.value.ptr,
-            key_cache.ptr,
-            value_cache.ptr,
-            spans,
-            block_size,
-            self.config.num_key_value_heads,
-            self.config.head_dim,
+        self._append_full_attention_kv_resolved(
+            scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=spans,
+            kind=PagedKVWriteKind.DECODE,
+            rows=1,
+            block_size=block_size,
+            library=library,
             stream=stream,
-            library=_library_for(library, "kv"),
-            runtime=self.runtime,
         )
 
     def decode_full_attention_context_gate_bf16(
@@ -1837,6 +2162,60 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
+    def _decode_full_attention_int8_gqa_gate(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        chunk_size: int,
+        num_splits: int,
+        kind: PagedAttnDecodeKind,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        if key_cache.dtype is not DType.INT8 or value_cache.dtype is not DType.INT8:
+            raise ValueError("INT8 paged attention decode requires INT8 key/value cache tensors")
+        metadata = spans.scale_metadata
+        if metadata is None:
+            raise ValueError("INT8 paged attention decode requires scale metadata")
+        gate_tensor = scratch.gate if gate is None else gate
+        decode_fn = resolve_paged_attn_decode(
+            backend=_PAGED_KV_REGISTRY_BACKEND,
+            spans=spans,
+            kind=kind,
+        )
+        decode_fn(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            metadata.k_scale.ptr,
+            metadata.v_scale.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            scratch.partial_out.ptr,
+            scratch.partial_m.ptr,
+            scratch.partial_l.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            gate_tensor.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
     def decode_full_attention_gqa_gate_bf16(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -1852,6 +2231,21 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        if spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            return self._decode_full_attention_int8_gqa_gate(
+                scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=spans,
+                chunk_size=chunk_size,
+                num_splits=num_splits,
+                kind=PagedAttnDecodeKind.GQA_SPLITK_GATE_BF16,
+                gate=gate,
+                block_size=block_size,
+                scale=scale,
+                library=library,
+                stream=stream,
+            )
         gate_tensor = scratch.gate if gate is None else gate
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
             scratch.query.ptr,
@@ -1893,6 +2287,21 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        if spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            return self._decode_full_attention_int8_gqa_gate(
+                scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=spans,
+                chunk_size=chunk_size,
+                num_splits=num_splits,
+                kind=PagedAttnDecodeKind.GQA_SPLITK_GATE_BF16,
+                gate=gate,
+                block_size=block_size,
+                scale=scale,
+                library=library,
+                stream=stream,
+            )
         gate_tensor = scratch.gate if gate is None else gate
         decode_fn = _full_attention_split_gate_bf16_fn(
             self.config,
@@ -1986,7 +2395,7 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        if not _use_full_attention_split_decode(decode_spans.max_live_count):
+        if not _requires_full_attention_split_decode(decode_spans):
             gated = self.decode_full_attention_context_gate_bf16(
                 attention_scratch,
                 key_cache=key_cache,
@@ -2106,6 +2515,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        producer_trace: Callable[[str, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor]:
@@ -2141,7 +2551,12 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
-                gemv_awq_dual_pack8_transposed_fp16(
+                kv_dual_fn = (
+                    gemv_awq_dual_pack8_output_tiled_transposed_fp16
+                    if tokens in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_dual_pack8_transposed_fp16
+                )
+                kv_dual_fn(
                     scratch.k_rot.ptr,
                     scratch.v_rot.ptr,
                     k_qweight.ptr,
@@ -2192,7 +2607,12 @@ class Qwen35ParoDecodeState:
                 )
                 self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
             else:
-                gemv_awq_dual_pack8_transposed_fp16(
+                qk_dual_fn = (
+                    gemv_awq_dual_pack8_output_tiled_transposed_fp16
+                    if tokens in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_dual_pack8_transposed_fp16
+                )
+                qk_dual_fn(
                     scratch.q_rot.ptr,
                     scratch.k_rot.ptr,
                     q_qweight.ptr,
@@ -2315,6 +2735,8 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
+        if producer_trace is not None:
+            producer_trace("q_proj_key_after_project", scratch.q_proj_key)
         if not kv_fused:
             self.project_pack8_fp16(
                 scratch.v_rot,
@@ -2326,6 +2748,8 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+        if producer_trace is not None:
+            producer_trace("value_after_project", scratch.value)
         return scratch.q_proj, scratch.key_bf16, scratch.value
 
     def prepare_full_attention_qkv_fp16(
@@ -2338,6 +2762,7 @@ class Qwen35ParoDecodeState:
         max_positions: int,
         tokens: int = 1,
         query_bf16_out: Tensor | None = None,
+        producer_trace: Callable[[str, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -2354,6 +2779,9 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "qwen_rotary"),
             runtime=self.runtime,
         )
+        if producer_trace is not None:
+            producer_trace("query_raw_after_split", scratch.query_raw)
+            producer_trace("gate_after_split", scratch.gate)
         fp16_to_f32(
             scratch.key_bf16.ptr,
             scratch.key_raw.ptr,
@@ -2362,6 +2790,8 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
+        if producer_trace is not None:
+            producer_trace("key_raw_after_cast", scratch.key_raw)
         if query_bf16_out is not None:
             if query_bf16_out.dtype is not DType.BF16 or query_bf16_out.shape != scratch.query.shape:
                 raise ValueError("AOTriton query BF16 output must match full-attention query shape")
@@ -2433,7 +2863,663 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         query_out = query_bf16_out if query_bf16_out is not None else scratch.query
+        if producer_trace is not None:
+            producer_trace("query_after_prepare", query_out)
+            producer_trace("key_after_prepare", scratch.key)
         return query_out, scratch.key, scratch.value, scratch.gate
+
+    @staticmethod
+    def _row_tensor_view(tensor: Tensor, row: int) -> Tensor:
+        if not tensor.shape:
+            raise ValueError("cannot row-slice a scalar tensor")
+        rows = int(tensor.shape[0])
+        if row < 0 or row >= rows:
+            raise ValueError(f"row {row} outside tensor shape {tensor.shape}")
+        row_elements = 1
+        for dim in tensor.shape[1:]:
+            row_elements *= int(dim)
+        return Tensor.from_handle(
+            tensor.ptr + int(row) * row_elements * tensor.dtype.itemsize,
+            (1, *tuple(int(dim) for dim in tensor.shape[1:])),
+            tensor.dtype,
+            tensor.device,
+        )
+
+    def _decode_row_linear_attention_projection_scratch(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        row: int,
+    ) -> Qwen35ParoLinearAttentionScratch:
+        """Return row-local token-1 projection scratch for c>N linear decode.
+
+        The token-1 linear-attention projection kernels write packed [qkv,z] and
+        [a,b] rows, while the native segmented conv/GDN path consumes planar
+        batch buffers.  Use a one-row temporary projection scratch and copy the
+        resulting qkv/z/a/b rows into the batch-shaped scratch before native
+        segmented state updates.
+        """
+
+        cfg = self.config
+        lowp = scratch.attn_input.dtype
+        qkv_width = _linear_qkv_width(cfg)
+        z_width = _linear_value_width(cfg)
+        qkv_z = self.workspace.reserve_tensor("linear_attn.decode_row.qkv_z", (1, qkv_width + z_width), lowp)
+        qkv = Tensor.from_handle(qkv_z.ptr, (1, qkv_width), lowp, qkv_z.device)
+        z = Tensor.from_handle(qkv_z.ptr + qkv_width * lowp.itemsize, (1, z_width), lowp, qkv_z.device)
+        ab = self.workspace.reserve_tensor("linear_attn.decode_row.ab", (1, 2 * cfg.linear_num_value_heads), lowp)
+        a = Tensor.from_handle(ab.ptr, (1, cfg.linear_num_value_heads), lowp, ab.device)
+        b = Tensor.from_handle(
+            ab.ptr + cfg.linear_num_value_heads * lowp.itemsize,
+            (1, cfg.linear_num_value_heads),
+            lowp,
+            ab.device,
+        )
+        return Qwen35ParoLinearAttentionScratch(
+            attn_input=self._row_tensor_view(hidden, row),
+            qkv_rot=self.workspace.reserve_tensor("linear_attn.decode_row.qkv_rot", (1, cfg.hidden_size), lowp),
+            z_rot=self.workspace.reserve_tensor("linear_attn.decode_row.z_rot", (1, cfg.hidden_size), lowp),
+            rotate_fuse_barrier=self.workspace.reserve_tensor("linear_attn.decode_row.rotate_fuse_barrier", (2,), DType.INT32),
+            qkv_z=qkv_z,
+            qkv=qkv,
+            z=z,
+            qkv_f32=self._row_tensor_view(scratch.qkv_f32, row),
+            ab=ab,
+            a=a,
+            b=b,
+            conv_out=self._row_tensor_view(scratch.conv_out, row),
+            prefill_query=self._row_tensor_view(scratch.prefill_query, row),
+            prefill_key=self._row_tensor_view(scratch.prefill_key, row),
+            prefill_value=self._row_tensor_view(scratch.prefill_value, row),
+            prefill_beta=self._row_tensor_view(scratch.prefill_beta, row),
+            prefill_decay=self._row_tensor_view(scratch.prefill_decay, row),
+            recurrent_out=self._row_tensor_view(scratch.recurrent_out, row),
+            recurrent_bf16=self._row_tensor_view(scratch.recurrent_bf16, row),
+            out_rot=self._row_tensor_view(scratch.out_rot, row),
+            out_proj=self._row_tensor_view(scratch.out_proj, row),
+        )
+
+    def _decode_row_linear_attention_planar_scratch(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        row: int,
+    ) -> Qwen35ParoLinearAttentionScratch:
+        """Return row-local planar scratch views for c>N linear decode state/out replay."""
+
+        return Qwen35ParoLinearAttentionScratch(
+            attn_input=self._row_tensor_view(scratch.attn_input, row),
+            qkv_rot=self._row_tensor_view(scratch.qkv_rot, row),
+            z_rot=self._row_tensor_view(scratch.z_rot, row),
+            rotate_fuse_barrier=scratch.rotate_fuse_barrier,
+            qkv_z=scratch.qkv_z,
+            qkv=self._row_tensor_view(scratch.qkv, row),
+            z=self._row_tensor_view(scratch.z, row),
+            qkv_f32=self._row_tensor_view(scratch.qkv_f32, row),
+            ab=self._row_tensor_view(scratch.ab, row),
+            a=self._row_tensor_view(scratch.a, row),
+            b=self._row_tensor_view(scratch.b, row),
+            conv_out=self._row_tensor_view(scratch.conv_out, row),
+            prefill_query=self._row_tensor_view(scratch.prefill_query, row),
+            prefill_key=self._row_tensor_view(scratch.prefill_key, row),
+            prefill_value=self._row_tensor_view(scratch.prefill_value, row),
+            prefill_beta=self._row_tensor_view(scratch.prefill_beta, row),
+            prefill_decay=self._row_tensor_view(scratch.prefill_decay, row),
+            recurrent_out=self._row_tensor_view(scratch.recurrent_out, row),
+            recurrent_bf16=self._row_tensor_view(scratch.recurrent_bf16, row),
+            out_rot=self._row_tensor_view(scratch.out_rot, row),
+            out_proj=self._row_tensor_view(scratch.out_proj, row),
+        )
+
+    def project_linear_attention_decode_rows_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Replay linear-attention decode projections with the token-1 path.
+
+        This is a diagnostic bridge for c>N decode: projections use c1 kernels
+        row by row, then the native segmented conv/GDN kernels consume the
+        reconstructed batch-shaped qkv/z/a/b buffers.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.rotate_linear_attention_inputs_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            self.project_linear_attention_qkv_z_fp16(
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            self.project_linear_attention_ab_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                library=library,
+                stream=stream,
+            )
+            for dst, src in (
+                (self._row_tensor_view(scratch.qkv, row), row_scratch.qkv),
+                (self._row_tensor_view(scratch.z, row), row_scratch.z),
+                (self._row_tensor_view(scratch.a, row), row_scratch.a),
+                (self._row_tensor_view(scratch.b, row), row_scratch.b),
+            ):
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.qkv, scratch.z, scratch.a, scratch.b
+
+    def project_linear_attention_decode_rows_qkv_z_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Replay only linear-attention QKV/Z projections with the token-1 path."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.rotate_linear_attention_inputs_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            self.project_linear_attention_qkv_z_fp16(
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            for dst, src in (
+                (self._row_tensor_view(scratch.qkv, row), row_scratch.qkv),
+                (self._row_tensor_view(scratch.z, row), row_scratch.z),
+            ):
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.qkv, scratch.z
+
+    def project_linear_attention_decode_rows_qkv_z_subset_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        copy_qkv: bool,
+        copy_z: bool,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Replay selected QKV/Z projection outputs with token-1 rows."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if not copy_qkv and not copy_z:
+            return scratch.qkv, scratch.z
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.rotate_linear_attention_inputs_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            self.project_linear_attention_qkv_z_fp16(
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            copies: list[tuple[Tensor, Tensor]] = []
+            if copy_qkv:
+                copies.append((self._row_tensor_view(scratch.qkv, row), row_scratch.qkv))
+            if copy_z:
+                copies.append((self._row_tensor_view(scratch.z, row), row_scratch.z))
+            for dst, src in copies:
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.qkv, scratch.z
+
+    def rotate_linear_attention_decode_rows_qkv_z_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Replay only the QKV/Z rotary-input stage with token-1 rows."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.rotate_linear_attention_inputs_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            for dst, src in (
+                (self._row_tensor_view(scratch.qkv_rot, row), row_scratch.qkv_rot),
+                (self._row_tensor_view(scratch.z_rot, row), row_scratch.z_rot),
+            ):
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.qkv_rot, scratch.z_rot
+
+    def project_linear_attention_decode_rows_ab_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Replay only linear-attention A/B projections with the token-1 path."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.project_linear_attention_ab_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                library=library,
+                stream=stream,
+            )
+            for dst, src in (
+                (self._row_tensor_view(scratch.a, row), row_scratch.a),
+                (self._row_tensor_view(scratch.b, row), row_scratch.b),
+            ):
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.a, scratch.b
+
+    def run_linear_attention_decode_rows_state_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        state_pairs: Sequence[tuple[Tensor, Tensor]],
+        tokens: int,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay linear-attention conv/GDN recurrent updates with token-1 state kernels."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if len(state_pairs) < tokens:
+            raise ValueError("state_pairs must provide one conv/recurrent pair per token")
+        for row in range(tokens):
+            conv_state, recurrent_state = state_pairs[row]
+            self.run_linear_attention_conv_gdn_fp16(
+                self._decode_row_linear_attention_planar_scratch(scratch, row),
+                conv_state=conv_state,
+                recurrent_state=recurrent_state,
+                library=library,
+                stream=stream,
+            )
+        return scratch.recurrent_out
+
+    def project_linear_attention_decode_rows_out_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay linear-attention output projection with token-1 kernels per row.
+
+        This path matches token-1 decode state replay: ``scratch.recurrent_out``
+        already contains the post-GDN/RMSNorm/gate FP32 row and must be cast to
+        lowp before rotation/output projection.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        for row in range(tokens):
+            self.project_linear_attention_out_fp16(
+                self._decode_row_linear_attention_planar_scratch(scratch, row),
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return scratch.out_proj
+
+    def project_linear_attention_prefill_rows_out_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay output projection per row from segmented-state lowp output.
+
+        Segment-aware state replay writes raw recurrent state to
+        ``scratch.recurrent_out`` and the post-GDN/RMSNorm/gate activation to
+        ``scratch.recurrent_bf16``.  Per-row output diagnostics for that state
+        path must therefore consume ``recurrent_bf16`` directly instead of
+        recasting the raw recurrent tensor as token-1 decode does.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        for row in range(tokens):
+            self.project_linear_attention_prefill_out_fp16(
+                self._decode_row_linear_attention_planar_scratch(scratch, row),
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return scratch.out_proj
+
+    def _decode_row_full_attention_temp_scratch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+    ) -> Qwen35ParoAttentionScratch:
+        """Return an independent token-1 scratch for full-attention decode diagnostics."""
+
+        cfg = self.config
+        q_width = cfg.num_attention_heads * cfg.head_dim
+        kv_width = cfg.num_key_value_heads * cfg.head_dim
+        lowp = scratch.attn_input.dtype
+        gated = scratch.gate.dtype
+        query_dtype = scratch.query.dtype
+        q_proj_key = self.workspace.reserve_tensor("attn.decode_row.q_proj_key", (1, 2 * q_width + kv_width), lowp)
+        q_proj = Tensor.from_handle(q_proj_key.ptr, (1, 2 * q_width), lowp, q_proj_key.device)
+        key_bf16 = Tensor.from_handle(
+            q_proj_key.ptr + 2 * q_width * lowp.itemsize,
+            (1, kv_width),
+            lowp,
+            q_proj_key.device,
+        )
+        kv_proj = None
+        if _full_attn_kv_pack8_fused_enabled():
+            kv_proj = self.workspace.reserve_tensor("attn.decode_row.kv_proj", (1, 2 * kv_width), lowp)
+            key_bf16 = Tensor.from_handle(kv_proj.ptr, (1, kv_width), lowp, kv_proj.device)
+            value = Tensor.from_handle(
+                kv_proj.ptr + kv_width * lowp.itemsize,
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                lowp,
+                kv_proj.device,
+            )
+        else:
+            value = self.workspace.reserve_tensor(
+                "attn.decode_row.value",
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                lowp,
+            )
+        return Qwen35ParoAttentionScratch(
+            attn_input=self.workspace.reserve_tensor("attn.decode_row.input", (1, cfg.hidden_size), lowp),
+            q_rot=self.workspace.reserve_tensor("attn.decode_row.q_rot", (1, cfg.hidden_size), lowp),
+            k_rot=self.workspace.reserve_tensor("attn.decode_row.k_rot", (1, cfg.hidden_size), lowp),
+            v_rot=self.workspace.reserve_tensor("attn.decode_row.v_rot", (1, cfg.hidden_size), lowp),
+            rotate_fuse_barrier=self.workspace.reserve_tensor("attn.decode_row.rotate_fuse_barrier", (2,), DType.INT32),
+            q_proj_key=q_proj_key,
+            q_proj=q_proj,
+            key_bf16=key_bf16,
+            query_raw=self.workspace.reserve_tensor(
+                "attn.decode_row.query_raw",
+                (1, cfg.num_attention_heads, cfg.head_dim),
+                DType.FP32,
+            ),
+            key_raw=self.workspace.reserve_tensor(
+                "attn.decode_row.key_raw",
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                DType.FP32,
+            ),
+            query=self.workspace.reserve_tensor(
+                "attn.decode_row.query",
+                (1, cfg.num_attention_heads, cfg.head_dim),
+                query_dtype,
+            ),
+            key=self.workspace.reserve_tensor(
+                "attn.decode_row.key",
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                DType.FP32,
+            ),
+            value=value,
+            kv_proj=kv_proj,
+            gate=self.workspace.reserve_tensor(
+                "attn.decode_row.gate",
+                (1, cfg.num_attention_heads, cfg.head_dim),
+                gated,
+            ),
+            partial_out=self.workspace.reserve_tensor(
+                "attn.decode_row.partial_out",
+                (cfg.num_attention_heads, 1, cfg.head_dim),
+                DType.FP32,
+            ),
+            partial_m=self.workspace.reserve_tensor("attn.decode_row.partial_m", (cfg.num_attention_heads, 1), DType.FP32),
+            partial_l=self.workspace.reserve_tensor("attn.decode_row.partial_l", (cfg.num_attention_heads, 1), DType.FP32),
+            attn_out=self.workspace.reserve_tensor("attn.decode_row.out", (cfg.num_attention_heads, cfg.head_dim), DType.FP32),
+            gated_attn=self.workspace.reserve_tensor("attn.decode_row.gated", (1, q_width), gated),
+            o_rot=self.workspace.reserve_tensor("attn.decode_row.o_rot", (1, q_width), lowp),
+            o_proj=self.workspace.reserve_tensor("attn.decode_row.o_proj", (1, cfg.hidden_size), lowp),
+        )
+
+    def _decode_row_full_attention_scratch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        row: int,
+    ) -> Qwen35ParoAttentionScratch:
+        """Return row-local views for c>N decode Q/K/V preparation.
+
+        ``q_proj_key`` is laid out as all Q/G rows followed by all K rows for
+        batch prefill.  The token-1 decode projection kernel, however, writes a
+        temporary row as contiguous ``[q_gate, key]``.  Use the start of that
+        buffer as per-row temporary storage and copy only the prepared
+        query/key/value/gate row into the batch-shaped scratch outputs.
+        """
+
+        cfg = self.config
+        q_width = cfg.num_attention_heads * cfg.head_dim
+        kv_width = cfg.num_key_value_heads * cfg.head_dim
+        temp = Tensor.from_handle(
+            scratch.q_proj_key.ptr,
+            (1, 2 * q_width + kv_width),
+            scratch.q_proj_key.dtype,
+            scratch.q_proj_key.device,
+        )
+        q_proj = Tensor.from_handle(temp.ptr, (1, 2 * q_width), temp.dtype, temp.device)
+        key_bf16 = Tensor.from_handle(
+            temp.ptr + 2 * q_width * temp.dtype.itemsize,
+            (1, kv_width),
+            temp.dtype,
+            temp.device,
+        )
+        return Qwen35ParoAttentionScratch(
+            attn_input=self._row_tensor_view(scratch.attn_input, row),
+            q_rot=self._row_tensor_view(scratch.q_rot, row),
+            k_rot=self._row_tensor_view(scratch.k_rot, row),
+            v_rot=self._row_tensor_view(scratch.v_rot, row),
+            rotate_fuse_barrier=scratch.rotate_fuse_barrier,
+            q_proj_key=temp,
+            q_proj=q_proj,
+            key_bf16=key_bf16,
+            query_raw=self._row_tensor_view(scratch.query_raw, row),
+            key_raw=self._row_tensor_view(scratch.key_raw, row),
+            query=self._row_tensor_view(scratch.query, row),
+            key=self._row_tensor_view(scratch.key, row),
+            value=self._row_tensor_view(scratch.value, row),
+            kv_proj=None,
+            gate=self._row_tensor_view(scratch.gate, row),
+            partial_out=scratch.partial_out,
+            partial_m=scratch.partial_m,
+            partial_l=scratch.partial_l,
+            attn_out=scratch.attn_out,
+            gated_attn=self._row_tensor_view(scratch.gated_attn, row),
+            o_rot=self._row_tensor_view(scratch.o_rot, row),
+            o_proj=self._row_tensor_view(scratch.o_proj, row),
+        )
+
+    def prepare_full_attention_qkv_fp16_decode_rows(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        cos_table: Tensor,
+        sin_table: Tensor,
+        positions: Tensor,
+        max_positions: int,
+        tokens: int,
+        group_size: int = 128,
+        input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
+        qkv_tensor_trace: Callable[[str, int, Tensor], None] | None = None,
+        force_per_row_scratch: bool = False,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Prepare decode Q/K/V rows with the token-1 projection path.
+
+        This keeps compact c>N decode numerically aligned with independent c=1
+        decode while the prefill-oriented W4 projection path is audited for
+        long autoregressive parity.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_full_attention_scratch(scratch, row)
+            active_scratch = row_scratch
+            if force_per_row_scratch and tokens > 1:
+                active_scratch = self._decode_row_full_attention_temp_scratch(scratch)
+                runtime.memcpy_async(
+                    active_scratch.attn_input.ptr,
+                    row_scratch.attn_input.ptr,
+                    row_scratch.attn_input.numel * row_scratch.attn_input.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            row_position = Tensor.from_handle(
+                positions.ptr + row * DType.INT64.itemsize,
+                (1,),
+                DType.INT64,
+                positions.device,
+            )
+            self.rotate_full_attention_inputs_fp16(
+                active_scratch.attn_input,
+                active_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            if input_scratch_trace is not None:
+                input_scratch_trace("attn_input_after_rotate", row, active_scratch)
+            def producer_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
+                if qkv_tensor_trace is not None:
+                    qkv_tensor_trace(stage, _row, tensor)
+
+            self.project_full_attention_qkv_fp16(
+                active_scratch,
+                tokens=1,
+                group_size=group_size,
+                producer_trace=producer_trace if qkv_tensor_trace is not None else None,
+                library=library,
+                stream=stream,
+            )
+            if input_scratch_trace is not None:
+                input_scratch_trace("attn_input_after_project", row, active_scratch)
+
+            self.prepare_full_attention_qkv_fp16(
+                active_scratch,
+                cos_table=cos_table,
+                sin_table=sin_table,
+                position=row_position,
+                max_positions=max_positions,
+                tokens=1,
+                producer_trace=producer_trace if qkv_tensor_trace is not None else None,
+                library=library,
+                stream=stream,
+            )
+            if force_per_row_scratch and tokens > 1:
+                for dst, src in (
+                    (row_scratch.query, active_scratch.query),
+                    (row_scratch.key, active_scratch.key),
+                    (row_scratch.value, active_scratch.value),
+                    (row_scratch.gate, active_scratch.gate),
+                ):
+                    runtime.memcpy_async(
+                        dst.ptr,
+                        src.ptr,
+                        src.numel * src.dtype.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+            if input_scratch_trace is not None:
+                input_scratch_trace("attn_input_after_prepare", row, active_scratch)
+        return scratch.query, scratch.key, scratch.value, scratch.gate
 
     def append_full_attention_kv_fp16(
         self,
@@ -2446,18 +3532,16 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> None:
-        qwen35_write_paged_kv_mixed_value_fp16_spans(
-            scratch.key.ptr,
-            scratch.value.ptr,
-            key_cache.ptr,
-            value_cache.ptr,
-            spans,
-            block_size,
-            self.config.num_key_value_heads,
-            self.config.head_dim,
+        self._append_full_attention_kv_resolved(
+            scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=spans,
+            kind=PagedKVWriteKind.DECODE,
+            rows=1,
+            block_size=block_size,
+            library=library,
             stream=stream,
-            library=_library_for(library, "kv"),
-            runtime=self.runtime,
         )
 
     def prefill_full_attention_gqa_gate_fp16(
@@ -2608,6 +3692,8 @@ class Qwen35ParoDecodeState:
         key_cache: Tensor | None = None,
         value_cache: Tensor | None = None,
         attn_bf16_out: Tensor | None = None,
+        max_seqlen_q: int | None = None,
+        max_seqlen_k: int | None = None,
         scale: float | None = None,
         library=None,
         stream: int = 0,
@@ -2621,8 +3707,10 @@ class Qwen35ParoDecodeState:
             raise ValueError("AOTriton key/value rows must cover query rows")
         if cu_seqlens_q.dtype is not DType.INT32 or cu_seqlens_k.dtype is not DType.INT32:
             raise ValueError("AOTriton compact-varlen prefill expects int32 cu_seqlens tensors")
-        if scratch.query.dtype is not DType.FP32 or scratch.key.dtype is not DType.FP32 or scratch.value.dtype is not DType.FP16:
-            raise ValueError("AOTriton prefill expects FP32 Q/K source tensors and FP16 V scratch tensor")
+        if scratch.key.dtype is not DType.FP32 or scratch.value.dtype is not DType.FP16:
+            raise ValueError("AOTriton prefill expects FP32 K source tensor and FP16 V scratch tensor")
+        if query_bf16 is None and scratch.query.dtype is not DType.FP32:
+            raise ValueError("AOTriton prefill expects an FP32 Q source tensor unless query_bf16 is provided")
         lse = self.workspace.reserve_tensor("attn.aotriton_lse", (self.config.num_attention_heads, rows), DType.FP32)
         q_heads = self.config.num_attention_heads
         kv_heads = self.config.num_key_value_heads
@@ -2722,8 +3810,8 @@ class Qwen35ParoDecodeState:
             aotriton_tensor2(lse.ptr, (q_heads, rows), (rows, 1), DType.FP32),
             aotriton_tensor4(attn_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
             persistent_atomic_counter_ptr=atomic_counter.ptr,
-            max_seqlen_q=rows,
-            max_seqlen_k=key_rows,
+            max_seqlen_q=int(rows if max_seqlen_q is None else max_seqlen_q),
+            max_seqlen_k=int(key_rows if max_seqlen_k is None else max_seqlen_k),
             sm_scale=(self.config.head_dim ** -0.5) if scale is None else scale,
             is_causal=True,
             stream=stream,
@@ -2745,6 +3833,8 @@ class Qwen35ParoDecodeState:
         query_bf16: Tensor | None = None,
         key_cache: Tensor | None = None,
         value_cache: Tensor | None = None,
+        max_seqlen_q: int | None = None,
+        max_seqlen_k: int | None = None,
         scale: float | None = None,
         library=None,
         stream: int = 0,
@@ -2768,6 +3858,8 @@ class Qwen35ParoDecodeState:
             query_bf16=query_bf16,
             key_cache=key_cache,
             value_cache=value_cache,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_k=max_seqlen_k,
             scale=scale,
             library=library,
             stream=stream,
@@ -2797,20 +3889,128 @@ class Qwen35ParoDecodeState:
     ) -> None:
         """Append prompt K/V rows into one request's paged KV cache."""
 
-        qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(
-            scratch.key.ptr,
-            scratch.value.ptr,
+        self._append_full_attention_kv_resolved(
+            scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=spans,
+            kind=PagedKVWriteKind.PROMPT,
+            rows=rows,
+            block_size=block_size,
+            library=library,
+            stream=stream,
+        )
+
+    def append_full_attention_kv_fp16_decode_batch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        block_size: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> None:
+        """Append one decode K/V row per active request into row-major KV slots."""
+
+        self._append_full_attention_kv_resolved(
+            scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=spans,
+            kind=PagedKVWriteKind.BATCH,
+            rows=rows,
+            block_size=block_size,
+            library=library,
+            stream=stream,
+        )
+
+    def append_full_attention_kv_int8_per_token_head_fp16_batch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        block_size: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> None:
+        """Append FP16-prefill K/V rows into an INT8 retained KV cache."""
+
+        if spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            raise ValueError("INT8 retained prefill append requires int8_per_token_head spans")
+        self._append_full_attention_kv_resolved(
+            scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=spans,
+            kind=PagedKVWriteKind.PROMPT,
+            rows=rows,
+            block_size=block_size,
+            library=library,
+            stream=stream,
+        )
+
+    def decode_full_attention_context_gate_fp16_batch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Decode BF16 paged attention for one active token per row.
+
+        This batch path intentionally covers the retained 512/128 bring-up
+        protocol where context remains below the split-K threshold. Longer
+        contexts still need a row-aware split-K reducer before they can be
+        labelled native c-aware decode.
+        """
+
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if spans.storage_dtype != DType.BF16:
+            raise NotImplementedError("native batch context decode currently requires BF16 KV")
+        if spans.max_live_count >= 1024:
+            raise NotImplementedError("native batch split-K full-attention decode is not wired")
+        gate_tensor = scratch.gate if gate is None else gate
+        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+            scratch.query.ptr,
             key_cache.ptr,
             value_cache.ptr,
+            scratch.query_raw.ptr,
             spans,
             rows,
+            spans.max_live_count,
             block_size,
+            self.config.num_attention_heads,
             self.config.num_key_value_heads,
             self.config.head_dim,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
             stream=stream,
-            library=_library_for(library, "kv"),
+            library=_library_for(library, "attention"),
             runtime=self.runtime,
         )
+        qwen35_full_attn_gate_mul_fp16(
+            scratch.query_raw.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            rows * self.config.num_attention_heads * self.config.head_dim,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
 
     def decode_full_attention_context_gate_fp16(
         self,
@@ -2822,11 +4022,35 @@ class Qwen35ParoDecodeState:
         gate: Tensor | None = None,
         block_size: int = 256,
         scale: float | None = None,
+        force_paged_context: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         gate_tensor = scratch.gate if gate is None else gate
-        if spans.max_live_count < 1024:
+        if force_paged_context:
+            # Per-row diagnostics after a batch KV append must honor the same
+            # KVLiveSpans block-table addressing as the native batch context
+            # kernel; the dense token-1 context kernel assumes a compact row
+            # cache and is kept only for the normal c=1 path.
+            if spans.storage_dtype != DType.BF16:
+                raise NotImplementedError("forced paged full-attention context diagnostic currently requires BF16 KV")
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                scratch.query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.attn_out.ptr,
+                spans,
+                spans.max_live_count,
+                block_size,
+                self.config.num_attention_heads,
+                self.config.num_key_value_heads,
+                self.config.head_dim,
+                (self.config.head_dim ** -0.5) if scale is None else scale,
+                stream=stream,
+                library=_library_for(library, "attention"),
+                runtime=self.runtime,
+            )
+        elif spans.max_live_count < 1024:
             qwen35_full_attn_decode_context_bf16(
                 scratch.query.ptr,
                 key_cache.ptr,
@@ -2885,6 +4109,21 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        if spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            return self._decode_full_attention_int8_gqa_gate(
+                scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=spans,
+                chunk_size=chunk_size,
+                num_splits=num_splits,
+                kind=PagedAttnDecodeKind.GQA_SPLITK_GATE_FP16,
+                gate=gate,
+                block_size=block_size,
+                scale=scale,
+                library=library,
+                stream=stream,
+            )
         gate_tensor = scratch.gate if gate is None else gate
         split_kernel = (
             qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans
@@ -2984,6 +4223,21 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        if spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            return self._decode_full_attention_int8_gqa_gate(
+                scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=spans,
+                chunk_size=chunk_size,
+                num_splits=num_splits,
+                kind=PagedAttnDecodeKind.GQA_SPLITK_GATE_FP16,
+                gate=gate,
+                block_size=block_size,
+                scale=scale,
+                library=library,
+                stream=stream,
+            )
         gate_tensor = scratch.gate if gate is None else gate
         decode_fn = _full_attention_split_gate_fp16_fn(
             self.config,
@@ -3023,6 +4277,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_pack8_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3051,9 +4306,35 @@ class Qwen35ParoDecodeState:
             in_features=q_width,
             group_size=group_size,
             threads=64 if tokens > 1 else 128,
+            force_gemv=force_pack8_gemv,
             library=library,
             stream=stream,
         )
+        return scratch.o_proj
+
+    def project_full_attention_o_rows_fp16(
+        self,
+        gated_attn: Tensor,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay full-attention O projection with token-1 kernels per row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        for row in range(tokens):
+            self.project_full_attention_o_fp16(
+                self._row_tensor_view(gated_attn, row),
+                self._decode_row_full_attention_scratch(scratch, row),
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         return scratch.o_proj
 
     def project_full_attention_o_bf16_attn_gate_fp16(
@@ -3128,6 +4409,9 @@ class Qwen35ParoDecodeState:
         block_size: int = 256,
         chunk_size: int = 256,
         num_splits: int = 1,
+        post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
+        input_scratch_trace: Callable[[str, Qwen35ParoAttentionScratch], None] | None = None,
+        qkv_tensor_trace: Callable[[str, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3149,6 +4433,8 @@ class Qwen35ParoDecodeState:
         else:
             moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        if post_input_rmsnorm_trace is not None:
+            post_input_rmsnorm_trace(attention_scratch)
         self.rotate_full_attention_inputs_fp16(
             attention_scratch.attn_input,
             attention_scratch,
@@ -3157,13 +4443,18 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if input_scratch_trace is not None:
+            input_scratch_trace("attn_input_after_rotate", attention_scratch)
         self.project_full_attention_qkv_fp16(
             attention_scratch,
             tokens=tokens,
             group_size=group_size,
+            producer_trace=qkv_tensor_trace,
             library=library,
             stream=stream,
         )
+        if input_scratch_trace is not None:
+            input_scratch_trace("attn_input_after_project", attention_scratch)
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
             attention_scratch,
             cos_table=cos_table,
@@ -3171,9 +4462,12 @@ class Qwen35ParoDecodeState:
             position=position,
             max_positions=max_positions,
             tokens=tokens,
+            producer_trace=qkv_tensor_trace,
             library=library,
             stream=stream,
         )
+        if input_scratch_trace is not None:
+            input_scratch_trace("attn_input_after_prepare", attention_scratch)
         self.append_full_attention_kv_fp16(
             attention_scratch,
             key_cache=key_cache,
@@ -3183,7 +4477,7 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        if not _use_full_attention_split_decode(decode_spans.max_live_count):
+        if not _requires_full_attention_split_decode(decode_spans):
             gated = self.decode_full_attention_context_gate_fp16(
                 attention_scratch,
                 key_cache=key_cache,
@@ -3245,6 +4539,1051 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
 
+    def run_full_attention_moe_decode_batch_layer_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        append_spans: KVLiveSpans,
+        decode_spans: KVLiveSpans,
+        cos_table: Tensor,
+        sin_table: Tensor,
+        positions: Tensor,
+        max_positions: int,
+        attention_scratch: Qwen35ParoAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        block_size: int = 256,
+        force_selected_c1_moe: bool = False,
+        force_per_row_input_rmsnorm: bool = False,
+        force_per_row_qkv_scratch: bool = False,
+        force_per_row_layer_scratch: bool = False,
+        force_per_row_layer_batch_scratch: bool = False,
+        force_per_row_attention_batch_moe: bool = False,
+        force_per_row_attention_batch_post_moe: bool = False,
+        force_per_row_attention_batch_o_post_moe: bool = False,
+        force_per_row_preqkv_append_batch_context_o_post_moe: bool = False,
+        force_per_row_preqkv_append_context_batch_gate_o_post_moe: bool = False,
+        force_per_row_preqkv_append_context_gate_batch_o_post_moe: bool = False,
+        force_per_row_context: bool = False,
+        force_per_row_context_only: bool = False,
+        force_per_row_dense_context_only: bool = False,
+        force_per_row_dense_context_batch_gate: bool = False,
+        force_per_row_paged_context_only: bool = False,
+        force_batch_temp_context: bool = False,
+        force_batch_compact_context: bool = False,
+        force_per_row_gate: bool = False,
+        per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
+        force_per_row_kv_append: bool = False,
+        per_row_append_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
+        force_per_row_append_context: bool = False,
+        force_per_row_suffix: bool = False,
+        force_per_row_output: bool = False,
+        force_batch_gemv_output: bool = False,
+        force_per_row_post_attention: bool = False,
+        force_per_row_moe: bool = False,
+        post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
+        input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
+        qkv_tensor_trace: Callable[[str, int, Tensor], None] | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run one native full-attention decode token for each active batch row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        attention_scratch = attention_scratch or self.reserve_full_attention_scratch(
+            tokens=tokens,
+            num_splits=1,
+            activation_dtype=DType.FP16,
+            gated_dtype=DType.FP16,
+        )
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        if dense_mlp:
+            if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
+                moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif tokens > 1 and not (
+            force_selected_c1_moe
+            or force_per_row_moe
+            or force_per_row_layer_scratch
+            or force_per_row_layer_batch_scratch
+        ):
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+            moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        input_rmsnorm_fn = (
+            self.input_rmsnorm_fp16_per_row
+            if force_per_row_input_rmsnorm and tokens > 1
+            else self.input_rmsnorm_fp16
+        )
+        input_rmsnorm_fn(
+            hidden,
+            attention_scratch.attn_input,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        if post_input_rmsnorm_trace is not None:
+            post_input_rmsnorm_trace(attention_scratch)
+        if (
+            force_per_row_attention_batch_moe
+            or force_per_row_attention_batch_post_moe
+            or force_per_row_attention_batch_o_post_moe
+            or force_per_row_preqkv_append_batch_context_o_post_moe
+            or force_per_row_preqkv_append_context_batch_gate_o_post_moe
+            or force_per_row_preqkv_append_context_gate_batch_o_post_moe
+        ) and tokens > 1:
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            if dense_mlp:
+                raise NotImplementedError("per-row attention / batch-MoE diagnostic is currently wired for MoE layers")
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                raise ValueError("per-row attention / batch-MoE diagnostic requires grouped MoE scratch")
+            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
+                zip(per_row_append_contexts, per_row_contexts, strict=True)
+            ):
+                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple
+                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
+                    raise ValueError("per-row attention / batch-MoE diagnostics must use matching row cache views")
+                row_hidden = self._row_tensor_view(hidden, row)
+                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                row_position = Tensor.from_handle(
+                    positions.ptr + row * DType.INT64.itemsize,
+                    (1,),
+                    DType.INT64,
+                    positions.device,
+                )
+
+                def row_input_scratch_trace(stage: str, scratch: Qwen35ParoAttentionScratch, *, _row: int = row) -> None:
+                    if input_scratch_trace is not None:
+                        input_scratch_trace(stage, _row, scratch)
+
+                def row_qkv_tensor_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
+                    if qkv_tensor_trace is not None:
+                        qkv_tensor_trace(stage, _row, tensor)
+
+                self.input_rmsnorm_fp16(row_hidden, row_scratch.attn_input, tokens=1, library=library, stream=stream)
+                self.rotate_full_attention_inputs_fp16(
+                    row_scratch.attn_input,
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_input_scratch_trace("attn_input_after_rotate", row_scratch)
+                self.project_full_attention_qkv_fp16(
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    producer_trace=row_qkv_tensor_trace if qkv_tensor_trace is not None else None,
+                    library=library,
+                    stream=stream,
+                )
+                row_input_scratch_trace("attn_input_after_project", row_scratch)
+                _row_query, _row_key, _row_value, row_gate = self.prepare_full_attention_qkv_fp16(
+                    row_scratch,
+                    cos_table=cos_table,
+                    sin_table=sin_table,
+                    position=row_position,
+                    max_positions=max_positions,
+                    tokens=1,
+                    producer_trace=row_qkv_tensor_trace if qkv_tensor_trace is not None else None,
+                    library=library,
+                    stream=stream,
+                )
+                row_input_scratch_trace("attn_input_after_prepare", row_scratch)
+                self.append_full_attention_kv_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_append_spans,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                if not force_per_row_preqkv_append_batch_context_o_post_moe:
+                    if not _requires_full_attention_split_decode(row_decode_spans):
+                        row_gated = self.decode_full_attention_context_gate_fp16(
+                            row_scratch,
+                            key_cache=row_key_cache,
+                            value_cache=row_value_cache,
+                            spans=row_decode_spans,
+                            gate=row_gate,
+                            block_size=block_size,
+                            library=library,
+                            stream=stream,
+                        )
+                    else:
+                        raise NotImplementedError(
+                            "per-row attention / batch-MoE diagnostic does not cover split-K full-attention decode"
+                        )
+                    if force_per_row_preqkv_append_context_batch_gate_o_post_moe:
+                        row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                        (self.runtime or get_hip_runtime()).memcpy_async(
+                            row_context.ptr,
+                            attention_scratch.attn_out.ptr,
+                            self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    elif not (
+                        force_per_row_attention_batch_o_post_moe
+                        or force_per_row_preqkv_append_context_gate_batch_o_post_moe
+                    ):
+                        self.project_full_attention_o_fp16(
+                            row_gated,
+                            row_scratch,
+                            tokens=1,
+                            group_size=group_size,
+                            library=library,
+                            stream=stream,
+                        )
+            if force_per_row_preqkv_append_batch_context_o_post_moe:
+                if _requires_full_attention_split_decode(decode_spans):
+                    raise NotImplementedError(
+                        "per-row pre-QKV/append + batch context diagnostic does not cover split-K full-attention decode"
+                    )
+                gated = self.decode_full_attention_context_gate_fp16_batch(
+                    attention_scratch,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    spans=decode_spans,
+                    rows=tokens,
+                    gate=attention_scratch.gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                attn_out = self.project_full_attention_o_fp16(
+                    gated,
+                    attention_scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    force_pack8_gemv=force_batch_gemv_output,
+                    library=library,
+                    stream=stream,
+                )
+            elif force_per_row_preqkv_append_context_batch_gate_o_post_moe:
+                qwen35_full_attn_gate_mul_fp16(
+                    attention_scratch.query_raw.ptr,
+                    attention_scratch.gate.ptr,
+                    attention_scratch.gated_attn.ptr,
+                    tokens * self.config.num_attention_heads * self.config.head_dim,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                attn_out = self.project_full_attention_o_fp16(
+                    attention_scratch.gated_attn,
+                    attention_scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    force_pack8_gemv=force_batch_gemv_output,
+                    library=library,
+                    stream=stream,
+                )
+            else:
+                attn_out = (
+                    self.project_full_attention_o_fp16(
+                        attention_scratch.gated_attn,
+                        attention_scratch,
+                        tokens=tokens,
+                        group_size=group_size,
+                        force_pack8_gemv=force_batch_gemv_output,
+                        library=library,
+                        stream=stream,
+                    )
+                    if (
+                        force_per_row_attention_batch_o_post_moe
+                        or force_per_row_preqkv_append_context_gate_batch_o_post_moe
+                    )
+                    else attention_scratch.o_proj
+                )
+            post_attention_fn = (
+                self.post_attention_add_rmsnorm_fp16
+                if (
+                    force_per_row_attention_batch_post_moe
+                    or force_per_row_attention_batch_o_post_moe
+                    or force_per_row_preqkv_append_batch_context_o_post_moe
+                    or force_per_row_preqkv_append_context_batch_gate_o_post_moe
+                    or force_per_row_preqkv_append_context_gate_batch_o_post_moe
+                )
+                else self.post_attention_add_rmsnorm_fp16_per_row
+            )
+            mlp_input, residual = post_attention_fn(
+                hidden,
+                attn_out,
+                moe_scratch,
+                tokens=tokens,
+                library=library,
+                stream=stream,
+            )
+            return self.run_moe_grouped_compact_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if (force_per_row_layer_scratch or force_per_row_layer_batch_scratch) and tokens > 1:
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            if dense_mlp:
+                raise NotImplementedError("per-row full-attention scratch diagnostic is currently wired for MoE layers")
+            if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+                raise ValueError("per-row full-attention scratch diagnostic requires token-row MoE scratch")
+            row_moe_scratch = self.reserve_moe_c1_scratch(
+                tokens=1,
+                activation_dtype=hidden.dtype,
+                prefix="moe.decode_row_layer_scratch",
+            )
+            runtime = self.runtime or get_hip_runtime()
+            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
+                zip(per_row_append_contexts, per_row_contexts, strict=True)
+            ):
+                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple
+                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
+                    raise ValueError("per-row full-attention scratch diagnostics must use matching row cache views")
+                row_hidden = self._row_tensor_view(hidden, row)
+                row_scratch = (
+                    self._decode_row_full_attention_scratch(attention_scratch, row)
+                    if force_per_row_layer_batch_scratch
+                    else self._decode_row_full_attention_temp_scratch(attention_scratch)
+                )
+                row_position = Tensor.from_handle(
+                    positions.ptr + row * DType.INT64.itemsize,
+                    (1,),
+                    DType.INT64,
+                    positions.device,
+                )
+
+                def row_input_scratch_trace(stage: str, scratch: Qwen35ParoAttentionScratch, *, _row: int = row) -> None:
+                    if input_scratch_trace is not None:
+                        input_scratch_trace(stage, _row, scratch)
+
+                def row_qkv_tensor_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
+                    if qkv_tensor_trace is not None:
+                        qkv_tensor_trace(stage, _row, tensor)
+
+                row_out = self.run_full_attention_moe_c1_layer_fp16(
+                    row_hidden,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    append_spans=row_append_spans,
+                    decode_spans=row_decode_spans,
+                    cos_table=cos_table,
+                    sin_table=sin_table,
+                    position=row_position,
+                    max_positions=max_positions,
+                    attention_scratch=row_scratch,
+                    moe_scratch=row_moe_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    block_size=block_size,
+                    input_scratch_trace=row_input_scratch_trace if input_scratch_trace is not None else None,
+                    qkv_tensor_trace=row_qkv_tensor_trace if qkv_tensor_trace is not None else None,
+                    library=library,
+                    stream=stream,
+                )
+                dst = self._row_tensor_view(moe_scratch.moe_out, row)
+                runtime.memcpy_async(
+                    dst.ptr,
+                    row_out.ptr,
+                    row_out.numel * row_out.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            return moe_scratch.moe_out
+        _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16_decode_rows(
+            attention_scratch,
+            cos_table=cos_table,
+            sin_table=sin_table,
+            positions=positions,
+            max_positions=max_positions,
+            tokens=tokens,
+            group_size=group_size,
+            input_scratch_trace=input_scratch_trace,
+            qkv_tensor_trace=qkv_tensor_trace,
+            force_per_row_scratch=force_per_row_qkv_scratch,
+            library=library,
+            stream=stream,
+        )
+        if force_per_row_suffix and tokens > 1:
+            if not (
+                force_per_row_kv_append
+                and force_per_row_context
+                and force_per_row_output
+                and force_per_row_post_attention
+                and force_per_row_moe
+            ):
+                raise ValueError("per-row suffix interleave requires per-row KV append, context, output, post-attention, and MoE diagnostics")
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            if dense_mlp:
+                raise NotImplementedError("per-row suffix diagnostic is currently wired for MoE layers")
+            if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+                raise ValueError("per-row suffix diagnostic requires token-row MoE scratch")
+            row_moe_scratch = self.reserve_moe_c1_scratch(
+                tokens=1,
+                activation_dtype=hidden.dtype,
+                prefix="moe.decode_row_suffix",
+            )
+            runtime = self.runtime or get_hip_runtime()
+            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
+                zip(per_row_append_contexts, per_row_contexts, strict=True)
+            ):
+                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple
+                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
+                    raise ValueError("per-row suffix diagnostics must use matching row cache views")
+                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                row_hidden = self._row_tensor_view(hidden, row)
+                self.append_full_attention_kv_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_append_spans,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_gate = self._row_tensor_view(gate, row)
+                self.decode_full_attention_context_gate_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_decode_spans,
+                    gate=row_gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_attn_out = self.project_full_attention_o_fp16(
+                    self._row_tensor_view(attention_scratch.gated_attn, row),
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_mlp_input, row_residual = self.post_attention_add_rmsnorm_fp16(
+                    row_hidden,
+                    row_attn_out,
+                    row_moe_scratch,
+                    tokens=1,
+                    library=library,
+                    stream=stream,
+                )
+                row_out = self.run_moe_c1_fp16(
+                    row_mlp_input,
+                    row_residual,
+                    scratch=row_moe_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                dst = self._row_tensor_view(moe_scratch.moe_out, row)
+                runtime.memcpy_async(
+                    dst.ptr,
+                    row_out.ptr,
+                    row_out.numel * row_out.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            return moe_scratch.moe_out
+        if force_per_row_append_context and not (force_per_row_kv_append and force_per_row_context):
+            raise ValueError("per-row append+context interleave requires per-row KV append and context diagnostics")
+        if force_per_row_append_context:
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
+                zip(per_row_append_contexts, per_row_contexts, strict=True)
+            ):
+                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple
+                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
+                    raise ValueError("per-row append/context diagnostics must use matching row cache views")
+                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                self.append_full_attention_kv_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_append_spans,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_gate = self._row_tensor_view(gate, row)
+                self.decode_full_attention_context_gate_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_decode_spans,
+                    gate=row_gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                self.runtime.memcpy_async(
+                    row_context.ptr,
+                    attention_scratch.attn_out.ptr,
+                    self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            gated = attention_scratch.gated_attn
+        else:
+            if force_per_row_kv_append and tokens > 1:
+                if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                    raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+                for row, (row_key_cache, row_value_cache, row_append_spans) in enumerate(per_row_append_contexts):
+                    row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                    self.append_full_attention_kv_fp16(
+                        row_scratch,
+                        key_cache=row_key_cache,
+                        value_cache=row_value_cache,
+                        spans=row_append_spans,
+                        block_size=block_size,
+                        library=library,
+                        stream=stream,
+                    )
+            else:
+                self.append_full_attention_kv_fp16_decode_batch(
+                    attention_scratch,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    spans=append_spans,
+                    rows=tokens,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+            if force_per_row_context and tokens > 1:
+                if per_row_contexts is None or len(per_row_contexts) != tokens:
+                    raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+                # c2 needs paged per-row context plus the batch gate replay to
+                # avoid the historical row0 [103,137] diagnostic signature.
+                # For rows>2, c4 evidence shows row-local context+gate remains
+                # the stable diagnostic while batch-gating replayed contexts can
+                # reproduce the native row3 failure.
+                if tokens == 2:
+                    for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                        row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                        if row_decode_spans.storage_dtype != DType.BF16:
+                            raise NotImplementedError("per-row full-attention context diagnostic currently requires BF16 KV")
+                        qwen35_paged_full_attn_decode_context_bf16_spans(
+                            row_scratch.query.ptr,
+                            row_key_cache.ptr,
+                            row_value_cache.ptr,
+                            attention_scratch.attn_out.ptr,
+                            row_decode_spans,
+                            row_decode_spans.max_live_count,
+                            block_size,
+                            self.config.num_attention_heads,
+                            self.config.num_key_value_heads,
+                            self.config.head_dim,
+                            self.config.head_dim ** -0.5,
+                            stream=stream,
+                            library=_library_for(library, "attention"),
+                            runtime=self.runtime,
+                        )
+                        row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                        self.runtime.memcpy_async(
+                            row_context.ptr,
+                            attention_scratch.attn_out.ptr,
+                            self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    qwen35_full_attn_gate_mul_fp16(
+                        attention_scratch.query_raw.ptr,
+                        gate.ptr,
+                        attention_scratch.gated_attn.ptr,
+                        tokens * self.config.num_attention_heads * self.config.head_dim,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
+                else:
+                    for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                        row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                        row_gate = self._row_tensor_view(gate, row)
+                        self.decode_full_attention_context_gate_fp16(
+                            row_scratch,
+                            key_cache=row_key_cache,
+                            value_cache=row_value_cache,
+                            spans=row_decode_spans,
+                            gate=row_gate,
+                            block_size=block_size,
+                            library=library,
+                            stream=stream,
+                        )
+                        row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                        self.runtime.memcpy_async(
+                            row_context.ptr,
+                            attention_scratch.attn_out.ptr,
+                            self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                gated = attention_scratch.gated_attn
+            elif force_per_row_dense_context_batch_gate and tokens > 1:
+                if per_row_contexts is None or len(per_row_contexts) != tokens:
+                    raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+                q_width = self.config.num_attention_heads * self.config.head_dim
+                for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                    row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                    if row_decode_spans.storage_dtype != DType.BF16:
+                        raise NotImplementedError("per-row dense full-attention context/batch-gate diagnostic currently requires BF16 KV")
+                    if row_decode_spans.max_live_count >= 1024:
+                        raise NotImplementedError("per-row dense full-attention context/batch-gate diagnostic does not cover split-K decode")
+                    qwen35_full_attn_decode_context_bf16(
+                        row_scratch.query.ptr,
+                        row_key_cache.ptr,
+                        row_value_cache.ptr,
+                        attention_scratch.attn_out.ptr,
+                        row_decode_spans.live_counts.ptr,
+                        row_decode_spans.max_live_count,
+                        self.config.num_attention_heads,
+                        self.config.num_key_value_heads,
+                        self.config.head_dim,
+                        self.config.head_dim ** -0.5,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
+                    row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                    self.runtime.memcpy_async(
+                        row_context.ptr,
+                        attention_scratch.attn_out.ptr,
+                        q_width * DType.FP32.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                qwen35_full_attn_gate_mul_fp16(
+                    attention_scratch.query_raw.ptr,
+                    gate.ptr,
+                    attention_scratch.gated_attn.ptr,
+                    tokens * q_width,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                gated = attention_scratch.gated_attn
+            elif (force_per_row_dense_context_only or force_per_row_paged_context_only) and tokens > 1:
+                if per_row_contexts is None or len(per_row_contexts) != tokens:
+                    raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+                q_width = self.config.num_attention_heads * self.config.head_dim
+                for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                    row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                    if row_decode_spans.storage_dtype != DType.BF16:
+                        raise NotImplementedError("per-row full-attention context-only diagnostic currently requires BF16 KV")
+                    if force_per_row_paged_context_only or row_decode_spans.max_live_count >= 1024:
+                        qwen35_paged_full_attn_decode_context_bf16_spans(
+                            row_scratch.query.ptr,
+                            row_key_cache.ptr,
+                            row_value_cache.ptr,
+                            attention_scratch.attn_out.ptr,
+                            row_decode_spans,
+                            row_decode_spans.max_live_count,
+                            block_size,
+                            self.config.num_attention_heads,
+                            self.config.num_key_value_heads,
+                            self.config.head_dim,
+                            self.config.head_dim ** -0.5,
+                            stream=stream,
+                            library=_library_for(library, "attention"),
+                            runtime=self.runtime,
+                        )
+                    else:
+                        qwen35_full_attn_decode_context_bf16(
+                            row_scratch.query.ptr,
+                            row_key_cache.ptr,
+                            row_value_cache.ptr,
+                            attention_scratch.attn_out.ptr,
+                            row_decode_spans.live_counts.ptr,
+                            row_decode_spans.max_live_count,
+                            self.config.num_attention_heads,
+                            self.config.num_key_value_heads,
+                            self.config.head_dim,
+                            self.config.head_dim ** -0.5,
+                            stream=stream,
+                            library=_library_for(library, "attention"),
+                            runtime=self.runtime,
+                        )
+                    row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                    self.runtime.memcpy_async(
+                        row_context.ptr,
+                        attention_scratch.attn_out.ptr,
+                        q_width * DType.FP32.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    row_gate = self._row_tensor_view(gate, row)
+                    row_gated = self._row_tensor_view(attention_scratch.gated_attn, row)
+                    qwen35_full_attn_gate_mul_fp16(
+                        row_context.ptr,
+                        row_gate.ptr,
+                        row_gated.ptr,
+                        q_width,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
+                gated = attention_scratch.gated_attn
+            elif force_per_row_context_only and tokens > 1:
+                if per_row_contexts is None or len(per_row_contexts) != tokens:
+                    raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+                for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                    row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                    if row_decode_spans.storage_dtype != DType.BF16:
+                        raise NotImplementedError("per-row full-attention context-only diagnostic currently requires BF16 KV")
+                    if tokens == 2 or row_decode_spans.max_live_count >= 1024:
+                        qwen35_paged_full_attn_decode_context_bf16_spans(
+                            row_scratch.query.ptr,
+                            row_key_cache.ptr,
+                            row_value_cache.ptr,
+                            attention_scratch.attn_out.ptr,
+                            row_decode_spans,
+                            row_decode_spans.max_live_count,
+                            block_size,
+                            self.config.num_attention_heads,
+                            self.config.num_key_value_heads,
+                            self.config.head_dim,
+                            self.config.head_dim ** -0.5,
+                            stream=stream,
+                            library=_library_for(library, "attention"),
+                            runtime=self.runtime,
+                        )
+                    else:
+                        qwen35_full_attn_decode_context_bf16(
+                            row_scratch.query.ptr,
+                            row_key_cache.ptr,
+                            row_value_cache.ptr,
+                            attention_scratch.attn_out.ptr,
+                            row_decode_spans.live_counts.ptr,
+                            row_decode_spans.max_live_count,
+                            self.config.num_attention_heads,
+                            self.config.num_key_value_heads,
+                            self.config.head_dim,
+                            self.config.head_dim ** -0.5,
+                            stream=stream,
+                            library=_library_for(library, "attention"),
+                            runtime=self.runtime,
+                        )
+                    row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                    self.runtime.memcpy_async(
+                        row_context.ptr,
+                        attention_scratch.attn_out.ptr,
+                        self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                q_width = self.config.num_attention_heads * self.config.head_dim
+                if tokens == 2:
+                    qwen35_full_attn_gate_mul_fp16(
+                        attention_scratch.query_raw.ptr,
+                        gate.ptr,
+                        attention_scratch.gated_attn.ptr,
+                        tokens * q_width,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
+                else:
+                    for row in range(tokens):
+                        row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                        row_gate = self._row_tensor_view(gate, row)
+                        row_gated = self._row_tensor_view(attention_scratch.gated_attn, row)
+                        qwen35_full_attn_gate_mul_fp16(
+                            row_context.ptr,
+                            row_gate.ptr,
+                            row_gated.ptr,
+                            q_width,
+                            stream=stream,
+                            library=_library_for(library, "attention"),
+                            runtime=self.runtime,
+                        )
+                gated = attention_scratch.gated_attn
+            elif force_batch_temp_context and tokens > 1:
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("temp-output full-attention context diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("temp-output full-attention context diagnostic does not cover split-K decode")
+                temp_context = self.workspace.reserve_tensor(
+                    "attn.decode.batch_context_tmp",
+                    (tokens, self.config.num_attention_heads, self.config.head_dim),
+                    DType.FP32,
+                )
+                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                    attention_scratch.query.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    temp_context.ptr,
+                    decode_spans,
+                    tokens,
+                    decode_spans.max_live_count,
+                    block_size,
+                    self.config.num_attention_heads,
+                    self.config.num_key_value_heads,
+                    self.config.head_dim,
+                    self.config.head_dim ** -0.5,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                runtime = self.runtime or get_hip_runtime()
+                runtime.memcpy_async(
+                    attention_scratch.query_raw.ptr,
+                    temp_context.ptr,
+                    temp_context.numel * DType.FP32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                qwen35_full_attn_gate_mul_fp16(
+                    attention_scratch.query_raw.ptr,
+                    gate.ptr,
+                    attention_scratch.gated_attn.ptr,
+                    tokens * self.config.num_attention_heads * self.config.head_dim,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                gated = attention_scratch.gated_attn
+            elif force_batch_compact_context and tokens > 1:
+                if per_row_contexts is None or len(per_row_contexts) != tokens:
+                    raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("compact-cache full-attention context diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("compact-cache full-attention context diagnostic does not cover split-K decode")
+                row_blocks = int(per_row_contexts[0][2].base_offsets.numel)
+                if row_blocks <= 0:
+                    raise ValueError("compact-cache full-attention context diagnostic requires non-empty block tables")
+                compact_key_cache = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_key_cache",
+                    (tokens * row_blocks, block_size, self.config.num_key_value_heads, self.config.head_dim),
+                    DType.BF16,
+                )
+                compact_value_cache = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_value_cache",
+                    (tokens * row_blocks, block_size, self.config.num_key_value_heads, self.config.head_dim),
+                    DType.BF16,
+                )
+                compact_block_table = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_block_table",
+                    (tokens, row_blocks),
+                    DType.INT32,
+                )
+                compact_live_counts = self.workspace.reserve_tensor(
+                    "attn.decode.batch_compact_live_counts",
+                    (tokens,),
+                    DType.INT64,
+                )
+                row_cache_bytes = row_blocks * block_size * self.config.num_key_value_heads * self.config.head_dim * DType.BF16.itemsize
+                row_table_bytes = row_blocks * DType.INT32.itemsize
+                runtime = self.runtime or get_hip_runtime()
+                for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                    if row_decode_spans.storage_dtype != DType.BF16:
+                        raise NotImplementedError("compact-cache full-attention context diagnostic currently requires BF16 KV")
+                    if int(row_decode_spans.base_offsets.numel) != row_blocks:
+                        raise ValueError("compact-cache full-attention context diagnostic requires uniform row block-table length")
+                    runtime.memcpy_async(
+                        compact_key_cache.ptr + row * row_cache_bytes,
+                        row_key_cache.ptr,
+                        row_cache_bytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        compact_value_cache.ptr + row * row_cache_bytes,
+                        row_value_cache.ptr,
+                        row_cache_bytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        compact_block_table.ptr + row * row_table_bytes,
+                        row_decode_spans.base_offsets.ptr,
+                        row_table_bytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        compact_live_counts.ptr + row * DType.INT64.itemsize,
+                        row_decode_spans.live_counts.ptr,
+                        DType.INT64.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                compact_spans = KVLiveSpans.paged_uniform(
+                    block_table=compact_block_table,
+                    live_counts=compact_live_counts,
+                    max_live_count=decode_spans.max_live_count,
+                    storage_dtype=DType.BF16,
+                )
+                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                    attention_scratch.query.ptr,
+                    compact_key_cache.ptr,
+                    compact_value_cache.ptr,
+                    attention_scratch.query_raw.ptr,
+                    compact_spans,
+                    tokens,
+                    decode_spans.max_live_count,
+                    block_size,
+                    self.config.num_attention_heads,
+                    self.config.num_key_value_heads,
+                    self.config.head_dim,
+                    self.config.head_dim ** -0.5,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                qwen35_full_attn_gate_mul_fp16(
+                    attention_scratch.query_raw.ptr,
+                    gate.ptr,
+                    attention_scratch.gated_attn.ptr,
+                    tokens * self.config.num_attention_heads * self.config.head_dim,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                gated = attention_scratch.gated_attn
+            elif force_per_row_gate and tokens > 1:
+                if decode_spans.storage_dtype != DType.BF16:
+                    raise NotImplementedError("per-row full-attention gate diagnostic currently requires BF16 KV")
+                if decode_spans.max_live_count >= 1024:
+                    raise NotImplementedError("per-row full-attention gate diagnostic does not cover split-K decode")
+                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+                    attention_scratch.query.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    attention_scratch.query_raw.ptr,
+                    decode_spans,
+                    tokens,
+                    decode_spans.max_live_count,
+                    block_size,
+                    self.config.num_attention_heads,
+                    self.config.num_key_value_heads,
+                    self.config.head_dim,
+                    self.config.head_dim ** -0.5,
+                    stream=stream,
+                    library=_library_for(library, "attention"),
+                    runtime=self.runtime,
+                )
+                q_width = self.config.num_attention_heads * self.config.head_dim
+                for row in range(tokens):
+                    row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                    row_gate = self._row_tensor_view(gate, row)
+                    row_gated = self._row_tensor_view(attention_scratch.gated_attn, row)
+                    qwen35_full_attn_gate_mul_fp16(
+                        row_context.ptr,
+                        row_gate.ptr,
+                        row_gated.ptr,
+                        q_width,
+                        stream=stream,
+                        library=_library_for(library, "attention"),
+                        runtime=self.runtime,
+                    )
+                gated = attention_scratch.gated_attn
+            else:
+                gated = self.decode_full_attention_context_gate_fp16_batch(
+                    attention_scratch,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    spans=decode_spans,
+                    rows=tokens,
+                    gate=gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+        if force_per_row_output and tokens > 1:
+            attn_out = self.project_full_attention_o_rows_fp16(
+                gated,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            attn_out = self.project_full_attention_o_fp16(
+                gated,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                force_pack8_gemv=force_batch_gemv_output,
+                library=library,
+                stream=stream,
+            )
+        post_attention_fn = (
+            self.post_attention_add_rmsnorm_fp16_per_row
+            if force_per_row_post_attention and tokens > 1
+            else self.post_attention_add_rmsnorm_fp16
+        )
+        mlp_input, residual = post_attention_fn(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        if dense_mlp:
+            return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if force_per_row_moe and tokens > 1:
+            return self.run_moe_c1_rows_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if tokens > 1 and not force_selected_c1_moe:
+            return self.run_moe_grouped_compact_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return self.run_moe_c1_fp16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
     def run_full_attention_moe_prefill_layer_fp16(
         self,
         hidden: Tensor,
@@ -3263,6 +5602,9 @@ class Qwen35ParoDecodeState:
         cu_seqlens_k: Tensor | None = None,
         aotriton_attention: bool = False,
         aotriton_kv_rows: int | None = None,
+        retained_key_cache: Tensor | None = None,
+        retained_value_cache: Tensor | None = None,
+        retained_append_spans: KVLiveSpans | None = None,
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
@@ -3280,6 +5622,12 @@ class Qwen35ParoDecodeState:
 
         if tokens <= 1:
             raise ValueError("full-attention native prefill requires tokens > 1")
+        retained_int8 = retained_append_spans is not None
+        if retained_int8:
+            if retained_key_cache is None or retained_value_cache is None:
+                raise ValueError("INT8 retained prefill append requires retained key/value cache tensors")
+            if retained_append_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+                raise ValueError("INT8 retained prefill append requires int8_per_token_head spans")
         attention_scratch = attention_scratch or self.reserve_full_attention_scratch(
             tokens=tokens,
             num_splits=1,
@@ -3314,10 +5662,16 @@ class Qwen35ParoDecodeState:
         )
         aotriton_query_bf16 = None
         if aotriton_attention:
-            aotriton_query_bf16 = self.workspace.reserve_tensor(
-                "attn.aotriton_q_bf16",
+            # Reuse the caller-owned prefill query buffer for AOTriton's BF16
+            # query input. Allocating this in each layer state's decode
+            # workspace makes long INT8 prefill accumulate one [chunk, Hq, D]
+            # BF16 buffer per full-attention layer even though only the current
+            # chunk needs it.
+            aotriton_query_bf16 = Tensor.from_handle(
+                attention_scratch.query.ptr,
                 attention_scratch.query.shape,
                 DType.BF16,
+                attention_scratch.query.device,
             )
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
             attention_scratch,
@@ -3340,6 +5694,17 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if retained_int8:
+            self.append_full_attention_kv_int8_per_token_head_fp16_batch(
+                attention_scratch,
+                key_cache=retained_key_cache,
+                value_cache=retained_value_cache,
+                spans=retained_append_spans,
+                rows=tokens,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
         if aotriton_attention:
             if cu_seqlens_q is None or cu_seqlens_k is None:
                 raise ValueError("AOTriton prefill requires cu_seqlens_q/k tensors")
@@ -3453,6 +5818,9 @@ class Qwen35ParoDecodeState:
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
+        aotriton_attention: bool = False,
+        aotriton_max_seqlen_q: int | None = None,
+        aotriton_max_seqlen_k: int | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3465,6 +5833,7 @@ class Qwen35ParoDecodeState:
             num_splits=1,
             activation_dtype=DType.FP16,
             gated_dtype=DType.FP16,
+            query_dtype=DType.BF16 if aotriton_attention else DType.FP32,
         )
         if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
             moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
@@ -3484,6 +5853,14 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        aotriton_query_bf16 = None
+        if aotriton_attention:
+            aotriton_query_bf16 = Tensor.from_handle(
+                attention_scratch.query.ptr,
+                attention_scratch.query.shape,
+                DType.BF16,
+                attention_scratch.query.device,
+            )
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
             attention_scratch,
             cos_table=cos_table,
@@ -3491,6 +5868,7 @@ class Qwen35ParoDecodeState:
             position=positions,
             max_positions=max_positions,
             tokens=tokens,
+            query_bf16_out=aotriton_query_bf16,
             library=library,
             stream=stream,
         )
@@ -3504,28 +5882,51 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        gated = self.prefill_full_attention_varlen_gqa_gate_fp16(
-            attention_scratch,
-            key_cache=key_cache,
-            value_cache=value_cache,
-            spans=prefill_spans,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_k=cu_seqlens_k,
-            rows=tokens,
-            segments=segments,
-            gate=gate,
-            block_size=block_size,
-            library=library,
-            stream=stream,
-        )
-        attn_out = self.project_full_attention_o_fp16(
-            gated,
-            attention_scratch,
-            tokens=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+        if aotriton_attention:
+            attn_bf16 = self.prefill_full_attention_aotriton_varlen_gqa_bf16(
+                attention_scratch,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                rows=tokens,
+                segments=segments,
+                query_bf16=aotriton_query_bf16,
+                max_seqlen_q=aotriton_max_seqlen_q,
+                max_seqlen_k=aotriton_max_seqlen_k,
+                library=library,
+                stream=stream,
+            )
+            attn_out = self.project_full_attention_o_bf16_attn_gate_fp16(
+                attn_bf16,
+                gate,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            gated = self.prefill_full_attention_varlen_gqa_gate_fp16(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=prefill_spans,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                rows=tokens,
+                segments=segments,
+                gate=gate,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
+            attn_out = self.project_full_attention_o_fp16(
+                gated,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
             hidden,
             attn_out,
@@ -3589,6 +5990,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
@@ -3639,7 +6041,12 @@ class Qwen35ParoDecodeState:
                 )
                 self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
             else:
-                gemv_awq_dual_pack8_transposed_fp16(
+                qkvz_dual_fn = (
+                    gemv_awq_dual_pack8_output_tiled_transposed_fp16
+                    if tokens in _PACK8_OUTPUT_TILED_ROWS
+                    else gemv_awq_dual_pack8_transposed_fp16
+                )
+                qkvz_dual_fn(
                     scratch.qkv_rot.ptr,
                     scratch.z_rot.ptr,
                     qkv_qweight.ptr,
@@ -3658,6 +6065,48 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
+        elif force_gemv:
+            awq_library = _library_for(library, "awq")
+            qkv_proj_fn = (
+                gemv_awq_pack8_output_tiled_transposed_fp16
+                if tokens in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_transposed_fp16
+            )
+            qkv_proj_fn(
+                scratch.qkv_rot.ptr,
+                qkv_qweight.ptr,
+                self.tensor(f"{qkv}.qzeros").ptr,
+                self.tensor(f"{qkv}.scales").ptr,
+                scratch.qkv.ptr,
+                tokens,
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
+                group_size,
+                threads=128,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            z_proj_fn = (
+                gemv_awq_pack8_output_tiled_transposed_fp16
+                if tokens in _PACK8_OUTPUT_TILED_ROWS
+                else gemv_awq_pack8_transposed_fp16
+            )
+            z_proj_fn(
+                scratch.z_rot.ptr,
+                z_qweight.ptr,
+                self.tensor(f"{z}.qzeros").ptr,
+                self.tensor(f"{z}.scales").ptr,
+                scratch.z.ptr,
+                tokens,
+                scratch.z_rot.shape[-1],
+                z_out_packed,
+                group_size,
+                threads=128,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         elif tokens <= _small_batch_decode_threshold():
             # M7.C.6: two single GEMVs, one for QKV (writes scratch.qkv.ptr)
             # and one for Z (writes scratch.z.ptr).  Direct port of the bf16
@@ -4021,6 +6470,7 @@ class Qwen35ParoDecodeState:
         state_indices: Tensor,
         tokens: int,
         segments: int,
+        decode_order_state: bool = False,
         eps: float | None = None,
         library=None,
         stream: int = 0,
@@ -4056,6 +6506,33 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "linear_conv"),
             runtime=self.runtime,
         )
+        if decode_order_state:
+            qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
+                scratch.conv_out.ptr,
+                scratch.z.ptr,
+                scratch.a.ptr,
+                scratch.b.ptr,
+                self.tensor(f"{prefix}.dt_bias").ptr,
+                self.tensor(f"{prefix}.A_log").ptr,
+                self.tensor(f"{prefix}.norm.weight").ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_out.ptr,
+                cu_seqlens.ptr,
+                state_indices.ptr,
+                tokens,
+                segments,
+                cfg.rms_norm_eps if eps is None else eps,
+                cfg.linear_num_key_heads,
+                cfg.linear_num_value_heads,
+                cfg.linear_key_head_dim,
+                cfg.linear_value_head_dim,
+                stream=stream,
+                library=_library_for(library, "linear_gdn"),
+                runtime=self.runtime,
+            )
+            if scratch.recurrent_out.shape[-1] != z_width:
+                raise ValueError("linear-attention recurrent scratch width mismatch")
+            return scratch.recurrent_out
         qwen35_linear_attn_prefill_prepare_f32_fp16(
             scratch.conv_out.ptr,
             scratch.a.ptr,
@@ -4118,6 +6595,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_pack8_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -4154,6 +6632,7 @@ class Qwen35ParoDecodeState:
             in_features=width,
             group_size=group_size,
             threads=64 if tokens > 1 else 128,
+            force_gemv=force_pack8_gemv,
             library=library,
             stream=stream,
         )
@@ -4165,6 +6644,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int,
         group_size: int = 128,
+        force_pack8_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -4193,6 +6673,7 @@ class Qwen35ParoDecodeState:
             in_features=width,
             group_size=group_size,
             threads=64 if tokens > 1 else 128,
+            force_gemv=force_pack8_gemv,
             library=library,
             stream=stream,
         )
@@ -4388,13 +6869,90 @@ class Qwen35ParoDecodeState:
         scratch: Qwen35ParoLinearAttentionScratch | None = None,
         tokens: int,
         group_size: int = 128,
+        force_selected_c1_projections: bool = False,
+        force_selected_c1_qkv_z_projections: bool = False,
+        force_selected_c1_qkv_z_input: bool = False,
+        force_selected_c1_qkv_projections: bool = False,
+        force_selected_c1_z_projections: bool = False,
+        force_selected_c1_ab_projections: bool = False,
+        force_batch_gemv_projections: bool = False,
+        force_selected_c1_state: bool = False,
+        selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
+        decode_order_state: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        self.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        if force_selected_c1_projections:
+            self.project_linear_attention_decode_rows_fp16(
+                hidden,
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            if force_selected_c1_qkv_z_projections:
+                self.project_linear_attention_decode_rows_qkv_z_fp16(
+                    hidden,
+                    scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+            else:
+                if force_selected_c1_qkv_z_input:
+                    self.rotate_linear_attention_decode_rows_qkv_z_fp16(
+                        hidden,
+                        scratch,
+                        tokens=tokens,
+                        group_size=group_size,
+                        library=library,
+                        stream=stream,
+                    )
+                else:
+                    self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+                self.project_linear_attention_qkv_z_fp16(
+                    scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    force_gemv=force_batch_gemv_projections,
+                    library=library,
+                    stream=stream,
+                )
+                if force_selected_c1_qkv_projections or force_selected_c1_z_projections:
+                    self.project_linear_attention_decode_rows_qkv_z_subset_fp16(
+                        hidden,
+                        scratch,
+                        tokens=tokens,
+                        copy_qkv=force_selected_c1_qkv_projections,
+                        copy_z=force_selected_c1_z_projections,
+                        group_size=group_size,
+                        library=library,
+                        stream=stream,
+                    )
+            if force_selected_c1_ab_projections:
+                self.project_linear_attention_decode_rows_ab_fp16(
+                    hidden,
+                    scratch,
+                    tokens=tokens,
+                    library=library,
+                    stream=stream,
+                )
+            else:
+                self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        if force_selected_c1_state:
+            if selected_c1_state_pairs is None:
+                raise ValueError("selected_c1_state_pairs are required for selected-c1 linear state replay")
+            return self.run_linear_attention_decode_rows_state_fp16(
+                scratch,
+                state_pairs=selected_c1_state_pairs,
+                tokens=tokens,
+                library=library,
+                stream=stream,
+            )
         return self.run_linear_attention_prefill_conv_gdn_segments_fp16(
             scratch,
             conv_state=conv_state,
@@ -4403,6 +6961,7 @@ class Qwen35ParoDecodeState:
             state_indices=state_indices,
             tokens=tokens,
             segments=segments,
+            decode_order_state=decode_order_state,
             library=library,
             stream=stream,
         )
@@ -4419,6 +6978,18 @@ class Qwen35ParoDecodeState:
         scratch: Qwen35ParoLinearAttentionScratch | None = None,
         tokens: int,
         group_size: int = 128,
+        force_selected_c1_projections: bool = False,
+        force_selected_c1_qkv_z_projections: bool = False,
+        force_selected_c1_qkv_z_input: bool = False,
+        force_selected_c1_qkv_projections: bool = False,
+        force_selected_c1_z_projections: bool = False,
+        force_selected_c1_ab_projections: bool = False,
+        force_batch_gemv_projections: bool = False,
+        force_selected_c1_state: bool = False,
+        selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
+        force_selected_c1_out: bool | None = None,
+        force_batch_gemv_out: bool = False,
+        decode_order_state: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -4433,13 +7004,51 @@ class Qwen35ParoDecodeState:
             scratch=scratch,
             tokens=tokens,
             group_size=group_size,
+            force_selected_c1_projections=force_selected_c1_projections,
+            force_selected_c1_qkv_z_projections=force_selected_c1_qkv_z_projections,
+            force_selected_c1_qkv_z_input=force_selected_c1_qkv_z_input,
+            force_selected_c1_qkv_projections=force_selected_c1_qkv_projections,
+            force_selected_c1_z_projections=force_selected_c1_z_projections,
+            force_selected_c1_ab_projections=force_selected_c1_ab_projections,
+            force_batch_gemv_projections=force_batch_gemv_projections,
+            force_selected_c1_state=force_selected_c1_state,
+            selected_c1_state_pairs=selected_c1_state_pairs,
+            decode_order_state=decode_order_state,
             library=library,
             stream=stream,
         )
+        if force_selected_c1_out is None:
+            force_selected_c1_out = force_selected_c1_state
+        if force_selected_c1_out:
+            if force_selected_c1_state or decode_order_state:
+                return self.project_linear_attention_decode_rows_out_fp16(
+                    scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+            return self.project_linear_attention_prefill_rows_out_fp16(
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if force_selected_c1_state or decode_order_state:
+            return self.project_linear_attention_out_fp16(
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                force_pack8_gemv=force_batch_gemv_out,
+                library=library,
+                stream=stream,
+            )
         return self.project_linear_attention_prefill_out_fp16(
             scratch,
             tokens=tokens,
             group_size=group_size,
+            force_pack8_gemv=force_batch_gemv_out,
             library=library,
             stream=stream,
         )
@@ -4468,6 +7077,46 @@ class Qwen35ParoDecodeState:
         )
         return out
 
+    def input_rmsnorm_fp16_per_row(
+        self,
+        hidden: Tensor,
+        out: Tensor,
+        *,
+        tokens: int = 1,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Diagnostic c>N input RMSNorm path using the token-1 RMS kernel per row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if tokens == 1:
+            return self.input_rmsnorm_fp16(
+                hidden,
+                out,
+                tokens=tokens,
+                eps=eps,
+                library=library,
+                stream=stream,
+            )
+        weight = self.tensor(f"layers.{self.layer_weights.layer_id}.input_layernorm.weight")
+        norm_library = _library_for(library, "norm")
+        norm_eps = self.config.rms_norm_eps if eps is None else eps
+        for row in range(tokens):
+            paro_rmsnorm_out_fp16(
+                self._row_tensor_view(hidden, row).ptr,
+                weight.ptr,
+                self._row_tensor_view(out, row).ptr,
+                1,
+                self.config.hidden_size,
+                norm_eps,
+                stream=stream,
+                library=norm_library,
+                runtime=self.runtime,
+            )
+        return out
+
     def post_attention_add_rmsnorm_fp16(
         self,
         hidden: Tensor,
@@ -4493,6 +7142,50 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "norm"),
             runtime=self.runtime,
         )
+        return scratch.normed, scratch.residual
+
+    def post_attention_add_rmsnorm_fp16_per_row(
+        self,
+        hidden: Tensor,
+        attn_out: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Diagnostic c>N post-attention path using the token-1 RMS kernel per row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if tokens == 1:
+            return self.post_attention_add_rmsnorm_fp16(
+                hidden,
+                attn_out,
+                scratch,
+                tokens=tokens,
+                eps=eps,
+                library=library,
+                stream=stream,
+            )
+        weight = self.tensor(f"layers.{self.layer_weights.layer_id}.post_attention_layernorm.weight")
+        norm_library = _library_for(library, "norm")
+        norm_eps = self.config.rms_norm_eps if eps is None else eps
+        for row in range(tokens):
+            paro_add_rmsnorm_out_fp16(
+                self._row_tensor_view(hidden, row).ptr,
+                self._row_tensor_view(attn_out, row).ptr,
+                weight.ptr,
+                self._row_tensor_view(scratch.normed, row).ptr,
+                self._row_tensor_view(scratch.residual, row).ptr,
+                1,
+                self.config.hidden_size,
+                norm_eps,
+                stream=stream,
+                library=norm_library,
+                runtime=self.runtime,
+            )
         return scratch.normed, scratch.residual
 
     def run_linear_attention_moe_c1_layer_fp16(
@@ -4965,6 +7658,123 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
         return self.run_moe_grouped_compact_fp16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
+    def run_linear_attention_moe_decode_batch_layer_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        cu_seqlens: Tensor,
+        state_indices: Tensor,
+        segments: int,
+        linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        force_selected_c1_moe: bool = False,
+        force_selected_c1_linear_projections: bool = False,
+        force_selected_c1_qkv_z_linear_projections: bool = False,
+        force_selected_c1_qkv_z_linear_input: bool = False,
+        force_selected_c1_qkv_linear_projections: bool = False,
+        force_selected_c1_z_linear_projections: bool = False,
+        force_selected_c1_ab_linear_projections: bool = False,
+        force_batch_gemv_linear_projections: bool = False,
+        force_selected_c1_linear_state: bool = False,
+        selected_c1_linear_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
+        force_selected_c1_linear_out: bool | None = None,
+        force_batch_gemv_linear_out: bool = False,
+        force_per_row_moe: bool = False,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run native compact decode rows with grouped MoE for batch lanes."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        if dense_mlp:
+            if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
+                moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif tokens > 1 and not (force_selected_c1_moe or force_per_row_moe):
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+            moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        attn_out = self.run_linear_attention_prefill_out_proj_segments_fp16(
+            linear_scratch.attn_input,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            cu_seqlens=cu_seqlens,
+            state_indices=state_indices,
+            segments=segments,
+            scratch=linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            force_selected_c1_projections=force_selected_c1_linear_projections,
+            force_selected_c1_qkv_z_projections=force_selected_c1_qkv_z_linear_projections,
+            force_selected_c1_qkv_z_input=force_selected_c1_qkv_z_linear_input,
+            force_selected_c1_qkv_projections=force_selected_c1_qkv_linear_projections,
+            force_selected_c1_z_projections=force_selected_c1_z_linear_projections,
+            force_selected_c1_ab_projections=force_selected_c1_ab_linear_projections,
+            force_batch_gemv_projections=force_batch_gemv_linear_projections,
+            force_selected_c1_state=force_selected_c1_linear_state,
+            selected_c1_state_pairs=selected_c1_linear_state_pairs,
+            force_selected_c1_out=force_selected_c1_linear_out,
+            force_batch_gemv_out=force_batch_gemv_linear_out,
+            decode_order_state=not force_selected_c1_linear_state,
+            library=library,
+            stream=stream,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        if dense_mlp:
+            return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if force_per_row_moe and tokens > 1:
+            return self.run_moe_c1_rows_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if tokens > 1 and not force_selected_c1_moe:
+            return self.run_moe_grouped_compact_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return self.run_moe_c1_fp16(
             mlp_input,
             residual,
             scratch=moe_scratch,
@@ -6270,30 +9080,54 @@ class Qwen35ParoDecodeState:
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
         up_scales = self.tensor(f"{prefix}.stacked_up_scales")
-        wmma_total_rows = scratch.tile_expert.numel * 16
-        gemm_awq_selected_dual_pack8_wmma_compact_fp16(
-            scratch.packed_gate_up_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            gate_qweight.ptr,
-            gate_qzeros.ptr,
-            gate_scales.ptr,
-            up_qweight.ptr,
-            up_qzeros.ptr,
-            up_scales.ptr,
-            scratch.gate_up.ptr,
-            total_lanes,
-            cfg.hidden_size,
-            _out_packed_from_transposed_qweight(gate_qweight),
-            _out_packed_from_transposed_qweight(up_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        use_decode_gemv = tokens <= 8
+        if use_decode_gemv:
+            gemv_awq_selected_dual_pack8_transposed_fp16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.sorted_experts.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            wmma_total_rows = scratch.tile_expert.numel * 16
+            gemm_awq_selected_dual_pack8_wmma_compact_fp16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
         pairs = self.tensor(f"{prefix}.down_weight_pairs")
         silu_mul_dual_rotate_out_fp16(
             scratch.gate_up.ptr,
@@ -6310,25 +9144,44 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
-        gemm_awq_selected_pack8_wmma_compact_fp16(
-            scratch.down_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            down_qweight.ptr,
-            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
-            self.tensor(f"{prefix}.stacked_down_scales").ptr,
-            scratch.down_out.ptr,
-            total_lanes,
-            cfg.moe_intermediate_size,
-            _out_packed_from_transposed_qweight(down_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        if use_decode_gemv:
+            gemv_awq_selected_pack8_transposed_fp16(
+                scratch.down_input.ptr,
+                scratch.sorted_experts.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            gemm_awq_selected_pack8_wmma_compact_fp16(
+                scratch.down_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
+        self._memset_tensor(scratch.lane_to_row, value=0xFF, stream=stream, runtime=self.runtime)
         weighted_lanes_sum_out_fp16_f32w(
             scratch.down_out.ptr,
             scratch.sorted_weights.ptr,
@@ -6373,6 +9226,43 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         return target
+
+    def run_moe_c1_rows_fp16(
+        self,
+        hidden: Tensor,
+        residual: Tensor,
+        *,
+        scratch: Qwen35ParoMoeScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay MoE with true token-1 kernels for each decode row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        row_scratch = self.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16, prefix="moe.decode_row")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_out = self.run_moe_c1_fp16(
+                self._row_tensor_view(hidden, row),
+                self._row_tensor_view(residual, row),
+                scratch=row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            runtime.memcpy_async(
+                scratch.moe_out.ptr + row * self.config.hidden_size * scratch.moe_out.dtype.itemsize,
+                row_out.ptr,
+                self.config.hidden_size * scratch.moe_out.dtype.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        return scratch.moe_out
 
     def run_moe_c1_fp16(
         self,
@@ -6998,30 +9888,54 @@ class Qwen35ParoDecodeState:
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
         up_scales = self.tensor(f"{prefix}.stacked_up_scales")
-        wmma_total_rows = scratch.tile_expert.numel * 16
-        gemm_awq_selected_dual_pack8_wmma_compact_bf16(
-            scratch.packed_gate_up_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            gate_qweight.ptr,
-            gate_qzeros.ptr,
-            gate_scales.ptr,
-            up_qweight.ptr,
-            up_qzeros.ptr,
-            up_scales.ptr,
-            scratch.gate_up.ptr,
-            total_lanes,
-            cfg.hidden_size,
-            _out_packed_from_transposed_qweight(gate_qweight),
-            _out_packed_from_transposed_qweight(up_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        use_decode_gemv = tokens <= 8
+        if use_decode_gemv:
+            gemv_awq_selected_dual_pack8_transposed_bf16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.sorted_experts.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            wmma_total_rows = scratch.tile_expert.numel * 16
+            gemm_awq_selected_dual_pack8_wmma_compact_bf16(
+                scratch.packed_gate_up_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                gate_qweight.ptr,
+                gate_qzeros.ptr,
+                gate_scales.ptr,
+                up_qweight.ptr,
+                up_qzeros.ptr,
+                up_scales.ptr,
+                scratch.gate_up.ptr,
+                total_lanes,
+                cfg.hidden_size,
+                _out_packed_from_transposed_qweight(gate_qweight),
+                _out_packed_from_transposed_qweight(up_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
         pairs = self.tensor(f"{prefix}.down_weight_pairs")
         silu_mul_dual_rotate_out_bf16(
             scratch.gate_up.ptr,
@@ -7038,25 +9952,44 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
-        gemm_awq_selected_pack8_wmma_compact_bf16(
-            scratch.down_input.ptr,
-            scratch.expert_start.ptr,
-            scratch.wmma_expert_start.ptr,
-            scratch.tile_expert.ptr,
-            down_qweight.ptr,
-            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
-            self.tensor(f"{prefix}.stacked_down_scales").ptr,
-            scratch.down_out.ptr,
-            total_lanes,
-            cfg.moe_intermediate_size,
-            _out_packed_from_transposed_qweight(down_qweight),
-            cfg.num_experts,
-            group_size,
-            wmma_total_rows,
-            stream=stream,
-            library=_library_for(library, "wmma"),
-            runtime=self.runtime,
-        )
+        if use_decode_gemv:
+            gemv_awq_selected_pack8_transposed_bf16(
+                scratch.down_input.ptr,
+                scratch.sorted_experts.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            gemm_awq_selected_pack8_wmma_compact_bf16(
+                scratch.down_input.ptr,
+                scratch.expert_start.ptr,
+                scratch.wmma_expert_start.ptr,
+                scratch.tile_expert.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+                self.tensor(f"{prefix}.stacked_down_scales").ptr,
+                scratch.down_out.ptr,
+                total_lanes,
+                cfg.moe_intermediate_size,
+                _out_packed_from_transposed_qweight(down_qweight),
+                cfg.num_experts,
+                group_size,
+                wmma_total_rows,
+                stream=stream,
+                library=_library_for(library, "wmma"),
+                runtime=self.runtime,
+            )
+        self._memset_tensor(scratch.lane_to_row, value=0xFF, stream=stream, runtime=self.runtime)
         weighted_lanes_sum_out_bf16_f32w(
             scratch.down_out.ptr,
             scratch.sorted_weights.ptr,
@@ -7240,6 +10173,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         activation_dtype: str | DType = DType.BF16,
+        prefix: str = "moe",
     ) -> Qwen35ParoMoeScratch:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
@@ -7251,51 +10185,51 @@ class Qwen35ParoDecodeState:
         if top_k <= 0:
             raise ValueError("config.num_experts_per_tok must be positive")
         return Qwen35ParoMoeScratch(
-            normed=self.workspace.reserve_tensor("moe.normed", (tokens, cfg.hidden_size), lowp),
-            residual=self.workspace.reserve_tensor("moe.residual", (tokens, cfg.hidden_size), lowp),
-            gate_up_input=self.workspace.reserve_tensor("moe.gate_up_input", (tokens, cfg.hidden_size), lowp),
-            router_logits=self.workspace.reserve_tensor("moe.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
-            routing_weights=self.workspace.reserve_tensor("moe.routing_weights", (tokens, top_k), DType.FP32),
-            selected_experts=self.workspace.reserve_tensor("moe.selected_experts", (tokens, top_k), DType.INT64),
+            normed=self.workspace.reserve_tensor(f"{prefix}.normed", (tokens, cfg.hidden_size), lowp),
+            residual=self.workspace.reserve_tensor(f"{prefix}.residual", (tokens, cfg.hidden_size), lowp),
+            gate_up_input=self.workspace.reserve_tensor(f"{prefix}.gate_up_input", (tokens, cfg.hidden_size), lowp),
+            router_logits=self.workspace.reserve_tensor(f"{prefix}.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
+            routing_weights=self.workspace.reserve_tensor(f"{prefix}.routing_weights", (tokens, top_k), DType.FP32),
+            selected_experts=self.workspace.reserve_tensor(f"{prefix}.selected_experts", (tokens, top_k), DType.INT64),
             gate_up=self.workspace.reserve_tensor(
-                "moe.gate_up",
+                f"{prefix}.gate_up",
                 (tokens, top_k, 2 * cfg.moe_intermediate_size),
                 lowp,
             ),
-            down_input=self.workspace.reserve_tensor("moe.down_input", (tokens, top_k, cfg.moe_intermediate_size), lowp),
-            down_out=self.workspace.reserve_tensor("moe.down_out", (tokens, top_k, cfg.hidden_size), lowp),
+            down_input=self.workspace.reserve_tensor(f"{prefix}.down_input", (tokens, top_k, cfg.moe_intermediate_size), lowp),
+            down_out=self.workspace.reserve_tensor(f"{prefix}.down_out", (tokens, top_k, cfg.hidden_size), lowp),
             shared_gate_input=self.workspace.reserve_tensor(
-                "moe.shared_gate_input",
+                f"{prefix}.shared_gate_input",
                 (tokens, cfg.hidden_size),
                 lowp,
             ),
             shared_up_input=self.workspace.reserve_tensor(
-                "moe.shared_up_input",
+                f"{prefix}.shared_up_input",
                 (tokens, cfg.hidden_size),
                 lowp,
             ),
             shared_gate_out=self.workspace.reserve_tensor(
-                "moe.shared_gate_out",
+                f"{prefix}.shared_gate_out",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_up_out=self.workspace.reserve_tensor(
-                "moe.shared_up_out",
+                f"{prefix}.shared_up_out",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_up=self.workspace.reserve_tensor(
-                "moe.shared_up",
+                f"{prefix}.shared_up",
                 (tokens, 2 * cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_intermediate=self.workspace.reserve_tensor(
-                "moe.shared_intermediate",
+                f"{prefix}.shared_intermediate",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_down_input=self.workspace.reserve_tensor(
-                "moe.shared_down_input",
+                f"{prefix}.shared_down_input",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
@@ -7411,6 +10345,12 @@ def _full_attention_split_decode_min_context() -> int:
 def _use_full_attention_split_decode(max_live_count: int) -> bool:
     threshold = _full_attention_split_decode_min_context()
     return threshold > 0 and int(max_live_count) >= threshold
+
+
+def _requires_full_attention_split_decode(spans: KVLiveSpans) -> bool:
+    return spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD or _use_full_attention_split_decode(
+        spans.max_live_count
+    )
 
 
 def _paged_attn_gqa_grouped_min_splits() -> int:

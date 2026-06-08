@@ -1,0 +1,1062 @@
+{
+  "schema": 1,
+  "date": "2026-05-18",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": "Run 128K BF16-vs-INT8 quality/perf comparison",
+  "decision": "retain_diagnostic_128k_bf16_vs_int8_kv_comparison",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "source_commit_before_artifact": "131f859",
+  "hipcc_version_file": "/tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt",
+  "hipcc_version_first_line": "HIP version: 7.2.53211-d40244d",
+  "workload": {
+    "label": "128K/128",
+    "prompt_length": 131072,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "token_id": 9707,
+    "max_layers": 40,
+    "attn_aotriton_min_tokens": 512,
+    "prefill_chunk_sizes": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024
+    },
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1
+  },
+  "implementation_note": "INT8 retained prefill uses the temporary BF16 oracle K/V cache with the same AOTriton attention path as BF16, then appends the retained int8_per_token_head K/V plus FP16 per-token-head scales; the prefill workspace is released before decode.",
+  "commands": {
+    "targeted_pytest": "python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_kv_e2e_fixture_gate.py tests/test_qwen35_bench_memory_audit.py -q",
+    "cpu_fixtures": "python3 scripts/check_fixtures.py",
+    "layer_accuracy_hip": "python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --seed 1234 --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task15-128k-int8-kv/qwen35-kv-int8-accuracy-hip-after-aotriton.json",
+    "fixture_gate": "python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --json /tmp/hipengine-task15-128k-int8-kv/qwen35-kv-e2e-fixture-gate-int8-after-aotriton.json",
+    "bf16_benchmark": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage bf16 --json /tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-bf16-rerun.json",
+    "int8_benchmark": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage int8_per_token_head --json /tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-int8-rerun.json",
+    "int8_prefill_rocprof": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override:${LD_LIBRARY_PATH:-} timeout 2400s rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-task15-128k-int8-kv/rocprof-int8-prefill -o int8-prefill -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage int8_per_token_head --rocprof-selected-region prefill --json /tmp/hipengine-task15-128k-int8-kv/rocprof-int8-prefill/bench.json",
+    "int8_decode_rocprof": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override:${LD_LIBRARY_PATH:-} timeout 2400s rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-task15-128k-int8-kv/rocprof-int8-decode16 -o int8-decode16 -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 16 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage int8_per_token_head --rocprof-selected-region measured_decode_graph --json /tmp/hipengine-task15-128k-int8-kv/rocprof-int8-decode16/bench.json"
+  },
+  "correctness": {
+    "targeted_pytest": {
+      "passed": true,
+      "tests": 37,
+      "log": "/tmp/hipengine-task15-128k-int8-kv/pytest-targeted-after-aotriton-int8.log"
+    },
+    "cpu_fixtures": {
+      "passed": true,
+      "log": "/tmp/hipengine-task15-128k-int8-kv/cpu-fixtures-after-aotriton-int8.log"
+    },
+    "layer_accuracy_hip": {
+      "json_file": "/tmp/hipengine-task15-128k-int8-kv/qwen35-kv-int8-accuracy-hip-after-aotriton.json",
+      "status": "accepted",
+      "passed": true,
+      "thresholds": {
+        "max_abs_attn": 0.005,
+        "kl_mean_max": 0.05,
+        "top1_agreement_min": 0.9
+      },
+      "cases": [
+        {
+          "context_len": 64,
+          "int8_hip_max_abs_attn": 5.21540641784668e-08,
+          "int8_hip_pseudo_logit_kl_max": 1.2258514734364821e-15,
+          "int8_hip_pseudo_logit_top1": 1.0,
+          "quantized_vs_bf16_max_abs_attn": 0.0007335338741540909,
+          "quantized_vs_bf16_kl_max": 2.3352905641751685e-07,
+          "quantized_vs_bf16_top1": 1.0
+        },
+        {
+          "context_len": 520,
+          "int8_hip_max_abs_attn": 1.862645149230957e-08,
+          "int8_hip_pseudo_logit_kl_max": 1.1048968944809161e-16,
+          "int8_hip_pseudo_logit_top1": 1.0,
+          "quantized_vs_bf16_max_abs_attn": 0.0002511320635676384,
+          "quantized_vs_bf16_kl_max": 4.459814455747262e-08,
+          "quantized_vs_bf16_top1": 1.0
+        }
+      ]
+    },
+    "e2e_fixture_gate": {
+      "json_file": "/tmp/hipengine-task15-128k-int8-kv/qwen35-kv-e2e-fixture-gate-int8-after-aotriton.json",
+      "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+      "status": "accepted",
+      "passed": true,
+      "thresholds": {
+        "kl_max": 0.05,
+        "top1_agreement_min": 0.9
+      },
+      "max_kl": 0.015328251530778358,
+      "mean_kl": 0.001639289025262575,
+      "top1_agreement": 1.0,
+      "generated_match": true,
+      "expected_match": true,
+      "reference_generated_ids": [
+        1739,
+        220,
+        16,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15
+      ],
+      "candidate_generated_ids": [
+        1739,
+        220,
+        16,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15
+      ]
+    },
+    "benchmark_preview": {
+      "bf16_token_ids": [
+        9707,
+        9707
+      ],
+      "int8_token_ids": [
+        9707,
+        9707
+      ],
+      "preview_token_ids_match": true,
+      "note": "Graph replay benchmark records the seed sample and the final device-side sample preview, not every decoded token."
+    }
+  },
+  "benchmarks": {
+    "bf16": {
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage bf16 --json /tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-bf16-rerun.json",
+      "json_file": "/tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-bf16-rerun.json",
+      "kv_storage_dtype": "bf16",
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "bf16",
+        "resolved_storage_dtype": "bf16",
+        "storage_dtype": "bf16",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": false,
+          "scale_dtype": null,
+          "granularity": null,
+          "k_scale": null,
+          "v_scale": null
+        },
+        "int8_explicit": false,
+        "int8_admission_gated": false,
+        "selection_reason": "explicit_bf16"
+      },
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "warmup_decode_tokens": 4,
+      "max_layers": 40,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "manual_chunk_sizes",
+        "max_sequence_length": 131072,
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+        "memory_budget_gib": 0.0
+      },
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 131072,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false
+      },
+      "graph_replay": true,
+      "graph_steps_per_replay": 1,
+      "timings": {
+        "load_seconds": 25.413030785042793,
+        "prefill_seconds": 128.35342491813935,
+        "warmup_decode_seconds": 0.06750479503534734,
+        "decode_seconds": 2.022164311958477,
+        "decode_step_median_s": 0.0157981586871756
+      },
+      "throughput": {
+        "prefill_tok_s": 1021.180385981866,
+        "warmed_decode_tok_s": 63.29851597273583
+      },
+      "memory": {
+        "tracked_peak_allocated_bytes": 25005013177,
+        "tracked_peak_allocated_gib": 23.287733250297606,
+        "sampled_hip_vram_peak_bytes": 24062459904,
+        "sampled_hip_vram_peak_gib": 22.409912109375,
+        "after_load_hip_used_gib": 22.048828125,
+        "after_prefill_hip_used_gib": 22.404052734375,
+        "after_decode_hip_used_gib": 22.409912109375,
+        "kv_memory_audit": {
+          "passed": true,
+          "kv_storage_dtype": "bf16",
+          "retained_kv_buffers": 10,
+          "retained_kv_payload_bytes": 2689597440,
+          "retained_kv_payload_elements": 1344798720,
+          "retained_kv_payload_bytes_per_element": 2.0,
+          "retained_kv_scale_bytes": 0,
+          "retained_kv_total_bytes": 2689597440,
+          "persistent_bf16_kv_layers": [],
+          "bf16_shadow_candidates": [],
+          "persistent_bf16_shadow_exists": false,
+          "violations": [],
+          "buffers": [
+            {
+              "layer_id": 3,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 7,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 11,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 15,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 19,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 23,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 27,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 31,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 35,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            },
+            {
+              "layer_id": 39,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 268959744,
+              "payload_bytes_per_element": 2.0,
+              "scale_dtype": null,
+              "scale_granularity": null,
+              "k_scale_shape": null,
+              "v_scale_shape": null,
+              "scale_bytes": 0
+            }
+          ]
+        }
+      },
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.925739288330078
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.169452667236328
+        }
+      ]
+    },
+    "int8_per_token_head": {
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage int8_per_token_head --json /tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-int8-rerun.json",
+      "json_file": "/tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-int8-rerun.json",
+      "kv_storage_dtype": "int8_per_token_head",
+      "kv_policy": {
+        "policy_class": "FixedPagedKVPolicy",
+        "spans_mode": "uniform",
+        "block_size": 256,
+        "requested_storage": "int8_per_token_head",
+        "resolved_storage_dtype": "int8_per_token_head",
+        "storage_dtype": "int8_per_token_head",
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "scale_metadata_format": {
+          "present": true,
+          "scale_dtype": "fp16",
+          "granularity": "per_token_head",
+          "k_scale": "per_token_head",
+          "v_scale": "per_token_head"
+        },
+        "int8_explicit": true,
+        "int8_admission_gated": false,
+        "selection_reason": "explicit_int8"
+      },
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "warmup_decode_tokens": 4,
+      "max_layers": 40,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "manual_chunk_sizes",
+        "max_sequence_length": 131072,
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+        "memory_budget_gib": 0.0
+      },
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 131072,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp16",
+        "kv_scale_granularity": "per_token_head",
+        "int8_prefill_oracle": true
+      },
+      "graph_replay": true,
+      "graph_steps_per_replay": 1,
+      "timings": {
+        "load_seconds": 25.396131582790986,
+        "prefill_seconds": 129.63768297620118,
+        "warmup_decode_seconds": 0.07170792599208653,
+        "decode_seconds": 2.0889590301085263,
+        "decode_step_median_s": 0.016319992422722862
+      },
+      "throughput": {
+        "prefill_tok_s": 1011.0640439636841,
+        "warmed_decode_tok_s": 61.2745382533185
+      },
+      "memory": {
+        "tracked_peak_allocated_bytes": 26355075257,
+        "tracked_peak_allocated_gib": 24.545076542533934,
+        "sampled_hip_vram_peak_bytes": 22730768384,
+        "sampled_hip_vram_peak_gib": 21.169677734375,
+        "after_load_hip_used_gib": 20.80859375,
+        "after_prefill_hip_used_gib": 21.163818359375,
+        "after_decode_hip_used_gib": 21.169677734375,
+        "kv_memory_audit": {
+          "passed": true,
+          "kv_storage_dtype": "int8_per_token_head",
+          "retained_kv_buffers": 10,
+          "retained_kv_payload_bytes": 1344798720,
+          "retained_kv_payload_elements": 1344798720,
+          "retained_kv_payload_bytes_per_element": 1.0,
+          "retained_kv_scale_bytes": 10506240,
+          "retained_kv_total_bytes": 1355304960,
+          "persistent_bf16_kv_layers": [],
+          "bf16_shadow_candidates": [],
+          "persistent_bf16_shadow_exists": false,
+          "violations": [],
+          "buffers": [
+            {
+              "layer_id": 3,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 7,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 11,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 15,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 19,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 23,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 27,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 31,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 35,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            },
+            {
+              "layer_id": 39,
+              "storage_dtype": "int8_per_token_head",
+              "payload_dtype": "int8",
+              "key_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                513,
+                256,
+                2,
+                256
+              ],
+              "payload_elements": 134479872,
+              "payload_bytes": 134479872,
+              "payload_bytes_per_element": 1.0,
+              "scale_dtype": "fp16",
+              "scale_granularity": "per_token_head",
+              "k_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "v_scale_shape": [
+                513,
+                256,
+                2
+              ],
+              "scale_bytes": 1050624
+            }
+          ]
+        }
+      },
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.925739288330078
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.992631912231445
+        }
+      ]
+    },
+    "int8_vs_bf16_delta": {
+      "prefill_tok_s_pct": -0.9906518140235465,
+      "decode_tok_s_pct": -3.1975121190662814,
+      "tracked_peak_allocated_gib_delta": 1.2573432922363281,
+      "sampled_hip_vram_peak_gib_delta": -1.240234375,
+      "retained_kv_payload_bytes_delta": -1344798720,
+      "retained_kv_total_bytes_delta": -1334292480,
+      "retained_kv_total_bytes_pct": -49.609375
+    }
+  },
+  "profiler": {
+    "method": "rocprofv3 --kernel-trace --selected-regions true with qwen35_paro_bench.py roctxProfilerResume/Pause regions",
+    "raw_root": "/tmp/hipengine-task15-128k-int8-kv",
+    "int8_prefill": {
+      "profiled_prompt_length": 131072,
+      "profiled_decode_tokens": 0,
+      "bench_json": "/tmp/hipengine-task15-128k-int8-kv/rocprof-int8-prefill/bench.json",
+      "kernel_trace_csv": "/tmp/hipengine-task15-128k-int8-kv/rocprof-int8-prefill/int8-prefill_kernel_trace.csv",
+      "kernel_calls": 134410,
+      "int8_write_kernels": [
+        {
+          "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>(float const*, float const*, signed char*, signed char*, _Float16*, _Float16*, int const*, long const*, long, long, long, long, long, int)",
+          "calls": 320,
+          "total_ns": 17551266,
+          "avg_ns": 54847.70625,
+          "median_ns": 54620.5,
+          "max_ns": 69761,
+          "vgpr_max": 16,
+          "scratch_max": 0,
+          "lds_max": 0
+        }
+      ]
+    },
+    "int8_decode_graph_sample": {
+      "profiled_prompt_length": 131072,
+      "profiled_decode_tokens": 16,
+      "workload_decode_tokens": 128,
+      "bench_json": "/tmp/hipengine-task15-128k-int8-kv/rocprof-int8-decode16/bench.json",
+      "kernel_trace_csv": "/tmp/hipengine-task15-128k-int8-kv/rocprof-int8-decode16/int8-decode16_kernel_trace.csv",
+      "kernel_calls": 14192,
+      "int8_decode_kernels": [
+        {
+          "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16, 8l, 16l, 2l>(float const*, signed char const*, signed char const*, _Float16 const*, _Float16 const*, int const*, long const*, float*, float*, float*, long, long, float)",
+          "calls": 160,
+          "total_ns": 99440034,
+          "avg_ns": 621500.2125,
+          "median_ns": 621429.0,
+          "max_ns": 641850,
+          "vgpr_max": 80,
+          "scratch_max": 0,
+          "lds_max": 0
+        }
+      ],
+      "int8_decode_reduce_gate_kernels": [
+        {
+          "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<_Float16>(float const*, float const*, float const*, _Float16 const*, _Float16*, long, long, long, long)",
+          "calls": 160,
+          "total_ns": 25483425,
+          "avg_ns": 159271.40625,
+          "median_ns": 159282.0,
+          "max_ns": 167482,
+          "vgpr_max": 16,
+          "scratch_max": 0,
+          "lds_max": 0
+        }
+      ],
+      "int8_decode_append_write_kernels": [
+        {
+          "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>(float const*, float const*, signed char*, signed char*, _Float16*, _Float16*, int const*, long const*, long, long, long, long, long, int)",
+          "calls": 160,
+          "total_ns": 698004,
+          "avg_ns": 4362.525,
+          "median_ns": 4360.0,
+          "max_ns": 4760,
+          "vgpr_max": 16,
+          "scratch_max": 0,
+          "lds_max": 0
+        }
+      ],
+      "note": "Decode trace samples 16 one-step graph replays to avoid rocprofv3 finalization instability at longer traced replay windows on this host; throughput row above uses the full 128 measured decode tokens."
+    }
+  },
+  "notes": [
+    "Performance remains diagnostic_retained/performance_claim=false because the measurement surface is the resident Qwen3.5/PARO benchmark harness, not a promoted public LLM.generate row.",
+    "INT8 retained KV cuts retained KV total bytes by about half and sampled HIP VRAM peak by 1.24 GiB versus BF16, while tracked allocator peak rises because prefill temporarily holds the BF16 oracle K/V plus retained INT8 K/V before releasing the prefill workspace."
+  ]
+}

@@ -6,15 +6,19 @@ import numpy as np
 
 from hipengine.benchmark.correctness import evaluate_logits
 from hipengine.kernels.cpu_reference import (
+    dequantize_kv_int8_per_token_head,
     full_attn_prefill,
     full_attn_prefill_varlen,
     gdn_prefill_recurrent_segments,
     linear_attn_conv_prefill_segments,
     load_fixture,
+    paged_attn_decode_int8_per_token_head,
+    quantize_kv_int8_per_token_head,
     register_cpu_reference_kernels,
     rmsnorm,
     rotate,
     run_fixture,
+    write_paged_kv_int8_per_token_head,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
@@ -66,8 +70,95 @@ def test_cpu_reference_kernels_register_and_resolve() -> None:
         variant="qwen35_causal_gqa_gate_fp16",
     )
 
+    int8_decode = resolve(backend="cpu_reference", layer="paged_attn_decode", quant="int8_per_token_head")
+
     assert fn is rmsnorm
     assert prefill is full_attn_prefill
+    assert int8_decode is paged_attn_decode_int8_per_token_head
+
+
+def test_cpu_reference_int8_kv_quantizes_per_token_head_and_handles_zero_rows() -> None:
+    key = np.asarray(
+        [
+            [[0.0, 0.0, 0.0, 0.0], [1.0, -1.0, 0.5, -0.5]],
+            [[1.0, 2.0, -1.0, -2.0], [4.0, -4.0, 2.0, -2.0]],
+        ],
+        dtype=np.float32,
+    )
+    value = key * np.asarray([[[2.0]], [[0.25]]], dtype=np.float32)
+
+    qk, qv, k_scale, v_scale = quantize_kv_int8_per_token_head(key, value)
+    key_deq, value_deq = dequantize_kv_int8_per_token_head(qk, qv, k_scale, v_scale)
+
+    assert qk.dtype == np.int8
+    assert qv.dtype == np.int8
+    assert k_scale.shape == key.shape[:-1]
+    assert v_scale.shape == value.shape[:-1]
+    assert k_scale[0, 0] == 0.0
+    assert np.count_nonzero(qk[0, 0]) == 0
+    assert np.isclose(k_scale[1, 0], 2.0 / 127.0)
+    assert np.isclose(k_scale[1, 1], 4.0 / 127.0)
+    assert k_scale[1, 0] != k_scale[1, 1]
+    assert np.max(np.abs(key_deq - key)) <= float(np.max(k_scale) / 2.0 + 1e-7)
+    assert np.max(np.abs(value_deq - value)) <= float(np.max(v_scale) / 2.0 + 1e-7)
+
+
+def test_cpu_reference_int8_kv_write_respects_page_boundaries() -> None:
+    key_rows = np.asarray(
+        [
+            [[1.0, 0.0]],
+            [[0.0, 1.0]],
+            [[1.0, 1.0]],
+        ],
+        dtype=np.float32,
+    )
+    value_rows = key_rows.copy()
+
+    key_cache, value_cache, k_scale, v_scale = write_paged_kv_int8_per_token_head(
+        key_rows,
+        value_rows,
+        positions=np.asarray([0, 1, 2], dtype=np.int64),
+        block_table=np.asarray([1, 0], dtype=np.int32),
+        block_size=2,
+    )
+    key_deq, value_deq = dequantize_kv_int8_per_token_head(key_cache, value_cache, k_scale, v_scale)
+
+    assert np.allclose(key_deq[1, 0], key_rows[0])
+    assert np.allclose(value_deq[1, 1], value_rows[1])
+    assert np.allclose(key_deq[0, 0], key_rows[2])
+    assert np.count_nonzero(key_cache[0, 1]) == 0
+    assert np.count_nonzero(value_cache[0, 1]) == 0
+
+
+def test_cpu_reference_int8_paged_attention_matches_dequantized_oracle() -> None:
+    key_cache = np.asarray([[[[2, 2]], [[0, 0]]], [[[2, 0]], [[0, 2]]]], dtype=np.int8)
+    value_cache = np.asarray([[[[10, 12]], [[0, 0]]], [[[2, 4]], [[6, 8]]]], dtype=np.int8)
+    k_scale = np.asarray([[[0.5], [0.0]], [[0.5], [0.5]]], dtype=np.float32)
+    v_scale = np.asarray([[[0.5], [0.0]], [[0.5], [0.5]]], dtype=np.float32)
+
+    out = paged_attn_decode_int8_per_token_head(
+        np.asarray([[1.0, 0.0]], dtype=np.float32),
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        live_counts=np.asarray([3], dtype=np.int64),
+        block_table=np.asarray([1, 0], dtype=np.int32),
+        block_size=2,
+        scale=1.0,
+    )
+    dense_out = paged_attn_decode_int8_per_token_head(
+        np.asarray([[1.0, 0.0]], dtype=np.float32),
+        np.asarray([[[2, 0]], [[0, 2]], [[2, 2]]], dtype=np.int8),
+        np.asarray([[[2, 4]], [[6, 8]], [[10, 12]]], dtype=np.int8),
+        np.asarray([[0.5], [0.5], [0.5]], dtype=np.float32),
+        np.asarray([[0.5], [0.5], [0.5]], dtype=np.float32),
+        live_counts=np.asarray([3], dtype=np.int64),
+        scale=1.0,
+    )
+
+    assert np.allclose(out, np.asarray([[3.0, 4.0]], dtype=np.float32), atol=1e-6, rtol=1e-6)
+    assert np.allclose(dense_out, out, atol=1e-6, rtol=1e-6)
 
 
 def test_cpu_reference_full_attn_prefill_causal_gqa_gate() -> None:
@@ -271,7 +362,9 @@ def test_all_committed_cpu_reference_fixtures_pass() -> None:
     assert {path.name for path in fixture_paths} == {
         "attention_decode_masked.json",
         "full_attn_prefill_causal_gqa_gate.json",
+        "kv_int8_dequant_per_token_head.json",
         "linear_basic.json",
+        "paged_attn_decode_int8_per_token_head.json",
         "rmsnorm_basic.json",
         "rotate_split_half.json",
     }

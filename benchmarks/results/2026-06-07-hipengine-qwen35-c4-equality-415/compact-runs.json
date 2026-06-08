@@ -1,0 +1,197 @@
+{
+  "active_c2_verify": {
+    "generated_token_equality_passed": true,
+    "metric": 137,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": {
+      "exists": true,
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "sha256": "97b0d9123fe34c5c44fb20ce55fd9ff1dab0b88af55062842a0becbca0f20ebf",
+      "size_bytes": 138437
+    }
+  },
+  "conclusion": "The c4 generated-token equality gate is green at the full 512/128 L40 shape with primitive correctness wired into retained-bench. Next step is to run the same c8 equality gate with primitive c8 artifact before any profiler/scaling work.",
+  "created_at": "2026-06-07T02:55:18.603618+00:00",
+  "guard": {
+    "passed": true,
+    "primitive_c2": {
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "exists": true,
+      "passed": true,
+      "path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+      "size_bytes": 1281
+    },
+    "primitive_c8": {
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "exists": true,
+      "passed": true,
+      "path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+      "size_bytes": 1352
+    }
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 415,
+  "performance_claim": false,
+  "primitive_c4": {
+    "device": {
+      "current_device": 0,
+      "device_name": "AMD Radeon RX 7900 XTX",
+      "env": {
+        "HIP_VISIBLE_DEVICES": "1"
+      },
+      "hipDeviceGetName_error": 0,
+      "hipGetDeviceCount_error": 0,
+      "hipGetDevice_error": 0,
+      "visible_device_count": 1
+    },
+    "passed": true,
+    "raw_json": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-415/primitive-c4.json",
+      "sha256": "540a3860d1e5eff952f388b14b81551d60321a621067f2f38479f74d5dd21891",
+      "size_bytes": 1357
+    }
+  },
+  "prompt_verifier": {
+    "evidence": "PASS: c4 512/128 generated-token equality vs independent native-batch c1 is green for all four rows ([137,137,137,137]) with primitive c4 loaded/passed on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX; active c2 verify remains 137 and guard c2/c8 primitives passed. No performance claim.",
+    "passed": true
+  },
+  "retained_c4": {
+    "correctness_passed": true,
+    "decode_execution": {
+      "blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_kv_append_decode_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_state_path": "native_segments",
+      "moe_decode_path": "grouped_compact",
+      "native_caware_decode": false,
+      "sampler_execution": {
+        "argmax_audit_enabled": false,
+        "argmax_mode": "batch",
+        "blockers": [],
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "equality_rows": 4,
+        "final_cast_elems_fence_elements": 0,
+        "final_cast_elems_fence_enabled": false,
+        "final_cast_path": "batch",
+        "final_cast_temp_fence_enabled": false,
+        "final_cast_tiny_fence_enabled": false,
+        "final_norm_audit_enabled": false,
+        "final_norm_kernel_fence_enabled": false,
+        "final_norm_path": "batch",
+        "final_rmsnorm_kernel_fence_enabled": false,
+        "final_rmsnorm_temp_fence_enabled": false,
+        "lm_head_audit_enabled": false,
+        "lm_head_kernel_fence_enabled": false,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "rows": 4,
+        "stabilize_cast_elems": 0,
+        "stabilize_cast_elems_enabled": false,
+        "suffix_fence_enabled": false,
+        "suffix_kernel_fence_enabled": false,
+        "sync_fence_enabled": false
+      }
+    },
+    "generated_token_equality": {
+      "comparison": "native_batch_vs_independent_c1",
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "gen_tokens_per_request": 128,
+      "min_equal_prefix_tokens": 137,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "rows": 4,
+      "tokens_per_sequence": 137,
+      "warmup_decode_tokens": 8
+    },
+    "primitive_batch_correctness": {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-415/primitive-c4.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08,
+      "block_size": 256,
+      "context_lens": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 8,
+      "max_context_len": 4,
+      "num_kv_heads": 1,
+      "num_q_heads": 4,
+      "passed": true,
+      "reason": null,
+      "rows": 4,
+      "schema": 1,
+      "seed": 1234,
+      "source_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-415/primitive-c4.json",
+      "status": "loaded"
+    },
+    "raw_json": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-415/retained-c4.json",
+      "sha256": "3473f1c2175a528720639f8871f7262cc07e9ef2fa9d2e8fd4280776acb62fce",
+      "size_bytes": 229746
+    },
+    "status": "blocked"
+  }
+}

@@ -1,0 +1,685 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained_blocked",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T20:38:53.903906+00:00",
+  "run_tag": "hipengine-qwen36-q4km-512-128-paro-blocker-profile",
+  "task": "#61 Benchmark and iterate qwen35moe GGUF 512/128 prefill to PARO range",
+  "summary": "512/128 qwen35moe GGUF remains blocked far below PARO/llama.cpp-class prefill. Current correctness-safe raw fast-bulk default is stable at 99.920 tok/s; opt-in expert sidecar reduces MoE kernel time but worsens wall prefill to 62.400 tok/s because the 24 GiB card cannot keep raw GGUF weights plus full sidecars resident. rocprof shows raw prefill is dominated by row-wise GGUF GEMV kernels (Q8 dense plus selected experts), not attention.",
+  "hardware": {
+    "gpu": "attached RX 7900 XTX / gfx1100 in this session; project default claims remain W7900/gfx1100 unless separately verified",
+    "device_total_gib": 23.984375
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "commit_before_commit": "f7bc604",
+    "git_status_at_artifact": "## gguf-bulk-prefill\n"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "architecture": "qwen35moe",
+    "tensor_type_counts_from_public_gate": {
+      "F32": 361,
+      "Q4_K": 80,
+      "Q5_K": 37,
+      "Q6_K": 4,
+      "Q8_0": 251
+    },
+    "config": {
+      "architecture": "qwen35moe",
+      "block_count": 40,
+      "hidden_size": 2048,
+      "vocab_size": 248320,
+      "context_length": 262144,
+      "full_attention_interval": 4,
+      "expert_count": 256,
+      "expert_used_count": 8,
+      "expert_feed_forward_length": 512,
+      "expert_shared_feed_forward_length": 512
+    }
+  },
+  "targets": {
+    "acceptance_prefill_tok_s_floor": 2000.0,
+    "source_lineage_paro_512_128_prefill_tok_s": 2696.4,
+    "llamacpp_hip_ud_q4_k_m_512_128_prefill_tok_s": 2436.049
+  },
+  "commands": {
+    "correctness_bulk_parity": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bulk_parity.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task61/bulk-parity.json",
+    "correctness_public_generate": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --json /tmp/hipengine-task61/public-e2e.json",
+    "raw_512_128_3run": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task61/default-512-128-3run.json",
+    "sidecar_512_128_1run": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --use-expert-sidecar --expert-sidecar-cache-dir /tmp/hipengine-task60-sidecar --require-expert-sidecar --json /tmp/hipengine-task61/sidecar-512-128-1run.json",
+    "raw_512_prefill_rocprof": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task61/rocprof-default-512 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task61/default-512-prefill-profile-run.json",
+    "sidecar_512_prefill_rocprof": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task61/rocprof-sidecar-512 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --use-expert-sidecar --expert-sidecar-cache-dir /tmp/hipengine-task60-sidecar --require-expert-sidecar --json /tmp/hipengine-task61/sidecar-512-prefill-profile-run.json",
+    "rejected_thread_probe": "Temporarily changed gguf_k_gemv wrapper defaults from 128 to 256 threads and ran qwen35_gguf_bulk_parity.py --layer-limits 0,40; reverted because deterministic probe token changed 4469 -> 451."
+  },
+  "correctness": {
+    "bulk_parity_passed": true,
+    "bulk_parity_summary": {
+      "serial_token_id": 4469,
+      "default_token_id": 4469,
+      "default_top1_match": true,
+      "default_kl_serial_to_default": 0.0,
+      "default_max_abs_logit": 0.0,
+      "native_attention_bulk_ffn_token_id": 4469,
+      "native_attention_bulk_ffn_top1_match": true,
+      "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
+      "native_attention_bulk_ffn_max_abs_logit": 0.0,
+      "fast_bulk_attention_token_id": 4469,
+      "fast_bulk_attention_top1_match": true,
+      "fast_bulk_attention_kl_serial_to_bulk": 0.0,
+      "fast_bulk_attention_max_abs_logit": 0.0,
+      "first_fast_bulk_hidden_drift_limit": null,
+      "first_aotriton_hidden_drift_limit": null,
+      "first_native_full_attention_hidden_drift_limit": null
+    },
+    "public_generate_passed": true,
+    "public_generated_texts": [
+      "izio."
+    ],
+    "public_generated_token_ids": [
+      43482,
+      13
+    ],
+    "torch_loaded_by_generate": false,
+    "raw_benchmark_finite_final_logits_all": true,
+    "raw_benchmark_final_token_ids": [
+      11,
+      11,
+      11
+    ],
+    "sidecar_benchmark_finite_final_logits_all": true,
+    "sidecar_benchmark_final_token_ids": [
+      11
+    ]
+  },
+  "measurements": {
+    "raw_fast_bulk_default_512_128": {
+      "prefill_tok_s": {
+        "samples": [
+          99.77591728090745,
+          99.91978211548887,
+          99.97854700630205
+        ],
+        "median": 99.91978211548887,
+        "p95": 99.91978211548887,
+        "min": 99.77591728090745,
+        "max": 99.97854700630205,
+        "stdev": 0.10425066637270335,
+        "stdev_pct_of_median": 0.10433436119006823
+      },
+      "decode_tok_s": {
+        "samples": [
+          49.87098328011634,
+          49.85731217042165,
+          49.826996600460475
+        ],
+        "median": 49.85731217042165,
+        "p95": 49.85731217042165,
+        "min": 49.826996600460475,
+        "max": 49.87098328011634,
+        "stdev": 0.022512074573078036,
+        "stdev_pct_of_median": 0.045153004831322514
+      },
+      "prefill_seconds": {
+        "samples": [
+          5.131498802045826,
+          5.1241104530054145,
+          5.121098628966138
+        ],
+        "median": 5.1241104530054145,
+        "p95": 5.1241104530054145,
+        "min": 5.121098628966138,
+        "max": 5.131498802045826,
+        "stdev": 0.005351360974462202,
+        "stdev_pct_of_median": 0.10443492628702998
+      },
+      "decode_seconds": {
+        "samples": [
+          2.566622744954657,
+          2.5673265249934047,
+          2.5688885289710015
+        ],
+        "median": 2.5673265249934047,
+        "p95": 2.5673265249934047,
+        "min": 2.566622744954657,
+        "max": 2.5688885289710015,
+        "stdev": 0.00115966517996153,
+        "stdev_pct_of_median": 0.0451701475707111
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          20.885867577046156,
+          20.885867577046156,
+          20.885867577046156
+        ],
+        "median": 20.885867577046156,
+        "p95": 20.885867577046156,
+        "min": 20.885867577046156,
+        "max": 20.885867577046156,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          21.34375,
+          21.345703125,
+          21.34765625
+        ],
+        "median": 21.345703125,
+        "p95": 21.345703125,
+        "min": 21.34375,
+        "max": 21.34765625,
+        "stdev": 0.001953125,
+        "stdev_pct_of_median": 0.009149967975112087
+      }
+    },
+    "opt_in_expert_sidecar_512_128": {
+      "prefill_tok_s": {
+        "samples": [
+          62.39982205943917
+        ],
+        "median": 62.39982205943917,
+        "p95": 62.39982205943917,
+        "min": 62.39982205943917,
+        "max": 62.39982205943917,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "decode_tok_s": {
+        "samples": [
+          49.48376275168715
+        ],
+        "median": 49.48376275168715,
+        "p95": 49.48376275168715,
+        "min": 49.48376275168715,
+        "max": 49.48376275168715,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "prefill_seconds": {
+        "samples": [
+          8.2051516030333
+        ],
+        "median": 8.2051516030333,
+        "p95": 8.2051516030333,
+        "min": 8.2051516030333,
+        "max": 8.2051516030333,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "decode_seconds": {
+        "samples": [
+          2.5867070910171606
+        ],
+        "median": 2.5867070910171606,
+        "p95": 2.5867070910171606,
+        "min": 2.5867070910171606,
+        "max": 2.5867070910171606,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          21.51086661592126
+        ],
+        "median": 21.51086661592126,
+        "p95": 21.51086661592126,
+        "min": 21.51086661592126,
+        "max": 21.51086661592126,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          21.345703125
+        ],
+        "median": 21.345703125,
+        "p95": 21.345703125,
+        "min": 21.345703125,
+        "max": 21.345703125,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "tracked_total_allocated_gib_single_run": 44.72961661592126,
+      "tracked_total_freed_gib_single_run": 23.84375
+    },
+    "raw_prefill_only_under_rocprof": {
+      "prefill_tok_s": {
+        "samples": [
+          99.50258935473214
+        ],
+        "median": 99.50258935473214,
+        "p95": 99.50258935473214,
+        "min": 99.50258935473214,
+        "max": 99.50258935473214,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "prefill_seconds": {
+        "samples": [
+          5.1455947359791026
+        ],
+        "median": 5.1455947359791026,
+        "p95": 5.1455947359791026,
+        "min": 5.1455947359791026,
+        "max": 5.1455947359791026,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      }
+    },
+    "sidecar_prefill_only_under_rocprof": {
+      "prefill_tok_s": {
+        "samples": [
+          62.463740416199364
+        ],
+        "median": 62.463740416199364,
+        "p95": 62.463740416199364,
+        "min": 62.463740416199364,
+        "max": 62.463740416199364,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "prefill_seconds": {
+        "samples": [
+          8.196755375014618
+        ],
+        "median": 8.196755375014618,
+        "p95": 8.196755375014618,
+        "min": 8.196755375014618,
+        "max": 8.196755375014618,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      }
+    }
+  },
+  "comparisons": {
+    "raw_vs_2000_floor": {
+      "prefill_tok_s": 99.91978211548887,
+      "target_tok_s": 2000.0,
+      "delta_pct": -95.00401089422556,
+      "speedup_needed": 20.0160564570524
+    },
+    "raw_vs_paro": {
+      "prefill_tok_s": 99.91978211548887,
+      "target_tok_s": 2696.4,
+      "delta_pct": -96.29432643096392,
+      "speedup_needed": 26.985647315398047
+    },
+    "raw_vs_llamacpp_hip": {
+      "prefill_tok_s": 99.91978211548887,
+      "target_tok_s": 2436.049,
+      "delta_pct": -95.89828521037595,
+      "speedup_needed": 24.380047158073022
+    },
+    "sidecar_vs_raw": {
+      "sidecar_prefill_tok_s": 62.39982205943917,
+      "raw_prefill_tok_s": 99.91978211548887,
+      "delta_pct": -37.550081937412095
+    }
+  },
+  "rocprof": {
+    "raw_default_512_prefill": {
+      "csv_uncommitted_path": "/tmp/hipengine-task61/rocprof-default-512/rocm/437817_kernel_trace.csv",
+      "dispatches": 1175,
+      "total_kernel_ms": 5113.63185,
+      "prefill_wall_ms": 5145.594735979103,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 1931.179287,
+          "share_pct": 37.76531716885329,
+          "count": 250
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 1453.014294,
+          "share_pct": 28.414526829889017,
+          "count": 80
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 925.587219,
+          "share_pct": 18.100388259276038,
+          "count": 37
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "total_ms": 663.648602,
+          "share_pct": 12.978028561050987,
+          "count": 30
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 62.748376,
+          "share_pct": 1.227080435991887,
+          "count": 3
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 38.927019,
+          "share_pct": 0.7612401545879764,
+          "count": 10
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 14.048576,
+          "share_pct": 0.2747279509376491,
+          "count": 80
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 4.543699,
+          "share_pct": 0.08885463665124817,
+          "count": 1
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 4.197858,
+          "share_pct": 0.0820915177927797,
+          "count": 30
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+          "total_ms": 4.052766,
+          "share_pct": 0.07925416062167244,
+          "count": 40
+        },
+        {
+          "name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 3.140036,
+          "share_pct": 0.06140520264476998,
+          "count": 60
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 1.586774,
+          "share_pct": 0.03103027450050007,
+          "count": 40
+        }
+      ],
+      "bottleneck_breakdown": {
+        "q8_0_dense_prefill": {
+          "total_ms": 1931.179287,
+          "count": 250,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 1931.179287,
+              "share_pct": 37.76531716885329,
+              "count": 250
+            }
+          ],
+          "share_pct_of_kernel_total": 37.76531716885329
+        },
+        "q4_selected_gate_up": {
+          "total_ms": 1453.014294,
+          "count": 80,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+              "total_ms": 1453.014294,
+              "share_pct": 28.414526829889017,
+              "count": 80
+            }
+          ],
+          "share_pct_of_kernel_total": 28.414526829889017
+        },
+        "q5_selected_down": {
+          "total_ms": 925.587219,
+          "count": 37,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+              "total_ms": 925.587219,
+              "share_pct": 18.100388259276038,
+              "count": 37
+            }
+          ],
+          "share_pct_of_kernel_total": 18.100388259276038
+        },
+        "q6_selected_down": {
+          "total_ms": 62.748376,
+          "count": 3,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+              "total_ms": 62.748376,
+              "share_pct": 1.227080435991887,
+              "count": 3
+            }
+          ],
+          "share_pct_of_kernel_total": 1.227080435991887
+        },
+        "gdn_recurrent": {
+          "total_ms": 663.648602,
+          "count": 30,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+              "total_ms": 663.648602,
+              "share_pct": 12.978028561050987,
+              "count": 30
+            }
+          ],
+          "share_pct_of_kernel_total": 12.978028561050987
+        },
+        "full_attention": {
+          "total_ms": 38.927019,
+          "count": 10,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+              "total_ms": 38.927019,
+              "share_pct": 0.7612401545879764,
+              "count": 10
+            }
+          ],
+          "share_pct_of_kernel_total": 0.7612401545879764
+        },
+        "router": {
+          "total_ms": 15.05039,
+          "count": 120,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+              "total_ms": 14.048576,
+              "share_pct": 0.2747279509376491,
+              "count": 80
+            },
+            {
+              "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+              "total_ms": 1.001814,
+              "share_pct": 0.019591046625697155,
+              "count": 40
+            }
+          ],
+          "share_pct_of_kernel_total": 0.2943189975633463
+        }
+      },
+      "interpretation": "Raw default prefill wall time is almost entirely device kernel time. Q8_0 dense row-wise prefill, selected expert row-wise GEMVs, and GDN recurrent kernels account for nearly all kernel time; full attention is under 1%."
+    },
+    "sidecar_512_prefill": {
+      "csv_uncommitted_path": "/tmp/hipengine-task61/rocprof-sidecar-512/rocm/439835_kernel_trace.csv",
+      "dispatches": 1135,
+      "total_kernel_ms": 3091.345875,
+      "prefill_wall_ms": 8196.755375014618,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 1912.261949,
+          "share_pct": 61.85855696266921,
+          "count": 250
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "total_ms": 663.28267,
+          "share_pct": 21.456113188887347,
+          "count": 30
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_expert_pack8_q4_dual_selected_prefill_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, int const*, float const*, float const*, int const*, float const*, float const*, unsigned short*, unsigned short*, int, int, int, int, int, int)",
+          "total_ms": 246.683021,
+          "share_pct": 7.9797936230607,
+          "count": 40
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_expert_pack8_selected_prefill_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, int const*, void const*, float const*, float const*, unsigned short*, int, int, int, int, int, int)",
+          "total_ms": 176.689041,
+          "share_pct": 5.715602463926817,
+          "count": 37
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 39.439789,
+          "share_pct": 1.275812885221069,
+          "count": 10
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_expert_pack8_selected_prefill_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, int const*, void const*, float const*, float const*, unsigned short*, int, int, int, int, int, int)",
+          "total_ms": 14.741549,
+          "share_pct": 0.47686508065034944,
+          "count": 3
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 13.771692,
+          "share_pct": 0.44549178761823277,
+          "count": 80
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 5.680712,
+          "share_pct": 0.18376177334087535,
+          "count": 30
+        },
+        {
+          "name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 3.189798,
+          "share_pct": 0.10318476576161184,
+          "count": 60
+        },
+        {
+          "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "total_ms": 2.582675,
+          "share_pct": 0.08354532635401078,
+          "count": 40
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 2.272229,
+          "share_pct": 0.07350290429730708,
+          "count": 1
+        },
+        {
+          "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 1.916451,
+          "share_pct": 0.061994065934145914,
+          "count": 41
+        }
+      ],
+      "bottleneck_breakdown": {
+        "q8_0_dense_prefill": {
+          "total_ms": 1912.261949,
+          "count": 250,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 1912.261949,
+              "share_pct": 61.85855696266921,
+              "count": 250
+            }
+          ],
+          "share_pct_of_kernel_total": 61.85855696266921
+        },
+        "sidecar_q4_dual_gate_up": {
+          "total_ms": 246.683021,
+          "count": 40,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_expert_pack8_q4_dual_selected_prefill_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, int const*, float const*, float const*, int const*, float const*, float const*, unsigned short*, unsigned short*, int, int, int, int, int, int)",
+              "total_ms": 246.683021,
+              "share_pct": 7.9797936230607,
+              "count": 40
+            }
+          ],
+          "share_pct_of_kernel_total": 7.979793623060701
+        },
+        "sidecar_q5_selected_down": {
+          "total_ms": 176.689041,
+          "count": 37,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_expert_pack8_selected_prefill_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, int const*, void const*, float const*, float const*, unsigned short*, int, int, int, int, int, int)",
+              "total_ms": 176.689041,
+              "share_pct": 5.715602463926817,
+              "count": 37
+            }
+          ],
+          "share_pct_of_kernel_total": 5.715602463926817
+        },
+        "sidecar_q6_selected_down": {
+          "total_ms": 14.741549,
+          "count": 3,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::gguf_expert_pack8_selected_prefill_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, int const*, void const*, float const*, float const*, unsigned short*, int, int, int, int, int, int)",
+              "total_ms": 14.741549,
+              "share_pct": 0.47686508065034944,
+              "count": 3
+            }
+          ],
+          "share_pct_of_kernel_total": 0.47686508065034944
+        },
+        "gdn_recurrent": {
+          "total_ms": 663.28267,
+          "count": 30,
+          "items": [
+            {
+              "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+              "total_ms": 663.28267,
+              "share_pct": 21.456113188887347,
+              "count": 30
+            }
+          ],
+          "share_pct_of_kernel_total": 21.45611318888735
+        }
+      },
+      "interpretation": "Sidecar kernels cut selected-expert device kernel time substantially, but prefill wall time worsens because transient sidecar allocation/copy dominates outside kernel time. Raw Q8_0 dense prefill then becomes the largest remaining kernel family."
+    }
+  },
+  "rejected_iteration": {
+    "name": "gguf_k_gemv default threads 128 -> 256",
+    "reason": "Rejected before throughput benchmarking because deterministic qwen35moe probe changed model output even though serial/default bulk parity stayed internally exact; this violates public fixture stability expectations.",
+    "baseline_token_id_from_gate": 4469,
+    "thread256_token_id": 451,
+    "thread256_summary": {
+      "serial_token_id": 451,
+      "default_token_id": 451,
+      "default_top1_match": true,
+      "default_kl_serial_to_default": 0.0,
+      "default_max_abs_logit": 0.0,
+      "native_attention_bulk_ffn_token_id": 451,
+      "native_attention_bulk_ffn_top1_match": true,
+      "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
+      "native_attention_bulk_ffn_max_abs_logit": 0.0,
+      "fast_bulk_attention_token_id": 451,
+      "fast_bulk_attention_top1_match": true,
+      "fast_bulk_attention_kl_serial_to_bulk": 0.0,
+      "fast_bulk_attention_max_abs_logit": 0.0,
+      "first_fast_bulk_hidden_drift_limit": null,
+      "first_aotriton_hidden_drift_limit": null,
+      "first_native_full_attention_hidden_drift_limit": null
+    }
+  },
+  "blocker": {
+    "accepted_target_met": false,
+    "summary": "The current qwen35moe GGUF path is architecturally row-GEMV-bound. 512 tokens require hundreds of row-wise GGUF GEMV launches where each (row,out_col) dot product is a separate block. The profile shows ~4.37 s of raw default prefill kernel time in Q8_0 dense plus selected expert row-GEMV alone, already >17x the 0.256 s wall budget for 2000 tok/s. Expert sidecars solve part of MoE compute but not dense Q8_0 matmul and cannot stay resident beside raw weights on a 24 GiB device.",
+    "required_next_work": [
+      "Implement/port matrix-tiled GGUF Q8_0/Q5_K/Q6_K prefill kernels or a dequantize+GEMM path with a memory plan; Q8_0 dense is 37.8% of raw prefill kernel time and 61.9% after sidecar.",
+      "Implement grouped-by-expert/tiled selected-MoE kernels that reuse packed expert rows across tokens instead of per-output row GEMVs.",
+      "Replace transient sidecar H2D copies with a residency policy that does not keep duplicate raw+packed expert weights, or add equivalent sidecar decode fallback so raw experts can be omitted.",
+      "Keep deterministic qwen35moe fixture gates when changing reductions; a 256-thread reduction probe changed token 4469 -> 451 and was rejected."
+    ]
+  }
+}

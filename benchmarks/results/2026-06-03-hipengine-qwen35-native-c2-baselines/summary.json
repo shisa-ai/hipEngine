@@ -1,0 +1,104 @@
+{
+  "artifacts": {
+    "c1": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json",
+      "sha256": "0ce90952928c59a590321c2934ba7e5034e9113bbf642725257e34e2c94bc282",
+      "size_bytes": 183490
+    },
+    "primitive": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-primitive-correctness.json",
+      "sha256": "72a1f60595ffe5b122016db7e12cd12d975c96a38de283791b894c818be7a1c7",
+      "size_bytes": 872
+    },
+    "retained": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-retained-with-baselines.json",
+      "sha256": "f2d8be6f83480c75513202f14e37e2a36c92e204e608c576746ff1a3e71e7c32",
+      "size_bytes": 141137
+    },
+    "serial": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json",
+      "sha256": "c87919d6a91424668ea4aa9a37df6820434e2b7d11b974630b548f175da06e5c",
+      "size_bytes": 76531
+    }
+  },
+  "baselines": {
+    "c1_native": {
+      "commit": "ef6642e1",
+      "decode_tok_s_aggregate": 133.82028989043224,
+      "decode_tok_s_per_request": 133.82028989043224,
+      "dirty": false,
+      "native_prefill_execution": "single_request_native_full",
+      "prompt_source": "repeated_token_id",
+      "status": "loaded"
+    },
+    "c2_serial_bridge": {
+      "commit": "ef6642e1",
+      "decode_tok_s_aggregate": 103.77591534404674,
+      "decode_tok_s_per_request": 51.88795767202337,
+      "dirty": false,
+      "execution_path": "scheduler_serial_slot_bridge",
+      "row_execution": "serial_c1_layer_path",
+      "status": "blocked"
+    },
+    "primitive_c2": {
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "device_name": "AMD Radeon RX 7900 XTX",
+      "passed": true,
+      "rows": 2
+    }
+  },
+  "commands": {
+    "c1_native_baseline": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json",
+    "c2_primitive_correctness": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-primitive-correctness.json",
+    "c2_retained_with_baselines": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-primitive-correctness.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-retained-with-baselines.json",
+    "c2_serial_bridge_baseline": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json"
+  },
+  "conclusion": "c=1 native and c=2 scheduler serial-bridge baseline artifacts are now present under benchmarks/results and the c=2 retained bench loads them successfully: scaling.complete=true with ratios populated. The retained row remains blocked because throughput_claim_eligible/profiler/rollup gates are not satisfied, so no retained performance claim is made.",
+  "created_at": "2026-06-03T09:15:11.544997+00:00",
+  "git_commit": "ef6642e12c9d495e02cf19bf36f91a43603bc1c6",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 150,
+  "performance_claim": false,
+  "retained_ready": false,
+  "retained_with_baselines": {
+    "decision_accepted": false,
+    "decision_reason": "batch_execution.throughput_claim_eligible=false",
+    "decision_reason_blocker_count": 67,
+    "decision_reason_summary": [
+      "batch_execution.throughput_claim_eligible=false",
+      "profiler_json must be provided under benchmarks/results",
+      "compiler_version_file must be a repo-relative path under benchmarks/results",
+      "profiler trace was not captured with expected kernels present",
+      "profiler.artifact_path must be under benchmarks/results",
+      "profiler.source_artifact_path must be a non-empty string",
+      "profiler.output_format must be csv",
+      "profiler.trace_dir must be a non-empty string"
+    ],
+    "generated_token_equality_passed": true,
+    "native_decode_tok_s_aggregate": 124.43223013720552,
+    "native_decode_tok_s_per_request": 62.21611506860276,
+    "performance_claim": false,
+    "prefixes": [
+      137,
+      137
+    ],
+    "ratios": {
+      "aggregate_vs_c1": 0.9298457673278592,
+      "aggregate_vs_serial_bridge": 1.1990472907386769,
+      "per_request_vs_c1": 0.4649228836639296,
+      "per_request_vs_serial_bridge": 1.1990472907386769
+    },
+    "scaling_complete": true,
+    "status": "blocked"
+  },
+  "schema_version": 1,
+  "workload": {
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "kv_storage_dtype": "bf16",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

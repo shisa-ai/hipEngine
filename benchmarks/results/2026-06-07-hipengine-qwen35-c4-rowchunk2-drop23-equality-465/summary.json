@@ -1,0 +1,169 @@
+{
+  "iteration": 465,
+  "kind": "c4_512x128_rowchunk2_drop23_equality_green",
+  "created_at": "2026-06-07T09:44:56.962789+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "5d674b90751662df9b7cbe95e4b01b89a1557633",
+  "performance_claim": false,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 3,7,11,15,19 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c4-rowchunk2-drop23-512-128.json",
+  "result": {
+    "top_level_status": "blocked",
+    "decision_accepted": false,
+    "generated_token_equality": {
+      "passed": true,
+      "skipped": false,
+      "rows": 4,
+      "tokens_per_sequence": 137,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch_count": 0,
+      "mismatch_summaries": []
+    },
+    "decode_execution": {
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "decode_rows": 4,
+      "full_attention_layers": [
+        {
+          "layer_index": 3,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 7,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 11,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 15,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 19,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 23,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 27,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 31,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 35,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 39,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        }
+      ]
+    },
+    "workload_paths": {
+      "batch_decode_full_attention_row_chunk_size": 2,
+      "batch_decode_full_attention_row_chunk_layers": "3,7,11,15,19",
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_full_attention_output_path": "batch_gemv"
+    }
+  },
+  "interpretation": {
+    "positive_result": "c4 512/128 generated-token equality remains green with rowchunk2 only on layers 3,7,11,15,19; layer23 can run native batch in this c4 correctness-path probe.",
+    "frontier_update": "The current c4 rowchunk2 selected layer set can be narrowed from 3,7,11,15,19,23 to 3,7,11,15,19. This c4 result differs from c8, where layer23 is required.",
+    "next_target": "Run a matching code/test update to narrow the c4 auto rowchunk default, then validate c4 auto equality; after that continue one-layer c4 reductions or return to rows>=4 context repair."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: c4 512/128 generated-token equality vs independent c1 is green after dropping layer23 from the rowchunk2 selected set; no performance claim."
+  },
+  "conclusion": "c4 rowchunk2 drop23 is green; layer23 is not required in the c4 selected rowchunk correctness set.",
+  "references": {
+    "raw_c4_rowchunk2_drop23_json_tmp": {
+      "path": "/tmp/hipengine-e2e-native-c4-rowchunk2-drop23-512-128.json",
+      "sha256": "f5edb1e1d5b20ec302755da8dd530a6d779f477c4abeaea10e8a2a7d891395d5",
+      "size_bytes": 226696
+    },
+    "raw_c4_rowchunk2_drop23_log_tmp": {
+      "path": "/tmp/hipengine-e2e-native-c4-rowchunk2-drop23-512-128.log",
+      "sha256": "f5edb1e1d5b20ec302755da8dd530a6d779f477c4abeaea10e8a2a7d891395d5",
+      "size_bytes": 226696
+    },
+    "prior_c4_rowchunk2_equality_451": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-gate-451/summary.json",
+      "sha256": "48a8609ec5d6ff1febea50975540ee6e5a6a7346d5dae2a8d5672b8ae41468bf",
+      "size_bytes": 11026
+    },
+    "prior_c8_drop23_rejected_459": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-rowchunk2-drop23-rejected-459/summary.json",
+      "sha256": "9e80aac1562bc3eea7fbdd14beeb4dd2aa619a1399fd18216caa60b29c9595b0",
+      "size_bytes": 8921
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop23-equality-465/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop23-equality-465/compact-runs.json",
+      "sha256": "aa1254bf6014a47a891639c50b29b7ded2bc65fae3c54a357a9d941ceb0c2583",
+      "size_bytes": 5056
+    }
+  }
+}

@@ -1,0 +1,379 @@
+{
+  "iteration": 479,
+  "kind": "current_c4_c8_baseline_attach_refresh",
+  "created_at": "2026-06-07T11:12:24.450560+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "results": [
+    {
+      "batch_size": 4,
+      "top_level_status": "blocked",
+      "decision_accepted": false,
+      "blocked_reasons": null,
+      "decision_reasons": null,
+      "performance_claim": false,
+      "generated_token_equality": {
+        "passed": true,
+        "skipped": false,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137,
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 0,
+        "mismatch_summaries": []
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_rows": 4,
+        "full_attention_layers": [
+          {
+            "layer_index": 3,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 7,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 11,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 15,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 19,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 23,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 27,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 31,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 35,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 39,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "3,15",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_output_path": "batch_gemv"
+      },
+      "scaling": {
+        "complete": true,
+        "native": {
+          "decode_tok_s_aggregate": 154.43834312095578,
+          "decode_tok_s_per_request": 38.609585780238945
+        },
+        "c1_baseline": {
+          "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+          "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+          "status": "loaded",
+          "run_tag": "qwen35-paro-c1-native-baseline-iter419",
+          "workload_concurrency": 1,
+          "prompt_tokens_per_request": 512,
+          "gen_tokens_per_request": 128,
+          "decode_tok_s_aggregate": 133.90142644926902,
+          "decode_tok_s_per_request": 133.90142644926902,
+          "reason": null
+        },
+        "serial_bridge_baseline": {
+          "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-baselines-421/c4-serial-bridge-scaling.json",
+          "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-baselines-421/c4-serial-bridge-scaling.json",
+          "status": "blocked",
+          "run_tag": "qwen35-paro-c4-scheduler-serial-bridge",
+          "workload_concurrency": 4,
+          "prompt_tokens_per_request": 512,
+          "gen_tokens_per_request": 128,
+          "decode_tok_s_aggregate": 112.78851507904571,
+          "decode_tok_s_per_request": 28.197128769761427,
+          "reason": null
+        },
+        "ratios": {
+          "aggregate_vs_c1": 1.153373397254043,
+          "per_request_vs_c1": 0.28834334931351074,
+          "aggregate_vs_serial_bridge": 1.3692736624178496,
+          "per_request_vs_serial_bridge": 1.3692736624178496
+        }
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter479-current-c4c8-baselines/c4-with-baselines.json",
+          "sha256": "2644cc2c5cf6888a0424d5e0e08b93d3f9d599c9968619973014e5f09b725a64",
+          "size_bytes": 222125
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter479-current-c4c8-baselines/c4-with-baselines.log",
+          "sha256": "2644cc2c5cf6888a0424d5e0e08b93d3f9d599c9968619973014e5f09b725a64",
+          "size_bytes": 222125
+        }
+      }
+    },
+    {
+      "batch_size": 8,
+      "top_level_status": "blocked",
+      "decision_accepted": false,
+      "blocked_reasons": null,
+      "decision_reasons": null,
+      "performance_claim": false,
+      "generated_token_equality": {
+        "passed": true,
+        "skipped": false,
+        "rows": 8,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137,
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 0,
+        "mismatch_summaries": []
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_rows": 8,
+        "full_attention_layers": [
+          {
+            "layer_index": 3,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 7,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 11,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 15,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 19,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 23,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 27,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 31,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 35,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 39,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "3,7,11,15,19,23",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_output_path": "batch_gemv"
+      },
+      "scaling": {
+        "complete": true,
+        "native": {
+          "decode_tok_s_aggregate": 185.95445846543123,
+          "decode_tok_s_per_request": 23.244307308178904
+        },
+        "c1_baseline": {
+          "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+          "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+          "status": "loaded",
+          "run_tag": "qwen35-paro-c1-native-baseline-iter419",
+          "workload_concurrency": 1,
+          "prompt_tokens_per_request": 512,
+          "gen_tokens_per_request": 128,
+          "decode_tok_s_aggregate": 133.90142644926902,
+          "decode_tok_s_per_request": 133.90142644926902,
+          "reason": null
+        },
+        "serial_bridge_baseline": {
+          "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-baselines-427/c8-serial-bridge-scaling.json",
+          "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-baselines-427/c8-serial-bridge-scaling.json",
+          "status": "blocked",
+          "run_tag": "qwen35-paro-c8-scheduler-serial-bridge",
+          "workload_concurrency": 8,
+          "prompt_tokens_per_request": 512,
+          "gen_tokens_per_request": 128,
+          "decode_tok_s_aggregate": 111.78586039032571,
+          "decode_tok_s_per_request": 13.973232548790714,
+          "reason": null
+        },
+        "ratios": {
+          "aggregate_vs_c1": 1.3887414301436396,
+          "per_request_vs_c1": 0.17359267876795495,
+          "aggregate_vs_serial_bridge": 1.6634881890798088,
+          "per_request_vs_serial_bridge": 1.6634881890798088
+        }
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter479-current-c4c8-baselines/c8-with-baselines.json",
+          "sha256": "b5a4e88667cce45233889bfc8b4c2f0a20ad9218a928d486d68bdd755f1b2548",
+          "size_bytes": 398203
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter479-current-c4c8-baselines/c8-with-baselines.log",
+          "sha256": "b5a4e88667cce45233889bfc8b4c2f0a20ad9218a928d486d68bdd755f1b2548",
+          "size_bytes": 398203
+        }
+      }
+    }
+  ],
+  "baseline_prerequisites": {
+    "c1_baseline_attached": true,
+    "serial_bridge_baselines_attached": true,
+    "primitive_correctness_attached": true,
+    "scaling_complete": true,
+    "performance_claim_allowed": false,
+    "claim_blocker": "Both current c4 and c8 default paths remain throughput_claim_eligible=false because selected rowchunked full attention makes native_caware_decode=false; ratios are recorded only as prerequisite evidence, not a retained c>N performance/scaling claim."
+  },
+  "interpretation": {
+    "positive_result": "Current c4/c8 no-flag retained-bench runs remain generated-token green with baseline references attached and scaling comparisons complete.",
+    "c4_current_default": "rowchunk layers 3,15 after c4 narrowing; equality [137]*4; scaling ratios recorded but blocked by native_caware_decode=false.",
+    "c8_current_default": "rowchunk layers 3,7,11,15,19,23; equality [137]*8; scaling ratios recorded but blocked by native_caware_decode=false.",
+    "no_claim": "This refreshes c1/serial-baseline prerequisite evidence only. No retained throughput/scaling claim is made and benchmarks/README.md is not updated."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: current c4 and c8 generated-token equality both pass with c1 and serial-bridge baseline references attached, refreshing required runtime/baseline evidence on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX; no performance claim."
+  },
+  "conclusion": "Current c4/c8 baseline attachments are refreshed and green, but retained performance remains blocked by selected rowchunked full-attention/native-caware status."
+}

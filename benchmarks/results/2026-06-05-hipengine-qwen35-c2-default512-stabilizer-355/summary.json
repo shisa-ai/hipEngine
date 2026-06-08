@@ -1,0 +1,725 @@
+{
+  "change": {
+    "default_batch_sample_stabilize_cast_elems": {
+      "2": 512,
+      "8": 256
+    },
+    "file": "scripts/qwen35_batch_retained_bench.py",
+    "reason": "Iter354 reproduced a c2 [137,104] flake under the current 256-element stabilizer after a high-row c8 evidence run; forced 512 and post-change no-flag 512 controls were green."
+  },
+  "commands": {
+    "active_verify": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "forced_c2_stabilize512_probe": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model <model> --fixture <fixture> --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --batch-sample-stabilize-cast-elems 512 --json /tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-<n>.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "postchange_c8_then_c2": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 8 ...; then four no-flag c2 runs with default stabilize_cast_elems=512"
+  },
+  "conclusion": "The c2 no-flag stabilizer is promoted from 256 to 512 elements after the iter354 [137,104] flake. Forced c2 stabilize512 was 4/4 green at [137,137]; after the code change, a current c8 first-nine control was green at [137]*8 and four immediate no-flag c2 default512 repeats were 4/4 green at [137,137]. The final active verify also printed 137. This is correctness/runtime stabilization evidence only; no retained throughput/scaling claim is made.",
+  "created_at": "2026-06-05T11:24:11.711238+00:00",
+  "git_commit_before_commit": "83e7e77d968de674ff7e87624109eb76360ee474",
+  "guard": {
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d"
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd"
+      }
+    ]
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 355,
+  "kind": "c2_default512_stabilizer_promotion",
+  "performance_claim": false,
+  "results": {
+    "active_verify_final": {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunk_size": null,
+        "full_attention_row_chunked_layers": null
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "active_c2_verify_final",
+      "projection_dispatch": {
+        "blockers": [],
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+      },
+      "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "raw_json_sha256": "8da8d980938156d9d10aa88cf2defa688d49ecf46b9b005dd4e343c0249fbb5d",
+      "raw_json_size_bytes": 138500,
+      "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+      "raw_log_sha256": "8da8d980938156d9d10aa88cf2defa688d49ecf46b9b005dd4e343c0249fbb5d",
+      "raw_log_size_bytes": 138500,
+      "repeat": null,
+      "sampler_execution": {
+        "blockers": [],
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "stabilize_cast_elems": 512,
+        "stabilize_cast_elems_enabled": true,
+        "stabilize_cast_elems_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "elements_per_row": 512,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+          "last_step": {
+            "elements_per_row": 512,
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_nbytes": 1024,
+          "scratch_ptr": 139966705213440
+        }
+      },
+      "status": "blocked"
+    },
+    "forced_c2_stabilize512_prechange": [
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "forced_c2_stabilize512_prechange",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-1.json",
+        "raw_json_sha256": "d09bccf7413f1f04fe1fcc065caa883bb94af805acf0de2dced7f676eac24d74",
+        "raw_json_size_bytes": 138834,
+        "raw_log": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-1.log",
+        "raw_log_sha256": "d09bccf7413f1f04fe1fcc065caa883bb94af805acf0de2dced7f676eac24d74",
+        "raw_log_size_bytes": 138834,
+        "repeat": 1,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 140301360340992
+          }
+        },
+        "status": "blocked"
+      },
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "forced_c2_stabilize512_prechange",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-2.json",
+        "raw_json_sha256": "15ed96d98acdd8d4f79e9f7051f4999be1d23aaaf2460e583a5bb2789e3a5d64",
+        "raw_json_size_bytes": 138814,
+        "raw_log": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-2.log",
+        "raw_log_sha256": "15ed96d98acdd8d4f79e9f7051f4999be1d23aaaf2460e583a5bb2789e3a5d64",
+        "raw_log_size_bytes": 138814,
+        "repeat": 2,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 139895815184384
+          }
+        },
+        "status": "blocked"
+      },
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "forced_c2_stabilize512_prechange",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-3.json",
+        "raw_json_sha256": "99714bb84081a3f3161e29b164590d2592ec3a21ef4967a5efd9105cfeddb186",
+        "raw_json_size_bytes": 138832,
+        "raw_log": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-3.log",
+        "raw_log_sha256": "99714bb84081a3f3161e29b164590d2592ec3a21ef4967a5efd9105cfeddb186",
+        "raw_log_size_bytes": 138832,
+        "repeat": 3,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 140181722013696
+          }
+        },
+        "status": "blocked"
+      },
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "forced_c2_stabilize512_prechange",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-4.json",
+        "raw_json_sha256": "d82b1808c0c90684f2be45868f8da259dfc8d8b83b56013e21fa083ee46302a0",
+        "raw_json_size_bytes": 138819,
+        "raw_log": "/tmp/hipengine-iter355-c2-stabilize512-probe/c2-stabilize512-4.log",
+        "raw_log_sha256": "d82b1808c0c90684f2be45868f8da259dfc8d8b83b56013e21fa083ee46302a0",
+        "raw_log_size_bytes": 138819,
+        "repeat": 4,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 140697357164544
+          }
+        },
+        "status": "blocked"
+      }
+    ],
+    "postchange_c2_default512_after_c8": [
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "postchange_c2_default512_after_c8",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-1.json",
+        "raw_json_sha256": "8712a0b6e9122dcfb45f8cf831bbc8a90b33ca02d8b41d7280091f4b626fcba9",
+        "raw_json_size_bytes": 138624,
+        "raw_log": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-1.log",
+        "raw_log_sha256": "8712a0b6e9122dcfb45f8cf831bbc8a90b33ca02d8b41d7280091f4b626fcba9",
+        "raw_log_size_bytes": 138624,
+        "repeat": 1,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 140038645915648
+          }
+        },
+        "status": "blocked"
+      },
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "postchange_c2_default512_after_c8",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-2.json",
+        "raw_json_sha256": "da6618443aeca559a0ca2b0e319fd3e331c23f29772548ce035e5912fbece234",
+        "raw_json_size_bytes": 138623,
+        "raw_log": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-2.log",
+        "raw_log_sha256": "da6618443aeca559a0ca2b0e319fd3e331c23f29772548ce035e5912fbece234",
+        "raw_log_size_bytes": 138623,
+        "repeat": 2,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 139887315427328
+          }
+        },
+        "status": "blocked"
+      },
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "postchange_c2_default512_after_c8",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-3.json",
+        "raw_json_sha256": "1668628e4412a8f119a7e8c9dec1353441b03f2ff33b2f3260576409f25c80c5",
+        "raw_json_size_bytes": 138619,
+        "raw_log": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-3.log",
+        "raw_log_sha256": "1668628e4412a8f119a7e8c9dec1353441b03f2ff33b2f3260576409f25c80c5",
+        "raw_log_size_bytes": 138619,
+        "repeat": 3,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 140293860925440
+          }
+        },
+        "status": "blocked"
+      },
+      {
+        "batch_execution": {
+          "blockers": [],
+          "native_caware_decode": true
+        },
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_decode_path": "native_batch",
+          "full_attention_row_chunk_size": null,
+          "full_attention_row_chunked_layers": null
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "label": "postchange_c2_default512_after_c8",
+        "projection_dispatch": {
+          "blockers": [],
+          "path": "benchmark_accepted_caware_projection",
+          "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+        },
+        "raw_json": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-4.json",
+        "raw_json_sha256": "a52033a7c3217a6c297c6bb3d5cbf3e1a143f44631e1cafffeefad3fd6430146",
+        "raw_json_size_bytes": 138626,
+        "raw_log": "/tmp/hipengine-iter355-c8-then-c2-default512/c2-default512-after-c8-4.log",
+        "raw_log_sha256": "a52033a7c3217a6c297c6bb3d5cbf3e1a143f44631e1cafffeefad3fd6430146",
+        "raw_log_size_bytes": 138626,
+        "repeat": 4,
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "stabilize_cast_elems": 512,
+          "stabilize_cast_elems_enabled": true,
+          "stabilize_cast_elems_fence": {
+            "checked_rows": 272,
+            "checked_steps": 136,
+            "elements_per_row": 512,
+            "enabled": true,
+            "host_reads": 0,
+            "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+            "last_step": {
+              "elements_per_row": 512,
+              "host_reads": 0,
+              "rows": 2,
+              "step_index": 135
+            },
+            "scratch_nbytes": 1024,
+            "scratch_ptr": 140028042715136
+          }
+        },
+        "status": "blocked"
+      }
+    ],
+    "postchange_c8_first9_control": {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "native_caware_decode": false
+      },
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35
+        ]
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "postchange_c8_first9_control",
+      "projection_dispatch": {
+        "blockers": [],
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c8"
+      },
+      "raw_json": "/tmp/hipengine-iter355-c8-then-c2-default512/c8-first9-control.json",
+      "raw_json_sha256": "b42e33deab9c8ba699c1fd733c45b7603d35e739b94d54bd5cdb451df82e2173",
+      "raw_json_size_bytes": 409106,
+      "raw_log": "/tmp/hipengine-iter355-c8-then-c2-default512/c8-first9-control.log",
+      "raw_log_sha256": "b42e33deab9c8ba699c1fd733c45b7603d35e739b94d54bd5cdb451df82e2173",
+      "raw_log_size_bytes": 409106,
+      "repeat": null,
+      "sampler_execution": {
+        "blockers": [],
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "stabilize_cast_elems": 256,
+        "stabilize_cast_elems_enabled": true,
+        "stabilize_cast_elems_fence": {
+          "checked_rows": 1088,
+          "checked_steps": 136,
+          "elements_per_row": 256,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+          "last_step": {
+            "elements_per_row": 256,
+            "host_reads": 0,
+            "rows": 8,
+            "step_index": 135
+          },
+          "scratch_nbytes": 512,
+          "scratch_ptr": 139716739461120
+        }
+      },
+      "status": "blocked"
+    }
+  },
+  "schema": 1,
+  "status": "passed",
+  "workload": {
+    "batch_size": 2,
+    "c2_batch_sample_default": "batched_lm_head",
+    "c2_batch_sample_stabilize_cast_elems": 512,
+    "c8_control_rowchunk_layers": "3,7,11,15,19,23,27,31,35",
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

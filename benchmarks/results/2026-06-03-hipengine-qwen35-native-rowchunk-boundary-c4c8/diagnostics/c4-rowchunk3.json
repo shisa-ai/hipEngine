@@ -1,0 +1,90 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "correctness_passed": false,
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path"
+  ],
+  "first_full_attention_segment_shapes": [
+    {
+      "block_table_rows": [
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ]
+      ],
+      "output_path": "native_batch",
+      "row_start": 0,
+      "rows": 3,
+      "slots": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "block_table_rows": [
+        [
+          9,
+          10,
+          11
+        ]
+      ],
+      "output_path": "native_batch",
+      "row_start": 3,
+      "rows": 1,
+      "slots": [
+        3
+      ]
+    }
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "native_batch",
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_input_decode_path": "native_batch",
+  "full_attention_output_layer_paths": [],
+  "full_attention_qkv_decode_path": "native_batch",
+  "full_attention_row_chunk_size": 3,
+  "full_attention_row_chunk_source": "env",
+  "full_attention_segment_output_paths": [],
+  "generated_token_equality_passed": true,
+  "log_path": "/tmp/hipengine-iter213-c4-rowchunk3.log",
+  "measurement_decode_tok_s_aggregate": 135.02471967431637,
+  "min_equal_prefix_tokens": 137,
+  "mismatches": [],
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_sha256": "571a6610d6018d153d565562c3c3d5513b9fc4b7e54dfa9213be660529a3e6cd",
+  "raw_size_bytes": 232855,
+  "raw_source_path": "/tmp/hipengine-iter213-c4-rowchunk3.json",
+  "row_chunk_size_requested": 3,
+  "rows": 4,
+  "status": "blocked",
+  "workload_full_attention_output_path": "batch",
+  "workload_full_attention_row_chunk_size": 3,
+  "workload_moe_path": "grouped_compact"
+}

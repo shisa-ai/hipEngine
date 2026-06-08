@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "change": "Rejected temporary direct-planar dual-GEMV QKV/Z projection probe.",
+  "created_at": "2026-06-02T16:22:35.404478Z",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "hip_visible_devices": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "workload": {
+    "batch_size": 2,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8,
+    "decode_tokens": 128,
+    "max_layers": 40
+  },
+  "performance_claim": false,
+  "retained_ready": false,
+  "temporary_patch": {
+    "retained": false,
+    "files": [
+      "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py",
+      "hipengine/runtime/qwen35_paro.py"
+    ],
+    "summary": "Added a temporary dual-pack8 transposed GEMV kernel that writes QKV and Z into separate planar outputs in one launch, then routed force_gemv QKV/Z projection through it. The patch was reverted after the c=2 generated-token gate stayed red."
+  },
+  "comparison_to_prior": {
+    "prior_batch_gemv_prefix_lengths": [
+      82,
+      104
+    ],
+    "planar_dual_gemv_prefix_lengths": [
+      82,
+      104
+    ],
+    "selected_qkv_z_primary_prefix_lengths_after_revert": [
+      137,
+      137
+    ],
+    "prior_projection_refresh_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json",
+    "prior_dual_gemv_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-dual-gemv-projection-red-probe/summary.json"
+  },
+  "probes": {
+    "generated_512x128": [
+      {
+        "name": "batch_gemv_qkvz_with_temporary_planar_dual_gemv",
+        "status": "rejected_correctness",
+        "batch_decode_linear_projection_path": "batch_gemv",
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-linear-projection-path batch_gemv --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-planar-gemv-c2-512-128.json",
+        "source_artifact_path": "/tmp/hipengine-e2e-planar-gemv-c2-512-128.json",
+        "generated_token_equality_passed": false,
+        "prefix_lengths": [
+          82,
+          104
+        ],
+        "min_equal_prefix_tokens": 82,
+        "first_mismatch_indices": [
+          82,
+          104
+        ],
+        "prior_prefix_lengths": [
+          82,
+          104
+        ]
+      },
+      {
+        "name": "primary_selected_qkv_z_after_revert",
+        "status": "correctness_green_non_retained",
+        "batch_decode_linear_projection_path": "auto_selected_qkv_z",
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "generated_token_equality_passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137
+      }
+    ]
+  },
+  "conclusion": [
+    "Direct planar QKV/Z dual-GEMV did not improve the batch_gemv projection path: prefixes stayed [82,104], matching the prior post-grouped projection rejection.",
+    "The prior temporary dual-GEMV row-interleaved-copy path improved row 1 to [82,137], but direct planar output regressed that row back to 104; the row-interleaved temporary copy is therefore not the root blocker.",
+    "The selected-QKV/Z correctness fallback still passes the primary c=2 512/128 gate after reverting the temporary code ([137,137]). No runtime code was retained and no c>N performance/scaling claim is made."
+  ]
+}

@@ -1,0 +1,542 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-hidden-full-attn-context-trace-rowchunk/summary.json",
+  "created_at": "2026-06-03T05:14:41.766816Z",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Added hidden-bisect rowchunk tracing support and used it to compare derived rows4/5/6 c3 full-attention context traces. L4 decode-step probes show native full grouping, rowchunk2, and per-row full-attention all have raw attn_context parity vs independent c1. At the L40 trace window around generated index 11, native full grouping is already red at layer7 attn_input_pre_qkv before attn_context, so the observed context drift is inherited rather than proving the context kernel is the first faulty stage. Rowchunk2 trace support itself is green at L4; L40 rowchunk2 hidden-bisect remains red in this short hidden trace and is retained-blocked, so no performance/retained claim is made.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "base_commit_before_change": "78ce2ef1af724c057ffc875c0b7fb7f133c959d9",
+    "candidate_diff_sha256": "1fff89b056179056b26d08d46279850b4429d3f1b650afa09d8917873d6b8403",
+    "case_artifacts_report_dirty": true,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "code_change": {
+    "files": [
+      "scripts/qwen35_batch_hidden_bisect.py",
+      "hipengine/runtime/qwen35_paro_runner.py",
+      "tests/test_generation_batch_scheduler.py"
+    ],
+    "description": "Hidden-bisect now accepts --batch-decode-full-attn-row-chunk-size, records the row-chunk size in workload metadata, forwards HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE, and labels rowchunk traces as native_batch_row_chunks/non-native-caware. The runtime now traces each native full-attention row chunk scratch/MoE payload in order so hidden-bisect can concatenate chunk traces instead of failing on partial-row trace shapes."
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows456_3x512_prompt_ids.json",
+    "derived_fixture_recipe": "Fixture copies original 512-token prompt_id slices from source rows 4,5,6; no token data retained in repo.",
+    "batch_size": 3,
+    "prompt_length": 512,
+    "kv_storage_dtype": "bf16"
+  },
+  "cases": [
+    {
+      "name": "l4_decode1_native_full_group",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-native-iter133.json",
+      "tmp_artifact_sha256": "7f75ff13dac31860789bb517e5f34b7c0ef2da1708d9678c55257a301f607c6f",
+      "tmp_artifact_size_bytes": 506098,
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "layer_limit": 4,
+      "token_passed": true,
+      "hidden_passed": true,
+      "full_attention_passed": true,
+      "full_attention_stage_passed_subset": {
+        "input": true,
+        "attn_input_pre_qkv": true,
+        "attn_input": true,
+        "gate": true,
+        "query": true,
+        "attn_context": true,
+        "gated_attn": true,
+        "o_proj": true,
+        "output": true
+      },
+      "failed_stages": [],
+      "first_failure": null,
+      "worst_diff": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 3,
+        "stage": "mlp_input",
+        "row": 1,
+        "passed": true,
+        "max_abs": 0.0009765625,
+        "max_abs_flat_index": 1900,
+        "max_abs_index": [
+          0,
+          1900
+        ],
+        "elements_over_atol": 0
+      },
+      "workload": {
+        "batch_size": 3,
+        "prompt_length": 512,
+        "decode_tokens": 1,
+        "trace_decode_window": [
+          0,
+          1
+        ],
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false,
+        "batch_decode_moe_path": "selected_c1"
+      }
+    },
+    {
+      "name": "l4_decode1_rowchunk2",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-rowchunk2-iter133.json",
+      "tmp_artifact_sha256": "aad2934eb29efa3b3bf71727cf9e448ff341c6ee99f49a3f72ccc07a4418613f",
+      "tmp_artifact_size_bytes": 463817,
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "layer_limit": 4,
+      "token_passed": true,
+      "hidden_passed": true,
+      "full_attention_passed": true,
+      "full_attention_stage_passed_subset": {
+        "input": true,
+        "attn_input_pre_qkv": true,
+        "attn_input": true,
+        "gate": true,
+        "query": true,
+        "attn_context": true,
+        "gated_attn": true,
+        "o_proj": true,
+        "output": true
+      },
+      "failed_stages": [],
+      "first_failure": null,
+      "worst_diff": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 3,
+        "stage": "mlp_input",
+        "row": 0,
+        "passed": true,
+        "max_abs": 0.0009765625,
+        "max_abs_flat_index": 1570,
+        "max_abs_index": [
+          0,
+          1570
+        ],
+        "elements_over_atol": 0
+      },
+      "workload": {
+        "batch_size": 3,
+        "prompt_length": 512,
+        "decode_tokens": 1,
+        "trace_decode_window": [
+          0,
+          1
+        ],
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "batch_decode_moe_path": "selected_c1"
+      }
+    },
+    {
+      "name": "l4_decode1_perrow_full",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-perrow-iter133.json",
+      "tmp_artifact_sha256": "a5863d20bf3ee7edbd44bec3892cc7be2ed550ea50225f4202187bff631eb9ad",
+      "tmp_artifact_size_bytes": 325410,
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "layer_limit": 4,
+      "token_passed": true,
+      "hidden_passed": true,
+      "full_attention_passed": true,
+      "full_attention_stage_passed_subset": {
+        "input": true,
+        "attn_input_pre_qkv": true,
+        "attn_input": true,
+        "gate": true,
+        "query": true,
+        "attn_context": true,
+        "gated_attn": true,
+        "o_proj": true,
+        "output": true
+      },
+      "failed_stages": [],
+      "first_failure": null,
+      "worst_diff": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 3,
+        "stage": "input",
+        "row": 0,
+        "passed": true,
+        "max_abs": 0.0,
+        "max_abs_flat_index": 0,
+        "max_abs_index": [
+          0,
+          0
+        ],
+        "elements_over_atol": 0
+      },
+      "workload": {
+        "batch_size": 3,
+        "prompt_length": 512,
+        "decode_tokens": 1,
+        "trace_decode_window": [
+          0,
+          1
+        ],
+        "batch_decode_full_attention_path": "per_row",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "full_attention_decode_path": "per_row_context_fallback",
+        "native_caware_decode": false,
+        "batch_decode_moe_path": "selected_c1"
+      }
+    },
+    {
+      "name": "l4_decode12_native_trace10_12",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-native-decode12-trace10-12-iter133.json",
+      "tmp_artifact_sha256": "3fcdb060a82cb804580f5a9e6038c99d771ed295c170d8c24dcd200556f03903",
+      "tmp_artifact_size_bytes": 1069705,
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "layer_limit": 4,
+      "token_passed": true,
+      "hidden_passed": true,
+      "full_attention_passed": true,
+      "full_attention_stage_passed_subset": {
+        "input": true,
+        "attn_input_pre_qkv": true,
+        "attn_input": true,
+        "gate": true,
+        "query": true,
+        "attn_context": true,
+        "gated_attn": true,
+        "o_proj": true,
+        "output": true
+      },
+      "failed_stages": [],
+      "first_failure": null,
+      "worst_diff": {
+        "decode_step": 10,
+        "generated_index": 11,
+        "layer_index": 3,
+        "stage": "mlp_input",
+        "row": 2,
+        "passed": true,
+        "max_abs": 0.001953125,
+        "max_abs_flat_index": 396,
+        "max_abs_index": [
+          0,
+          396
+        ],
+        "elements_over_atol": 0
+      },
+      "workload": {
+        "batch_size": 3,
+        "prompt_length": 512,
+        "decode_tokens": 12,
+        "trace_decode_window": [
+          10,
+          12
+        ],
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false,
+        "batch_decode_moe_path": "selected_c1"
+      }
+    },
+    {
+      "name": "l4_decode12_rowchunk2_trace10_12",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-rowchunk2-decode12-trace10-12-iter133.json",
+      "tmp_artifact_sha256": "8b8aa2ee575117502405893735a2faf2aa378233eb65e0531f0d03114ad975e4",
+      "tmp_artifact_size_bytes": 982111,
+      "status": "eq_ok",
+      "correctness_passed": true,
+      "layer_limit": 4,
+      "token_passed": true,
+      "hidden_passed": true,
+      "full_attention_passed": true,
+      "full_attention_stage_passed_subset": {
+        "input": true,
+        "attn_input_pre_qkv": true,
+        "attn_input": true,
+        "gate": true,
+        "query": true,
+        "attn_context": true,
+        "gated_attn": true,
+        "o_proj": true,
+        "output": true
+      },
+      "failed_stages": [],
+      "first_failure": null,
+      "worst_diff": {
+        "decode_step": 10,
+        "generated_index": 11,
+        "layer_index": 3,
+        "stage": "mlp_input",
+        "row": 2,
+        "passed": true,
+        "max_abs": 0.001953125,
+        "max_abs_flat_index": 396,
+        "max_abs_index": [
+          0,
+          396
+        ],
+        "elements_over_atol": 0
+      },
+      "workload": {
+        "batch_size": 3,
+        "prompt_length": 512,
+        "decode_tokens": 12,
+        "trace_decode_window": [
+          10,
+          12
+        ],
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "batch_decode_moe_path": "selected_c1"
+      }
+    },
+    {
+      "name": "l40_decode12_native_trace10_12",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-native-l40-decode12-trace10-12-iter133.json",
+      "tmp_artifact_sha256": "e10aa2c40ed6710b2a615c4ff4e485272741b8502204da140135f4fd848fe836",
+      "tmp_artifact_size_bytes": 23595039,
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "layer_limit": 40,
+      "token_passed": true,
+      "hidden_passed": false,
+      "full_attention_passed": false,
+      "full_attention_stage_passed_subset": {
+        "input": false,
+        "attn_input_pre_qkv": false,
+        "attn_input": false,
+        "gate": false,
+        "query": false,
+        "attn_context": false,
+        "gated_attn": false,
+        "o_proj": false,
+        "output": false
+      },
+      "failed_stages": [
+        "input",
+        "attn_input_pre_qkv",
+        "attn_input_after_rotate",
+        "attn_input_after_project",
+        "q_proj_key_after_project",
+        "value_after_project",
+        "query_raw_after_split",
+        "key_raw_after_cast",
+        "gate_after_split",
+        "query_after_prepare",
+        "key_after_prepare",
+        "attn_input_after_prepare",
+        "attn_input",
+        "gate",
+        "query",
+        "attn_context",
+        "gated_attn",
+        "o_proj",
+        "residual",
+        "mlp_input",
+        "output"
+      ],
+      "first_failure": {
+        "decode_step": 10,
+        "generated_index": 11,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 175,
+        "max_abs_index": [
+          0,
+          175
+        ],
+        "elements_over_atol": 3
+      },
+      "worst_diff": {
+        "decode_step": 10,
+        "generated_index": 11,
+        "layer_index": 39,
+        "stage": "mlp_input",
+        "row": 0,
+        "passed": false,
+        "max_abs": 1.25,
+        "max_abs_flat_index": 1269,
+        "max_abs_index": [
+          0,
+          1269
+        ],
+        "elements_over_atol": 2004
+      },
+      "workload": {
+        "batch_size": 3,
+        "prompt_length": 512,
+        "decode_tokens": 12,
+        "trace_decode_window": [
+          10,
+          12
+        ],
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false,
+        "batch_decode_moe_path": "selected_c1"
+      }
+    },
+    {
+      "name": "l40_decode12_rowchunk2_trace10_12",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-rowchunk2-l40-decode12-trace10-12-iter133.json",
+      "tmp_artifact_sha256": "27f14a18b4c1bd39093740e2acb0b1f0fa3b5fd28b89ff0be8002b7e5e64f185",
+      "tmp_artifact_size_bytes": 19985565,
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "layer_limit": 40,
+      "token_passed": false,
+      "hidden_passed": false,
+      "full_attention_passed": false,
+      "full_attention_stage_passed_subset": {
+        "input": false,
+        "attn_input_pre_qkv": true,
+        "attn_input": false,
+        "gate": false,
+        "query": false,
+        "attn_context": false,
+        "gated_attn": false,
+        "o_proj": false,
+        "output": false
+      },
+      "failed_stages": [
+        "input",
+        "attn_input",
+        "gate",
+        "query",
+        "attn_context",
+        "gated_attn",
+        "o_proj",
+        "residual",
+        "mlp_input",
+        "output"
+      ],
+      "first_failure": {
+        "decode_step": 10,
+        "generated_index": 11,
+        "layer_index": 7,
+        "stage": "input",
+        "row": 1,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.0050811767578125,
+        "max_abs_flat_index": 1642,
+        "max_abs_index": [
+          0,
+          1642
+        ],
+        "elements_over_atol": 4
+      },
+      "worst_diff": {
+        "decode_step": 11,
+        "generated_index": 12,
+        "layer_index": 7,
+        "stage": "attn_input",
+        "row": 1,
+        "passed": false,
+        "max_abs": 11.19122314453125,
+        "max_abs_flat_index": 175,
+        "max_abs_index": [
+          0,
+          175
+        ],
+        "elements_over_atol": 2039
+      },
+      "workload": {
+        "batch_size": 3,
+        "prompt_length": 512,
+        "decode_tokens": 12,
+        "trace_decode_window": [
+          10,
+          12
+        ],
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false,
+        "batch_decode_moe_path": "selected_c1"
+      }
+    }
+  ],
+  "measurements": {
+    "l4_decode1_native_attn_context_green": true,
+    "l4_decode1_rowchunk2_attn_context_green": true,
+    "l4_decode1_perrow_attn_context_green": true,
+    "l4_decode12_native_attn_context_green": true,
+    "l4_decode12_rowchunk2_attn_context_green": true,
+    "l40_native_first_full_attention_failure": {
+      "decode_step": 10,
+      "generated_index": 11,
+      "layer_index": 7,
+      "stage": "attn_input_pre_qkv",
+      "row": 0,
+      "comparison_kind": "fp16_bits",
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 175,
+      "max_abs_index": [
+        0,
+        175
+      ],
+      "elements_over_atol": 3
+    },
+    "l40_native_attn_context_passed": false,
+    "l40_rowchunk2_first_full_attention_failure": {
+      "decode_step": 10,
+      "generated_index": 11,
+      "layer_index": 7,
+      "stage": "input",
+      "row": 1,
+      "comparison_kind": "fp16_bits",
+      "max_abs": 0.0050811767578125,
+      "max_abs_flat_index": 1642,
+      "max_abs_index": [
+        0,
+        1642
+      ],
+      "elements_over_atol": 4
+    }
+  },
+  "verdicts": {
+    "rowchunk2_trace_supported_l4": true,
+    "l4_native_context_green": true,
+    "l4_perrow_context_green": true,
+    "l4_decode12_native_context_green": true,
+    "l4_decode12_rowchunk2_context_green": true,
+    "l40_native_first_failure_before_context": true,
+    "l40_native_context_not_first_failure": true,
+    "retained_ready": false
+  },
+  "retained_claim_blockers": [
+    "hidden-bisect rowchunk tracing is diagnostic support, not retained evidence",
+    "full native grouping >=3 remains red in retained/generated-token diagnostics",
+    "rowchunk2 still reports native_caware_decode=false in retained bench metadata",
+    "no retained c>N throughput/scaling claim is made"
+  ],
+  "commands": {
+    "native_l4": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows456_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 1 --max-layers 4 --layer-limits 4 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-moe-path selected_c1 --json /tmp/hipengine-hidden-bisect-c3-rows456-native-iter133.json",
+    "rowchunk2_l4": "same plus --batch-decode-full-attn-row-chunk-size 2 -> /tmp/hipengine-hidden-bisect-c3-rows456-rowchunk2-iter133.json",
+    "native_l40_window": "same shape with --decode-tokens 12 --max-layers 40 --layer-limits 40 --trace-decode-start 10 --trace-decode-end 12 -> /tmp/hipengine-hidden-bisect-c3-rows456-native-l40-decode12-trace10-12-iter133.json"
+  },
+  "prior_related_artifacts": [
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-rowchunk-size-sweep/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-row-permutation/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-auto-rowchunk2-c3-c4/summary.json"
+  ]
+}

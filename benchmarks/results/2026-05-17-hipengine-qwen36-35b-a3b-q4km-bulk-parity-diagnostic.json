@@ -1,0 +1,261 @@
+{
+  "schema": 1,
+  "status": "diagnostic",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "token_ids": [
+    760,
+    4087,
+    369,
+    220
+  ],
+  "elapsed_seconds": 16.796577552042436,
+  "native_attention_bulk_ffn_default_allowed": true,
+  "fast_bulk_attention_default_allowed": true,
+  "summary": {
+    "serial_token_id": 4469,
+    "default_token_id": 4469,
+    "default_top1_match": true,
+    "default_kl_serial_to_default": 0.0,
+    "default_max_abs_logit": 0.0,
+    "native_attention_bulk_ffn_token_id": 4469,
+    "native_attention_bulk_ffn_top1_match": true,
+    "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
+    "native_attention_bulk_ffn_max_abs_logit": 0.0,
+    "fast_bulk_attention_token_id": 4469,
+    "fast_bulk_attention_top1_match": true,
+    "fast_bulk_attention_kl_serial_to_bulk": 0.0,
+    "fast_bulk_attention_max_abs_logit": 0.0,
+    "first_fast_bulk_hidden_drift_limit": null,
+    "first_aotriton_hidden_drift_limit": null,
+    "first_native_full_attention_hidden_drift_limit": null
+  },
+  "sample": {
+    "serial": {
+      "token_id": 4469,
+      "logit": 9.824976921081543,
+      "seconds": 0.6387990200310014,
+      "finite_logits": true
+    },
+    "default": {
+      "token_id": 4469,
+      "logit": 9.824976921081543,
+      "seconds": 0.160703445028048,
+      "finite_logits": true
+    },
+    "default_comparison": {
+      "top1_match": true,
+      "serial_argmax": 4469,
+      "bulk_argmax": 4469,
+      "kl_serial_to_bulk": 0.0,
+      "max_abs_logit": 0.0,
+      "mean_abs_logit": 0.0,
+      "finite": true
+    },
+    "native_attention_bulk_ffn": {
+      "token_id": 4469,
+      "logit": 9.824976921081543,
+      "seconds": 0.3577517800149508,
+      "finite_logits": true
+    },
+    "native_attention_bulk_ffn_comparison": {
+      "top1_match": true,
+      "serial_argmax": 4469,
+      "bulk_argmax": 4469,
+      "kl_serial_to_bulk": 0.0,
+      "max_abs_logit": 0.0,
+      "mean_abs_logit": 0.0,
+      "finite": true
+    },
+    "fast_bulk_attention": {
+      "token_id": 4469,
+      "logit": 9.824976921081543,
+      "seconds": 0.1610013900208287,
+      "finite_logits": true
+    },
+    "fast_bulk_attention_comparison": {
+      "top1_match": true,
+      "serial_argmax": 4469,
+      "bulk_argmax": 4469,
+      "kl_serial_to_bulk": 0.0,
+      "max_abs_logit": 0.0,
+      "mean_abs_logit": 0.0,
+      "finite": true
+    }
+  },
+  "layer_scan": {
+    "aotriton_full_attention": {
+      "first_drift_limit": null,
+      "entries": [
+        {
+          "layer_limit": 0,
+          "last_layer_type": "embedding",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 1,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 2,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 3,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 4,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 8,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 12,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 14,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 20,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 40,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        }
+      ]
+    },
+    "native_full_attention": {
+      "first_drift_limit": null,
+      "entries": [
+        {
+          "layer_limit": 0,
+          "last_layer_type": "embedding",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 1,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 2,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 3,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 4,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 8,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 12,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 14,
+          "last_layer_type": "linear_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 20,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        },
+        {
+          "layer_limit": 40,
+          "last_layer_type": "full_attention",
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
+        }
+      ]
+    }
+  },
+  "decision": {
+    "accepted_as_correctness_gate": true,
+    "reason": "The native-attention + row-bulk FFN/MoE scheduler is bit-exact on the sampled qwen35moe prompt and preserves token-serial attention state updates. The fast fully bulk scheduler is also accepted when it is bit-exact on the same probe."
+  }
+}

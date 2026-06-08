@@ -71,6 +71,19 @@ def registered_keys() -> tuple[KernelKey, ...]:
     return tuple(sorted(_KERNELS))
 
 
+def is_registered(key: KernelKey) -> bool:
+    """Return ``True`` iff ``key`` has a non-None entry in the registry.
+
+    Unlike :func:`resolve`, this performs an exact-key lookup with no
+    backend/quant/variant fallbacks. It is the right primitive for dispatch
+    rewrites that need to ask "is the *specific* P9 kernel in tree?" before
+    rewriting to it (the resolve-style fallback would otherwise pick up a
+    cpu_reference fp16 catch-all and trick the rewrite into firing).
+    """
+
+    return _KERNELS.get(key) is not None
+
+
 def _candidate_keys(requested: KernelKey) -> tuple[KernelKey, ...]:
     """Return resolution candidates from narrowest to broadest.
 

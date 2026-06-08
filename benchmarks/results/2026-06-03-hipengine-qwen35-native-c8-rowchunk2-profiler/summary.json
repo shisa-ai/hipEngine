@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-profiler/summary.json",
+  "created_at": "2026-06-03T03:10:34.322664Z",
+  "status": "passed",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Fresh rocprofv3 evidence for the current c8 auto path after c8 auto was moved from the per-row full-attention fallback to native full-attention row chunks of 2. Generated-token equality remains green, the trace launches the native batch full-attention context kernel, and it launches zero per-row full-attention context kernels. This remains non-retained because row chunking is a diagnostic fallback and native_caware_decode=false.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "cf3bf831d55a3f6850379f907615a12584abed6f",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "batch_size": 8,
+    "batch_decode_full_attention_path": "auto",
+    "batch_decode_full_attention_row_chunk_size": 2,
+    "batch_decode_moe_path": "auto",
+    "kv_storage_dtype": "bf16"
+  },
+  "primary_verify": {
+    "tmp_artifact": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "software_commit": "cf3bf831d55a3f6850379f907615a12584abed6f",
+    "software_dirty": false,
+    "status": "blocked",
+    "generated_token_equality_passed": true,
+    "min_equal_prefix_tokens": 137,
+    "prefixes": [
+      137,
+      137
+    ],
+    "decode_tok_s_aggregate": 126.6229074425828,
+    "decode_paths": {
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunk_size": null,
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true
+    }
+  },
+  "profiled_c8_auto": {
+    "tmp_artifact": "/tmp/hipengine-e2e-native-auto-rowchunk2-profiled-iter127-c8.json",
+    "profile_dir_tmp": "/tmp/hipengine-e2e-native-auto-rowchunk2-profile-iter127-c8",
+    "raw_trace_tmp_path": "/tmp/hipengine-e2e-native-auto-rowchunk2-profile-iter127-c8/epyc/285097_kernel_trace.csv",
+    "raw_trace_sha256": "c5955292f36b97b9bcb60004192cda943a72499144452db0ee37425cdb2494ce",
+    "raw_trace_size_bytes": 373730144,
+    "raw_trace_not_retained_reason": "raw rocprof CSV is large and intentionally left under /tmp; this compact artifact records aggregate evidence only",
+    "software_commit": "W0603 12:07:13.068709  285636 simple_timer.cpp:55] [rocprofv3] tool initialization ::     0.000251 sec\nW0603 12:07:13.068850  285636 simple_timer.cpp:55] [rocprofv3] 'git rev-parse HEAD' ::     0.000000 sec\nW0603 12:07:13.069535  285636 simple_timer.cpp:55] [rocprofv3] output generation ::     0.000349 sec\nW0603 12:07:13.069550  285636 simple_timer.cpp:55] [rocprofv3] tool finalization ::     0.000409 sec\ncf3bf831d55a3f6850379f907615a12584abed6f",
+    "software_dirty": false,
+    "status": "blocked",
+    "performance_claim": false,
+    "generated_token_equality_passed": true,
+    "min_equal_prefix_tokens": 137,
+    "prefixes": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "profiled_decode_tok_s_aggregate": 150.38810563695986,
+    "profiled_decode_tok_s_per_request": 18.798513204619983,
+    "throughput_claim_eligible": false,
+    "native_caware_decode": false,
+    "blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "full-attention decode forced to native row-chunk diagnostic path",
+      "projection dispatch: no c-aware projection candidate applies to this row count"
+    ],
+    "decode_paths": {
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunk_size": 2,
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_kv_append_decode_path": "native_batch",
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": false
+    },
+    "top_kernels": [
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        "duration_ns": 1864482784,
+        "calls": 16320
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "duration_ns": 1581840245,
+        "calls": 107800
+      },
+      {
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "duration_ns": 1217147016,
+        "calls": 1240
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "duration_ns": 1171884428,
+        "calls": 61560
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 1167292486,
+        "calls": 53040
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "duration_ns": 1089540989,
+        "calls": 53040
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "duration_ns": 862367583,
+        "calls": 270
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "duration_ns": 731190210,
+        "calls": 74800
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 676109006,
+        "calls": 106710
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "duration_ns": 586827001,
+        "calls": 106800
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 476283584,
+        "calls": 360
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 472936040,
+        "calls": 90390
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+        "duration_ns": 408995655,
+        "calls": 32640
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "duration_ns": 379235948,
+        "calls": 4080
+      }
+    ],
+    "kernel_duration_categories_ns": {
+      "other": 2377355255,
+      "state_or_norm": 4055606195,
+      "moe": 755724465,
+      "projection_or_mlp_gemv": 6958895374,
+      "native_batch_full_attention_context": 1864482784,
+      "batched_sampler_argmax": 10719391
+    },
+    "kernel_duration_category_shares": {
+      "other": 0.14837342465130626,
+      "state_or_norm": 0.25311495996386263,
+      "moe": 0.047165616804218956,
+      "projection_or_mlp_gemv": 0.434312514403958,
+      "native_batch_full_attention_context": 0.11636447488597229,
+      "batched_sampler_argmax": 0.0006690092906818803
+    },
+    "expected_kernel_checks": {
+      "native_batch_full_attention_context": {
+        "calls": 16320,
+        "duration_ns": 1864482784,
+        "kernels": 1
+      },
+      "per_row_full_attention_context": {
+        "calls": 0,
+        "duration_ns": 0,
+        "kernels": 0
+      },
+      "batch_argmax_stage1": {
+        "calls": 1224,
+        "duration_ns": 7098554,
+        "kernels": 1
+      },
+      "batch_argmax_stage2": {
+        "calls": 1224,
+        "duration_ns": 3620837,
+        "kernels": 1
+      }
+    }
+  },
+  "prior_rowchunk_auto_pair_sweep_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-rowchunk2-auto-pair-sweep/summary.json",
+  "prior_rowchunk_auto_pair_sweep_verdicts": {
+    "auto_c2_c4_c8_generated_equality_passed": true,
+    "auto_c8_uses_native_rowchunk2_not_perrow_full_attention": true,
+    "c2_pair_sweep_most_native_pairs_green": true,
+    "rows4_5_native_pair_reproduces_row4_red": true,
+    "c2_perrow_controls_green": true,
+    "c3_native_windows_reproduce_rows4_7_red_pattern": true,
+    "c3_perrow_control_green": true,
+    "rowchunk2_controls_green": true,
+    "retained_ready": false
+  },
+  "measurements": {
+    "native_c2_512x128_min_equal_prefix_tokens": 137,
+    "profiled_c8_auto_rowchunk2_min_equal_prefix_tokens": 137,
+    "profiled_c8_auto_rowchunk2_decode_tok_s_aggregate": 150.38810563695986,
+    "native_batch_full_attention_context_kernel_calls": 16320,
+    "per_row_full_attention_context_kernel_calls": 0,
+    "batch_argmax_stage1_calls": 1224,
+    "batch_argmax_stage2_calls": 1224
+  },
+  "verdicts": {
+    "active_c2_verify_passed": true,
+    "profiled_c8_rowchunk2_generated_equality_passed": true,
+    "profiled_c8_uses_native_batch_rowchunks": true,
+    "profiled_c8_has_native_batch_full_attention_context_kernel": true,
+    "profiled_c8_has_no_per_row_full_attention_context_kernel": true,
+    "profiled_c8_has_batched_sampler_argmax_kernels": true,
+    "retained_ready": false
+  },
+  "retained_claim_blockers": [
+    "c8 auto uses native row chunks of 2 but row chunking is a diagnostic fallback and native_caware_decode=false",
+    "full native c3/c4 windows over original rows 4..7 remain generated-token red while rowchunk2 controls are green",
+    "projection-dispatch and retained profiler/scaling gates remain required before any c>N throughput claim"
+  ],
+  "commands": {
+    "profile_c8_auto_rowchunk2": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-e2e-native-auto-rowchunk2-profile-iter127-c8 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-auto-rowchunk2-profiled-iter127-c8.json",
+    "active_verify": "active loop verify command at clean commit cf3bf83 returned metric 137",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json"
+  }
+}

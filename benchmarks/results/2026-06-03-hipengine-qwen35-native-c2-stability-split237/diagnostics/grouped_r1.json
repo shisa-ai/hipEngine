@@ -1,0 +1,52 @@
+{
+  "batch_blockers": [
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "native_batch",
+  "full_attention_decode_path": "native_batch",
+  "full_attention_row_chunk_size": null,
+  "generated_token_equality_passed": true,
+  "label": "grouped_r1",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "grouped_compact",
+  "moe_grouped_compact_layers": 40,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": true,
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "91d668f0bf749acb79ecab5c12d49120d69cb01820675d2bd95a6b9f25af474d",
+  "raw_size_bytes": 134901,
+  "raw_source_path": "/tmp/hipengine-iter237-grouped-r1.json",
+  "repeat": 1,
+  "sampler_execution": {
+    "argmax_audit_enabled": false,
+    "argmax_mode": "serial_per_row",
+    "blockers": [],
+    "c2_equality_green": false,
+    "equality_artifact": null,
+    "equality_rows": null,
+    "mode": "serial_lm_head",
+    "native_row_aware_lm_head": false,
+    "requested_mode": "serial_lm_head",
+    "rows": 2
+  },
+  "status": "blocked",
+  "variant": "grouped",
+  "workload_batch_decode_attention_context_path": "batch",
+  "workload_batch_decode_moe_path": "grouped_compact",
+  "workload_batch_sample_mode": "serial_lm_head",
+  "workload_batch_size": 2,
+  "workload_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json"
+}

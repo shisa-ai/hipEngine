@@ -1,0 +1,73 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "native c>N decode is experimental and blocked until generated-token equality passes",
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "chunk_label": "rowchunk3",
+  "correctness_passed": false,
+  "decision_accepted": false,
+  "decision_reason_summary": [
+    "batch_execution.throughput_claim_eligible=false",
+    "generated-token equality vs independent c=1 did not pass",
+    "correctness.generated_token_equality.passed must be true",
+    "correctness.generated_token_equality.batch_sequences must equal c1_sequences",
+    "correctness.generated_token_equality.mismatches must be empty",
+    "artifact_path must be a repo-relative path under benchmarks/results",
+    "primitive_correctness_json must be provided under benchmarks/results",
+    "c1_baseline_json must be provided under benchmarks/results",
+    "serial_bridge_json must be provided under benchmarks/results",
+    "profiler_json must be provided under benchmarks/results",
+    "compiler_version_file must be a repo-relative path under benchmarks/results",
+    "primitive c>N correctness gate did not pass: no primitive correctness artifact path provided",
+    "scaling comparison vs c=1 and serial bridge baselines is incomplete",
+    "profiler trace was not captured with expected kernels present",
+    "profiler.artifact_path must be under benchmarks/results",
+    "profiler.source_artifact_path must be a non-empty string",
+    "profiler.output_format must be csv",
+    "profiler.trace_dir must be a non-empty string",
+    "profiler.trace_files must be a non-empty string list",
+    "profiler.synthesized_fields must be a string list"
+  ],
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path"
+  ],
+  "first_mismatch_indices": [
+    82,
+    null,
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_output_path": null,
+  "full_attention_row_chunk_size": 3,
+  "full_attention_row_chunk_source": "env",
+  "generated_token_equality_passed": false,
+  "layer_output_paths": [
+    "batch_gemv"
+  ],
+  "log_path": "/tmp/hipengine-iter207-c4-output-batchgemv-rc3.log",
+  "measurement_decode_tok_s_aggregate": 138.51352239372082,
+  "min_equal_prefix_tokens": 82,
+  "moe_decode_path": "grouped_compact",
+  "moe_grouped_compact_layers": 40,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": false,
+  "output_mode": "batch_gemv",
+  "prefix_lengths": [
+    82,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "b569f31cae021448432ee2de9170c448c33bf1d8365e15d5a37c6ab48d13a1cb",
+  "raw_size_bytes": 240043,
+  "raw_source_path": "/tmp/hipengine-iter207-c4-output-batchgemv-rc3.json",
+  "rows": 4,
+  "rows_label": "c4",
+  "status": "rejected_correctness",
+  "workload_full_attention_output_path": "batch_gemv",
+  "workload_row_chunk_size": 3
+}

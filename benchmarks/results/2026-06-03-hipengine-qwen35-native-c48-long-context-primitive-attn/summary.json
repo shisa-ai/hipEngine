@@ -1,0 +1,140 @@
+{
+  "all_primitive_parity_green": true,
+  "artifacts": {
+    "c4_grouped_projection_profile": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c4-grouped-projection-profile/summary.json",
+      "sha256": "592d1a03c813ce366d9d05fe7a78e3a10e28a6f76e0d87f5cf6dc9b108023ec5",
+      "size_bytes": 14251
+    },
+    "c8_grouped_projection_profile": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-profile/summary.json",
+      "sha256": "5685f39eea43a50a1df37a50efe48dd61a1891b3659e1b2817faee3a51233794",
+      "size_bytes": 14746
+    },
+    "c8_grouped_projection_repeatability": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-repeatability/summary.json",
+      "sha256": "c43ed7048d09191c7a2fdda715627c5b9f12b768c718ac0d84a1ae5ca180b81f",
+      "size_bytes": 10074
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "primitive_c4_context520": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/primitive-c4-context520.json",
+      "sha256": "0b816807cbfa53df6ed04d85a5d038b94d73acf5dc0f927b8ee5da76074e8657",
+      "size_bytes": 913
+    },
+    "primitive_c8_context520": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/primitive-c8-context520.json",
+      "sha256": "752bbe52544315b3f406070f795d9eb505620dc1e126a9b0b0748ea7d1099bb7",
+      "size_bytes": 950
+    }
+  },
+  "commands": {
+    "c4": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --block-size 256 --max-context-len 640 --context-lens 520,520,520,520 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/primitive-c4-context520.json",
+    "c8": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --block-size 256 --max-context-len 640 --context-lens 520,520,520,520,520,520,520,520 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/primitive-c8-context520.json"
+  },
+  "conclusion": "The BF16 paged KV append plus batched full-attention context primitive is green at retained-like context length 520 for c4 and c8: batch-vs-independent-c1 max_abs is 0.0, batch A/A max_abs is 0.0, and numpy agreement stays within the primitive gate. This eliminates long-context primitive append/context arithmetic as the c4/c8 grouped>=3 E2E blocker; the remaining failure is in the full-attention layer trajectory/coupling rather than the standalone primitive kernel.",
+  "created_at": "2026-06-03T19:08:55Z",
+  "git_commit": "c0a24289db78324d6c1ce15c49a1fd7e915d9e22",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 202,
+  "kind": "native_c48_long_context_primitive_attention_parity",
+  "performance_claim": false,
+  "remaining_blockers": [
+    "c4/c8 full-native E2E attention still fails when full-attention row groups contain three or more rows",
+    "rowchunk2 remains the correctness path until the grouped>=3 layer trajectory is repaired"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/primitive-c4-context520.json",
+      "artifact_sha256": "0b816807cbfa53df6ed04d85a5d038b94d73acf5dc0f927b8ee5da76074e8657",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 9.313225746154785e-09,
+      "block_size": 256,
+      "context_lens": [
+        520,
+        520,
+        520,
+        520
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 8,
+      "max_context_len": 640,
+      "num_kv_heads": 1,
+      "num_q_heads": 4,
+      "passed": true,
+      "rows": 4
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/primitive-c8-context520.json",
+      "artifact_sha256": "752bbe52544315b3f406070f795d9eb505620dc1e126a9b0b0748ea7d1099bb7",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 1.6763806343078613e-08,
+      "block_size": 256,
+      "context_lens": [
+        520,
+        520,
+        520,
+        520,
+        520,
+        520,
+        520,
+        520
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 8,
+      "max_context_len": 640,
+      "num_kv_heads": 1,
+      "num_q_heads": 4,
+      "passed": true,
+      "rows": 8
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "block_size": 256,
+    "context_lens": "all rows at 520 tokens",
+    "coverage": "BF16 paged KV append plus batched full-attention context decode vs independent c1 and numpy at retained-like 512+warmup context length",
+    "max_context_len": 640,
+    "rows": [
+      4,
+      8
+    ]
+  }
+}

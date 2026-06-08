@@ -40,6 +40,17 @@ class PrefillConfig:
     moe_grouped_device_gather: bool = True
     moe_stacked_compact: bool = True
     require_full_native: bool = True
+    use_wmma_prefill: bool = False
+    """Opt in to the GGUF WMMA batched prefill kernel family (P8).
+
+    When ``True``, GGUF rows>1 dispatch in :mod:`hipengine.runtime.gguf_linear`
+    rewrites the supported ``prefill_*`` variants (currently ``gguf_q8_0``)
+    to the matching ``wmma_prefill_*`` registry keys. Otherwise the existing
+    decode-shaped ``prefill_*`` aliases are used (see
+    ``docs/GGUF.md`` "P8: real batched prefill GEMM"). Defaults to ``False``
+    so the rollout can be correctness-bisected; the env var
+    ``HIPENGINE_GGUF_WMMA_PREFILL=1`` provides an equivalent process-wide
+    override that does not require a config change."""
 
     def __post_init__(self) -> None:
         for name in (
@@ -63,6 +74,7 @@ class PrefillConfig:
         object.__setattr__(self, "moe_grouped_device_gather", bool(self.moe_grouped_device_gather))
         object.__setattr__(self, "moe_stacked_compact", bool(self.moe_stacked_compact))
         object.__setattr__(self, "require_full_native", bool(self.require_full_native))
+        object.__setattr__(self, "use_wmma_prefill", bool(self.use_wmma_prefill))
 
 
 def resolve_prefill_config_for_sequence(

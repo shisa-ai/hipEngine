@@ -1,0 +1,151 @@
+{
+  "iteration": 444,
+  "kind": "c8_fullnative_linear_perrow_consumer_probe",
+  "created_at": "2026-06-07T07:47:12.786137+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "9bbb6d15ec70df27cd27c43982acb40a28df239c",
+  "performance_claim": false,
+  "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --warmup-decode-tokens 8 --decode-tokens 1 --max-layers 8 --layer-limits 8 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter444-L8-c8-fullnative-linear-perrow-nativec1-warm8-decode1-trace0-1.json",
+  "result": {
+    "status": "mismatch_found",
+    "hidden_passed": false,
+    "token_passed": true,
+    "failure_modes": [
+      "hidden"
+    ],
+    "linear_input_passed": true,
+    "linear_stage_passed": {
+      "attn_input": false,
+      "qkv": false,
+      "z": false,
+      "conv_out": false,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": false,
+      "output": true
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": false,
+      "attn_input_after_rotate": false,
+      "attn_input_after_project": false,
+      "q_proj_key_after_project": false,
+      "value_after_project": false,
+      "query_raw_after_split": false,
+      "key_raw_after_cast": false,
+      "gate_after_split": false,
+      "query_after_prepare": false,
+      "key_after_prepare": false,
+      "attn_input_after_prepare": false,
+      "attn_input": false,
+      "gate": false,
+      "query": false,
+      "attn_context": false,
+      "gated_attn": true,
+      "o_proj": true,
+      "residual": false,
+      "mlp_input": false,
+      "output": false
+    },
+    "linear_drift_stage_count": 5,
+    "full_attention_failed_stage_count": 18,
+    "first_linear_mismatch": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "stage": "attn_input",
+      "row": 0,
+      "comparison_kind": "fp16_bits",
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "elements_over_atol": 5,
+      "bit_mismatch": 491
+    },
+    "first_linear_bit_drift": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "stage": "attn_input",
+      "row": 0,
+      "comparison_kind": "fp16_bits",
+      "passed_under_atol": false,
+      "bit_mismatch": 491,
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "elements_over_atol": 5
+    },
+    "first_full_attention_failure": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 7,
+      "stage": "attn_input_pre_qkv",
+      "row": 0,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "elements_over_atol": 39
+    },
+    "row_failure_summary": null,
+    "workload_paths": {
+      "batch_decode_linear_path": "per_row",
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_full_attention_row_chunk_size": 0,
+      "batch_decode_full_attention_output_path": "batch_gemv",
+      "full_attention_decode_path": "batch_context"
+    }
+  },
+  "interpretation": {
+    "negative_result": "Forcing the c8 fullnative/no-rowchunk minimal window linear-attention decode to per-row does not close the layer4 frontier. The first linear mismatch remains layer4 attn_input with max_abs=0.0078125 and row0 elements_over_atol=5.",
+    "eliminated": "The native batch linear-attention implementation is not sufficient as the immediate first-over-atol suspect. Normal per-row/token-1 linear execution still amplifies the upstream under-atol layer3 hidden drift at input RMSNorm.",
+    "next_target": "Focus upstream on making layer3 full-attention output bit-identical/rowchunk-equivalent, or inspect layer4 RMSNorm scale/intermediate sensitivity; do not try broad per-row linear replay as a c8 fullnative fix."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused per-row linear consumer probe eliminates native batch linear decode as the immediate fix for the c8 layer4 attn_input frontier; no performance claim."
+  },
+  "conclusion": "Per-row linear consumer replay is red: layer4 attn_input remains the first mismatch at max_abs=0.0078125, so the upstream layer3 hidden drift must be removed rather than masking it with per-row linear decode.",
+  "references": {
+    "raw_hidden_bisect_tmp": {
+      "path": "/tmp/hipengine-hidden-bisect-iter444-L8-c8-fullnative-linear-perrow-nativec1-warm8-decode1-trace0-1.json",
+      "sha256": "f27ac4f96191d8b982016f2b916f2533c28804924f41e7773ccbbdc7e91a81d6",
+      "size_bytes": 4941697
+    },
+    "raw_log_tmp": {
+      "path": "/tmp/hipengine-hidden-bisect-iter444-L8-c8-fullnative-linear-perrow-nativec1-warm8-decode1-trace0-1.log",
+      "sha256": "f27ac4f96191d8b982016f2b916f2533c28804924f41e7773ccbbdc7e91a81d6",
+      "size_bytes": 4941697
+    },
+    "prior_layer4_rmsnorm_direct_443": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-layer4-rmsnorm-direct-443/summary.json",
+      "sha256": "c8a63d96685b855dd7091331defe3a9bcacc4a1d1bb7f47db076206848da6858",
+      "size_bytes": 28423
+    },
+    "prior_perrow_input_435": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-perrow-input-probe-435/summary.json",
+      "sha256": "2e8eaab6a8f19401eb4dd9f2f9bb5855aa1492a0a5e0cf192934b9c12a9fca1c",
+      "size_bytes": 20460
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-linear-perrow-444/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-linear-perrow-444/compact-runs.json",
+      "sha256": "055b8b36f3264a54fac82342f8388ae58aeeebbea3813e7765b32096c74af152",
+      "size_bytes": 4083
+    }
+  }
+}

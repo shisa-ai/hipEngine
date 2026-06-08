@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+  "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+  "status": "accepted",
+  "passed": true,
+  "created_at": "2026-06-02T19:13:09.438916Z",
+  "performance_claim": false,
+  "summary": "Projection-dispatch evidence for native_batch c=8 Qwen/PARO projection selection. This accepts only the projection-dispatch metadata candidate; it is not a retained c>N throughput claim.",
+  "rows": 8,
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "workload": {
+    "batch_size": 8,
+    "prompt_tokens_per_request": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40
+  },
+  "evidence": {
+    "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+    "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+    "aggregate_vs_row_gemv": 1.1446009208707775,
+    "per_request_vs_row_gemv": 1.1446009208707775,
+    "accepted": true
+  },
+  "projection_dispatch_candidates": [
+    {
+      "name": "batch",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "batch"
+      },
+      "min_rows": 2,
+      "max_rows": 8,
+      "evidence": {
+        "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+        "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+        "aggregate_vs_row_gemv": 1.1446009208707775,
+        "per_request_vs_row_gemv": 1.1446009208707775,
+        "accepted": true
+      }
+    }
+  ],
+  "measurements": {
+    "native_candidate": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/profiled-retained-c8.json",
+      "decode_tok_s_aggregate": 184.6819133114189,
+      "decode_tok_s_per_request": 23.085239163927362,
+      "generated_token_equality_passed": true,
+      "linear_attention_projection_path": "native_batch"
+    },
+    "row_gemv_baseline": {
+      "source_tmp_path": "/tmp/hipengine-e2e-native-c8-512-128-selected-c1-projection-iter97.json",
+      "decode_tok_s_aggregate": 161.35048464832488,
+      "decode_tok_s_per_request": 20.16881058104061,
+      "generated_token_equality_passed": true,
+      "linear_attention_projection_path": "selected_c1_forced"
+    },
+    "ratios": {
+      "aggregate_vs_row_gemv": 1.1446009208707775,
+      "per_request_vs_row_gemv": 1.1446009208707775
+    }
+  },
+  "source_hashes": {
+    "native_candidate_sha256": "db97299634c1b822608f2faed9da2711e9276cc18fba88af0cc0b59b809f8c28",
+    "row_gemv_baseline_sha256": "c22190434175618fa135f774ca74bc39c8099ef6aea25eaacd48156030f932ed",
+    "row_gemv_baseline_size_bytes": 373623
+  },
+  "commands": {
+    "native_candidate_source": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/profiler-c8.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/profiled-retained-c8.json",
+    "row_gemv_baseline": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-linear-projection-path selected_c1 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --json /tmp/hipengine-e2e-native-c8-512-128-selected-c1-projection-iter97.json",
+    "projection_dispatch_validation": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json --json /tmp/hipengine-e2e-native-c8-projection-dispatch-iter97.json"
+  },
+  "notes": [
+    "Row-GEMV baseline is the explicit selected_c1 projection diagnostic with the same c=8 512/128 workload and batched sampler equality gate.",
+    "This artifact is consumed only by HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT / --projection-dispatch-artifact to prove a non-row-GEMV projection-dispatch candidate exists.",
+    "No retained performance claim is made because full retained artifact gates still include compiler-version provenance and memory/bucket observability blockers."
+  ],
+  "validation": {
+    "source_tmp_path": "/tmp/hipengine-e2e-native-c8-projection-dispatch-iter97.json",
+    "source_sha256": "cf43d02a8f48e422ab86b64810c1cb11d15948c13eca0a020da352fdc527ee7d",
+    "source_size_bytes": 367906,
+    "generated_token_equality_passed": true,
+    "equal_prefixes": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "decode_tok_s_aggregate": 209.0534979629791,
+    "decode_tok_s_per_request": 26.131687245372387,
+    "projection_dispatch": {
+      "rows": 8,
+      "selected_candidate": "batch",
+      "path": "benchmark_accepted_caware_projection",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "batch"
+      },
+      "throughput_claim_eligible": true,
+      "blockers": [],
+      "evidence": {
+        "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+        "aggregate_vs_row_gemv": 1.1446009208707775,
+        "per_request_vs_row_gemv": 1.1446009208707775,
+        "accepted": true
+      }
+    },
+    "batch_execution_throughput_claim_eligible": false,
+    "batch_execution_blockers": [],
+    "remaining_decision_reason_prefix": "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; profiler kernel names must include selected projection_dispatch candidate or variant; memory.stable_block_id.passed is"
+  },
+  "result": "Projection-dispatch artifact is accepted by the candidate loader and the c=8 retained runner selects selected_candidate=batch with path=benchmark_accepted_caware_projection. The validation artifact remains performance_claim=false and blocked by non-projection retained gates."
+}

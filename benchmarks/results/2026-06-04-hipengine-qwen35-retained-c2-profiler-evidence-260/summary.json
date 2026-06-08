@@ -1,0 +1,777 @@
+{
+  "active_verify": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "moe_decode_path": "grouped_compact",
+    "moe_grouped_compact_layers": 40,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "result_metric": 137
+  },
+  "commands": {
+    "profiled_bench_json": "/tmp/hipengine-iter260-c2-profiled-bench.json",
+    "profiler": "HIP_VISIBLE_DEVICES=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-iter260-c2-rocprof -- python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter260-c2-profiled-bench.json",
+    "profiler_log": "/tmp/hipengine-iter260-c2-rocprof.log"
+  },
+  "findings": [
+    "rocprofv3 captured a full-run kernel trace for the active c2 512/128 retained-bench command on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX.",
+    "Generated-token equality stayed green at [137,137] in the profiled run, with grouped_compact MoE for all 40 layers, batch_gemv_auto full-attention O, native_caware_decode=true, and no decode blockers.",
+    "Expected native c2 runtime kernels are present with positive durations: batched paged full-attention context, batched KV append, grouped-compact MoE group kernels, linear-attention segment decode, and GEMV/Marlin projection kernels.",
+    "This is runtime/profiler evidence only; no retained throughput/scaling claim is made because c1/serial baselines, retained projection/sampler gates, and full benchmark rollup gates are not complete."
+  ],
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "pytest": "targeted tests passed"
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "agent_info": [
+      {
+        "Cu_Count": "96",
+        "Drm_Render_Minor": "128",
+        "Gfx_Target_Version": "110000",
+        "Logical_Node_Id": "1",
+        "Name": "gfx1100",
+        "Node_Id": "1",
+        "Product_Name": "AMD Radeon Pro W7900"
+      },
+      {
+        "Cu_Count": "96",
+        "Drm_Render_Minor": "129",
+        "Gfx_Target_Version": "110000",
+        "Logical_Node_Id": "2",
+        "Name": "gfx1100",
+        "Node_Id": "2",
+        "Product_Name": "AMD Radeon RX 7900 XTX"
+      }
+    ],
+    "device": "AMD Radeon RX 7900 XTX",
+    "profiler_agent_id": "Agent 2"
+  },
+  "iteration": 260,
+  "mode": "qwen35_retained_c2_profiler_evidence",
+  "performance_claim": false,
+  "profiled_bench": {
+    "artifact_status_note": "The child benchmark status is blocked because retained perf baselines/profiler attachment/projection/sampler gates are not complete; this artifact is profiler runtime evidence only.",
+    "decode_blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "full_attention_output_decode_path": "batch_gemv_auto",
+    "generated_token_equality_passed": true,
+    "min_equal_prefix_tokens": 137,
+    "moe_decode_path": "grouped_compact",
+    "moe_grouped_compact_layers": 40,
+    "moe_selected_c1_fallback_layers": 0,
+    "native_caware_decode": true,
+    "performance_claim": false,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "status": "blocked"
+  },
+  "profiler": {
+    "agent_dispatch_counts": {
+      "Agent 2": 473491
+    },
+    "expected_kernel_patterns": {
+      "batch_kv_append": {
+        "calls": 4080,
+        "duration_ms": 24.422347,
+        "duration_ns": 24422347,
+        "kernel_names": [
+          "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+        ],
+        "pattern": "qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel",
+        "present": true
+      },
+      "grouped_compact_moe_prefix": {
+        "calls": 5560,
+        "duration_ms": 14.66707,
+        "duration_ns": 14667070,
+        "kernel_names": [
+          "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)"
+        ],
+        "pattern": "qwen35_moe_group_prefix_kernel",
+        "present": true
+      },
+      "grouped_compact_moe_scatter_gather": {
+        "calls": 5560,
+        "duration_ms": 22.843515,
+        "duration_ns": 22843515,
+        "kernel_names": [
+          "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)"
+        ],
+        "pattern": "qwen35_moe_group_scatter_gather_kernel",
+        "present": true
+      },
+      "grouped_compact_moe_tile_map": {
+        "calls": 5560,
+        "duration_ms": 15.453949,
+        "duration_ns": 15453949,
+        "kernel_names": [
+          "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)"
+        ],
+        "pattern": "qwen35_moe_wmma_tile_map_kernel",
+        "present": true
+      },
+      "linear_attention_segment_decode": {
+        "calls": 8160,
+        "duration_ms": 28.34918,
+        "duration_ns": 28349180,
+        "kernel_names": [
+          "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)"
+        ],
+        "pattern": "qwen35_linear_attn_conv_decode_lowp_kernel",
+        "present": true
+      },
+      "native_batch_full_attention_context": {
+        "calls": 4080,
+        "duration_ms": 467.913794,
+        "duration_ns": 467913794,
+        "kernel_names": [
+          "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, f..."
+        ],
+        "pattern": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+        "present": true
+      },
+      "paro_marlin_projection": {
+        "calls": 21760,
+        "duration_ms": 214.27827,
+        "duration_ns": 214278270,
+        "kernel_names": [
+          "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)"
+        ],
+        "pattern": "gemv_paro_marlin_k_fma_kernel",
+        "present": true
+      },
+      "row_aware_full_attention_o_or_linear_projection": {
+        "calls": 8340,
+        "duration_ms": 30.965348,
+        "duration_ns": 30965348,
+        "kernel_names": [
+          "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)"
+        ],
+        "pattern": "dense_gemv_out_kernel",
+        "present": true
+      }
+    },
+    "expected_kernels_present": true,
+    "kernel_dispatch_rows": 473491,
+    "kernel_duration_categories_ns": {
+      "attention": 475668750,
+      "graph_replay": 0,
+      "moe": 277641297,
+      "other": 1672236587,
+      "projection": 2043995659,
+      "sampling": 4064866
+    },
+    "kernel_duration_category_shares": {
+      "attention": 0.10632779,
+      "graph_replay": 0.0,
+      "moe": 0.06206206,
+      "other": 0.3738005,
+      "projection": 0.45690102,
+      "sampling": 0.00090863
+    },
+    "output_format": "csv",
+    "raw_trace_bytes": 128030804,
+    "raw_trace_not_committed": true,
+    "raw_trace_sha1_first_16m": "9749b9e5406e5afb166d6ef31ad4b20189d78740",
+    "rocprof_returncode": "nonzero_child_blocked_status_observed",
+    "status": "captured",
+    "top_kernels_by_duration": [
+      {
+        "calls": 4080,
+        "duration_ms": 467.913794,
+        "duration_ns": 467913794,
+        "duration_share": 0.1045943,
+        "grid_size": [
+          16384,
+          2,
+          1
+        ],
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, f...",
+        "kernel_name_sha1": "90fb4b5d6804",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 40,
+        "workgroup_size": [
+          1024,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 29920,
+        "duration_ms": 334.87415,
+        "duration_ns": 334874150,
+        "duration_share": 0.07485551,
+        "grid_size": [
+          16384,
+          2,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, l...",
+        "kernel_name_sha1": "8047e64a7cda",
+        "lds_block_size": 512,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 104,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 16320,
+        "duration_ms": 328.458763,
+        "duration_ns": 328458763,
+        "duration_share": 0.07342146,
+        "grid_size": [
+          16384,
+          16,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, ...",
+        "kernel_name_sha1": "82f948798a0a",
+        "lds_block_size": 512,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 104,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 548,
+        "duration_ms": 304.70579,
+        "duration_ns": 304705790,
+        "duration_share": 0.06811188,
+        "grid_size": [
+          31784960,
+          1,
+          1
+        ],
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "kernel_name_sha1": "985d2cd83683",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 24,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 16320,
+        "duration_ms": 290.291954,
+        "duration_ns": 290291954,
+        "duration_share": 0.06488991,
+        "grid_size": [
+          32768,
+          16,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "kernel_name_sha1": "a05af7c7f335",
+        "lds_block_size": 512,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 104,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 24480,
+        "duration_ms": 237.218082,
+        "duration_ns": 237218082,
+        "duration_share": 0.05302613,
+        "grid_size": [
+          131072,
+          2,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "kernel_name_sha1": "07ac0ec72e58",
+        "lds_block_size": 512,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 104,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 4080,
+        "duration_ms": 235.897793,
+        "duration_ns": 235897793,
+        "duration_share": 0.052731,
+        "grid_size": [
+          256,
+          32,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, i...",
+        "kernel_name_sha1": "7e390e2ea87e",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 80,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 21760,
+        "duration_ms": 214.27827,
+        "duration_ns": 214278270,
+        "duration_share": 0.04789832,
+        "grid_size": [
+          32768,
+          2,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "kernel_name_sha1": "1f326cddce57",
+        "lds_block_size": 512,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 104,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 32970,
+        "duration_ms": 194.863826,
+        "duration_ns": 194863826,
+        "duration_share": 0.04355855,
+        "grid_size": [
+          65536,
+          32,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "kernel_name_sha1": "2eeded7d0e06",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 24,
+        "workgroup_size": [
+          64,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 32760,
+        "duration_ms": 177.839165,
+        "duration_ns": 177839165,
+        "duration_share": 0.03975297,
+        "grid_size": [
+          524288,
+          4,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "kernel_name_sha1": "0d274441f9ec",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 24,
+        "workgroup_size": [
+          64,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 90,
+        "duration_ms": 171.27722,
+        "duration_ns": 171277220,
+        "duration_share": 0.03828616,
+        "grid_size": [
+          128,
+          32,
+          128
+        ],
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "kernel_name_sha1": "4138fd2adc44",
+        "lds_block_size": 512,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 32,
+        "workgroup_size": [
+          64,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 28770,
+        "duration_ms": 153.015728,
+        "duration_ns": 153015728,
+        "duration_share": 0.0342041,
+        "grid_size": [
+          65536,
+          16,
+          2
+        ],
+        "kernel_name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "kernel_name_sha1": "c55f6657e7ee",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 24,
+        "workgroup_size": [
+          64,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 120,
+        "duration_ms": 125.360057,
+        "duration_ns": 125360057,
+        "duration_share": 0.02802214,
+        "grid_size": [
+          2048,
+          752,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 ...",
+        "kernel_name_sha1": "bfcf1a5cc177",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 56,
+        "workgroup_size": [
+          32,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 16440,
+        "duration_ms": 107.589069,
+        "duration_ns": 107589069,
+        "duration_share": 0.02404974,
+        "grid_size": [
+          262144,
+          1,
+          1
+        ],
+        "kernel_name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+        "kernel_name_sha1": "06cdaec7c206",
+        "lds_block_size": 512,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 40,
+        "workgroup_size": [
+          256,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 8160,
+        "duration_ms": 102.722148,
+        "duration_ns": 102722148,
+        "duration_share": 0.02296182,
+        "grid_size": [
+          4096,
+          1,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, lon...",
+        "kernel_name_sha1": "134715201090",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 56,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 240,
+        "duration_ms": 88.584063,
+        "duration_ns": 88584063,
+        "duration_share": 0.01980148,
+        "grid_size": [
+          12288,
+          32,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, i...",
+        "kernel_name_sha1": "5b6ed924f72b",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 120,
+        "workgroup_size": [
+          32,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 16320,
+        "duration_ms": 78.262963,
+        "duration_ns": 78262963,
+        "duration_share": 0.01749438,
+        "grid_size": [
+          65792,
+          2,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)",
+        "kernel_name_sha1": "4036ada5d7f7",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 24,
+        "workgroup_size": [
+          256,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 27870,
+        "duration_ms": 70.053742,
+        "duration_ns": 70053742,
+        "duration_share": 0.01565934,
+        "grid_size": [
+          256,
+          1,
+          1
+        ],
+        "kernel_name": "__amd_rocclr_fillBufferAligned",
+        "kernel_name_sha1": "c3b076ab0611",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 16,
+        "workgroup_size": [
+          256,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 25734,
+        "duration_ms": 69.79774,
+        "duration_ns": 69797740,
+        "duration_share": 0.01560212,
+        "grid_size": [
+          512,
+          1,
+          1
+        ],
+        "kernel_name": "__amd_rocclr_copyBuffer",
+        "kernel_name_sha1": "6dbe1ad12415",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 16,
+        "workgroup_size": [
+          512,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 120,
+        "duration_ms": 68.846633,
+        "duration_ns": 68846633,
+        "duration_share": 0.01538951,
+        "grid_size": [
+          4096,
+          752,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "kernel_name_sha1": "401865059a9a",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 56,
+        "workgroup_size": [
+          32,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 16440,
+        "duration_ms": 58.132009,
+        "duration_ns": 58132009,
+        "duration_share": 0.01299444,
+        "grid_size": [
+          262144,
+          1,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)",
+        "kernel_name_sha1": "59ae9614f2f1",
+        "lds_block_size": 1024,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 32,
+        "workgroup_size": [
+          256,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 16988,
+        "duration_ms": 53.066181,
+        "duration_ns": 53066181,
+        "duration_share": 0.01186206,
+        "grid_size": [
+          262144,
+          1,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)",
+        "kernel_name_sha1": "0fca3af7072e",
+        "lds_block_size": 1024,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 24,
+        "workgroup_size": [
+          256,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 270,
+        "duration_ms": 41.690437,
+        "duration_ns": 41690437,
+        "duration_share": 0.0093192,
+        "grid_size": [
+          2048,
+          32,
+          1
+        ],
+        "kernel_name": "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+        "kernel_name_sha1": "9d5961d5ca97",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 120,
+        "workgroup_size": [
+          32,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 5470,
+        "duration_ms": 33.214097,
+        "duration_ns": 33214097,
+        "duration_share": 0.00742446,
+        "grid_size": [
+          65536,
+          16,
+          3
+        ],
+        "kernel_name": "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*,...",
+        "kernel_name_sha1": "d1ebeb90e5d3",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 24,
+        "workgroup_size": [
+          64,
+          1,
+          1
+        ]
+      },
+      {
+        "calls": 5440,
+        "duration_ms": 32.669917,
+        "duration_ns": 32669917,
+        "duration_share": 0.00730281,
+        "grid_size": [
+          4608,
+          1,
+          1
+        ],
+        "kernel_name": "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long,...",
+        "kernel_name_sha1": "9f2738dab847",
+        "lds_block_size": 0,
+        "scratch_size": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 16,
+        "workgroup_size": [
+          256,
+          1,
+          1
+        ]
+      }
+    ],
+    "total_kernel_duration_ms": 4473.607159,
+    "total_kernel_duration_ns": 4473607159,
+    "trace_dir": "/tmp/hipengine-iter260-c2-rocprof",
+    "trace_files": [
+      "/tmp/hipengine-iter260-c2-rocprof/epyc/874362_kernel_trace.csv"
+    ],
+    "unique_kernel_names": 59
+  },
+  "prompt_verifier": {
+    "evidence": "Pass: committed compact rocprofv3 runtime evidence for active native c2 512/128 on HIP_VISIBLE_DEVICES=1 with equality green and expected batched native kernels present. No throughput/scaling claim.",
+    "passed": true
+  },
+  "schema": 1,
+  "status": "diagnostic_profiler_captured",
+  "timestamp": "2026-06-04T11:22:52.707499+00:00",
+  "workload": {
+    "batch_size": 2,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

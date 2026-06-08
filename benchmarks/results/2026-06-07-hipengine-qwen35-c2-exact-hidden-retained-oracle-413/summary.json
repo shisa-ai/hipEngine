@@ -1,0 +1,111 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-exact-hidden-retained-oracle-413/compact-runs.json",
+      "sha256": "13b6f828ec356035f451dee4baeefb91227446f62cc80e3bbbc7fe4455dc3488",
+      "size_bytes": 16292
+    },
+    "raw": {
+      "active_default_verify": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "3bdb98615eb9aad803cd0315ddd49d0fb819f75ee7fb1f21ad9ca3d37f4b91c5",
+        "size_bytes": 138431
+      },
+      "active_default_verify_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "3bdb98615eb9aad803cd0315ddd49d0fb819f75ee7fb1f21ad9ca3d37f4b91c5",
+        "size_bytes": 138431
+      },
+      "hidden_serial_exact": {
+        "exists": true,
+        "path": "/tmp/hipengine-hidden-bisect-iter413-L40-c2-rowchunk1-interleaved-warm8-decode128-trace96-112-atol4e-3-focus1269.json",
+        "sha256": "f045c56ec204f7460d6ba950ab64f0d207f4bd7f6a74d1d9d0cd34e78ab3bfe8",
+        "size_bytes": 37136122
+      },
+      "hidden_serial_exact_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-hidden-bisect-iter413-L40-c2-rowchunk1-interleaved-warm8-decode128-trace96-112-atol4e-3-focus1269.log",
+        "sha256": "f045c56ec204f7460d6ba950ab64f0d207f4bd7f6a74d1d9d0cd34e78ab3bfe8",
+        "size_bytes": 37136122
+      },
+      "hidden_serial_exact_wrapper": {
+        "exists": true,
+        "path": "/tmp/hipengine-hidden-bisect-iter413-L40-c2-rowchunk1-interleaved-warm8-decode128-trace96-112-atol4e-3-focus1269.wrapper.log",
+        "sha256": "14efa8bb99dfa4cc13c0b4ddcdd34dd32c8a25377ef2acac3e691159e0aa8df8",
+        "size_bytes": 80
+      },
+      "nativec1_attempt_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-hidden-bisect-iter413-L40-c2-rowchunk1-interleaved-warm8-decode128-nativec1-trace96-112-atol4e-3-focus1269.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      "nativec1_attempt_wrapper": {
+        "exists": true,
+        "path": "/tmp/hipengine-hidden-bisect-iter413-L40-c2-rowchunk1-interleaved-warm8-decode128-nativec1-trace96-112-atol4e-3-focus1269.wrapper.log",
+        "sha256": "b4fdbcfbf6935184e03a81d726a12958f22a7535d825a233ff96d9a76380aa86",
+        "size_bytes": 1102
+      },
+      "primitive_c2": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      "primitive_c8": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      },
+      "retained_rowchunk_red": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-iter413.json",
+        "sha256": "fc6e9662ac2b6e3da81d54a5d5bc95abbd17f410f32944123a896159e4a3ad78",
+        "size_bytes": 169236
+      },
+      "retained_rowchunk_red_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-iter413.log",
+        "sha256": "fc6e9662ac2b6e3da81d54a5d5bc95abbd17f410f32944123a896159e4a3ad78",
+        "size_bytes": 169236
+      }
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-exact-hidden-retained-oracle-413/summary.json"
+    }
+  },
+  "commands": {
+    "active_verify": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "hidden_serial_exact": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --warmup-decode-tokens 8 --decode-tokens 128 --max-layers 40 --layer-limits 40 --max-sequence-length 649 --hidden-atol 4e-3 --focus-hidden-flat-index 1269 --trace-decode-start 96 --trace-decode-end 112 --batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-attn-append-context-order interleaved --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-bisect-iter413-L40-c2-rowchunk1-interleaved-warm8-decode128-trace96-112-atol4e-3-focus1269.json",
+    "retained_rowchunk_red": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-attn-append-context-order interleaved --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-iter413.json"
+  },
+  "conclusion": "Rowchunk1+per-row append/context interleaving is exact-length hidden/token green when compared to the hidden-bisect serial c=1 oracle and its sequence exactly matches the retained rowchunk batch output. The fresh retained 512/128 rowchunk run remains red at [137,104] because retained-bench compares against native_batch c=1, whose row1 sequence diverges from serial c=1 at index104. The next fix/debug target is the c=1 oracle/path discrepancy or why rowchunk/interleaved follows serial c1 while the retained native c1/default path follows the native_batch c1 sequence.",
+  "created_at": "2026-06-07T02:23:53.059474+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 413,
+  "kind": "c2_exact_hidden_retained_oracle_split",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: exact retained-length L40 warmup8+decode128 rowchunk1 append/context interleave hidden-bisect is hidden/token green with a concrete artifact; fresh retained red contrast remains [137,104]. Metadata inspection directly explains the iter412 gap as hidden-bisect serial-c1 oracle vs retained native_batch-c1 oracle divergence at row1 index104, while active no-flag verify remains 137. No performance claim.",
+    "passed": true
+  },
+  "result": {
+    "active_verify_metric": 137,
+    "active_verify_prefix_lengths": [
+      137,
+      137
+    ],
+    "hidden_serial_exact_passed": true,
+    "hidden_serial_exact_status": "eq_ok",
+    "oracle_split_row1_prefix": 104,
+    "retained_rowchunk_prefix_lengths": [
+      137,
+      104
+    ]
+  }
+}

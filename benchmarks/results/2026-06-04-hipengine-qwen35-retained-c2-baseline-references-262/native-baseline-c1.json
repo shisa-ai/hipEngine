@@ -1,0 +1,90 @@
+{
+  "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json",
+  "commands": {
+    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c2-baseline-references-262/native-baseline-c1.json"
+  },
+  "decision": null,
+  "hardware": {
+    "arch": "gfx1100",
+    "default_hardware": false,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "rocm_smi": {
+      "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "output": "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status\n\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 36.0\nGPU[0]\t\t: Temperature (Sensor junction) (C): 43.0\nGPU[0]\t\t: Temperature (Sensor memory) (C): 48.0\nGPU[1]\t\t: Temperature (Sensor edge) (C): 45.0\nGPU[1]\t\t: Temperature (Sensor junction) (C): 57.0\nGPU[1]\t\t: Temperature (Sensor memory) (C): 65.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 0\nGPU[1]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 48301604864\nGPU[0]\t\t: VRAM Total Used Memory (B): 28061696\nGPU[1]\t\t: VRAM Total Memory (B): 25753026560\nGPU[1]\t\t: VRAM Total Used Memory (B): 406347776\n==========================================================================================\n================================== End of ROCm SMI Log ===================================",
+      "returncode": 0
+    },
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|gfx'\"'\"' | head -4'",
+      "output": "Name:                    AMD Ryzen 9 5950X 16-Core Processor\n  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor\n  Vendor Name:             CPU                                \n  Name:                    gfx1100",
+      "returncode": 0
+    },
+    "visible_device": {
+      "current_device": 0,
+      "device_name": "AMD Radeon RX 7900 XTX",
+      "env": {
+        "HIP_VISIBLE_DEVICES": "1"
+      },
+      "hipDeviceGetName_error": 0,
+      "hipGetDeviceCount_error": 0,
+      "hipGetDevice_error": 0,
+      "visible_device_count": 1
+    }
+  },
+  "measurements": {
+    "decode_seconds": 0.9548606250900775,
+    "decode_tok_s_aggregate": 134.05097732239722,
+    "decode_tok_s_per_request": 134.05097732239722,
+    "load_seconds": 22.801886889035814,
+    "prefill_seconds": 0.20470243599265814,
+    "prefill_tok_s": 2501.1915345177595,
+    "warmup_decode_seconds": 0.08518077898770571
+  },
+  "performance_claim": false,
+  "reason": null,
+  "run_tag": null,
+  "schema": 1,
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "579ba6a0",
+    "hipengine_dirty": false,
+    "python": "3.12.9"
+  },
+  "source_full_artifact_note": "Full local output was compacted before commit to keep baseline evidence small; this JSON retains all fields consumed by retained scaling-reference validation.",
+  "status": "loaded",
+  "summary": "Compact scaling baseline reference extracted from the full local benchmark artifact; generated tokens/raw per-step details intentionally omitted.",
+  "timestamp": null,
+  "workload": {
+    "concurrency": 1,
+    "fixture_path": null,
+    "gen_tokens_per_request": 128,
+    "kv_policy": {
+      "block_size": 256,
+      "int8_admission_gated": false,
+      "int8_explicit": false,
+      "policy_class": "FixedPagedKVPolicy",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "requested_storage": "auto",
+      "resolved_storage_dtype": "bf16",
+      "scale_metadata_format": {
+        "granularity": null,
+        "k_scale": null,
+        "present": false,
+        "scale_dtype": null,
+        "v_scale": null
+      },
+      "selection_reason": "default_bf16",
+      "spans_mode": "uniform",
+      "storage_dtype": "bf16"
+    },
+    "kv_storage_dtype": "bf16",
+    "max_layers": 40,
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "native_caware_decode": null,
+    "native_compact_prefill": null,
+    "prompt_tokens_per_request": 512,
+    "quant": "w4_paro",
+    "scheduler_path": null,
+    "warmup_decode_tokens": 8
+  }
+}

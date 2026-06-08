@@ -1,0 +1,272 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/summary.json",
+  "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
+  "source_sha256": "ba0a93ea663a237e378289ef4a6a8ffcb98df120ef721ed4964c216799e0b43a",
+  "source_size_bytes": 405858,
+  "profiler_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiler-c8.json",
+  "profiler_sha256": "c49d211014a9ee104e2ed46b5fa25b46dec63f7bb075ab70f7bead40be9fab49",
+  "created_at": "2026-06-02T20:27:52.032969Z",
+  "status": "accepted",
+  "performance_claim": true,
+  "summary": "Exact-command rocprof c=8 retained validation accepted after generated-token equality, primitive correctness, profiler provenance, scaling baselines, projection dispatch, observed context buckets, and stable block-id gates passed.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "6108dd2746b5988c21c09cdbb93c5b6c23ba1a0e",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "rows": 8,
+    "shape": "c=8 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "quant": "w4_paro",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "correctness": {
+    "passed": true,
+    "generated_token_equality_passed": true,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "min_equal_prefix_tokens": 137,
+    "primitive_passed": true,
+    "primitive_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json"
+  },
+  "projection_dispatch": {
+    "rows": 8,
+    "selected_candidate": "batch",
+    "path": "benchmark_accepted_caware_projection",
+    "selection": {
+      "layer": "linear",
+      "quant": "w4_paro",
+      "variant": "batch"
+    },
+    "throughput_claim_eligible": true,
+    "blockers": [],
+    "evidence": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json",
+      "aggregate_vs_row_gemv": 1.1446009208707775,
+      "per_request_vs_row_gemv": 1.1446009208707775,
+      "accepted": true
+    }
+  },
+  "batch_execution": {
+    "path": "scheduler_native_compact_batch",
+    "scheduler_owned": true,
+    "native_compact_prefill": true,
+    "native_caware_decode": true,
+    "throughput_claim_eligible": true,
+    "blockers": []
+  },
+  "scheduler_metadata": {
+    "decode_shape_key": {
+      "mode": "decode",
+      "active_c": 8,
+      "context_bucket": 512,
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "kv_storage_dtype": "bf16",
+      "layer_plan": "max_layers=40",
+      "top_k": 0,
+      "experts_per_token": 0,
+      "replay_steps": 1,
+      "draft_depth": 0,
+      "tree_shape": []
+    },
+    "decode_shape_keys_observed": [
+      {
+        "mode": "decode",
+        "active_c": 8,
+        "context_bucket": 512,
+        "active_mask": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "kv_storage_dtype": "bf16",
+        "layer_plan": "max_layers=40",
+        "top_k": 0,
+        "experts_per_token": 0,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      },
+      {
+        "mode": "decode",
+        "active_c": 8,
+        "context_bucket": 768,
+        "active_mask": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "kv_storage_dtype": "bf16",
+        "layer_plan": "max_layers=40",
+        "top_k": 0,
+        "experts_per_token": 0,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      }
+    ],
+    "graph_bucket_stats": {
+      "entries": 1,
+      "hits": 1,
+      "misses": 1,
+      "replay_kernel_hits": 0,
+      "replay_hit_rate": 0.5,
+      "miss_reasons": {
+        "cache_absent": 1
+      },
+      "kernel_time_histogram_ns": {
+        "le_10us": 0,
+        "le_100us": 2,
+        "le_1ms": 3,
+        "le_10ms": 10,
+        "gt_10ms": 46
+      }
+    }
+  },
+  "memory": {
+    "allocator_reserved_peak_bytes": 22010142156,
+    "stable_block_id": {
+      "passed": true,
+      "audit": "fixed-session stable block identity verified: request_ids=[0, 1, 2, 3, 4, 5, 6, 7], slot_map={0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7}, decode_slots=[0, 1, 2, 3, 4, 5, 6, 7], prefill_slabs=1"
+    },
+    "dynamic_pool": {
+      "enabled": false,
+      "evidence": "resident retained bench still uses fixed session allocation; C4 pool counters are unavailable here",
+      "grow_events": 0,
+      "shrink_events": 0,
+      "pool_counters": {
+        "current_bytes": 0,
+        "high_water_observed_bytes": 0,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "free_pages": 0,
+        "refcounted_pages": 0
+      }
+    },
+    "prefix_sharing": {
+      "enabled": false,
+      "savings_bytes": 0
+    }
+  },
+  "profiler": {
+    "status": "captured",
+    "expected_kernels_present": true,
+    "trace_dir": "/tmp/hipengine-profile/2026-06-02-native-c8-exact-profile-iter99",
+    "trace_files": [
+      "/tmp/hipengine-profile/2026-06-02-native-c8-exact-profile-iter99/epyc/138161_kernel_trace.csv"
+    ],
+    "raw_trace_rows": 1287801,
+    "raw_trace_size_bytes": 361633684,
+    "raw_trace_sha256": "62c9c8ee4eae955f8e4c5239563be75a10c512f863f141ba8e385fae811b0793",
+    "graph_replay_kernel_names": null,
+    "graph_replay_duration_ns": null
+  },
+  "provenance_blockers_removed": {
+    "profiler_command_json_matches_retained_artifact": true,
+    "profiler_command_compiler_version_matches_retained": true,
+    "profiler_artifact_path_repo_relative": true,
+    "graph_replay_profiler_not_required_without_replay_kernel_hits": true,
+    "per_request_bucket_context_axes_match_observed_decode_shapes": true,
+    "stable_block_id_audit_passed": true,
+    "batch_execution_throughput_claim_eligible": true,
+    "accepted_artifact_schema_passed": true
+  },
+  "remaining_blockers": [],
+  "measurements": {
+    "prefill_tok_s": 2647.180837423147,
+    "decode_tok_s_aggregate": 212.09277617501044,
+    "decode_tok_s_per_request": 26.511597021876305,
+    "decode_seconds": 4.828075799974613
+  },
+  "scaling": {
+    "complete": true,
+    "native": {
+      "decode_tok_s_aggregate": 212.09277617501044,
+      "decode_tok_s_per_request": 26.511597021876305
+    },
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json",
+      "status": "baseline",
+      "run_tag": null,
+      "workload_concurrency": 1,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 133.91159204248916,
+      "decode_tok_s_per_request": 133.91159204248916,
+      "reason": null
+    },
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json",
+      "reference_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json",
+      "status": "baseline",
+      "run_tag": null,
+      "workload_concurrency": 8,
+      "prompt_tokens_per_request": 512,
+      "gen_tokens_per_request": 128,
+      "decode_tok_s_aggregate": 104.431831201549,
+      "decode_tok_s_per_request": 13.053978900193625,
+      "reason": null
+    },
+    "ratios": {
+      "aggregate_vs_c1": 1.5838268587510704,
+      "per_request_vs_c1": 0.1979783573438838,
+      "aggregate_vs_serial_bridge": 2.0309207809032896,
+      "per_request_vs_serial_bridge": 2.0309207809032896
+    }
+  },
+  "commands": {
+    "environment": [
+      "rocminfo | grep -E 'Name:|gfx' | head -4",
+      "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "hipcc --version",
+      "git rev-parse HEAD",
+      "git diff --quiet"
+    ],
+    "correctness_reference": "inline generated-token equality vs independent c=1 plus env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --seed 1234 --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json",
+    "benchmark": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiler-c8.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json",
+    "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile/2026-06-02-native-c8-exact-profile-iter99 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --c1-baseline-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json --serial-bridge-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-profile-evidence/primitive-c8.json --profiler-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiler-c8.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json"
+  },
+  "notes": [
+    "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
+    "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024."
+  ]
+}

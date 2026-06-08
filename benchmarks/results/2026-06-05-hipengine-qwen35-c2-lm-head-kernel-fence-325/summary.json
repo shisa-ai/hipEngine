@@ -1,0 +1,445 @@
+{
+  "active_verify": {
+    "command": "active multiloop c2 512/128 verify, no diagnostic flags",
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "metric": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "raw_json_sha256": "d9faa6241c461d8036cb225c9e9562d987c9015d3dc6f5c84fe966b73b695f9e",
+    "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+    "raw_log_sha256": "d9faa6241c461d8036cb225c9e9562d987c9015d3dc6f5c84fe966b73b695f9e",
+    "status": "blocked"
+  },
+  "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-lm-head-kernel-fence-325/summary.json",
+  "children": [
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-1.json",
+      "raw_json_sha256": "ba87346a42bbdb167781811270f6045f466542e2b6331651d6266bed94b64351",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-1.log",
+      "raw_log_sha256": "ba87346a42bbdb167781811270f6045f466542e2b6331651d6266bed94b64351",
+      "repeat": 1,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-2.json",
+      "raw_json_sha256": "ac4a12af776db5f7afb4484acf7ac6629646992379ed372409b8945fc0d787eb",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-2.log",
+      "raw_log_sha256": "ac4a12af776db5f7afb4484acf7ac6629646992379ed372409b8945fc0d787eb",
+      "repeat": 2,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-3.json",
+      "raw_json_sha256": "a1dc019890ccf6e1fe4d8163cd2a040318165af75a8991a33d365cc80bb2efb4",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-3.log",
+      "raw_log_sha256": "a1dc019890ccf6e1fe4d8163cd2a040318165af75a8991a33d365cc80bb2efb4",
+      "repeat": 3,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-4.json",
+      "raw_json_sha256": "3adc7af18ff0509a81fd57ddc9234de0fc955831d62702719df3f8be38982886",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-4.log",
+      "raw_log_sha256": "3adc7af18ff0509a81fd57ddc9234de0fc955831d62702719df3f8be38982886",
+      "repeat": 4,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-5.json",
+      "raw_json_sha256": "f0aa54e6f2129b18038187968f494e46aeec39bb755896b56e95e0ba1c256327",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-5.log",
+      "raw_log_sha256": "f0aa54e6f2129b18038187968f494e46aeec39bb755896b56e95e0ba1c256327",
+      "repeat": 5,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-6.json",
+      "raw_json_sha256": "29b58f6405b9a960b63c15c5ca50ea50b4c18c623dd7280fc8e9da88e7ba37c6",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-6.log",
+      "raw_log_sha256": "29b58f6405b9a960b63c15c5ca50ea50b4c18c623dd7280fc8e9da88e7ba37c6",
+      "repeat": 6,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        0,
+        null
+      ],
+      "first_mismatches": [
+        {
+          "batch_token": 271,
+          "c1_token": 17603,
+          "index": 0,
+          "row": 0
+        }
+      ],
+      "passed": false,
+      "prefix_lengths": [
+        0,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-7.json",
+      "raw_json_sha256": "df59e0e48651588bca3e1f26188df0acab864d534ed6a94c41fa7fc13f7df769",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-7.log",
+      "raw_log_sha256": "df59e0e48651588bca3e1f26188df0acab864d534ed6a94c41fa7fc13f7df769",
+      "repeat": 7,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "rejected_correctness"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-8.json",
+      "raw_json_sha256": "23b35e46a54fb6c3179c3078666fc6d627498aab69a241591541cf2b0ccc2c14",
+      "raw_log": "/tmp/hipengine-iter325-c2-lm-head-kernel-fence/c2-batch-norm-cast-lm-head-kernel-fence-8.log",
+      "raw_log_sha256": "23b35e46a54fb6c3179c3078666fc6d627498aab69a241591541cf2b0ccc2c14",
+      "repeat": 8,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head serial projection kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "lm_head_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        },
+        "lm_head_kernel_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    }
+  ],
+  "command": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model $MODEL --fixture $FIXTURE --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-norm-path batch --batch-sample-cast-path batch --batch-sample-lm-head-kernel-fence --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --json <repeat-json>",
+  "date": "2026-06-05",
+  "diagnostic": {
+    "flags": [
+      "--batch-sample-mode batched_lm_head",
+      "--batch-sample-norm-path batch",
+      "--batch-sample-cast-path batch",
+      "--batch-sample-lm-head-kernel-fence",
+      "--batch-sample-eq-ok",
+      "--batch-sample-eq-rows 2"
+    ],
+    "name": "batch_sample_lm_head_kernel_fence",
+    "purpose": "Rerun serial per-row LM-head projection and argmax kernels from the already-normalized BF16 rows as a kernel-only timing/scratch fence, without host readback or output comparison."
+  },
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d"
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd"
+      }
+    ]
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 325,
+  "lane": "concurrency-e2e/native-c2-e2e",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "retained_claim": false,
+  "schema": 1,
+  "shape": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  },
+  "summary": {
+    "all_green": false,
+    "conclusion": "LM-head+argmax kernel-only fence is not sufficient to stabilize explicit c2 batched sampler: 7/8 repeats passed and repeat 7 failed row 0 at prefix 0. Compared with iter324 full suffix kernel-only fence green 8/8, the stabilizing component requires the serial final RMSNorm/FP16-to-BF16 cast kernels or their scratch/synchronization side effects, not host readback alone.",
+    "failed_repeats": [
+      7
+    ],
+    "min_equal_prefixes_by_repeat": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      0,
+      137
+    ],
+    "passed_repeats": 7,
+    "total_repeats": 8
+  }
+}

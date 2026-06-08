@@ -20,7 +20,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.generation import ResidentBatchScheduler
+from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_batch_artifact_schema import _load_payload
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, append_kv_policy_flags, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -29,8 +32,12 @@ DEFAULT_MODEL = (
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, allow_nan=False)
+
+
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
-    fixture = json.loads(path.read_text())
+    fixture = _load_payload(path)
     tokens = [int(token) for token in fixture["prompt_ids"]]
     needed = prompt_length * batch_size
     if prompt_length <= 0:
@@ -53,6 +60,7 @@ def _run_c1(
     max_layers: int,
     compiler_version: str | None,
     require_cached_build: bool,
+    kv_policy: ResolvedKVPolicy,
 ) -> dict[str, Any]:
     with Qwen35ParoResidentSession(
         runner,
@@ -60,6 +68,9 @@ def _run_c1(
         max_layers=max_layers,
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     ) as session:
         seed = None
         for pos, token in enumerate(prompt):
@@ -96,6 +107,8 @@ def _shape_key_payload(key) -> dict[str, Any]:
         "active_c": key.active_c,
         "context_bucket": key.context_bucket,
         "active_mask": list(key.active_mask),
+        "kv_storage_dtype": key.kv_storage_dtype,
+        "layer_plan": key.layer_plan,
         "top_k": key.top_k,
         "experts_per_token": key.experts_per_token,
         "replay_steps": key.replay_steps,
@@ -111,6 +124,7 @@ def _run_batch_serial(
     max_layers: int,
     compiler_version: str | None,
     require_cached_build: bool,
+    kv_policy: ResolvedKVPolicy,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     prompt_lengths = {len(prompt) for prompt in prompts}
     if len(prompt_lengths) != 1:
@@ -125,6 +139,9 @@ def _run_batch_serial(
         max_batch_size=len(prompts),
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     ) as session:
         batch_execution = session.batch_execution_metadata(scheduler_owned=False).to_json_dict()
         seed_results = None
@@ -156,6 +173,7 @@ def _run_batch_serial_scheduler(
     max_layers: int,
     compiler_version: str | None,
     require_cached_build: bool,
+    kv_policy: ResolvedKVPolicy,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """Run the serial slot bridge through ResidentBatchScheduler ownership."""
 
@@ -186,6 +204,9 @@ def _run_batch_serial_scheduler(
         max_batch_size=len(prompts),
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     ) as session:
         batch_execution = session.batch_execution_metadata(scheduler_owned=True).to_json_dict()
         while True:
@@ -208,12 +229,19 @@ def _run_batch_serial_scheduler(
         decode_work = scheduler.next_decode_work()
         if decode_work is None:
             raise RuntimeError("scheduler did not emit decode work")
-        shape_key = scheduler.shape_key(mode="decode", top_k=8, experts_per_token=8, replay_steps=1)
-        scheduler.graph_buckets.get_or_create(shape_key, lambda bucket: _shape_key_payload(bucket))
+        shape_key = scheduler.shape_key(
+            mode="decode",
+            top_k=8,
+            experts_per_token=8,
+            replay_steps=1,
+            kv_storage_dtype=kv_policy.storage_dtype.value,
+            layer_plan=f"max_layers={int(max_layers)}",
+        )
+        scheduler.graph_buckets.get_or_create(shape_key, _shape_key_payload)
         scheduler.graph_buckets.get(shape_key)
         stats = scheduler.graph_buckets.stats
         metadata["decode_shape_key"] = _shape_key_payload(shape_key)
-        metadata["graph_bucket_stats"] = {"entries": stats.entries, "hits": stats.hits, "misses": stats.misses}
+        metadata["graph_bucket_stats"] = stats.to_json_dict()
         metadata["slot_to_request_at_decode"] = list(scheduler.active_batch.slot_to_request)
         metadata["active_count_at_decode"] = scheduler.active_count
         decode_request_ids = decode_work.request_ids
@@ -255,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler-version-file")
     parser.add_argument("--require-cached", action="store_true")
     parser.add_argument("--scheduler", action="store_true", help="Drive step_batch_serial from ResidentBatchScheduler work items")
+    add_kv_policy_args(parser, help_prefix="Resident KV storage for serial c>N correctness")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)
 
@@ -263,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
     compiler_version = _compiler_version(args.compiler_version_file)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     expected = [
         _run_c1(
             runner,
@@ -270,6 +300,7 @@ def main(argv: list[str] | None = None) -> int:
             max_layers=args.max_layers,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached,
+            kv_policy=kv_policy,
         )
         for prompt in prompts
     ]
@@ -282,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
             max_layers=args.max_layers,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached,
+            kv_policy=kv_policy,
         )
     else:
         actual, batch_execution = _run_batch_serial(
@@ -290,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
             max_layers=args.max_layers,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached,
+            kv_policy=kv_policy,
         )
     command = (
         "python3 scripts/qwen35_batch_serial_correctness.py "
@@ -297,6 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.scheduler:
         command += " --scheduler"
+    command = append_kv_policy_flags(command, args)
     if args.json is not None:
         command += f" --json {args.json}"
     generated_match = actual == expected
@@ -313,6 +347,8 @@ def main(argv: list[str] | None = None) -> int:
         "scheduler_metadata": scheduler_metadata,
         "batch_execution": batch_execution,
         "benchmark_eligible": bool(batch_execution.get("throughput_claim_eligible")),
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(kv_policy),
         "batch_size": args.batch_size,
         "prompt_lengths": [len(prompt) for prompt in prompts],
         "max_layers": args.max_layers,
@@ -330,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
             else "Direct mode drives physical slots without scheduler ownership.",
         ],
     }
-    text = json.dumps(payload, indent=2)
+    text = _payload_json(payload)
     print(text)
     if args.json is not None:
         args.json.write_text(text + "\n")

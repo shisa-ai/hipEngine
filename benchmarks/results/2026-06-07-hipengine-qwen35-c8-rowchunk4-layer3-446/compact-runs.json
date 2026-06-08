@@ -1,0 +1,97 @@
+{
+  "iteration": 446,
+  "kind": "c8_minimal_layer3_rowchunk4_rejected",
+  "created_at": "2026-06-07T07:56:52.850575+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "result": {
+    "status": "mismatch_found",
+    "hidden_passed": false,
+    "token_passed": true,
+    "failure_modes": [
+      "hidden"
+    ],
+    "linear_stage_passed": {
+      "attn_input": false,
+      "qkv": false,
+      "z": false,
+      "conv_out": false,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": false,
+      "output": true
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": false,
+      "attn_input_after_rotate": false,
+      "attn_input_after_project": false,
+      "q_proj_key_after_project": false,
+      "value_after_project": false,
+      "query_raw_after_split": false,
+      "key_raw_after_cast": false,
+      "gate_after_split": false,
+      "query_after_prepare": false,
+      "key_after_prepare": false,
+      "attn_input_after_prepare": false,
+      "attn_input": false,
+      "gate": false,
+      "query": false,
+      "attn_context": false,
+      "gated_attn": true,
+      "o_proj": true,
+      "residual": false,
+      "mlp_input": false,
+      "output": false
+    },
+    "linear_drift_stage_count": 5,
+    "full_attention_failed_stage_count": 18,
+    "first_linear_mismatch": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 4,
+      "stage": "attn_input",
+      "row": 0,
+      "comparison_kind": "fp16_bits",
+      "max_abs": 0.0078125,
+      "max_abs_flat_index": 1296,
+      "max_abs_index": [
+        0,
+        1296
+      ],
+      "elements_over_atol": 5,
+      "bit_mismatch": 491
+    },
+    "first_full_attention_failure": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 7,
+      "stage": "attn_input_pre_qkv",
+      "row": 0,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1269,
+      "max_abs_index": [
+        0,
+        1269
+      ],
+      "elements_over_atol": 39
+    },
+    "workload_paths": {
+      "batch_decode_full_attention_row_chunk_size": 4,
+      "batch_decode_full_attention_row_chunk_layers": "3",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "batch_decode_full_attention_output_path": "batch_gemv"
+    }
+  },
+  "interpretation": {
+    "negative_result": "Layer3-only rowchunk4 does not close the minimal c8 L8 frontier. It remains hidden-red/token-green with the same layer4 attn_input first mismatch as no-rowchunk/per-row-linear: max_abs=0.0078125, row0 elements_over_atol=5.",
+    "localized_frontier": "Together with iter445, this means the minimal layer3 producer repair specifically needs rowchunk2 semantics, not just splitting c8 into smaller-than-full chunks.",
+    "next_target": "Compare layer3 context math/order between chunk2 and chunk4/fullnative, especially row grouping and AOTriton compact-varlen metadata, before attempting a fullnative replacement."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused hidden/full-attention parity blocker narrowed; layer3-only rowchunk4 is red while iter445 layer3-only rowchunk2 is green, isolating the required layer3 chunk size/order semantics. No performance claim."
+  },
+  "conclusion": "Layer3-only rowchunk4 is red; the minimal c8 layer3 frontier specifically needs rowchunk2-equivalent semantics."
+}

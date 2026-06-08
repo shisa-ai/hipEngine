@@ -1,0 +1,233 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "label": "p10_task40_gguf_prefill_vs_paro_diagnosis",
+  "date": "2026-05-21",
+  "git_commit_under_test": "9174f01",
+  "scope": "Compare GGUF 4K/32K prefill behavior against retained PARO evidence after chunked-prefill correctness fixes.",
+  "hardware_caveat": "GGUF diagnostics are local AMD Radeon RX 7900 XTX / gfx1100 24 GiB. PARO retained/source-lineage rows are W7900/gfx1100. Treat cross-hardware/model deltas as directional only.",
+  "correctness_gate": {
+    "pytest": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q -> 11 passed",
+    "gguf_smoke": "finite logits in 4K/128 and 32K smoke commands; no full KL/text-quality gate for this diagnostic artifact"
+  },
+  "gguf_current_4k_128": {
+    "artifact_source": "/tmp/hipengine-gguf-task40-4k-128-repeat.json (not committed raw)",
+    "command": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-task40-4k-128-repeat.json",
+    "hardware": "local RX 7900 XTX / gfx1100 24 GiB",
+    "prefill_tok_s_median": 2651.9152499003367,
+    "prefill_tok_s_samples": [
+      2649.89524157195,
+      2651.9152499003367,
+      2660.980089794073
+    ],
+    "decode_tok_s_median": 96.41694941377595,
+    "tracked_peak_allocated_gib": 22.584311552345753,
+    "hip_used_peak_sampled_gib": 23.128662109375,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      220,
+      220,
+      220
+    ],
+    "resolved_prefill_chunk_sizes": {
+      "linear": 0,
+      "moe": 0,
+      "full_attn_query": 0,
+      "full_attn_post": 0,
+      "full_attn_rope": 0,
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 32768
+    },
+    "prefill_chunk_tuning": {
+      "enabled": true,
+      "applied": false,
+      "reason": "below_min_tokens",
+      "max_sequence_length": 4352,
+      "source": "p5.2_profile_derived",
+      "memory_budget_gib": 0.0
+    }
+  },
+  "gguf_retained_4k_128_reference": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json",
+    "hardware": "local RX 7900 XTX / gfx1100 24 GiB card",
+    "command": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_d8_4096_128.json",
+    "prefill_tok_s_median": 2700.014663795538,
+    "decode_tok_s_median": 97.0081493090461,
+    "tracked_peak_allocated_gib_median": 22.584311552345753,
+    "correctness": "accepted"
+  },
+  "gguf_current_32k_128_diagnostic": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-chunked-smoke.json",
+    "hardware": {
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "arch": "gfx1100",
+      "device_total_gib": 23.984375,
+      "note": "local 24 GiB gfx1100 card; W7900 not rerun for this smoke"
+    },
+    "command": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 32768 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/hipengine-gguf-32k-128-chunked-review-smoke.json",
+    "prefill_tok_s": 1859.3283062619478,
+    "decode_tok_s": 85.14469271677153,
+    "tracked_peak_allocated_gib": 23.368930347263813,
+    "hip_used_peak_sampled_gib": 23.87451171875,
+    "finite_final_logits": true,
+    "resolved_prefill_chunk_sizes": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024,
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 32768
+    },
+    "prefill_chunk_tuning": {
+      "enabled": true,
+      "applied": true,
+      "reason": "long_context_static_budget",
+      "max_sequence_length": 33024,
+      "source": "p5.2_profile_derived",
+      "memory_budget_gib": 13.191406250000002,
+      "estimated_peak_gib": 23.3,
+      "chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      }
+    }
+  },
+  "gguf_task39_32k_1_revalidation": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-task39-32k-smoke.json",
+    "prefill_tok_s": 1855.3541881262947,
+    "tracked_peak_allocated_gib": 23.368929401040077,
+    "finite_final_logits": true
+  },
+  "paro_evidence": {
+    "p52_4k_128": {
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json",
+      "hardware": "AMD Radeon Pro W7900 / gfx1100",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode",
+      "prefill_tok_s": 2453.792962248954,
+      "decode_tok_s": 116.82923174946518,
+      "tracked_peak_allocated_gib": 20.047108446247876,
+      "chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0
+      },
+      "correctness": "generated_first_two_match true in artifact; diagnostic_retained, performance_claim=false"
+    },
+    "source_lineage_4k_128": {
+      "artifact": "benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json",
+      "hardware": {
+        "gpu": "AMD Radeon Pro W7900",
+        "arch": "gfx1100",
+        "vram_total_bytes": 48301604864
+      },
+      "command": "cd /home/lhl/amd-gpu-tuning && export NANOVLLM_AMD_ROUTER_PREFILL_MIN_TOKENS=512; export NANOVLLM_PARO_GEMV_PACK8_REPLACE=1; export NANOVLLM_PARO_LM_HEAD_W8A16=1; export NANOVLLM_PARO_MOE_STACKED_COMPACT=1; export NANOVLLM_PARO_MOE_STACKED_REPACK_REPLACE=1; export NANOVLLM_PARO_GEMV_PACK8_TRANSPOSE_MIN_OUT_FEATURES=999999; export NANOVLLM_PARO_MOE_GROUPED_DEVICE_GATHER=1; export NANOVLLM_PARO_MOE_GROUPED_STACKED_MAX_TOKENS=4096; export NANOVLLM_PARO_MOE_GROUPED_STACKED_WEIGHTED_LANES=1; export NANOVLLM_PARO_MOE_GROUPED_STACKED_SILU_ROTATE_FUSED=1; export NANOVLLM_PARO_WMMA_GEMM=1; export NANOVLLM_PARO_WMMA_COMPACT=1; export NANOVLLM_PARO_WMMA_MIN_TOKENS=64; export NANOVLLM_PARO_GEMV_V8=1; export NANOVLLM_PARO_NATIVE_ROUTER=1; export NANOVLLM_PARO_FULL_ATTN_FUSED_GATE=1; export NANOVLLM_PARO_MOE_SILU_DOWN_ROTATE_FUSED=1; export NANOVLLM_PARO_SHARED_EXPERT_W8A16=1; export NANOVLLM_PARO_LINEAR_ATTN_AB_FUSED=1; export NANOVLLM_PARO_LINEAR_ATTN_QKV_Z_PACK8_FUSED=1; export NANOVLLM_PARO_FULL_ATTN_QK_PACK8_FUSED=1; export NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX=1; export NANOVLLM_AMD_PAGED_ATTN_MAX_SPLITS=512; PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output python3 scripts/bench_paro_native_engine.py --prompt-len 4096 --decode-len 128 --decode-use-step-graph-replay --output /tmp/hipengine-parent-optimal-4k-128.json --json",
+      "prefill_tok_s": 2741.4888496031463,
+      "decode_tok_s": 113.04910466336666,
+      "peak_allocated_gib": 21.64404582977295,
+      "correctness": true
+    },
+    "p52_32k_128": {
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json",
+      "hardware": "AMD Radeon Pro W7900 / gfx1100",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 32768 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode",
+      "prefill_tok_s": 1950.9546916277968,
+      "decode_tok_s": 99.17116350817494,
+      "tracked_peak_allocated_gib": 20.319650744087994,
+      "chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      },
+      "correctness": "generated_first_two_match true in artifact; diagnostic_retained, performance_claim=false"
+    },
+    "source_lineage_32k_128_from_benchmarks_readme": {
+      "source": "benchmarks/README.md Source-lineage target table / ~/amd-gpu-tuning/docs/OPTIMAL.md",
+      "hardware": "W7900/gfx1100",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "prefill_tok_s": 1880.0,
+      "decode_tok_s": 98.8
+    }
+  },
+  "directional_deltas": {
+    "gguf_current_4k_vs_p52_paro_4k_prefill_pct": 8.074124047931042,
+    "gguf_current_4k_vs_source_paro_4k_prefill_pct": -3.267334088036733,
+    "gguf_current_4k_vs_retained_p10d8_prefill_pct": -1.781450098777826,
+    "gguf_current_32k_vs_p52_paro_32k_prefill_pct": -4.696489660116077,
+    "gguf_current_32k_vs_source_paro_32k_prefill_pct": -1.0995581775559704
+  },
+  "known_prefill_profile_before_review": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r0-rocprof-baseline.json",
+    "scope": "512-token GGUF prefill, diagnostic profile before V3 review fixes; use for priority hints only",
+    "top_buckets": [
+      {
+        "bucket": "dense_q8_0_wmma_prefill",
+        "total_ms": 59.072373,
+        "share_of_phase": 0.22645715183028872,
+        "dispatches": 250,
+        "ms_per_token": 0.115375728515625
+      },
+      {
+        "bucket": "gdn_prefill_recurrent",
+        "total_ms": 50.42145,
+        "share_of_phase": 0.19329336842712094,
+        "dispatches": 30,
+        "ms_per_token": 0.09847939453125
+      },
+      {
+        "bucket": "full_attention_prefill",
+        "total_ms": 41.039987,
+        "share_of_phase": 0.15732902023712633,
+        "dispatches": 10,
+        "ms_per_token": 0.080156224609375
+      },
+      {
+        "bucket": "moe_q4_k_selected_dual_wmma_prefill",
+        "total_ms": 36.944202,
+        "share_of_phase": 0.1416276058786881,
+        "dispatches": 40,
+        "ms_per_token": 0.07215664453125
+      },
+      {
+        "bucket": "moe_q5_k_selected_wmma_prefill",
+        "total_ms": 25.882206,
+        "share_of_phase": 0.09922084311467917,
+        "dispatches": 37,
+        "ms_per_token": 0.05055118359375
+      },
+      {
+        "bucket": "router",
+        "total_ms": 15.314297,
+        "share_of_phase": 0.05870818971337304,
+        "dispatches": 160,
+        "ms_per_token": 0.029910736328125
+      }
+    ]
+  },
+  "diagnosis": [
+    "GGUF prefill is not obviously the blocker after chunked-prefill review fixes: current 32K diagnostic is within a few percent of retained/source PARO prefill rows, but cross-hardware/model differences prevent a retained claim.",
+    "The 4K current-code repeat is stable but below the earlier P10.D8 retained 4K median by about 1.8%; because the short/mid chunk policy stays unchunked, the most suspicious review-era change is switching AOTriton prefill attention from V2 to V3 for the non-chunked start=0 path.",
+    "Before kernel work, capture current-code 4K and 32K rocprof prefill traces. If the 4K V3 delta is confirmed, first low-risk fix is a V2/V3 dispatch policy: use V2 when start=0 and max_seqlen_q==max_seqlen_k, keep V3 for true query chunks requiring bottom-right causal alignment.",
+    "If profiling shows the pre-review distribution still holds, dense_q8_0_wmma_prefill and GDN recurrent are the largest known prefill surfaces; full-attention is not the only target despite long context."
+  ],
+  "next_focus": {
+    "highest_priority": "Current-code rocprof + V2/V3 A/B for full-attention prefill at 4K and 32K query chunks.",
+    "candidate_fix": "Conditional AOTriton wrapper selection: V2 for unchunked start=0 full-context prefill, V3 for chunked start>0 or rows<end. Gate with chunked correctness test and 4K/32K smoke before retaining.",
+    "secondary_if_profile_confirms": "Optimize dense_q8_0_wmma_prefill / linear-attention GDN surfaces, since R0 prefill profile attributes ~22.6% and ~19.3% of 512-token prefill kernel time to those buckets."
+  },
+  "decision": "diagnostic only; no benchmark README/CHANGELOG update"
+}

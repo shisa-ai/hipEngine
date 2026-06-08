@@ -1,0 +1,244 @@
+{
+  "schema": "hipengine_rootcause_v1",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-23",
+  "label": "paro_512_prefill_workspace_overlap_regression_rootcause",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed, shared_expert_format=packed_paro_w4, BF16 KV",
+  "workload": "512 prompt / 128 decode, token_id=9707, warmup_decode_tokens=4, max_layers=40, AOTriton min tokens=512, graph replay decode",
+  "commands": {
+    "shape": "python scripts/qwen35_paro_bench.py --model <shisa packed snapshot> --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file <stack version file> --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json <out>",
+    "therock_env": "env -i with PATH=$ROOT/bin:$ROOT/lib/llvm/bin:$CONDA_PREFIX/bin:/usr/local/bin:/usr/bin:/bin, LD_LIBRARY_PATH=$ROOT/lib:$ROOT/lib64:$ROOT/lib/llvm/lib, HIP_PATH/ROCM_PATH=$ROOT, HIP_DEVICE_LIB_PATH=$ROOT/lib/llvm/amdgcn/bitcode",
+    "opt_rocm_env": "env -i with PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$CONDA_PREFIX/bin:/usr/local/bin:/usr/bin:/bin, LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64:/opt/rocm/llvm/lib, HIP_PATH/ROCM_PATH=/opt/rocm, HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode"
+  },
+  "known_good_artifact": {
+    "path": "benchmarks/results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json",
+    "git_head_at_artifact_write": "f3f450481d44ebd443c53b62b4e46d7fa19b169f",
+    "prefill_tok_s": 2500.5647538570497,
+    "decode_tok_s": 111.51631961530205,
+    "tracked_peak_gib": 18.123325088061392
+  },
+  "measurements": {
+    "f3_opt": {
+      "raw_json": "/tmp/paro-rootcause-20260523/f3f4504-optrocm72-512-128.json",
+      "prefill_tok_s": 2462.5144106351386,
+      "prefill_seconds": 0.2079175649851095,
+      "decode_tok_s": 104.59296539449365,
+      "tracked_peak_gib": 18.123325088061392,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "f3_therock": {
+      "raw_json": "/tmp/paro-rootcause-20260523/f3f4504-therock713-512-128.json",
+      "prefill_tok_s": 2476.9338920234622,
+      "prefill_seconds": 0.20670717197936028,
+      "decode_tok_s": 102.7238232102534,
+      "tracked_peak_gib": 18.123325088061392,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "before_308": {
+      "raw_json": "/tmp/paro-rootcause-20260523/before-308ec5d-cf38991-therock713-512-128.json",
+      "prefill_tok_s": 2459.467967604204,
+      "prefill_seconds": 0.20817510402412154,
+      "decode_tok_s": 103.24243997314159,
+      "tracked_peak_gib": 18.123325088061392,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "at_308": {
+      "raw_json": "/tmp/paro-rootcause-20260523/at-308ec5d-308ec5d-therock713-512-128.json",
+      "prefill_tok_s": 2482.7398902193877,
+      "prefill_seconds": 0.20622377801919356,
+      "decode_tok_s": 103.58877911081346,
+      "tracked_peak_gib": 18.120357253588736,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "at_328": {
+      "raw_json": "/tmp/paro-rootcause-20260523/at-328a1b3-328a1b3-therock713-512-128.json",
+      "prefill_tok_s": 1796.026032011665,
+      "prefill_seconds": 0.2850738190172706,
+      "decode_tok_s": 103.37540600311581,
+      "tracked_peak_gib": 18.058239337988198,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false,
+        "decode_scratch_released_for_prefill": true
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "patched_328_no_layer_release": {
+      "raw_json": "/tmp/paro-rootcause-20260523/at-328a1b3-no-layer-release-therock713-512-128.json",
+      "prefill_tok_s": 2360.4264725703747,
+      "prefill_seconds": 0.2169099550228566,
+      "decode_tok_s": 103.24938128126294,
+      "tracked_peak_gib": 18.11005831602961,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false,
+        "decode_scratch_released_for_prefill": true
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "current_regressed_opt": {
+      "raw_json": "/tmp/paro-regression-check/shisa-packed-512-128-optrocm72-current-build.json",
+      "prefill_tok_s": 1734.7699220581155,
+      "prefill_seconds": 0.29514000299968757,
+      "decode_tok_s": 104.60970904585898,
+      "tracked_peak_gib": 18.023083087988198,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false,
+        "decode_scratch_released_for_prefill": true
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "current_regressed_therock": {
+      "raw_json": "/tmp/paro-therock713-spot/shisa-packed-512-128-therock713-cached-spot.json",
+      "prefill_tok_s": 1752.9753314365116,
+      "prefill_seconds": 0.29207484601647593,
+      "decode_tok_s": 103.04645467978476,
+      "tracked_peak_gib": 18.023083087988198,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false,
+        "decode_scratch_released_for_prefill": true
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    },
+    "current_fixed_therock": {
+      "raw_json": "/tmp/paro-rootcause-20260523/current-fixed-therock713-512-128-cached.json",
+      "prefill_tok_s": 2451.220285656509,
+      "prefill_seconds": 0.20887555598164909,
+      "decode_tok_s": 103.07835884576316,
+      "tracked_peak_gib": 18.077388503588736,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "int8_prefill_oracle": false,
+        "decode_scratch_released_for_prefill": false
+      },
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    }
+  },
+  "conclusion": {
+    "rocm_ruled_out": "f3f4504 reproduces fast on both /opt ROCm 7.2.3 and TheRock ROCm 7.13.",
+    "first_bad_commit": "328a1b3baa50a99c787295bce6a272becbcd3511 perf: reduce INT8 KV prefill scratch overlap",
+    "root_cause": "328a1b3 freed decode scratch before prefill and, more importantly, freed prefill workspace at every layer-type transition. For unchunked 512-token prefill this added repeated HIP free/alloc churn inside the timed prefill path while saving only ~0.05-0.10 GiB.",
+    "fix": "Only use the overlap-minimizing scratch/free path when resolved prefill chunk sizes actually split the prompt; unchunked 512/128 keeps workspaces resident.",
+    "fixed_result": "TheRock cached current fixed row: 2451.220 prefill tok/s, 103.078 decode tok/s, 18.077 GiB tracked peak, generated preview [9707, 9707]."
+  }
+}

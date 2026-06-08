@@ -1,0 +1,747 @@
+{
+  "active_verify": {
+    "artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "decode_blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "metric": 137,
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "child_artifacts_not_committed": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep",
+  "code_change": {
+    "bench_cli": "scripts/qwen35_batch_retained_bench.py",
+    "new_env": "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_DENSE_CONTEXT_BATCH_GATE_LAYERS",
+    "new_flag": "--batch-decode-attn-dense-context-batch-gate-layers",
+    "runtime": "hipengine/runtime/qwen35_paro_runner.py"
+  },
+  "command_template": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-decode-full-attn-path native_batch --batch-decode-attn-dense-context-batch-gate-layers '{layers_arg}' --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --json '{artifact_path}'",
+  "control_native_paged_prefix_lengths": [
+    137,
+    137,
+    137,
+    118
+  ],
+  "created_utc": "2026-06-04T12:57:17Z",
+  "finding": "Layer-specific dense-context+batch-gate override removes the c4 all-layer dense fallback for the real 512/128 generated-token gate: native paged is red at [137,137,137,118], layers 3 and 3+7 remain red, layers 3+7+11 are green in 3/3 runs, and adding layer 15 without layer 19 is reproducibly red in 0/2 runs. This narrows the c4 dense-context blocker to selected producer layers rather than all full-attention layers. No throughput claim is made.",
+  "first_green_layer_set": "3,7,11",
+  "first_green_repeats_passed": 3,
+  "first_green_repeats_total": 3,
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    }
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 267,
+  "kind": "c4_dense_context_batch_gate_layer_sweep",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "next_actions": [
+    "Use the new selected-layer batch-gate override to bisect why adding layer 15 without 19 reintroduces row3 token-118 drift, then attempt to move the selected-layer set from diagnostic dense context back to native paged context.",
+    "Do not treat c4 as retained until the selected dense-context blocker is removed or accepted as a documented diagnostic fallback with separate performance gates."
+  ],
+  "performance_claim": false,
+  "prefix04_repeats_passed": 0,
+  "prefix04_repeats_total": 2,
+  "prefix_lengths_by_layer_set": {
+    "3": [
+      137,
+      137,
+      137,
+      118
+    ],
+    "3,7": [
+      137,
+      137,
+      137,
+      118
+    ],
+    "3,7,11": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "3,7,11,15": [
+      137,
+      137,
+      137,
+      118
+    ],
+    "3,7,11,15,19": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "3,7,11,15,19,23": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "3,7,11,15,19,23,27": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "3,7,11,15,19,23,27,31": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "3,7,11,15,19,23,27,31,35": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "3,7,11,15,19,23,27,31,35,39": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "<native-paged>": [
+      137,
+      137,
+      137,
+      118
+    ]
+  },
+  "projection_dispatch": {
+    "blockers": [],
+    "evidence": {
+      "accepted": true,
+      "aggregate_vs_row_gemv": 1.214849947729695,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-projection-dispatch/c4-projection-evidence.json",
+      "per_request_vs_row_gemv": 1.214849947729695
+    },
+    "path": "benchmark_accepted_caware_projection",
+    "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+    "throughput_claim_eligible": true
+  },
+  "prompt_verifier": {
+    "evidence": "Pass: the iteration added a focused runtime/bench diagnostic and produced a GPU1/XTX artifact where the c4 full-attention dense-context blocker is green with only layers 3,7,11 dense-context+batch-gate in 3/3 generated-token equality runs vs independent c1; no throughput claim is made.",
+    "passed": true
+  },
+  "sampler_execution": {
+    "argmax_mode": "batch",
+    "blockers": [],
+    "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+    "equality_rows": 4,
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true
+  },
+  "schema": 1,
+  "sweep_results": [
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix00-native-paged.json",
+      "decode_blockers": [],
+      "duration_seconds": 56.07,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_dense_context_batch_gate_layers": null,
+      "layers": [],
+      "layers_arg": "",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix00-native-paged.log",
+      "min_equal_prefix_tokens": 118,
+      "name": "prefix00-native-paged",
+      "native_caware_decode": true,
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "returncode": 1,
+      "status": "rejected_correctness"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix01.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.016,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3
+      ],
+      "layers": [
+        3
+      ],
+      "layers_arg": "3",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix01.log",
+      "min_equal_prefix_tokens": 118,
+      "name": "prefix01",
+      "native_caware_decode": false,
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "returncode": 1,
+      "status": "rejected_correctness"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix02.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.067,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7
+      ],
+      "layers": [
+        3,
+        7
+      ],
+      "layers_arg": "3,7",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix02.log",
+      "min_equal_prefix_tokens": 118,
+      "name": "prefix02",
+      "native_caware_decode": false,
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "returncode": 1,
+      "status": "rejected_correctness"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix03.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 55.893,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11
+      ],
+      "layers": [
+        3,
+        7,
+        11
+      ],
+      "layers_arg": "3,7,11",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix03.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix03",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix04.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.378,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "layers_arg": "3,7,11,15",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix04.log",
+      "min_equal_prefix_tokens": 118,
+      "name": "prefix04",
+      "native_caware_decode": false,
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "returncode": 1,
+      "status": "rejected_correctness"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix05.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.577,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15,
+        19
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15,
+        19
+      ],
+      "layers_arg": "3,7,11,15,19",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix05.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix05",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix06.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.523,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23
+      ],
+      "layers_arg": "3,7,11,15,19,23",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix06.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix06",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix07.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.688,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27
+      ],
+      "layers_arg": "3,7,11,15,19,23,27",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix07.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix07",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix08.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.467,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31
+      ],
+      "layers_arg": "3,7,11,15,19,23,27,31",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix08.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix08",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix09.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.883,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35
+      ],
+      "layers_arg": "3,7,11,15,19,23,27,31,35",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix09.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix09",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix10.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.609,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "layers_arg": "3,7,11,15,19,23,27,31,35,39",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix10.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix10",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix03-repeat1.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 55.638,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11
+      ],
+      "layers": [
+        3,
+        7,
+        11
+      ],
+      "layers_arg": "3,7,11",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix03-repeat1.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix03-repeat1",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix03-repeat2.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.733,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11
+      ],
+      "layers": [
+        3,
+        7,
+        11
+      ],
+      "layers_arg": "3,7,11",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix03-repeat2.log",
+      "min_equal_prefix_tokens": 137,
+      "name": "prefix03-repeat2",
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "returncode": 0,
+      "status": "blocked"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix04-repeat1.json",
+      "decode_blockers": [
+        "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+      ],
+      "duration_seconds": 56.27,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        118
+      ],
+      "full_attention_context_decode_path": "per_row_dense_context_batch_gate_layer_override",
+      "full_attention_dense_context_batch_gate_layers": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "layers": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "layers_arg": "3,7,11,15",
+      "log_path": "/tmp/hipengine-iter267-c4-dense-batch-gate-layer-sweep/prefix04-repeat1.log",
+      "min_equal_prefix_tokens": 118,
+      "name": "prefix04-repeat1",
+      "native_caware_decode": false,
+      "passed": false,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        118
+      ],
+      "returncode": 1,
+      "status": "rejected_correctness"
+    }
+  ],
+  "workload": {
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_size": 4,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "moe_decode_path": "grouped_compact",
+    "primitive_correctness_json": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json",
+    "projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "prompt_length": 512,
+    "sampler_equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+    "sampler_mode": "batched_lm_head",
+    "warmup_decode_tokens": 8
+  }
+}

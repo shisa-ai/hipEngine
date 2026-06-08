@@ -1,0 +1,514 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-qkv-scratch-red/summary.json",
+  "created_at": "2026-06-03T06:28:31.247475Z",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Focused c3 rows4/5/6 QKV/scratch diagnostic after input RMSNorm was eliminated. Forcing full-attention QKV prep to the per-row scratch path engages per_row_qkv_scratch_fallback but leaves generated-token prefixes unchanged at [11,60,117] and keeps the same first full-attention hidden mismatch as native full: decode step 0, layer7, attn_input_pre_qkv, row0. Forcing independent per-row full-attention layer scratch is also not a fix and worsens row prefixes to [11,11,40]; its short hidden trace produced non-finite values before JSON serialization. Rowchunk2 remains the green control [137,137,137]. Therefore QKV prep/scratch replay alone is eliminated; next work should target the upstream hidden/row-group interaction before or at the full-attention pre-QKV boundary, or a more direct native-vs-rowchunk differential of layer7 inputs.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "8962874bc816622f80e1465a4314aa47036d3cdd",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows456_3x512_prompt_ids.json",
+    "derived_fixture_recipe": "Fixture copies original 512-token prompt_id slices from source rows 4,5,6; no token data retained in repo.",
+    "batch_size": 3,
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "kv_storage_dtype": "bf16"
+  },
+  "retained_bench_cases": {
+    "native_full": {
+      "tmp_artifact": "/tmp/hipengine-e2e-c3-rows456-native-iter137.json",
+      "tmp_artifact_sha256": "7c61e63798b52acc776288ca6ef165ec5f36845c39e6823aedd6af1e5efd1a91",
+      "tmp_artifact_size_bytes": 194725,
+      "software_commit": "32e8bca6763e5de6fb94a7424cb60a137cf6cff2",
+      "software_dirty": false,
+      "status": "rejected_correctness",
+      "generated_token_equality_passed": false,
+      "min_equal_prefix_tokens": 11,
+      "prefixes": [
+        11,
+        60,
+        117
+      ],
+      "decode_tok_s_aggregate": 146.75837409230292,
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": true
+      },
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ]
+    },
+    "qkv_per_row": {
+      "tmp_artifact": "/tmp/hipengine-e2e-c3-rows456-qkv_per_row-iter138.json",
+      "tmp_artifact_sha256": "a31f0e160c913bc12fb86a767fd5d910d34b9f783bce97895de7cee6ccc011b0",
+      "tmp_artifact_size_bytes": 197037,
+      "software_commit": "8962874bc816622f80e1465a4314aa47036d3cdd",
+      "software_dirty": false,
+      "status": "rejected_correctness",
+      "generated_token_equality_passed": false,
+      "min_equal_prefix_tokens": 11,
+      "prefixes": [
+        11,
+        60,
+        117
+      ],
+      "decode_tok_s_aggregate": 136.83352521564393,
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "per_row_qkv_scratch_fallback",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "full-attention QKV prep forced to per-row scratch diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ]
+    },
+    "scratch_per_row": {
+      "tmp_artifact": "/tmp/hipengine-e2e-c3-rows456-scratch_per_row-iter138.json",
+      "tmp_artifact_sha256": "74ea0d4b5d233627cc1b82aca07049f8e994f4e45be0b83336813e043e4915c0",
+      "tmp_artifact_size_bytes": 196753,
+      "software_commit": "8962874bc816622f80e1465a4314aa47036d3cdd",
+      "software_dirty": false,
+      "status": "rejected_correctness",
+      "generated_token_equality_passed": false,
+      "min_equal_prefix_tokens": 11,
+      "prefixes": [
+        11,
+        11,
+        40
+      ],
+      "decode_tok_s_aggregate": 129.76686918147195,
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "per_row_layer_scratch_fallback",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "full-attention layer forced to independent per-row scratch diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ]
+    },
+    "rowchunk2": {
+      "tmp_artifact": "/tmp/hipengine-e2e-c3-rows456-rowchunk2-iter137.json",
+      "tmp_artifact_sha256": "dc9be8c649c2f015e36d89a40512f21b62ba01456c1eb729a374837aecd43f3c",
+      "tmp_artifact_size_bytes": 198871,
+      "software_commit": "32e8bca6763e5de6fb94a7424cb60a137cf6cff2",
+      "software_dirty": false,
+      "status": "blocked",
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137
+      ],
+      "decode_tok_s_aggregate": 137.15200390656003,
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ]
+    }
+  },
+  "hidden_l40_decode1_trace_cases": {
+    "native_full_l40_decode1": {
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-native-l40-decode1-trace0-1-iter137.json",
+      "tmp_artifact_sha256": "7438e56fd03cde5cb01f63b2b39d3c38a93ffebb001a50124b7eac47da8d107e",
+      "tmp_artifact_size_bytes": 12378501,
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "token_passed": true,
+      "hidden_passed": false,
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "batch",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_moe_path": "selected_c1",
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false
+      },
+      "step_decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": true
+      },
+      "first_full_attention_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "max_abs": 0.015625,
+        "max_abs_flat_index": 1538,
+        "max_abs_index": [
+          0,
+          1538
+        ],
+        "elements_over_atol": 55
+      },
+      "full_attention_stage_passed_subset": {
+        "input": false,
+        "attn_input_pre_qkv": false,
+        "attn_input_after_rotate": false,
+        "attn_input_after_project": false,
+        "q_proj_key_after_project": false,
+        "value_after_project": false,
+        "query_raw_after_split": false,
+        "key_raw_after_cast": false,
+        "gate_after_split": false,
+        "query_after_prepare": false,
+        "key_after_prepare": false,
+        "attn_context": false,
+        "gated_attn": false,
+        "o_proj": false,
+        "output": false
+      },
+      "first_linear_stage_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 4,
+        "stage": "attn_input",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.001953125,
+        "max_abs_flat_index": 202,
+        "max_abs_index": [
+          0,
+          202
+        ],
+        "elements_over_atol": 1,
+        "bit_mismatch": 502
+      }
+    },
+    "qkv_per_row_l40_decode1": {
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-qkv_per_row-l40-decode1-trace0-1-iter138.json",
+      "tmp_artifact_sha256": "79f110c9715ccff8fc51c66615d5a8eac6f6e2d18dc365ee02ceca144b286b40",
+      "tmp_artifact_size_bytes": 12386671,
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "token_passed": true,
+      "hidden_passed": false,
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "per_row",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_moe_path": "selected_c1",
+        "full_attention_decode_path": "batch_context",
+        "native_caware_decode": false
+      },
+      "step_decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "per_row_qkv_scratch_fallback",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "first_full_attention_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "max_abs": 0.015625,
+        "max_abs_flat_index": 1538,
+        "max_abs_index": [
+          0,
+          1538
+        ],
+        "elements_over_atol": 55
+      },
+      "full_attention_stage_passed_subset": {
+        "input": false,
+        "attn_input_pre_qkv": false,
+        "attn_input_after_rotate": false,
+        "attn_input_after_project": false,
+        "q_proj_key_after_project": false,
+        "value_after_project": false,
+        "query_raw_after_split": false,
+        "key_raw_after_cast": false,
+        "gate_after_split": false,
+        "query_after_prepare": false,
+        "key_after_prepare": false,
+        "attn_context": false,
+        "gated_attn": false,
+        "o_proj": false,
+        "output": false
+      },
+      "first_linear_stage_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 4,
+        "stage": "attn_input",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.001953125,
+        "max_abs_flat_index": 202,
+        "max_abs_index": [
+          0,
+          202
+        ],
+        "elements_over_atol": 1,
+        "bit_mismatch": 502
+      }
+    },
+    "rowchunk2_l40_decode1": {
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-rowchunk2-l40-decode1-trace0-1-iter137.json",
+      "tmp_artifact_sha256": "a0c77fa768e3ce52a8fbe895ec3a72cdb755f727b20ac934b488a4096be61550",
+      "tmp_artifact_size_bytes": 10474985,
+      "status": "mismatch_found",
+      "correctness_passed": false,
+      "token_passed": true,
+      "hidden_passed": false,
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_attention_input_path": "batch",
+        "batch_decode_attention_qkv_path": "batch",
+        "batch_decode_attention_scratch_path": "batch",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_moe_path": "selected_c1",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false
+      },
+      "step_decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "full_attention_scratch_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "first_full_attention_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input",
+        "row": 0,
+        "max_abs": 0.00390625,
+        "max_abs_flat_index": 628,
+        "max_abs_index": [
+          0,
+          628
+        ],
+        "elements_over_atol": 52
+      },
+      "full_attention_stage_passed_subset": {
+        "input": false,
+        "attn_input_pre_qkv": true,
+        "attn_input_after_rotate": true,
+        "attn_input_after_project": true,
+        "q_proj_key_after_project": true,
+        "value_after_project": true,
+        "query_raw_after_split": true,
+        "key_raw_after_cast": true,
+        "gate_after_split": true,
+        "query_after_prepare": true,
+        "key_after_prepare": true,
+        "attn_context": false,
+        "gated_attn": false,
+        "o_proj": false,
+        "output": false
+      },
+      "first_linear_stage_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 4,
+        "stage": "attn_input",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.00390625,
+        "max_abs_flat_index": 1296,
+        "max_abs_index": [
+          0,
+          1296
+        ],
+        "elements_over_atol": 5,
+        "bit_mismatch": 527
+      }
+    }
+  },
+  "scratch_per_row_hidden_trace_status": {
+    "json_artifact": "/tmp/hipengine-hidden-bisect-c3-rows456-scratch_per_row-l40-decode1-trace0-1-iter138.json",
+    "json_exists": false,
+    "log_path": "/tmp/hipengine-hidden-bisect-c3-rows456-scratch_per_row-l40-decode1-trace0-1-iter138.log",
+    "log_sha256": "b1d38a064d30de51e24de443f6fae5fee46e754bf08ca51fe84c5beccc49db50",
+    "log_size_bytes": 3645,
+    "status": "json_serialization_failed_nonfinite_values",
+    "evidence": "scratch_per_row hidden trace reached payload serialization but failed allow_nan=False due non-finite values; retained-bench scratch_per_row already stayed red/worse, so this trace is recorded as non-verifier evidence only."
+  },
+  "measurements": {
+    "native_c2_512x128_min_equal_prefix_tokens": 137,
+    "c3_native_full_prefixes": [
+      11,
+      60,
+      117
+    ],
+    "c3_qkv_per_row_prefixes": [
+      11,
+      60,
+      117
+    ],
+    "c3_scratch_per_row_prefixes": [
+      11,
+      11,
+      40
+    ],
+    "c3_rowchunk2_prefixes": [
+      137,
+      137,
+      137
+    ],
+    "c3_native_full_min_equal_prefix_tokens": 11,
+    "c3_qkv_per_row_min_equal_prefix_tokens": 11,
+    "c3_scratch_per_row_min_equal_prefix_tokens": 11,
+    "c3_rowchunk2_min_equal_prefix_tokens": 137,
+    "qkv_per_row_first_full_attention_mismatch": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 7,
+      "stage": "attn_input_pre_qkv",
+      "row": 0,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1538,
+      "max_abs_index": [
+        0,
+        1538
+      ],
+      "elements_over_atol": 55
+    },
+    "native_first_full_attention_mismatch": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 7,
+      "stage": "attn_input_pre_qkv",
+      "row": 0,
+      "max_abs": 0.015625,
+      "max_abs_flat_index": 1538,
+      "max_abs_index": [
+        0,
+        1538
+      ],
+      "elements_over_atol": 55
+    },
+    "rowchunk2_first_full_attention_mismatch": {
+      "decode_step": 0,
+      "generated_index": 1,
+      "layer_index": 7,
+      "stage": "attn_input",
+      "row": 0,
+      "max_abs": 0.00390625,
+      "max_abs_flat_index": 628,
+      "max_abs_index": [
+        0,
+        628
+      ],
+      "elements_over_atol": 52
+    }
+  },
+  "verdicts": {
+    "qkv_per_row_path_engaged": true,
+    "qkv_per_row_does_not_improve_generated_prefixes": true,
+    "qkv_per_row_hidden_first_full_attention_matches_native": true,
+    "scratch_per_row_path_engaged": true,
+    "scratch_per_row_not_a_generated_token_fix": true,
+    "scratch_per_row_hidden_trace_nonfinite": true,
+    "rowchunk2_control_green": true,
+    "qkv_scratch_replay_alone_eliminated_as_fix": true,
+    "retained_ready": false
+  },
+  "commands": {
+    "retained_qkv_per_row": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows456_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-moe-path selected_c1 --batch-decode-attn-qkv-path per_row --json /tmp/hipengine-e2e-c3-rows456-qkv_per_row-iter138.json",
+    "retained_scratch_per_row": "same as retained_qkv_per_row but --batch-decode-attn-scratch-path per_row -> /tmp/hipengine-e2e-c3-rows456-scratch_per_row-iter138.json",
+    "hidden_qkv_per_row": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows456_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 1 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-moe-path selected_c1 --batch-decode-attn-qkv-path per_row --json /tmp/hipengine-hidden-bisect-c3-rows456-qkv_per_row-l40-decode1-trace0-1-iter138.json",
+    "hidden_scratch_per_row": "same as hidden_qkv_per_row but --batch-decode-attn-scratch-path per_row -> log /tmp/hipengine-hidden-bisect-c3-rows456-scratch_per_row-l40-decode1-trace0-1-iter138.log; JSON serialization failed due non-finite values"
+  },
+  "retained_claim_blockers": [
+    "full native grouping >=3 still fails generated-token equality for rows4/5/6",
+    "per-row full-attention QKV prep is a diagnostic fallback and did not improve the red prefixes",
+    "per-row full-attention scratch is a diagnostic fallback and worsened prefixes/non-finite hidden trace",
+    "rowchunk2 correctness control remains diagnostic and reports native_caware_decode=false",
+    "no retained c>N throughput/scaling claim is made"
+  ],
+  "prior_related_artifacts": [
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-perrow-input-red/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-full-attn-trace0-12/summary.json"
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "change": "Promoted c<=8 auto linear-attention projection default to no-selected batch metadata after 128-thread QKV/Z fix.",
+  "created_at": "2026-06-02T17:03:53.950068Z",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "hip_visible_devices": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "workload": {
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8,
+    "decode_tokens": 128,
+    "max_layers": 40
+  },
+  "performance_claim": false,
+  "retained_ready": false,
+  "code_change": {
+    "files": [
+      "scripts/qwen35_batch_retained_bench.py",
+      "scripts/qwen35_batch_hidden_bisect.py",
+      "tests/test_generation_batch_scheduler.py"
+    ],
+    "summary": "Auto projection resolution for c<=8 now returns batch rather than selected_qkv_z; tests now expect the no-selected projection env/default dry-run metadata."
+  },
+  "comparison_to_prior": {
+    "prior_auto_projection_path": "selected_qkv_z",
+    "new_auto_projection_path": "batch",
+    "prior_threads128_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-batch-gemv-qkvz-threads128-matrix/summary.json"
+  },
+  "probes": {
+    "primary_c2_512x128": {
+      "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "decode_execution": {
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "full_attention_decode_path": "native_batch",
+        "native_caware_decode": true
+      },
+      "batch_native_caware_decode": true,
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ]
+    },
+    "c2_c4_c8_default_matrix": {
+      "status": "passed",
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-c4-c8-batch-default-iter87-matrix.json",
+      "rows": [
+        {
+          "batch_size": 2,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix-batch-default-iter87/native-equality-c2-p512-d128.json",
+          "linear_attention_projection_path": "native_batch",
+          "native_caware_decode": true
+        },
+        {
+          "batch_size": 4,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix-batch-default-iter87/native-equality-c4-p512-d128.json",
+          "linear_attention_projection_path": "native_batch",
+          "native_caware_decode": true
+        },
+        {
+          "batch_size": 8,
+          "status": "passed",
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137,
+            137
+          ],
+          "min_equal_prefix_tokens": 137,
+          "artifact_path": "/tmp/hipengine-e2e-native-equality-matrix-batch-default-iter87/native-equality-c8-p512-d128.json",
+          "linear_attention_projection_path": "native_batch",
+          "native_caware_decode": true
+        }
+      ]
+    }
+  },
+  "conclusion": [
+    "The no-flag retained-bench path now resolves c<=8 linear-attention projection to batch/no-selected metadata and remains generated-token green: c=2 primary prefixes [137,137].",
+    "The c=2/c=4/c=8 no-flag equality matrix passed with linear_attention_projection_path=native_batch and native_caware_decode=true for all rows.",
+    "This removes the selected-QKV/Z default fallback from correctness-default generated-token gates, but retained/scaling claims remain blocked by projection-dispatch evidence, graph/profiler data, c1/serial baselines, and benchmark gates."
+  ]
+}

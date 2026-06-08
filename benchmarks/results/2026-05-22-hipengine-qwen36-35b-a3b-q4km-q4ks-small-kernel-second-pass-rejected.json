@@ -1,0 +1,110 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "rejected_or_not_retained",
+  "performance_claim": false,
+  "label": "small_kernel_second_pass_after_direct_selected_moe",
+  "date": "2026-05-22",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "note": "local diagnostic; W7900 not rerun"
+  },
+  "scope": "Reopened Task #4 RMSNorm/router/GDN small-kernel decode overhead after router256 and direct-selected-MoE were retained. Requirement: retain only if acceptable for both Q4_K_M and Q4_K_S.",
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m": {"prefill_tok_s_median": 2639.2823493823025, "decode_tok_s_median": 99.22551616919144, "tracked_peak_gib": 22.571860380470753},
+    "gguf_q4_k_s": {"prefill_tok_s_median": 2709.8758775162337, "decode_tok_s_median": 100.25490655811896, "tracked_peak_gib": 21.415610380470753}
+  },
+  "final_source_state": "No source changes retained in this second small-kernel pass; working tree is clean except unrelated untracked uv.lock.",
+  "post_revert_validation": [
+    {
+      "command": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_router_plan.py -q",
+      "result": "18 passed"
+    },
+    {
+      "command": "PYTHONPATH=. uv run pytest tests/test_gguf_linear_dispatch.py -q",
+      "result": "37 passed"
+    }
+  ],
+  "probes": [
+    {
+      "name": "decode_rmsnorm_threads_128",
+      "change": "Temporarily passed threads=128 to rows=1 attention RMSNorm, rows==1 post-attention add_rmsnorm, and final output RMSNorm calls instead of the 256-thread wrapper default.",
+      "validation": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_gguf_ops.py -q => 15 passed",
+      "result_q4ks_4k_128_single_run": {
+        "prefill_tok_s": 2608.832352145431,
+        "decode_tok_s": 97.87364483356883,
+        "tracked_peak_gib": 21.415610380470753,
+        "json": "/tmp/hipengine-q4ks-rmsnorm128-candidate-4096-128.json",
+        "decode_delta_vs_current_q4ks_baseline_pct": -2.3752071657158074
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S regressed substantially before the Q4_K_M gate was attempted. The existing 256-thread RMSNorm/add_rmsnorm defaults remain better for this graph-captured decode mix."
+    },
+    {
+      "name": "router_split_shared_coop_threads_128",
+      "change": "Temporarily retuned the c=1 split-shared cooperative router from the retained 256-thread launch to 128 threads.",
+      "validation": "Existing routing test intentionally failed until expected thread count would be updated; benchmark was run only as a performance probe.",
+      "result_q4ks_4k_128_single_run": {
+        "prefill_tok_s": 2616.9512643599937,
+        "decode_tok_s": 99.96657797382898,
+        "tracked_peak_gib": 21.415610380470753,
+        "json": "/tmp/hipengine-q4ks-router128-candidate-4096-128.json",
+        "decode_delta_vs_current_q4ks_baseline_pct": -0.28759548453904116
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S did not beat the current direct-selected baseline; retained router256 remains the best tested router launch shape."
+    },
+    {
+      "name": "router_split_shared_coop_threads_64",
+      "change": "Temporarily retuned the c=1 split-shared cooperative router from 256 threads to 64 threads.",
+      "validation": "Performance probe only; would require updating the expected routing-thread assertion if retained.",
+      "result_q4ks_4k_128_single_run": {
+        "prefill_tok_s": 2606.1276614087587,
+        "decode_tok_s": 99.13947170336166,
+        "tracked_peak_gib": 21.415610380470753,
+        "json": "/tmp/hipengine-q4ks-router64-candidate-4096-128.json",
+        "decode_delta_vs_current_q4ks_baseline_pct": -1.1125987675333036
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S regressed more than router128; retained router256 remains best."
+    },
+    {
+      "name": "gdn_ssm_out_f32_activation_contract",
+      "change": "Considered removing the GDN decode f32_to_bf16 cast before ssm_out by routing Q8T16 ssm_out through its existing f32-input single GEMV variant.",
+      "validation": "Rejected by existing P10.X1 semantic guard tests before benchmarking: tests/test_qwen35_gguf_decode_repack_semantics.py asserts linear-attention ssm_out must not switch to activation_dtype=GGUF_ACTIVATION_F32 because prior work found it was not equivalent enough for MoE routing.",
+      "decision": "rejected_and_reverted_without_benchmark",
+      "reason": "This crosses a known math-contract boundary rather than being a safe launch-reduction. Keeping the BF16 cast preserves the documented decode-repack semantics."
+    },
+    {
+      "name": "decode_graph_steps_per_replay_2",
+      "change": "No source change: benchmarked --graph-steps-per-replay 2 to reduce host graph launches by replaying two recorded decode steps per launch.",
+      "validation": "Benchmarks reported finite final logits and stable final token IDs for both Q4_K_M and Q4_K_S.",
+      "results_4k_128_3run": {
+        "gguf_q4_k_m": {
+          "prefill_tok_s_samples": [2651.264950710929, 2626.0887754855808, 2645.116449890279],
+          "prefill_tok_s_median": 2645.116449890279,
+          "decode_tok_s_samples": [99.22600883663286, 99.14276847835528, 99.43804175547328],
+          "decode_tok_s_median": 99.22600883663286,
+          "decode_delta_vs_current_baseline_pct": 0.0004965128531865515,
+          "tracked_peak_gib": 22.571860380470753,
+          "final_token_ids": [220, 220, 220],
+          "json": "/tmp/hipengine-q4km-graph2-candidate-4096-128-3run.json"
+        },
+        "gguf_q4_k_s": {
+          "prefill_tok_s_samples": [2729.534763090673, 2730.3352277219365, 2714.2560053926054],
+          "prefill_tok_s_median": 2729.534763090673,
+          "decode_tok_s_samples": [100.3674727582563, 100.29163522878684, 100.54623975653686],
+          "decode_tok_s_median": 100.3674727582563,
+          "decode_delta_vs_current_baseline_pct": 0.1122799910766274,
+          "tracked_peak_gib": 21.415610380470753,
+          "final_token_ids": [85, 85, 85],
+          "json": "/tmp/hipengine-q4ks-graph2-candidate-4096-128-3run.json"
+        }
+      },
+      "decision": "not_retained",
+      "reason": "Q4_K_M was effectively neutral and Q4_K_S gained only +0.11%; changing the runtime/API default from one-step replay to two-step replay would make default replay semantics less flexible for a sub-threshold dual-column result. Keep as an optional benchmark knob."
+    }
+  ],
+  "decision": "No additional RMSNorm/router/GDN small-kernel source change retained after router256 and direct-selected-MoE. The retained baseline remains 4K/128 Q4_K_M 99.226 tok/s and Q4_K_S 100.255 tok/s."
+}

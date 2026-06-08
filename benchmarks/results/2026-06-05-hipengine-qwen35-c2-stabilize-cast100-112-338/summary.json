@@ -1,0 +1,859 @@
+{
+  "active_verify": {
+    "command": "active multiloop c2 512/128 verify, no diagnostic flags after stabilize112 run",
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "metric": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "raw_json_sha256": "109e3b80bbc07f54b02aa20f941fc9b6753dbc9607b2e7db7dbbfe603f602ac1",
+    "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+    "raw_log_sha256": "109e3b80bbc07f54b02aa20f941fc9b6753dbc9607b2e7db7dbbfe603f602ac1",
+    "status": "blocked"
+  },
+  "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-stabilize-cast100-112-338/summary.json",
+  "change": {
+    "cli": "--batch-sample-stabilize-cast-elems N",
+    "description": "Opt-in post-sampler stabilization fence that reruns a prefix of each normalized FP16 row through FP16->BF16 cast into a dedicated temp buffer after sampler host readback. It records sampler metadata but does not append diagnostic blockers or set native_row_aware_lm_head=false.",
+    "env": "HIPENGINE_QWEN35_BATCH_SAMPLE_STABILIZE_CAST_ELEMS",
+    "name": "batch_sample_stabilize_cast_elems"
+  },
+  "commands": {
+    "stabilize100": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model $MODEL --fixture $FIXTURE --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-norm-path batch --batch-sample-cast-path batch --batch-sample-stabilize-cast-elems 100 --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --json <repeat-json>",
+    "stabilize112": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model $MODEL --fixture $FIXTURE --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-norm-path batch --batch-sample-cast-path batch --batch-sample-stabilize-cast-elems 112 --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --json <repeat-json>"
+  },
+  "date": "2026-06-05",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "fixture_note": "The /tmp 8x512 fixture was missing at iteration start and was restored from the first 8 prompts of /tmp/hipengine-prebench/fixtures/qwen36_paro_9x512_prompt_ids_from8.json before GPU runs.",
+  "fixture_sha256": "21aed0f8ebda99836dc5d24a1bb17b14b61d3fcbc58825336e337c764b5b93d7",
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d"
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd"
+      }
+    ]
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 338,
+  "lane": "concurrency-e2e/native-c2-e2e",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "retained_claim": false,
+  "schema": 1,
+  "series": [
+    {
+      "all_green": false,
+      "children": [
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-1.json",
+          "raw_json_sha256": "4687e23036d678a355ae85dc6e25652f952ece8355ad5a48aba9d2868480e249",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-1.log",
+          "raw_log_sha256": "4687e23036d678a355ae85dc6e25652f952ece8355ad5a48aba9d2868480e249",
+          "repeat": 1,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 140173786390528
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-2.json",
+          "raw_json_sha256": "1d6215629281257cb15438db9001da29b30b66703fc26d1e9676aeca72e38db5",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-2.log",
+          "raw_log_sha256": "1d6215629281257cb15438db9001da29b30b66703fc26d1e9676aeca72e38db5",
+          "repeat": 2,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 140268068052992
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-3.json",
+          "raw_json_sha256": "5ae8c51a4cc918c942dac685f41c7546c6a5e4876fdc45d59ffeb8ccd81b1ed0",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-3.log",
+          "raw_log_sha256": "5ae8c51a4cc918c942dac685f41c7546c6a5e4876fdc45d59ffeb8ccd81b1ed0",
+          "repeat": 3,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 140153603399680
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-4.json",
+          "raw_json_sha256": "18619b948aee19e210e7fcb94766a1ab29581c566e55830d3b52cc5da9ac19e5",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-4.log",
+          "raw_log_sha256": "18619b948aee19e210e7fcb94766a1ab29581c566e55830d3b52cc5da9ac19e5",
+          "repeat": 4,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 140125199572992
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-5.json",
+          "raw_json_sha256": "402efa1bf36d8499355818e4671df00d8676c4db0af63fb6af9e6e074fbb1e9f",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-5.log",
+          "raw_log_sha256": "402efa1bf36d8499355818e4671df00d8676c4db0af63fb6af9e6e074fbb1e9f",
+          "repeat": 5,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 139830474219520
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-6.json",
+          "raw_json_sha256": "f83f0db60795d564ab89d23c4b8eb05cf7f8f19c94f23bc4f1654f0c66e0ecca",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-6.log",
+          "raw_log_sha256": "f83f0db60795d564ab89d23c4b8eb05cf7f8f19c94f23bc4f1654f0c66e0ecca",
+          "repeat": 6,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 140246549176320
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-7.json",
+          "raw_json_sha256": "7fe1a1bacac808af32dc1a3444411bbd362cb5ee255999dea324947d88a0cc4e",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-7.log",
+          "raw_log_sha256": "7fe1a1bacac808af32dc1a3444411bbd362cb5ee255999dea324947d88a0cc4e",
+          "repeat": 7,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 139608429862912
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            104
+          ],
+          "first_mismatches": [
+            {
+              "batch_token": 2713,
+              "c1_token": 799,
+              "index": 104,
+              "row": 1
+            }
+          ],
+          "passed": false,
+          "prefix_lengths": [
+            137,
+            104
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-8.json",
+          "raw_json_sha256": "197254be0343cf4583b2445ec2e3e4edad8e39c306b10f970b45be6415a6ed1c",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast100/c2-batch-sampler-stabilize-cast100-8.log",
+          "raw_log_sha256": "197254be0343cf4583b2445ec2e3e4edad8e39c306b10f970b45be6415a6ed1c",
+          "repeat": 8,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 100,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 100,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 100,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 200,
+              "scratch_ptr": 140474920640512
+            }
+          },
+          "status": "rejected_correctness"
+        }
+      ],
+      "elements_per_row": 100,
+      "failed_repeats": [
+        8
+      ],
+      "label": "stabilize_cast100",
+      "min_equal_prefixes_by_repeat": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        104
+      ],
+      "passed_repeats": 7,
+      "total_repeats": 8
+    },
+    {
+      "all_green": true,
+      "children": [
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-1.json",
+          "raw_json_sha256": "1a798823f7f29ad5b3ea89b7b5ec7d2cc5d38785d55c2c678d3f22c35cbf11ae",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-1.log",
+          "raw_log_sha256": "1a798823f7f29ad5b3ea89b7b5ec7d2cc5d38785d55c2c678d3f22c35cbf11ae",
+          "repeat": 1,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 140420545683456
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-2.json",
+          "raw_json_sha256": "7f649464235ec5e47df4d8cef44ffa4b4cef02148d67a16488953344134e71f2",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-2.log",
+          "raw_log_sha256": "7f649464235ec5e47df4d8cef44ffa4b4cef02148d67a16488953344134e71f2",
+          "repeat": 2,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 140132764000256
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-3.json",
+          "raw_json_sha256": "79096ffad8bfadc7171548a47c4d1ce41df0f11813ab496076f0a410138f6c93",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-3.log",
+          "raw_log_sha256": "79096ffad8bfadc7171548a47c4d1ce41df0f11813ab496076f0a410138f6c93",
+          "repeat": 3,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 140017087193088
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-4.json",
+          "raw_json_sha256": "68ad8eab1cb947e69d9d42d821d849006bb6748ec0a8c7a60f787d999dbf9dc4",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-4.log",
+          "raw_log_sha256": "68ad8eab1cb947e69d9d42d821d849006bb6748ec0a8c7a60f787d999dbf9dc4",
+          "repeat": 4,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 140380336988160
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-5.json",
+          "raw_json_sha256": "8316508cfe170fc77fd4f735683cc0ddbebef2e81315da27c1943a08bc01b055",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-5.log",
+          "raw_log_sha256": "8316508cfe170fc77fd4f735683cc0ddbebef2e81315da27c1943a08bc01b055",
+          "repeat": 5,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 139709990739968
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-6.json",
+          "raw_json_sha256": "fa069378b6b8c1b721d79dc756082576cb206ef2607740036cfbf736a59f71ee",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-6.log",
+          "raw_log_sha256": "fa069378b6b8c1b721d79dc756082576cb206ef2607740036cfbf736a59f71ee",
+          "repeat": 6,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 139798301810688
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-7.json",
+          "raw_json_sha256": "53cfbb507a2ec0ef3761ed876df161e92a1eb6f7fd83e2255377e5df9d177283",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-7.log",
+          "raw_log_sha256": "53cfbb507a2ec0ef3761ed876df161e92a1eb6f7fd83e2255377e5df9d177283",
+          "repeat": 7,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 140357815672832
+            }
+          },
+          "status": "blocked"
+        },
+        {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ],
+          "raw_json": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-8.json",
+          "raw_json_sha256": "dadffc139a0fe650888c2fac5d179d8c3d9492c1a5572a91b019d4e625e9b639",
+          "raw_log": "/tmp/hipengine-iter338-c2-stabilize-cast112/c2-batch-sampler-stabilize-cast112-8.log",
+          "raw_log_sha256": "dadffc139a0fe650888c2fac5d179d8c3d9492c1a5572a91b019d4e625e9b639",
+          "repeat": 8,
+          "sampler": {
+            "argmax_mode": "batch",
+            "blockers": [],
+            "final_cast_path": "batch",
+            "final_norm_path": "batch",
+            "mode": "batched_lm_head",
+            "native_row_aware_lm_head": true,
+            "requested_mode": "batched_lm_head",
+            "stabilize_cast_elems": 112,
+            "stabilize_cast_elems_enabled": true,
+            "stabilize_cast_elems_fence": {
+              "checked_rows": 272,
+              "checked_steps": 136,
+              "elements_per_row": 112,
+              "enabled": true,
+              "host_reads": 0,
+              "kind": "batch_sampler_stabilize_cast_nelems_kernel",
+              "last_step": {
+                "elements_per_row": 112,
+                "host_reads": 0,
+                "rows": 2,
+                "step_index": 135
+              },
+              "scratch_nbytes": 224,
+              "scratch_ptr": 139619685277696
+            }
+          },
+          "status": "blocked"
+        }
+      ],
+      "elements_per_row": 112,
+      "failed_repeats": [],
+      "label": "stabilize_cast112",
+      "min_equal_prefixes_by_repeat": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "passed_repeats": 8,
+      "total_repeats": 8
+    }
+  ],
+  "shape": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  },
+  "summary": {
+    "candidate_stabilizer_elements": 112,
+    "conclusion": "The non-blocking stabilizer path works at 112 elements but not at 100 in this run: stabilize100 passed 7/8 with repeat 8 failing [137,104], while stabilize112 passed 8/8 at [137,137]. Unlike diagnostic final-cast elems fences, sampler_execution kept native_row_aware_lm_head=true and blockers=[]; this is a correctness-first candidate workaround, not a retained performance claim.",
+    "stabilize100_passed_repeats": 7,
+    "stabilize100_total_repeats": 8,
+    "stabilize112_passed_repeats": 8,
+    "stabilize112_total_repeats": 8
+  }
+}

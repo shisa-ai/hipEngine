@@ -1,0 +1,198 @@
+{
+  "artifacts": {
+    "diagnostic_compact": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-batched-lm-serial-argmax-current-316/diagnostic-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-batched-lm-serial-argmax-current-316/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_c2_sampler_demotion": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-demotion-310/summary.json"
+    },
+    "previous_final_default_repeat": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-final-default-repeat-315/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-batched-lm-serial-argmax-current-316/summary.json"
+    }
+  },
+  "conclusion": "Current c2 forced batched_lm_head with serial_per_row argmax is not stable: 7/8 repeats passed but repeat 8 failed at prefixes [61,137] despite full native/c-aware decode and accepted c2 projection. This overturns the earlier narrow hypothesis that the c2 explicit-batched flake is only batch_argmax_f32: batched final-norm/LM-head projection or its interaction with prior state remains suspect. The immediately following no-flag defaults recovered/stayed green for c2 [137,137] with serial_lm_head and for c4 [137]*4 / c8 [137]*8 with batched_lm_head plus all-layer rowchunk2. Correctness evidence only; no retained throughput/scaling claim.",
+  "created_at": "2026-06-05T00:33:24.806589+00:00",
+  "git_commit_before_commit": "88aeec566df632f926aa3978a6809b6752b32b44",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 316,
+  "kind": "c2_batched_lm_head_serial_argmax_current_diagnostic_plus_postdiag_default_c248_control",
+  "performance_claim": false,
+  "result": {
+    "c2_batched_lm_head_serial_per_row_argmax": {
+      "argmax_modes": [
+        "serial_per_row"
+      ],
+      "failed_count": 1,
+      "first_mismatch_indices": [
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ],
+        [
+          61,
+          null
+        ]
+      ],
+      "passed_count": 7,
+      "prefix_lengths": [
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          61,
+          137
+        ]
+      ],
+      "sampler_blockers": [
+        [
+          "batched LM-head argmax forced to serial_per_row diagnostic"
+        ]
+      ],
+      "sampler_modes": [
+        "batched_lm_head"
+      ]
+    },
+    "postdiag_default_c248": {
+      "c2": {
+        "argmax_mode": "serial_per_row",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "sampler_mode": "serial_lm_head"
+      },
+      "c4": {
+        "argmax_mode": "batch",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "sampler_mode": "batched_lm_head"
+      },
+      "c8": {
+        "argmax_mode": "batch",
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "sampler_mode": "batched_lm_head"
+      }
+    }
+  },
+  "schema": 1,
+  "status": "diagnostic_red_default_green",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "sampler_equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+    "warmup_decode_tokens": 8
+  }
+}

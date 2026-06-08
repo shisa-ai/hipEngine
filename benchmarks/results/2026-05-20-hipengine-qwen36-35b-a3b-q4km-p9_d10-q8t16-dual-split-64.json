@@ -1,0 +1,110 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "accepted_small_op_optimization_target_still_blocked",
+  "performance_claim": true,
+  "task_ids": [
+    28,
+    51,
+    52,
+    26
+  ],
+  "label": "p9_d10_q8t16_dual_split_64_threads",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "change": "Launch q8_0_t16_dual_split_gemv_kernel with 64 threads per block instead of 128 for separate-output Q8T16 unequal-width pairs; no ABI or dispatch policy change.",
+  "correctness": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d10_dualsplit64_e2e_current.json",
+    "status": "accepted",
+    "passed": true,
+    "worst_kl_mean": 0.0,
+    "worst_kl_max": 0.0,
+    "worst_top1_agreement": 1.0,
+    "candidate_deterministic_tail": true,
+    "candidate_deterministic_full_sequence": true,
+    "finite_final_logits_all": true,
+    "effective_wmma_prefill": false,
+    "effective_gemv_decode": true
+  },
+  "tests": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q --tb=short",
+    "result": "58 passed"
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d10_dualsplit64_512x128_bench.json",
+    "prefill_tok_s_samples": [
+      504.93742012112335,
+      510.02989578593275,
+      504.83230561040904
+    ],
+    "prefill_tok_s_median": 504.93742012112335,
+    "decode_tok_s_samples": [
+      88.89476761169911,
+      88.78614660875796,
+      88.80112044965858
+    ],
+    "decode_tok_s_median": 88.80112044965858,
+    "decode_seconds_samples": [
+      1.4399047709885053,
+      1.4416663509909995,
+      1.4414232540293597
+    ],
+    "tracked_peak_allocated_gib_median": 21.343075528740883,
+    "hip_used_peak_sampled_gib_median": 21.806640625,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      1510,
+      1510,
+      1510
+    ],
+    "effective_use_wmma_prefill_all": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "effective_use_gemv_decode_all": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "baseline": {
+    "label": "P9.D9 Q8T16 full-attention Q/K/V triple dispatch",
+    "artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d9-q8t16-triple-qkv.json",
+    "decode_tok_s_median": 88.24261273823781,
+    "prefill_tok_s_median": 499.356,
+    "tracked_peak_allocated_gib": 21.343075528740883
+  },
+  "delta_vs_baseline": {
+    "decode_tok_s_abs": 0.5585077114207735,
+    "decode_tok_s_pct": 0.6329229088870347,
+    "prefill_tok_s_abs": 5.581420121123358,
+    "prefill_tok_s_pct": 1.1177236522888157,
+    "target_decode_tok_s": 95.0,
+    "target_met": false
+  },
+  "rocprof_decode_512x16_diagnostic": {
+    "summary_source": "/tmp/p9_d10_dualsplit64_summary.json (not committed raw CSV)",
+    "baseline_summary_source": "/tmp/p9_next_current_decode_summary.json (D9 pre-change local summary)",
+    "tokens_decode": 16,
+    "baseline_total_kernel_ms": 157.013202,
+    "new_total_kernel_ms": 156.246952,
+    "q8_t16_dual_split_dispatches": 480,
+    "baseline_q8_t16_dual_split_ms": 20.685233,
+    "new_q8_t16_dual_split_ms": 19.460133,
+    "kernel_name": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)"
+  },
+  "decision": "Retain as a small correctness-neutral Q8T16 dispatch-kernel tuning win, but #51/#52/#26 remain blocked below the 95 tok/s decode target."
+}

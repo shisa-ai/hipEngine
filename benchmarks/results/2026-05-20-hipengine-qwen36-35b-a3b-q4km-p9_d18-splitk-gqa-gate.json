@@ -1,0 +1,130 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "accepted_target_met",
+  "performance_claim": true,
+  "task_ids": [
+    51,
+    52,
+    26
+  ],
+  "label": "p9_d18_full_attention_split_k_gqa_gate_decode",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "change": "Route qwen35moe resident decode-repack rows=1 full-attention through the existing split-K grouped-GQA context kernel plus BF16 gated reducer, replacing the monolithic paged context kernel followed by a separate gate-multiply launch. The unfused context+gate path remains the fallback when HIPENGINE_GGUF_DECODE_REPACK is disabled or the model is not MoE.",
+  "correctness": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d18_splitk_gqa_gate_e2e.json",
+    "status": "accepted",
+    "passed": true,
+    "worst_kl_mean": 0.0,
+    "worst_kl_max": 0.0,
+    "worst_top1_agreement": 1.0,
+    "candidate_deterministic_tail": true,
+    "candidate_deterministic_full_sequence": true,
+    "finite_final_logits_all": true,
+    "effective_wmma_prefill": false,
+    "effective_gemv_decode": true,
+    "short_decode_gate": {
+      "command": "same correctness script with --decode-tokens 16 --repeats 2 --json /tmp/p9_d18_splitk_gqa_gate_e2e_16.json",
+      "status": "accepted",
+      "worst_kl_mean": 0.0,
+      "worst_kl_max": 0.0,
+      "worst_top1_agreement": 1.0
+    }
+  },
+  "tests": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_gguf_ops.py tests/test_gguf_linear_dispatch.py -q --tb=short",
+    "result": "42 passed"
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d18_splitk_gqa_gate_512x128_bench.json",
+    "prefill_tok_s_samples": [
+      504.77464415249375,
+      506.4194280588828,
+      506.36282820854734
+    ],
+    "prefill_tok_s_median": 506.36282820854734,
+    "decode_tok_s_samples": [
+      98.8649285119486,
+      98.76578692396923,
+      98.83680279417551
+    ],
+    "decode_tok_s_median": 98.83680279417551,
+    "decode_seconds_samples": [
+      1.2946957219974138,
+      1.2959953440004028,
+      1.2950641500065103
+    ],
+    "tracked_peak_allocated_gib_median": 21.34312178194523,
+    "hip_used_peak_sampled_gib_median": 21.806640625,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      1510,
+      1510,
+      1510
+    ],
+    "effective_use_wmma_prefill_all": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "effective_use_gemv_decode_all": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "rocprof_decode_512x16_diagnostic": {
+    "command": "rm -rf /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_csv2 && HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_csv2 -f csv -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_bench2.json",
+    "summary_command": "python3 scripts/qwen35_gguf_rocprof_summary.py --prefill-csv /tmp/p9_next_current_512x0_rocprof_csv/rocm/2215754_kernel_trace.csv --decode-csv /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_csv2/rocm/2549650_kernel_trace.csv --strip-prefill-prefix --json /tmp/p9_d18_splitk_gqa_gate_summary.json --quiet",
+    "baseline_summary_source": "/tmp/p9_d17_keybf16_rope_summary.json",
+    "candidate_summary_source": "/tmp/p9_d18_splitk_gqa_gate_summary.json",
+    "baseline_total_kernel_ms": 150.128767,
+    "candidate_total_kernel_ms": 138.776136,
+    "baseline_total_dispatches": 9968,
+    "candidate_total_dispatches": 9968,
+    "baseline_full_attention_decode_ms": 25.420783,
+    "candidate_full_attention_decode_ms": 13.884499,
+    "baseline_full_attention_decode_dispatches": 159,
+    "candidate_full_attention_decode_dispatches": 318,
+    "candidate_split_k_context_ms": 13.200694,
+    "candidate_split_k_reduce_gate_ms": 0.683805,
+    "legacy_prefill_out_decode_buckets": []
+  },
+  "baseline": {
+    "label": "P9.D17 full-attention BF16-key RoPE decode",
+    "artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d17-key-bf16-rope.json",
+    "decode_tok_s_median": 90.86770705873903,
+    "prefill_tok_s_median": 506.2175463215504,
+    "tracked_peak_allocated_gib": 21.343075647950172
+  },
+  "delta_vs_baseline": {
+    "decode_tok_s_abs": 7.969095735436483,
+    "decode_tok_s_pct": 8.769997607934656,
+    "prefill_tok_s_abs": 0.14528188699694056,
+    "prefill_tok_s_pct": 0.02869949650158061,
+    "target_decode_tok_s": 95.0,
+    "target_met": true
+  },
+  "delta_vs_task16_current": {
+    "baseline_label": "task #16/#27 current decode baseline carried into P9.B7",
+    "baseline_decode_tok_s_median": 62.557,
+    "decode_tok_s_abs": 36.27980279417551,
+    "decode_tok_s_pct": 57.99479321926484
+  },
+  "decision": "Retain. The split-K grouped-GQA gated attention route lifts qwen35moe GGUF decode-repack graph replay above the P9.B7 95 tok/s target, keeps P9.E2 accepted, and leaves legacy prefill_out absent from the stripped 512/16 decode trace."
+}

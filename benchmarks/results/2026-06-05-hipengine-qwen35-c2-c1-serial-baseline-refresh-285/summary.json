@@ -1,0 +1,157 @@
+{
+  "artifacts": {
+    "compact_c1_baseline_json": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json",
+    "compact_serial_bridge_json": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c2-serial-bridge-scaling.json",
+    "raw_c1_baseline_json": "/tmp/hipengine-iter285-c1-serial-baselines/c1-baseline.json",
+    "raw_retained_with_baselines_json": "/tmp/hipengine-iter285-c1-serial-baselines/c2-retained-with-baselines.json",
+    "raw_serial_bridge_json": "/tmp/hipengine-iter285-c1-serial-baselines/c2-serial-bridge.json"
+  },
+  "baselines": {
+    "c1": {
+      "decode_tok_s_aggregate": 134.35835066115024,
+      "decode_tok_s_per_request": 134.35835066115024,
+      "status": "loaded",
+      "workload": {
+        "concurrency": 1,
+        "gen_tokens_aggregate": 128,
+        "gen_tokens_per_request": 128,
+        "kv_policy": {
+          "block_size": 256,
+          "int8_admission_gated": false,
+          "int8_explicit": false,
+          "policy_class": "FixedPagedKVPolicy",
+          "requested_scale_dtype": "fp16",
+          "requested_scale_granularity": "per_token_head",
+          "requested_storage": "auto",
+          "resolved_storage_dtype": "bf16",
+          "scale_metadata_format": {
+            "granularity": null,
+            "k_scale": null,
+            "present": false,
+            "scale_dtype": null,
+            "v_scale": null
+          },
+          "selection_reason": "default_bf16",
+          "spans_mode": "uniform",
+          "storage_dtype": "bf16"
+        },
+        "max_layers": 40,
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "prompt_lengths": [
+          512
+        ],
+        "prompt_tokens_aggregate": 512,
+        "prompt_tokens_per_request": 512,
+        "quant": "w4_paro",
+        "shape": "c=1 prompt=512 decode=128",
+        "warmup_decode_tokens": 8
+      }
+    },
+    "serial_bridge_c2": {
+      "correctness_passed": true,
+      "decision_reason": "batch_execution.throughput_claim_eligible=false: current c>N path is scheduler_serial_slot_bridge",
+      "decode_tok_s_aggregate": 105.3435548681001,
+      "decode_tok_s_per_request": 52.67177743405005,
+      "status": "blocked",
+      "workload": {
+        "concurrency": 2,
+        "gen_tokens_aggregate": 256,
+        "gen_tokens_per_request": 128,
+        "kv_policy": {
+          "block_size": 256,
+          "int8_admission_gated": false,
+          "int8_explicit": false,
+          "policy_class": "FixedPagedKVPolicy",
+          "requested_scale_dtype": "fp16",
+          "requested_scale_granularity": "per_token_head",
+          "requested_storage": "auto",
+          "resolved_storage_dtype": "bf16",
+          "scale_metadata_format": {
+            "granularity": null,
+            "k_scale": null,
+            "present": false,
+            "scale_dtype": null,
+            "v_scale": null
+          },
+          "selection_reason": "default_bf16",
+          "spans_mode": "uniform",
+          "storage_dtype": "bf16"
+        },
+        "kv_storage_dtype": "bf16",
+        "max_layers": 40,
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "native_caware_decode": false,
+        "native_compact_prefill": false,
+        "prompt_lengths": [
+          512,
+          512
+        ],
+        "prompt_tokens_aggregate": 1024,
+        "prompt_tokens_per_request": 512,
+        "quant": "w4_paro",
+        "scheduler_path": "scheduler_serial_slot_bridge",
+        "shape": "c=2 prompt=512 decode=128",
+        "warmup_decode_tokens": 8
+      }
+    }
+  },
+  "commands": {
+    "c1_baseline": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter285-c1-serial-baselines/c1-baseline.json",
+    "retained_with_raw_baselines": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c2.json --c1-baseline-json /tmp/hipengine-iter285-c1-serial-baselines/c1-baseline.json --serial-bridge-json /tmp/hipengine-iter285-c1-serial-baselines/c2-serial-bridge.json --json /tmp/hipengine-iter285-c1-serial-baselines/c2-retained-with-baselines.json",
+    "serial_bridge": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter285-c1-serial-baselines/c2-serial-bridge.json"
+  },
+  "created_utc": "2026-06-04T16:42:09Z",
+  "finding": "Collected reusable compact c1 and c2 scheduler-serial-bridge scaling baseline artifacts on GPU1/XTX and attached them to a current c2 retained run. The retained c2 run stayed generated-token green ([137,137]) with scaling.complete=true; aggregate native/c1 ratio was 0.822 and native/serial-bridge ratio was 1.049, so no retained throughput/scaling claim is made.",
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 285,
+  "mode": "qwen35_c2_c1_serial_baseline_refresh",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: this adds required c1 and serial-bridge runtime baseline artifacts and a c2 retained scaling-complete attachment on GPU1/XTX; generated-token equality remains green and no throughput/scaling claim is made.",
+    "passed": true
+  },
+  "retained_c2_with_raw_baselines": {
+    "blocked_reasons": null,
+    "c1_reason": null,
+    "decode_blockers": [],
+    "generated_token_equality_passed": true,
+    "native": {
+      "decode_tok_s_aggregate": 110.47025966104401,
+      "decode_tok_s_per_request": 55.235129830522006
+    },
+    "native_caware_decode": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "ratios": {
+      "aggregate_vs_c1": 0.822206130973194,
+      "aggregate_vs_serial_bridge": 1.048666525440147,
+      "per_request_vs_c1": 0.411103065486597,
+      "per_request_vs_serial_bridge": 1.048666525440147
+    },
+    "scaling_complete": true,
+    "serial_bridge_reason": null,
+    "status": "blocked"
+  },
+  "retained_ready": false,
+  "schema": 1,
+  "software": {
+    "hipengine_commit": "e2034954d60c240b508acbe26e934b6844816aa5"
+  },
+  "status": "passed_required_runtime_evidence",
+  "workload": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

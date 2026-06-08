@@ -1,0 +1,51 @@
+{
+  "schema": "hipengine_rejected_probe_v1",
+  "status": "rejected_perf_reverted",
+  "performance_claim": false,
+  "task_ids": [
+    51
+  ],
+  "label": "p9_h3_rejected_full_attention_gated_context_fusion",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "change": "Prototype fused qwen35_paged_full_attn_decode_context_bf16_spans + qwen35_full_attn_gate_mul_bf16 into a direct BF16 gated-context attention kernel and routed rows=1 full-attention decode through it.",
+  "validation": {
+    "plan_test_command": "PYTHONPATH=. python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py -q --tb=short",
+    "plan_test_result": "3 passed while prototype was present",
+    "p9_e2_command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d14_fused_attn_gate_e2e.json",
+    "p9_e2_status": "accepted",
+    "worst_kl_mean": 0.0,
+    "worst_kl_max": 0.0,
+    "worst_top1_agreement": 1.0,
+    "deterministic_tail": true
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d14_fused_attn_gate_512x128_bench.json",
+    "decode_tok_s_samples": [
+      88.6330789886886,
+      88.52110282233676,
+      88.57639842650018
+    ],
+    "decode_tok_s_median": 88.57639842650018,
+    "prefill_tok_s_median": 504.383173024888,
+    "final_token_ids": [
+      1510,
+      1510,
+      1510
+    ],
+    "finite_final_logits_all": true
+  },
+  "baseline": {
+    "label": "P9.D10 retained Q8T16 dual-split 64-thread launch",
+    "decode_tok_s_512x128_median": 88.80112044965858,
+    "artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d10-q8t16-dual-split-64.json"
+  },
+  "delta_vs_baseline": {
+    "decode_tok_s_abs": -0.22472202315840661,
+    "decode_tok_s_pct": -0.2530621483383233
+  },
+  "decision": "Reject and revert. The fused attention+gate path was correctness-neutral under P9.E2, but the heavier attention kernel outweighed the removed gate_mul launch: 512/128 median decode regressed 88.801 -> 88.576 tok/s. Keep the unfused attention context + gate_mul chain."
+}

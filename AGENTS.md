@@ -64,6 +64,7 @@ Do not drift these casually. They define what hipEngine is.
 
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
 - Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
+- When adding tests that call HIP/ROCm runtime, `hipcc`, or GPU kernels, add an explicit HIP-availability guard (for example `ctypes.CDLL("libamdhip64.so")` + `pytest.skip`) so no-ROCm CI/publish runners skip them instead of failing release validation.
 - Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.
 - When profiling Python/ctypes JIT-built kernels with `rocprofv3`, prebuild the `.so` outside the profiler and run the profiled command with a precomputed compiler-version file plus `require_cached`; do not let the profiled process spawn `hipcc`/clang.
 - For MTP profiling, do **not** wrap the prompt-suite/economics parent harness (`scripts/mtp-bench.py --mode hipengine-current` or `scripts/mtp_prompt_suite_economics.py`) in `rocprofv3`; it launches nested Python children and profiler/JIT state propagates into them. Use `scripts/mtp_verifier_rocprof.py` or profile the final `mtp_chain_e2e_smoke.py` child after a non-profiled cache warmup.
@@ -145,6 +146,7 @@ Working tree is shared state. Other agents or the human may be editing concurren
 - **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `WORKLOG.md`, `pyproject.toml`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
 - Same-file contention: stop and coordinate. The designated agent stages and commits their scoped hunks first to unblock others.
 - `WORKLOG.md` appends are expected and not a conflict unless there are actual conflict markers or interleaved garbled lines. Re-read the live tail, append after it, commit with your logical unit.
+- `WORKLOG.md` is configured with git's built-in `merge=union` driver (see `.gitattributes`), so concurrent appends auto-resolve as `common prefix + ours-tail + theirs-tail` with no conflict markers. If markers do appear (e.g. a stash or a rebase started before this was configured), run `python3 scripts/resolve_worklog_conflict.py WORKLOG.md` (add `--sort-by-date` to re-order `## YYYY-MM-DD` sections in each resolved block; `--check` for a pre-commit gate). The script only touches conflict blocks; content outside markers is left exactly as-is.
 - Do not clean up another agent's benchmark outputs, staged files, or local artifacts unless the task explicitly asks for that cleanup.
 
 ## External Reference Repos

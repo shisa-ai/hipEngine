@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-05-17
+Last updated: 2026-05-26
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -14,7 +14,8 @@ working on.
 | [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
-| [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board and accepted/rejected/deferred candidate decisions. |
+| [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
+| [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Active optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 
 ## Validation and benchmarking
@@ -32,13 +33,16 @@ working on.
 | --- | --- |
 | [`KERNELS.md`](KERNELS.md) | Kernel catalog, source-lineage drift workflow, Qwen/PARO path map, JIT cache gotchas, and build profiles. |
 | [`ROOFLINE.md`](ROOFLINE.md) | RDNA3 / W7900 roofline model, occupancy rules, decision tree, and rejected hardware-level approaches. |
+| [`RELAXED.md`](RELAXED.md) | Strict/exact vs opt-in relaxed precision policy, per-kernel savings candidates, and relaxed-mode backlog. |
 | [`MARLIN.md`](MARLIN.md) | Marlin-K / PARO W4 layout plan and porting context. |
+| [`GGUF_DECODE_REPACK.md`](GGUF_DECODE_REPACK.md) | P9.H2 qwen35moe GGUF decode-side replacement layout, memory budget, and acceptance plan. |
 | [`source_lineage.json`](source_lineage.json) | Machine-readable parent-file manifest for `scripts/check_lineage.py`. |
 
 ## Feature plans
 
 | Document | Use it for |
 | --- | --- |
+| [`CONCURRENCY.md`](CONCURRENCY.md) | c>N serving readiness, diagnostic evidence, and server/scheduler/kernel/KV punchlist. |
 | [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
 | [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
 | [`DFLASH.md`](DFLASH.md) | DFlash draft-model speculative decode plan. |

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "date": "2026-05-16",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "scope": "kernel_microbench",
+  "model": "synthetic GEMV fixture",
+  "quant": "gguf_q4_k",
+  "backend": "hip_gfx1100",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "gfx": "gfx1100",
+    "rocm_hip": "7.13.60940"
+  },
+  "command": "PYTHONPATH=. python3 /tmp/bench_gguf_bf16_out.py",
+  "timing_method": "HIP events around graph execution; 500 kernel launches captured per graph; rows=1; BF16 activations; Q4_K lossless pack8 weights",
+  "correctness": {
+    "synthetic_pack8_smoke_command": "python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip --rows 2 --hidden-size 512",
+    "synthetic_pack8_smoke_result": {
+      "f32_max_abs": 0.0,
+      "fp16_max_abs": 0.0,
+      "bf16_max_abs": 0.0,
+      "bf16_out_max_abs": 0.0,
+      "bf16_out_bit_mismatch": 0
+    },
+    "synthetic_k_family_smoke_command": "python3 scripts/gguf_k_gemv_smoke.py --rows 2 --out-features 7",
+    "synthetic_k_family_smoke_result": {
+      "q8_0_bf16_out_bit_mismatch": 0,
+      "q5_k_bf16_out_bit_mismatch": 0,
+      "q6_k_bf16_out_bit_mismatch": 0,
+      "worst_max_abs": 0.0
+    },
+    "real_tensor_bf16_output_smoke": [
+      {
+        "type": "Q4_K_PACK8",
+        "file": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [2048, 1024],
+        "bf16_out_max_abs_vs_cpu_rounded_bf16": 0.0001220703125,
+        "bf16_out_mean_abs_vs_cpu_rounded_bf16": 5.960464477539063e-8,
+        "bf16_out_bit_mismatch_vs_cpu_rounded_bf16": 1
+      },
+      {
+        "type": "Q8_0",
+        "tensor": "blk.0.ssm_alpha.weight",
+        "shape": [16, 1024],
+        "bf16_out_max_abs_vs_cpu_rounded_bf16": 0.0,
+        "bf16_out_bit_mismatch_vs_cpu_rounded_bf16": 0
+      },
+      {
+        "type": "Q5_K",
+        "tensor": "blk.0.attn_qkv.weight",
+        "shape": [6144, 1024],
+        "bf16_out_max_abs_vs_cpu_rounded_bf16": 0.0,
+        "bf16_out_bit_mismatch_vs_cpu_rounded_bf16": 0
+      },
+      {
+        "type": "Q6_K",
+        "tensor": "token_embd.weight",
+        "shape": [248320, 1024],
+        "bf16_out_max_abs_vs_cpu_rounded_bf16": 0.001953125,
+        "bf16_out_mean_abs_vs_cpu_rounded_bf16": 3.6398073888221916e-8,
+        "bf16_out_bit_mismatch_vs_cpu_rounded_bf16": 28
+      }
+    ]
+  },
+  "measurements": [
+    {
+      "shape": {"rows": 1, "in_features": 512, "out_features": 128},
+      "repeats": 20000,
+      "warmup_graph_launches": 1000,
+      "kernels": {
+        "gguf_q4_k_pack8_bf16_f32_out": {"us": 3.0379055023193358, "out_dtype": "fp32"},
+        "gguf_q4_k_pack8_bf16_bf16_out": {"us": 3.0334171295166015, "out_dtype": "bf16"},
+        "gguf_q4_k_pack8_bf16_f32_out_plus_cast": {"us": 5.82098388671875, "out_dtype": "bf16"}
+      },
+      "ratios": {
+        "bf16_out_vs_f32_out_time": 0.9985225436409041,
+        "bf16_out_vs_f32_out_plus_cast_time": 0.5211175960197544
+      }
+    },
+    {
+      "shape": {"rows": 1, "in_features": 4096, "out_features": 128},
+      "repeats": 10000,
+      "warmup_graph_launches": 1000,
+      "kernels": {
+        "gguf_q4_k_pack8_bf16_f32_out": {"us": 4.273476791381836, "out_dtype": "fp32"},
+        "gguf_q4_k_pack8_bf16_bf16_out": {"us": 4.40002212524414, "out_dtype": "bf16"},
+        "gguf_q4_k_pack8_bf16_f32_out_plus_cast": {"us": 7.045964050292969, "out_dtype": "bf16"}
+      },
+      "ratios": {
+        "bf16_out_vs_f32_out_time": 1.0296117985518263,
+        "bf16_out_vs_f32_out_plus_cast_time": 0.6244741094103636
+      }
+    }
+  ],
+  "notes": [
+    "Diagnostic kernel microbench only; not an accepted LLM.generate throughput row.",
+    "Direct BF16 output is about equal to FP32 output alone for 512/128 and ~3% slower for 4096/128, but avoids a separate F32->BF16 cast kernel and is 38-48% faster than FP32 output plus cast for these shapes.",
+    "BF16 output variants were added for Q4_K raw/pack8 and Q8_0/Q5_K/Q6_K raw GEMV."
+  ]
+}

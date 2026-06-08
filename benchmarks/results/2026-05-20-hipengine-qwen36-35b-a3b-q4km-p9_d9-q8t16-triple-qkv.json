@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "status": "accepted_small_op_optimization_target_still_blocked",
+  "performance_claim": true,
+  "task": "P9.D9/#28/#51",
+  "change": "Add Q8T16 triple split-output GEMV and route full-attention attn_q+attn_k+attn_v through one same-input launch while preserving separate Q/K/V scratch buffers.",
+  "hardware": {
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
+    "backend": "hip_gfx1100"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_GEMV_DECODE": "1",
+    "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "correctness_gate": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d9_q8_triple_qkv_e2e.json",
+    "status": "accepted",
+    "kl_mean_worst": 0.0,
+    "kl_max_worst": 0.0,
+    "top1_agreement_worst": 1.0,
+    "candidate_deterministic_tail": true,
+    "finite_final_logits": true
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d9_q8_triple_qkv_512x128_bench.json",
+    "baseline_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d7-q8t16-qkv-gate-pair.json",
+    "before": {
+      "prefill_tok_s_median": 500.4798262155052,
+      "decode_tok_s_median": 87.96093534844331,
+      "decode_tok_s_samples": [88.36341674903015, 87.96093534844331, 87.80578260933609],
+      "peak_tracked_gib_median": 21.343075528740883
+    },
+    "after": {
+      "prefill_tok_s_median": 499.35636425439156,
+      "prefill_tok_s_samples": [499.35636425439156, 499.8350822331593, 498.26138988556164],
+      "decode_tok_s_median": 88.24261273823781,
+      "decode_tok_s_samples": [88.28132425055301, 88.24261273823781, 88.19661442934193],
+      "peak_tracked_gib_median": 21.343075528740883,
+      "hip_used_peak_sampled_gib_median": 21.806640625
+    },
+    "delta": {
+      "decode_tok_s_abs": 0.2816773897944995,
+      "decode_tok_s_pct": 0.3202301942493728,
+      "prefill_tok_s_abs": -1.1234619611136547,
+      "prefill_tok_s_pct": -0.22447893874361334
+    },
+    "acceptance_target": {
+      "decode_tok_s_median_min": 95.0
+    },
+    "acceptance_result": "target still blocked: 88.243 tok/s < 95 tok/s"
+  },
+  "rocprof_smoke": {
+    "command": "rocprofv3 --kernel-trace -d /tmp/p9_d9_q8_triple_unit_rocprof_csv -f csv -- python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q -k 'triple_split_bf16_bf16_matches_cpu_oracle and 2048' --tb=short",
+    "kernel": "q8_0_t16_triple_split_gemv_kernel<unsigned short, unsigned short>",
+    "duration_ns": 22119,
+    "vgpr": 56,
+    "sgpr": 128
+  },
+  "tests": [
+    "PYTHONPATH=. python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py hipengine/runtime/gguf_linear.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py",
+    "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q --tb=short # 58 passed",
+    "PYTHONPATH=. python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py -q --tb=short # 67 passed"
+  ],
+  "notes": [
+    "The triple kernel is a launch-count reduction only: it reuses the same T16 per-output-tile accumulation contract and writes the existing Q/K/V scratch buffers separately.",
+    "This is correctness-neutral and retained, but #51/#52/#26 remain open because median decode is still below 95 tok/s."
+  ]
+}

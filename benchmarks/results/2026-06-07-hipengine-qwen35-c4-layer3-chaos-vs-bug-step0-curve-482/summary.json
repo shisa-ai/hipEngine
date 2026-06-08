@@ -1,0 +1,48 @@
+{
+  "iteration": 482,
+  "kind": "c4_layer3_native_chaos_vs_bug_step0_amplification_curve",
+  "created_at": "2026-06-07T15:20:00+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "git_commit_before_commit": "5109606a",
+  "question": "Is the c4 layer3-native (rows=4) full-attention divergence a logic/indexing bug or inherent batch-vs-c1-serial FP non-associativity amplified by chaotic near-tie sensitivity over decode steps?",
+  "method": "Single full 40-layer c4 512-prompt decode, trace decode step 0 only (no 82-step decode, no per-layer-limit sweep). Two configs compared against the c1 serial oracle: RED = layer3 native rows=4 (rowchunk only layer 15, reproduces iter475/480 red), GREEN = rowchunk(3,15) (current green default). Per-full-attention-layer worst-row max_abs extracted from decode_full_attention.steps[0].",
+  "key_findings": {
+    "divergence_is_instantaneous_not_kv_accumulated": "RED first stage failure is layer3/mlp_input/row0 max_abs 1.953e-3 (1 fp16 ulp, 1 element) at decode step 0, identical seed to iter481's step-80 observation. The divergence appears on the very first decode token, so it is not driven by KV-cache accumulation.",
+    "seed_originates_at_attn_context_not_kv_or_o_or_rmsnorm": "Within layer3 at step0, all stages through 'query' are bit-identical to c1 (max_abs=0). First nonzero drift is 'attn_context' (3.04e-6, fp32), then monotone growth gated_attn 1.53e-5 -> o_proj 3.05e-5 -> residual 6.10e-5 -> mlp_input 1.95e-3 (first to cross atol). attn_context is the qwen35_paged_full_attn_decode_context_tensor_batch_kernel output vs the c1 serial decode kernel; same query/KV inputs, different reduction order => sub-ulp difference under tolerance.",
+    "layer3_native_vs_rowchunk_is_sub_ulp": "RED vs GREEN at layer3: attn_context 3.040e-6 vs 2.921e-6 (delta ~1.2e-7), mlp_input identical 1.953e-3, output identical 1.221e-4. The rows=4-vs-rows=2 grouping at layer3 changes the result by ~1e-7, i.e. it is NOT the source of the failure.",
+    "dominant_drift_is_systemic_batch_vs_c1_kernel": "RED and GREEN per-layer drift curves are the same order of magnitude at every full-attention layer and are dominated by attn_context ~5e-3..1.4e-2 at layers 7..39 (which are native rows=4 in BOTH runs). By layer39 final hidden drift is RED 6.21e-2 / GREEN 3.10e-2. The dominant drift source is the batch full-attention context kernel being numerically different from the c1 serial decode kernel, present identically in green and red, not the layer3 row grouping.",
+    "both_paths_match_c1_tokens_at_step0_1": "Despite 3e-2..6e-2 final-hidden drift, both RED and GREEN generate tokens IDENTICAL to c1 at decode steps 0 and 1 (token_passed=true, generated sequence == c1). The full-model RED failure is row0 first-mismatch at generated index 82 (iter475/480): a chaotic near-tie crossed after ~82 decode steps of KV accumulation, not a step-0 error.",
+    "conclusion": "The c4 layer3-native 'blocker' is NOT a logic/indexing bug. Native rows=4 and rowchunk rows=2 are both valid bf16 attention with statistically indistinguishable numerical distance from the c1 serial oracle (~1e-2 per full-attention layer, dominated by batch-context-kernel vs serial-kernel reduction order). The free-running generated-token equal-prefix metric measures chaotic near-tie tracking over 128 decode steps, not per-step numerical correctness; rowchunk 'passes' only by reproducing the c2/rows=2 rounding that happens to track c1's near-ties longer for this single fixture."
+  },
+  "per_layer_step0_drift_curve": {
+    "columns": ["full_attention_layer", "attn_context_red", "attn_context_green", "mlp_input_red", "mlp_input_green", "output_red", "output_green"],
+    "rows": [
+      [3, 3.040e-06, 2.921e-06, 1.953e-03, 1.953e-03, 1.221e-04, 1.221e-04],
+      [7, 1.031e-02, 8.497e-03, 7.812e-03, 5.859e-03, 4.883e-04, 7.324e-04],
+      [11, 8.417e-03, 7.154e-03, 7.812e-03, 1.562e-02, 4.883e-04, 4.883e-04],
+      [15, 6.432e-03, 1.277e-02, 7.812e-03, 7.812e-03, 9.766e-04, 7.324e-04],
+      [19, 7.064e-03, 1.025e-02, 7.812e-03, 7.812e-03, 9.766e-04, 1.953e-03],
+      [23, 5.861e-03, 7.686e-03, 1.172e-02, 9.766e-03, 1.953e-03, 1.953e-03],
+      [27, 5.662e-03, 1.036e-02, 1.172e-02, 7.812e-03, 1.465e-03, 1.099e-03],
+      [31, 1.380e-02, 1.042e-02, 1.562e-02, 9.766e-03, 1.465e-03, 1.099e-03],
+      [35, 1.127e-02, 1.000e-02, 1.562e-02, 2.344e-02, 3.906e-03, 3.906e-03],
+      [39, 6.209e-02, 3.103e-02, 1.562e-02, 1.562e-02, 9.766e-03, 3.906e-03]
+    ],
+    "note": "Layers 7..39 are native rows=4 in BOTH runs (only layer3 and layer15 differ in grouping); their near-equal drift confirms the dominant source is systemic batch-vs-c1-serial kernel rounding, not layer3 row grouping."
+  },
+  "recommendation": {
+    "do_not": "Do not attempt a kernel row-index edit to make native rows=4 track free-running c1 to 137; there is no bug and the layer3 row-grouping effect is ~1e-7.",
+    "primary": "Switch/augment the c>N correctness gate from free-running generated-token exact equality to a TEACHER-FORCED per-step comparison: feed both the batch path and the c1 oracle the same token each step and compare per-step logits/argmax (KL and top-1) as in the project correctness gate (KL <= 0.05 AND top-1 >= 90% vs reference). This isolates per-step numerical correctness from chaotic sequence divergence. Native rows=4 is expected (not yet measured) to pass given per-step drift ~1e-2, which would make native c-aware decode claim-eligible WITHOUT rowchunk and unblock retained throughput rows.",
+    "secondary": "If tighter free-running tracking is still desired, the real lever is the batch full-attention context kernel's reduction order (the ~1e-2/layer dominant drift), not layer3; aligning it to the c1 serial kernel's accumulation order would shrink systemic drift. This is a numerics-tightening effort and may be unnecessary under the teacher-forced gate."
+  },
+  "raw_artifacts_tmp": [
+    {"label": "red_layer3_native_rowchunk15", "path": "/tmp/iter482-c4-layer3native/step0_fullmodel.json", "sha256": "dc33ca995d735676e3ec346419674ba151d56421e2358164c650b7cd4bbbc1e4", "size_bytes": 16086104},
+    {"label": "green_rowchunk_3_15", "path": "/tmp/iter482-c4-layer3native/step0_fullmodel_green_3_15.json", "sha256": "7685da7c4f3a4ba086e7dd8b84060f3ae985e917eff7788a159c16e21e0d6a06", "size_bytes": 16113253}
+  ],
+  "commands": {
+    "red": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 2 --warmup-decode-tokens 0 --max-layers 40 --layer-limits 40 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/iter482-c4-layer3native/step0_fullmodel.json",
+    "green": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py ... --batch-decode-full-attn-row-chunk-layers 3,15 ... --json /tmp/iter482-c4-layer3native/step0_fullmodel_green_3_15.json"
+  }
+}

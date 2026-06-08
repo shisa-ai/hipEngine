@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-output-path-sweep/summary.json",
+  "created_at": "2026-06-02T23:15:48.103194Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "c=2 output-path sweep after auto selected-c1 MoE: the default batch_gemv output paths remain the fastest generated-token-green choice. Native batch linear/full-attention output copies either fail generated-token equality or slow down, so no output-path change is made and c2 remains below c1.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "06e147a11430a72a71b579b56b7e7d18bb8d71e4",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "rows": 2,
+    "shape": "c=2 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_decode_moe_path": "selected_c1",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "primary_verify": {
+    "tmp_artifact": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "min_equal_prefix": 137,
+    "prefixes": [
+      137,
+      137
+    ],
+    "decode_tok_s_aggregate": 126.51305830962329,
+    "decode_tok_s_per_request": 63.256529154811645,
+    "decode_moe_path": "selected_c1_batch"
+  },
+  "variants": [
+    {
+      "name": "default_batch_gemv_outputs",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-output-path-sweep-iter115-default.json",
+      "status": "blocked",
+      "performance_claim": false,
+      "software_commit": "06e147a11430a72a71b579b56b7e7d18bb8d71e4",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 126.00129048412069,
+      "decode_tok_s_per_request": 63.000645242060344,
+      "vs_default_batch_gemv_outputs": 1.0,
+      "workload_linear_output_path": "batch_gemv",
+      "workload_full_attention_output_path": "batch_gemv",
+      "decode_linear_output_path": "batch_gemv",
+      "decode_full_attention_output_path": null,
+      "throughput_claim_eligible": true,
+      "batch_execution_blockers": [],
+      "native_caware_decode": true
+    },
+    {
+      "name": "full_attention_output_batch",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-output-path-sweep-iter115-full_output_batch.json",
+      "status": "blocked",
+      "performance_claim": false,
+      "software_commit": "06e147a11430a72a71b579b56b7e7d18bb8d71e4",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 120.97411935507974,
+      "decode_tok_s_per_request": 60.48705967753987,
+      "vs_default_batch_gemv_outputs": 0.9601022250666988,
+      "workload_linear_output_path": "batch_gemv",
+      "workload_full_attention_output_path": "batch",
+      "decode_linear_output_path": "batch_gemv",
+      "decode_full_attention_output_path": null,
+      "throughput_claim_eligible": true,
+      "batch_execution_blockers": [],
+      "native_caware_decode": true
+    },
+    {
+      "name": "linear_output_batch",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-output-path-sweep-iter115-linear_output_batch.json",
+      "status": "rejected_correctness",
+      "performance_claim": false,
+      "software_commit": "06e147a11430a72a71b579b56b7e7d18bb8d71e4",
+      "software_dirty": false,
+      "prefixes": [
+        103,
+        137
+      ],
+      "generated_token_equality_passed": false,
+      "decode_tok_s_aggregate": 114.0493771949805,
+      "decode_tok_s_per_request": 57.02468859749025,
+      "vs_default_batch_gemv_outputs": 0.9051445168282111,
+      "workload_linear_output_path": "batch",
+      "workload_full_attention_output_path": "batch_gemv",
+      "decode_linear_output_path": "native_batch",
+      "decode_full_attention_output_path": null,
+      "throughput_claim_eligible": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes"
+      ],
+      "native_caware_decode": true
+    },
+    {
+      "name": "both_outputs_batch",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-output-path-sweep-iter115-both_output_batch.json",
+      "status": "rejected_correctness",
+      "performance_claim": false,
+      "software_commit": "06e147a11430a72a71b579b56b7e7d18bb8d71e4",
+      "software_dirty": false,
+      "prefixes": [
+        120,
+        137
+      ],
+      "generated_token_equality_passed": false,
+      "decode_tok_s_aggregate": 109.61572759640886,
+      "decode_tok_s_per_request": 54.80786379820443,
+      "vs_default_batch_gemv_outputs": 0.8699571819879351,
+      "workload_linear_output_path": "batch",
+      "workload_full_attention_output_path": "batch",
+      "decode_linear_output_path": "native_batch",
+      "decode_full_attention_output_path": null,
+      "throughput_claim_eligible": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes"
+      ],
+      "native_caware_decode": true
+    },
+    {
+      "name": "linear_output_selected_c1",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-output-path-sweep-iter115-linear_output_selected.json",
+      "status": "blocked",
+      "performance_claim": false,
+      "software_commit": "06e147a11430a72a71b579b56b7e7d18bb8d71e4",
+      "software_dirty": false,
+      "prefixes": [
+        137,
+        137
+      ],
+      "generated_token_equality_passed": true,
+      "decode_tok_s_aggregate": 121.50942295985536,
+      "decode_tok_s_per_request": 60.75471147992768,
+      "vs_default_batch_gemv_outputs": 0.9643506228626173,
+      "workload_linear_output_path": "selected_c1",
+      "workload_full_attention_output_path": "batch_gemv",
+      "decode_linear_output_path": "selected_c1_forced",
+      "decode_full_attention_output_path": null,
+      "throughput_claim_eligible": false,
+      "batch_execution_blockers": [
+        "linear-attention output projection forced to selected-c1 diagnostic path"
+      ],
+      "native_caware_decode": false
+    }
+  ],
+  "measurements": {
+    "default_batch_gemv_outputs_decode_tok_s_aggregate": 126.00129048412069,
+    "best_generated_token_green_variant": "default_batch_gemv_outputs",
+    "best_generated_token_green_decode_tok_s_aggregate": 126.00129048412069,
+    "default_vs_c1": 0.9395241681457362,
+    "default_vs_serial_bridge": 1.5779621947771074,
+    "primary_verify_vs_c1": 0.9433401468447773,
+    "prior_auto_selected_moe_projection_best_tok_s_aggregate": 126.17956290612028,
+    "default_sweep_vs_prior_auto_selected_moe_best": 0.9985871529596895,
+    "c1_decode_tok_s_aggregate": 134.1118139970783,
+    "serial_bridge_decode_tok_s_aggregate": 79.85063957880106
+  },
+  "rejected_variants": [
+    {
+      "name": "full_attention_output_batch",
+      "reason": "Generated-token green but slower than default batch_gemv output path (120.974 vs 126.001 tok/s)."
+    },
+    {
+      "name": "linear_output_batch",
+      "reason": "Generated-token equality regressed (prefixes [103,137]) and throughput claim became ineligible."
+    },
+    {
+      "name": "both_outputs_batch",
+      "reason": "Generated-token equality regressed (prefixes [120,137]) and throughput claim became ineligible."
+    },
+    {
+      "name": "linear_output_selected_c1",
+      "reason": "Generated-token green but slower and explicitly non-c-aware/diagnostic because linear output projection is forced selected-c1."
+    }
+  ],
+  "source_artifacts": {
+    "prior_auto_selected_moe": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-auto-selected-moe/summary.json",
+    "prior_scaling_blocker": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/scaling-blocker-c2.json",
+    "projection_evidence": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json"
+  },
+  "conclusion": {
+    "accepted": false,
+    "reason": "No output-path variant beats the default batch_gemv output configuration while preserving generated-token equality and c-aware eligibility. This closes the c2 output-path sweep; c2 retained promotion remains blocked by aggregate_vs_c1<1."
+  },
+  "commands": {
+    "sweep": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-size 2 --batch-sample-mode batched_lm_head --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json with output-path variants default, --batch-decode-full-attn-output-path batch, --batch-decode-linear-output-path batch, both batch, and --batch-decode-linear-output-path selected_c1",
+    "primary_verify": "active loop verify command at clean commit 06e147a with HIP_VISIBLE_DEVICES=1; output /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json"
+  }
+}

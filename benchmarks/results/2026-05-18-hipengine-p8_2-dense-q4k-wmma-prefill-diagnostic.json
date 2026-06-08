@@ -1,0 +1,713 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained_raw_q4k_wmma_fast_full_model_not_yet_exercised",
+  "performance_claim": true,
+  "timestamp": "2026-05-18T05:58:11.940340+00:00",
+  "run_tag": "hipengine-p8_2-dense-q4k-wmma-prefill-diagnostic",
+  "task": "#10 Benchmark P8.2 dense Q4_K WMMA prefill",
+  "summary": "Raw dense Q4_K WMMA prefill is fast on Qwen3.5-0.8B-shaped tensors: actual GGUF layer-0 attn_gate 5.236 ms -> 0.378 ms (13.87x) and actual ffn_gate+ffn_up dual 15.604 ms -> 0.540 ms (28.88x). rocprof confirms gguf_q4_k_prefill_wmma_kernel and gguf_q4_k_prefill_dual_wmma_kernel replace the decode-shaped gguf_q4_k_prefill_out_kernel. However, the real Qwen3.5-0.8B-Q4_K_M resident model still materializes all 2D Q4_K tensors as q4_k_pack8, so the full-model 512/0 path does not exercise Q4_K WMMA yet; opt-in only affects Q8_0 raw projections. qwen35moe also does not exercise P8.2 dense Q4_K because its Q4_K tensors are rank-3 selected experts consumed by selected-MoE kernels (P8.4), not gguf_linear dense dispatch.",
+  "hardware": {
+    "gpu": "local RX 7900 XTX / gfx1100 (W7900 not rerun)",
+    "device_total_gib": 23.984375
+  },
+  "software": {
+    "commit_at_artifact": "16929e4ab6d8dbec8f053d2762eb92d21e45fb4b",
+    "git_status_at_artifact": "## gguf-bulk-prefill\n?? uv.lock",
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n"
+  },
+  "driver_scripts": {
+    "synthetic_raw_q4k_bench": {
+      "path": "/tmp/p8_q4_dense_wmma_bench.py",
+      "sha256": "0163a7c037ca27ea25872a50cfff9331c482b51f64c504c4afe5bd795962e6ff"
+    },
+    "actual_gguf_tensor_bench": {
+      "path": "/tmp/p8_q4_dense_gguf_tensor_bench.py",
+      "sha256": "925b928efd1936e43fd36f771efd4c075ebf998434b69fb4ee6bced47d922125"
+    }
+  },
+  "commands": {
+    "actual_gguf_attn_gate_baseline": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0 python3 /tmp/p8_q4_dense_gguf_tensor_bench.py --mode single --slot-a attn_gate --rows 512 --warmup-iters 2 --measured-iters 7 --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/p8_q4_bench/gguf-attn_gate-baseline.json",
+    "actual_gguf_attn_gate_wmma": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=1 python3 /tmp/p8_q4_dense_gguf_tensor_bench.py --mode single --wmma --slot-a attn_gate --rows 512 --warmup-iters 2 --measured-iters 7 --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/p8_q4_bench/gguf-attn_gate-wmma.json",
+    "actual_gguf_ffn_gate_up_baseline": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0 python3 /tmp/p8_q4_dense_gguf_tensor_bench.py --mode dual --slot-a ffn_gate --slot-b ffn_up --rows 512 --warmup-iters 2 --measured-iters 7 --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/p8_q4_bench/gguf-ffn_gate_up-baseline.json",
+    "actual_gguf_ffn_gate_up_wmma": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=1 python3 /tmp/p8_q4_dense_gguf_tensor_bench.py --mode dual --wmma --slot-a ffn_gate --slot-b ffn_up --rows 512 --warmup-iters 2 --measured-iters 7 --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/p8_q4_bench/gguf-ffn_gate_up-wmma.json",
+    "full_qwen_baseline": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p8_q4_bench/full-qwen/baseline-512-0.json",
+    "full_qwen_wmma_env": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=1 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p8_q4_bench/full-qwen/wmma-512-0.json"
+  },
+  "measurements": {
+    "actual_gguf_attn_gate_single_raw": {
+      "baseline_json": "/tmp/p8_q4_bench/gguf-attn_gate-baseline.json",
+      "wmma_json": "/tmp/p8_q4_bench/gguf-attn_gate-wmma.json",
+      "baseline_median_ms": 5.236101,
+      "wmma_median_ms": 0.377564,
+      "delta_ms": -4.858537,
+      "speedup_x": 13.8681,
+      "baseline_tok_s": 97782.682423,
+      "wmma_tok_s": 1356061.515796,
+      "baseline_proj_s": 190.981802,
+      "wmma_proj_s": 2648.557648,
+      "owned_input_weight_output_mib": 4.125,
+      "baseline_memory_stats": {
+        "current_allocated_bytes": 4325376,
+        "peak_allocated_bytes": 4325376,
+        "total_allocated_bytes": 4325376,
+        "total_freed_bytes": 0,
+        "active_allocations": 3,
+        "peak_allocations": 3
+      },
+      "wmma_memory_stats": {
+        "current_allocated_bytes": 4325376,
+        "peak_allocated_bytes": 4325376,
+        "total_allocated_bytes": 4325376,
+        "total_freed_bytes": 0,
+        "active_allocations": 3,
+        "peak_allocations": 3
+      },
+      "baseline_samples_s": [
+        0.007560920959804207,
+        0.007412437989842147,
+        0.006917609949596226,
+        0.005236100987531245,
+        0.004617722996044904,
+        0.0046087129740044475,
+        0.004693780967500061
+      ],
+      "wmma_samples_s": [
+        0.00038517697248607874,
+        0.00037756399251520634,
+        0.00038608501199632883,
+        0.000367227999959141,
+        0.0003666689735837281,
+        0.0003628979902714491,
+        0.000386992993298918
+      ]
+    },
+    "actual_gguf_ffn_gate_up_dual_raw": {
+      "baseline_json": "/tmp/p8_q4_bench/gguf-ffn_gate_up-baseline.json",
+      "wmma_json": "/tmp/p8_q4_bench/gguf-ffn_gate_up-wmma.json",
+      "baseline_median_ms": 15.603612,
+      "wmma_median_ms": 0.540366,
+      "delta_ms": -15.063246,
+      "speedup_x": 28.876,
+      "baseline_tok_s": 32812.915363,
+      "wmma_tok_s": 947505.969215,
+      "baseline_proj_s": 128.175451,
+      "wmma_proj_s": 3701.195192,
+      "owned_input_weight_output_mib": 11.9375,
+      "baseline_memory_stats": {
+        "current_allocated_bytes": 12517376,
+        "peak_allocated_bytes": 12517376,
+        "total_allocated_bytes": 12517376,
+        "total_freed_bytes": 0,
+        "active_allocations": 5,
+        "peak_allocations": 5
+      },
+      "wmma_memory_stats": {
+        "current_allocated_bytes": 12517376,
+        "peak_allocated_bytes": 12517376,
+        "total_allocated_bytes": 12517376,
+        "total_freed_bytes": 0,
+        "active_allocations": 5,
+        "peak_allocations": 5
+      },
+      "baseline_samples_s": [
+        0.015858953003771603,
+        0.015603612002450973,
+        0.015754469961393625,
+        0.015656062052585185,
+        0.015254402998834848,
+        0.015526855015195906,
+        0.01521794602740556
+      ],
+      "wmma_samples_s": [
+        0.0005634819972328842,
+        0.0005426700226962566,
+        0.0005436470382846892,
+        0.0005397369968704879,
+        0.0005403659888543189,
+        0.0005312860012054443,
+        0.0005341490032151341
+      ]
+    },
+    "synthetic_qwen_shape_single_raw": {
+      "baseline_json": "/tmp/p8_q4_bench/synthetic-single-baseline.json",
+      "wmma_json": "/tmp/p8_q4_bench/synthetic-single-wmma.json",
+      "baseline_median_ms": 6.014766,
+      "wmma_median_ms": 0.362897,
+      "delta_ms": -5.651869,
+      "speedup_x": 16.5743,
+      "baseline_tok_s": 85123.843597,
+      "wmma_tok_s": 1410868.645798,
+      "baseline_proj_s": 166.257507,
+      "wmma_proj_s": 2755.602824,
+      "owned_input_weight_output_mib": 4.125,
+      "baseline_memory_stats": {
+        "current_allocated_bytes": 4325376,
+        "peak_allocated_bytes": 4325376,
+        "total_allocated_bytes": 4325376,
+        "total_freed_bytes": 0,
+        "active_allocations": 3,
+        "peak_allocations": 3
+      },
+      "wmma_memory_stats": {
+        "current_allocated_bytes": 4325376,
+        "peak_allocated_bytes": 4325376,
+        "total_allocated_bytes": 4325376,
+        "total_freed_bytes": 0,
+        "active_allocations": 3,
+        "peak_allocations": 3
+      },
+      "baseline_samples_s": [
+        0.0074114600429311395,
+        0.00712140800897032,
+        0.007089280989021063,
+        0.00601476599695161,
+        0.004583080997690558,
+        0.004596840008161962,
+        0.004672968003433198
+      ],
+      "wmma_samples_s": [
+        0.00039418600499629974,
+        0.00037050998071208596,
+        0.00037993898149579763,
+        0.00035905599361285567,
+        0.0003581479541026056,
+        0.00036289700074121356,
+        0.0003582179779186845
+      ]
+    },
+    "synthetic_qwen_shape_dual_raw": {
+      "baseline_json": "/tmp/p8_q4_bench/synthetic-dual-baseline.json",
+      "wmma_json": "/tmp/p8_q4_bench/synthetic-dual-wmma.json",
+      "baseline_median_ms": 15.655992,
+      "wmma_median_ms": 0.545952,
+      "delta_ms": -15.11004,
+      "speedup_x": 28.6765,
+      "baseline_tok_s": 32703.133667,
+      "wmma_tok_s": 937811.376761,
+      "baseline_proj_s": 127.746616,
+      "wmma_proj_s": 3663.32569,
+      "owned_input_weight_output_mib": 11.9375,
+      "baseline_memory_stats": {
+        "current_allocated_bytes": 12517376,
+        "peak_allocated_bytes": 12517376,
+        "total_allocated_bytes": 12517376,
+        "total_freed_bytes": 0,
+        "active_allocations": 5,
+        "peak_allocations": 5
+      },
+      "wmma_memory_stats": {
+        "current_allocated_bytes": 12517376,
+        "peak_allocated_bytes": 12517376,
+        "total_allocated_bytes": 12517376,
+        "total_freed_bytes": 0,
+        "active_allocations": 5,
+        "peak_allocations": 5
+      },
+      "baseline_samples_s": [
+        0.015859998995438218,
+        0.01582787203369662,
+        0.015701039985287935,
+        0.015655992028769106,
+        0.015215570048894733,
+        0.015278987004421651,
+        0.015200903988443315
+      ],
+      "wmma_samples_s": [
+        0.0005710260011255741,
+        0.0005459520034492016,
+        0.0005601299926638603,
+        0.000553564983420074,
+        0.0005356160108931363,
+        0.0005308660329319537,
+        0.0005398759967647493
+      ]
+    },
+    "full_qwen35_08b_q4km_512_0": {
+      "baseline_json": "/tmp/p8_q4_bench/full-qwen/baseline-512-0.json",
+      "wmma_env_json": "/tmp/p8_q4_bench/full-qwen/wmma-512-0.json",
+      "prefill_tok_s_baseline_median": 3066.14003029368,
+      "prefill_tok_s_wmma_env_median": 3081.978447267298,
+      "prefill_tok_s_delta_pct": 0.5165588269659516,
+      "prefill_seconds_baseline_median": 0.16698519798228517,
+      "prefill_seconds_wmma_env_median": 0.16612705402076244,
+      "tracked_peak_allocated_gib_baseline": 0.955737192183733,
+      "tracked_peak_allocated_gib_wmma_env": 0.955737192183733,
+      "hip_used_peak_sampled_gib_baseline": 1.201171875,
+      "hip_used_peak_sampled_gib_wmma_env": 1.203125,
+      "q4_wmma_symbols_present": false,
+      "q4_pack8_prefill_ms_baseline": 61.597369,
+      "q4_pack8_prefill_ms_wmma_env": 61.788411,
+      "q8_wmma_ms_wmma_env": 0.649241
+    }
+  },
+  "rocprof": {
+    "synthetic_single_baseline": {
+      "csv": "/tmp/p8_q4_bench/rocprof-single-baseline/rocm/1528834_kernel_trace.csv",
+      "total_kernel_ms": 6.84489,
+      "dispatches": 1,
+      "q4_decode_prefill": {
+        "total_ms": 6.84489,
+        "dispatches": 1,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "matched_kernels": 1
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q8_wmma": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 6.84489,
+          "dispatches": 1
+        }
+      ]
+    },
+    "synthetic_single_wmma": {
+      "csv": "/tmp/p8_q4_bench/rocprof-single-wmma/rocm/1528873_kernel_trace.csv",
+      "total_kernel_ms": 0.148601,
+      "dispatches": 1,
+      "q4_decode_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.148601,
+        "dispatches": 1,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "matched_kernels": 1
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q8_wmma": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.148601,
+          "dispatches": 1
+        }
+      ]
+    },
+    "synthetic_dual_baseline": {
+      "csv": "/tmp/p8_q4_bench/rocprof-dual-baseline/rocm/1529365_kernel_trace.csv",
+      "total_kernel_ms": 23.924678,
+      "dispatches": 2,
+      "q4_decode_prefill": {
+        "total_ms": 23.924678,
+        "dispatches": 2,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "matched_kernels": 1
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q8_wmma": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 23.924678,
+          "dispatches": 2
+        }
+      ]
+    },
+    "synthetic_dual_wmma": {
+      "csv": "/tmp/p8_q4_bench/rocprof-dual-wmma/rocm/1529411_kernel_trace.csv",
+      "total_kernel_ms": 0.349295,
+      "dispatches": 1,
+      "q4_decode_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.349295,
+        "dispatches": 1,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_prefill_dual_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int, int)",
+        "matched_kernels": 1
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q8_wmma": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_prefill_dual_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int, int)",
+          "total_ms": 0.349295,
+          "dispatches": 1
+        }
+      ]
+    },
+    "gguf_dual_baseline": {
+      "csv": "/tmp/p8_q4_bench/rocprof-gguf-dual-baseline/rocm/1536972_kernel_trace.csv",
+      "total_kernel_ms": 23.902672,
+      "dispatches": 2,
+      "q4_decode_prefill": {
+        "total_ms": 23.902672,
+        "dispatches": 2,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "matched_kernels": 1
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q8_wmma": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 23.902672,
+          "dispatches": 2
+        }
+      ]
+    },
+    "gguf_dual_wmma": {
+      "csv": "/tmp/p8_q4_bench/rocprof-gguf-dual-wmma/rocm/1537004_kernel_trace.csv",
+      "total_kernel_ms": 0.344797,
+      "dispatches": 1,
+      "q4_decode_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.344797,
+        "dispatches": 1,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_prefill_dual_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int, int)",
+        "matched_kernels": 1
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q8_wmma": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_prefill_dual_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int, int)",
+          "total_ms": 0.344797,
+          "dispatches": 1
+        }
+      ]
+    },
+    "full_qwen_baseline": {
+      "csv": "/tmp/p8_q4_bench/full-qwen/rocprof-baseline/rocm/1541447_kernel_trace.csv",
+      "total_kernel_ms": 159.375363,
+      "dispatches": 535,
+      "q4_decode_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 61.597369,
+        "dispatches": 74,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_pack8_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, int const*, float const*, float const*, unsigned short*, int, int, int, int)",
+        "matched_kernels": 2
+      },
+      "q8_wmma": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::dense_prefill_gemm_out_kernel<unsigned short, 32, 8, 16>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 57.431909,
+          "dispatches": 52
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_pack8_dual_prefill_out_kernel<unsigned short>(unsigned short const*, int const*, float const*, float const*, int const*, float const*, float const*, unsigned short*, unsigned short*, int, int, int, int)",
+          "total_ms": 37.170877,
+          "dispatches": 24
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_pack8_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, int const*, float const*, float const*, unsigned short*, int, int, int, int)",
+          "total_ms": 24.426492,
+          "dispatches": 50
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+          "total_ms": 19.078183,
+          "dispatches": 18
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 13.999236,
+          "dispatches": 6
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 1.518807,
+          "dispatches": 18
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+          "total_ms": 1.269886,
+          "dispatches": 18
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.847125,
+          "dispatches": 36
+        }
+      ]
+    },
+    "full_qwen_wmma_env": {
+      "csv": "/tmp/p8_q4_bench/full-qwen/rocprof-wmma/rocm/1540628_kernel_trace.csv",
+      "total_kernel_ms": 159.697166,
+      "dispatches": 535,
+      "q4_decode_prefill": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_single": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_wmma_dual": {
+        "total_ms": 0.0,
+        "dispatches": 0,
+        "sample_kernel": null,
+        "matched_kernels": 0
+      },
+      "q4_pack8_prefill": {
+        "total_ms": 61.788411,
+        "dispatches": 74,
+        "sample_kernel": "void (anonymous namespace)::gguf_q4_k_pack8_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, int const*, float const*, float const*, unsigned short*, int, int, int, int)",
+        "matched_kernels": 2
+      },
+      "q8_wmma": {
+        "total_ms": 0.649241,
+        "dispatches": 36,
+        "sample_kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "matched_kernels": 1
+      },
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::dense_prefill_gemm_out_kernel<unsigned short, 32, 8, 16>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 57.557823,
+          "dispatches": 52
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_pack8_dual_prefill_out_kernel<unsigned short>(unsigned short const*, int const*, float const*, float const*, int const*, float const*, float const*, unsigned short*, unsigned short*, int, int, int, int)",
+          "total_ms": 37.163479,
+          "dispatches": 24
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_pack8_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, int const*, float const*, float const*, unsigned short*, int, int, int, int)",
+          "total_ms": 24.624932,
+          "dispatches": 50
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+          "total_ms": 19.071142,
+          "dispatches": 18
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 14.194795,
+          "dispatches": 6
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 1.511729,
+          "dispatches": 18
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+          "total_ms": 1.276647,
+          "dispatches": 18
+        },
+        {
+          "kernel": "__amd_rocclr_copyBuffer",
+          "total_ms": 0.708723,
+          "dispatches": 133
+        }
+      ]
+    }
+  },
+  "materialization_diagnostic": {
+    "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf": {
+      "counts": {
+        "('f32', 'dense_f32', ('raw',))": 133,
+        "('gguf_q4_k', 'q4_k_pack8', ('qweight', 'scales', 'mins'))": 98,
+        "('gguf_q5_k', 'dense_bf16', ('raw',))": 36,
+        "('gguf_q6_k', 'dense_bf16', ('raw',))": 16,
+        "('gguf_q6_k', 'raw_gguf', ('raw',))": 1,
+        "('gguf_q8_0', 'raw_gguf', ('raw',))": 36
+      },
+      "q4_pack8_samples": [
+        "layers.0.ffn_gate",
+        "layers.0.ffn_up",
+        "layers.0.attn_gate",
+        "layers.1.ffn_gate",
+        "layers.1.ffn_up",
+        "layers.1.attn_gate",
+        "layers.2.ffn_gate",
+        "layers.2.ffn_up",
+        "layers.2.attn_gate",
+        "layers.3.ffn_gate",
+        "layers.3.ffn_up",
+        "layers.3.ffn_down"
+      ],
+      "q4_raw_samples": []
+    },
+    "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf": {
+      "counts": {
+        "('bf16', 'dense_bf16', ('raw',))": 140,
+        "('f32', 'dense_f32', ('raw',))": 221,
+        "('gguf_q4_k', 'raw_gguf', ('raw',))": 80,
+        "('gguf_q5_k', 'raw_gguf', ('raw',))": 37,
+        "('gguf_q6_k', 'raw_gguf', ('raw',))": 4,
+        "('gguf_q8_0', 'raw_gguf', ('raw',))": 251
+      },
+      "q4_pack8_samples": [],
+      "q4_raw_samples": [
+        "layers.0.ffn_gate_exps",
+        "layers.0.ffn_up_exps",
+        "layers.1.ffn_gate_exps",
+        "layers.1.ffn_up_exps",
+        "layers.2.ffn_gate_exps",
+        "layers.2.ffn_up_exps",
+        "layers.3.ffn_gate_exps",
+        "layers.3.ffn_up_exps",
+        "layers.4.ffn_gate_exps",
+        "layers.4.ffn_up_exps",
+        "layers.5.ffn_gate_exps",
+        "layers.5.ffn_up_exps"
+      ]
+    }
+  },
+  "qwen35moe_diagnostic": {
+    "path_exercised": false,
+    "reason": "Qwen3.6-35B-A3B Q4_K tensors are raw rank-3 expert tensors (ffn_gate_exps/ffn_up_exps) consumed by selected-MoE kernels, not by dense gguf_linear/launch_gguf_linear_pair. P8.4 selected Q4_K MoE WMMA is required for qwen35moe Q4_K bucket movement.",
+    "run_512_0": "not run for P8.2 because dense Q4_K WMMA path is not exercised; P8.1 qwen35moe 512/0 artifact already covers Q8_0 opt-in behavior."
+  },
+  "interpretation": {
+    "raw_kernel_status": "validated_perf_positive",
+    "full_model_status": "blocked_by_materialization_policy",
+    "next": "Task #11/#12 selected Q4_K MoE WMMA for qwen35moe; future dense-materialization policy can choose raw Q4_K under opt-in if memory budget allows or replace pack8 with raw WMMA when beneficial."
+  }
+}

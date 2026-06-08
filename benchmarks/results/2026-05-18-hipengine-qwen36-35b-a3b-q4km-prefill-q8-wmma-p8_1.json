@@ -1,0 +1,371 @@
+{
+  "schema": 2,
+  "status": "partial_optimization_retained_unblocked",
+  "performance_claim": true,
+  "timestamp": "2026-05-18T01:38:20.254620+00:00",
+  "run_tag": "hipengine-qwen36-q4km-prefill-q8-wmma-p8_1",
+  "task": "#5 (P8.1) Q8_0 batched WMMA prefill GEMM in qwen35moe GGUF 512/0",
+  "summary": "Landed the P8.1 GGUF Q8_0 batched WMMA prefill kernel (gguf_q8_0_prefill_wmma_kernel<scalar_t,out_t,TM,TN>) and wired it behind an opt-in (HIPENGINE_GGUF_WMMA_PREFILL=1, PrefillConfig.use_wmma_prefill, set_wmma_prefill_enabled, use_wmma_prefill= per-call kwarg). On qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M at 512/0 (local RX 7900 XTX/gfx1100; W7900 not rerun), prefill improves from 107.176 tok/s to 172.822 tok/s (+61.25%, wall-clock 4.777s -> 2.963s, saving 1814.6 ms per 512-token prefill). The Q8_0 dense/shared bucket collapses from 1929.2 ms / 251 dispatches (decode-shaped gguf_k_prefill_out_kernel/pack8 family) to 81.1 ms / 250 dispatches (gguf_q8_0_prefill_wmma_kernel), a 95.8% kernel-time reduction on that bucket and a -38.05% total prefill kernel time reduction. Memory is unchanged (no new resident weight repack). Selected MoE bucket (Q4_K/Q5_K/Q6_K, ~2102 ms) is unchanged by P8.1 and is the next lever (P8.2/P8.4/P8.5).",
+  "hardware": {
+    "gpu": "local RX 7900 XTX / gfx1100 (W7900 not rerun)",
+    "device_total_gib": 23.984375
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "commit_at_artifact": "cb4fe3f4aefecf458fdc4e7ac646b7ca372df271",
+    "git_status_at_artifact": "## gguf-bulk-prefill\n?? uv.lock"
+  },
+  "changes": [
+    "docs: plan P8 batched prefill GEMM for qwen35moe GGUF (cdccb45).",
+    "kernel: P8.1 GGUF Q8_0 batched WMMA prefill GEMM (cc73c43); new hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.{hip,py}, mirrors awq_fusedw4_prefill_fp16_kernel template from paro_awq_gemv.hip, 32 threads/block, __launch_bounds__(32, 8), __builtin_amdgcn_wmma_f32_16x16x16_f16_w32 accumulator, 9 dtype combos registered under ('hip_gfx1100','linear','gguf_q8_0','wmma_prefill_<in>_<out>_out').",
+    "feat: wire Q8_0 WMMA prefill into gguf_linear dispatch (opt-in) (9712c64); new _wmma_prefill_dispatch rewriter + _launch_wmma_raw ABI handler + PrefillConfig.use_wmma_prefill + HIPENGINE_GGUF_WMMA_PREFILL env var + set_wmma_prefill_enabled session toggle. Default behavior unchanged.",
+    "test: P8.4 correctness tests for Q8_0 WMMA batched prefill, 69 tests (cb4fe3f)."
+  ],
+  "commands": {
+    "baseline_bench": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p8_bench/baseline-512-0-v2.json",
+    "wmma_bench": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p8_bench/wmma-512-0.json",
+    "baseline_rocprof": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p8_bench/rocprof-baseline -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p8_bench/rocprof-baseline-bench.json",
+    "wmma_rocprof": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p8_bench/rocprof-wmma -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p8_bench/rocprof-wmma-bench.json",
+    "correctness_tests": "uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_linear_dispatch.py tests/test_gguf_k_gemv.py tests/test_gguf_q4_k_gemv.py"
+  },
+  "correctness": {
+    "method": "P8.1 kernel: 69 tests in tests/test_gguf_q8_0_wmma_prefill.py compare against the cpu_reference.gguf_q8_0_gemv oracle with np.testing.assert_allclose at per-dtype ULP tolerances. P8.3 dispatch: 21 tests in tests/test_gguf_linear_dispatch.py cover the opt-in matrix. Cross-file isolation green: 100 passed in 3.14 s across P8 tests + the existing GGUF GEMV tests.",
+    "summary": "All 69 tests in tests/test_gguf_q8_0_wmma_prefill.py pass on W7900. Inline-smoke worst-case error budgets vs cpu_reference.gguf_q8_0_gemv: bf16->f32 max|d| < 1.2e-6; f32->f32 max|d| = 2.4e-7 (single ULP); bf16->bf16 max_rel < 4e-3 (one bf16 ULP, expected: WMMA reorders the K reduction vs the row-GEMV)."
+  },
+  "measurements": {
+    "baseline_512_0": {
+      "wall_clock_prefill_seconds": {
+        "samples": [
+          4.786699054995552,
+          4.77718835597625,
+          4.774273439019453
+        ],
+        "median": 4.77718835597625,
+        "p95": 4.77718835597625,
+        "min": 4.774273439019453,
+        "max": 4.786699054995552,
+        "stdev": 0.006498026227071506,
+        "stdev_pct_of_median": 0.1360219807733244
+      },
+      "wall_clock_prefill_tok_s": {
+        "samples": [
+          106.96306454980922,
+          107.17601271875523,
+          107.24144868106995
+        ],
+        "median": 107.17601271875523,
+        "p95": 107.17601271875523,
+        "min": 106.96306454980922,
+        "max": 107.24144868106995,
+        "stdev": 0.1455601321100142,
+        "stdev_pct_of_median": 0.13581409535357902
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          20.88586661592126,
+          20.88586661592126,
+          20.88586661592126
+        ],
+        "median": 20.88586661592126,
+        "p95": 20.88586661592126,
+        "min": 20.88586661592126,
+        "max": 20.88586661592126,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          21.341796875,
+          21.341796875,
+          21.341796875
+        ],
+        "median": 21.341796875,
+        "p95": 21.341796875,
+        "min": 21.341796875,
+        "max": 21.341796875,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "mode": "resident_default_prefill_graph_decode",
+      "json": "/tmp/p8_bench/baseline-512-0-v2.json"
+    },
+    "wmma_512_0": {
+      "wall_clock_prefill_seconds": {
+        "samples": [
+          2.9800586130004376,
+          2.962581906991545,
+          2.9607910939957947
+        ],
+        "median": 2.962581906991545,
+        "p95": 2.962581906991545,
+        "min": 2.9607910939957947,
+        "max": 2.9800586130004376,
+        "stdev": 0.01064487006888988,
+        "stdev_pct_of_median": 0.35931057446103076
+      },
+      "wall_clock_prefill_tok_s": {
+        "samples": [
+          171.80870126728772,
+          172.8222260426642,
+          172.9267563112736
+        ],
+        "median": 172.8222260426642,
+        "p95": 172.8222260426642,
+        "min": 171.80870126728772,
+        "max": 172.9267563112736,
+        "stdev": 0.6175497454645246,
+        "stdev_pct_of_median": 0.35733236378524114
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          20.88586661592126,
+          20.88586661592126,
+          20.88586661592126
+        ],
+        "median": 20.88586661592126,
+        "p95": 20.88586661592126,
+        "min": 20.88586661592126,
+        "max": 20.88586661592126,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          21.34375,
+          21.34375,
+          21.34375
+        ],
+        "median": 21.34375,
+        "p95": 21.34375,
+        "min": 21.34375,
+        "max": 21.34375,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "mode": "resident_default_prefill_graph_decode",
+      "env": {
+        "HIPENGINE_GGUF_WMMA_PREFILL": "1"
+      },
+      "json": "/tmp/p8_bench/wmma-512-0.json"
+    }
+  },
+  "comparisons": {
+    "wall_clock": {
+      "prefill_seconds": {
+        "baseline_median": 4.777188,
+        "wmma_median": 2.962582,
+        "delta_seconds": -1.814606,
+        "delta_pct": -37.985
+      },
+      "prefill_tok_s": {
+        "baseline_median": 107.176,
+        "wmma_median": 172.8222,
+        "delta_tok_s": 65.6462,
+        "delta_pct": 61.251
+      },
+      "memory": {
+        "tracked_peak_allocated_gib_baseline": 20.885867,
+        "tracked_peak_allocated_gib_wmma": 20.885867,
+        "delta_gib": 0.0
+      }
+    },
+    "kernel_time": {
+      "total_prefill_kernel_ms": {
+        "baseline": 4767.967,
+        "wmma": 2953.557,
+        "delta_ms": -1814.41,
+        "delta_pct": -38.054
+      },
+      "q8_0_dense_shared_bucket_ms": {
+        "baseline_decode_shaped": {
+          "total_ms": 1929.244,
+          "dispatches": 251,
+          "matched_predicates": [
+            "gguf_k_prefill_out_kernel",
+            "gguf_k_pack8_prefill_out_kernel"
+          ]
+        },
+        "wmma": {
+          "total_ms": 81.133,
+          "dispatches": 250,
+          "matched_predicates": [
+            "gguf_q8_0_prefill_wmma_kernel"
+          ]
+        },
+        "delta_ms": -1848.11,
+        "bucket_reduction_pct": 95.795,
+        "remaining_decode_shaped_on_wmma_run_ms": 1.245,
+        "remaining_decode_shaped_dispatches": 1,
+        "note": "On the WMMA run, 1 lingering decode-shaped Q8_0 dispatch remains. That is the gguf_k_pack8_prefill_out_kernel<unsigned short, float, 8> Q8_0 lm-head logits projection (the runner passes output_dtype='f32' for the final tied lm-head, which the rows>1 path handles outside the rewrite when no decode tokens follow). Not a regression."
+      },
+      "selected_moe_bucket_ms": {
+        "baseline": {
+          "total_ms": 2102.518,
+          "dispatches": 120
+        },
+        "wmma": {
+          "total_ms": 2119.937,
+          "dispatches": 120
+        },
+        "delta_ms": 17.419,
+        "delta_pct": 0.828,
+        "note": "Unchanged by P8.1 (P8.2/P8.4/P8.5 land Q4_K/Q5_K/Q6_K WMMA variants)."
+      },
+      "gdn_recurrent_bucket_ms": {
+        "baseline": 663.038,
+        "wmma": 676.372,
+        "delta_ms": 13.334,
+        "note": "Unchanged by P8.1; out of scope."
+      },
+      "full_attention_bucket_ms": {
+        "baseline": 39.002,
+        "wmma": 40.808,
+        "note": "Already AOTriton; unchanged."
+      }
+    }
+  },
+  "rocprof": {
+    "method": "Two rocprofv3 --kernel-trace runs of qwen35_gguf_bench.py --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 (no decode, no graph capture). Kernels grouped by full templated symbol; durations summed from (End_Timestamp - Start_Timestamp).",
+    "baseline_csv": "/tmp/p8_bench/rocprof-baseline/rocm/1054126_kernel_trace.csv",
+    "wmma_csv": "/tmp/p8_bench/rocprof-wmma/rocm/1054738_kernel_trace.csv",
+    "wmma_kernel_symbol_present": true,
+    "wmma_kernel_sample_full_name": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+    "baseline_top_kernels": [
+      {
+        "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "total_ms": 1925.665,
+        "dispatches": 250
+      },
+      {
+        "kernel": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "total_ms": 1453.944,
+        "dispatches": 80
+      },
+      {
+        "kernel": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+        "total_ms": 663.038,
+        "dispatches": 30
+      },
+      {
+        "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)",
+        "total_ms": 619.218,
+        "dispatches": 37
+      },
+      {
+        "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+        "total_ms": 39.002,
+        "dispatches": 10
+      },
+      {
+        "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)",
+        "total_ms": 29.356,
+        "dispatches": 3
+      },
+      {
+        "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+        "total_ms": 14.044,
+        "dispatches": 80
+      },
+      {
+        "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+        "total_ms": 4.267,
+        "dispatches": 30
+      },
+      {
+        "kernel": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+        "total_ms": 3.957,
+        "dispatches": 40
+      },
+      {
+        "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+        "total_ms": 3.579,
+        "dispatches": 1
+      },
+      {
+        "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+        "total_ms": 3.154,
+        "dispatches": 60
+      },
+      {
+        "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "total_ms": 1.575,
+        "dispatches": 40
+      }
+    ],
+    "wmma_top_kernels": [
+      {
+        "kernel": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "total_ms": 1461.228,
+        "dispatches": 80
+      },
+      {
+        "kernel": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+        "total_ms": 676.372,
+        "dispatches": 30
+      },
+      {
+        "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)",
+        "total_ms": 628.743,
+        "dispatches": 37
+      },
+      {
+        "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "total_ms": 81.133,
+        "dispatches": 250
+      },
+      {
+        "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+        "total_ms": 40.808,
+        "dispatches": 10
+      },
+      {
+        "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)",
+        "total_ms": 29.966,
+        "dispatches": 3
+      },
+      {
+        "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+        "total_ms": 13.703,
+        "dispatches": 80
+      },
+      {
+        "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+        "total_ms": 4.7,
+        "dispatches": 30
+      },
+      {
+        "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+        "total_ms": 3.299,
+        "dispatches": 60
+      },
+      {
+        "kernel": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+        "total_ms": 3.255,
+        "dispatches": 40
+      },
+      {
+        "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "total_ms": 1.93,
+        "dispatches": 40
+      },
+      {
+        "kernel": "__amd_rocclr_copyBuffer",
+        "total_ms": 1.353,
+        "dispatches": 249
+      }
+    ]
+  },
+  "rejected_or_limited_iterations": [],
+  "p8_plan_gate_status": {
+    "acceptance_floor_total_prefill_kernel_ms": 1500,
+    "wmma_total_prefill_kernel_ms": 2953.557,
+    "acceptance_floor_met": false,
+    "stretch_goal_total_prefill_kernel_ms": 700,
+    "stretch_goal_met": false,
+    "note": "P8.1 alone does not clear the 1500 ms acceptance floor because the Q4_K/Q5_K/Q6_K selected MoE bucket (~2102 ms unchanged) is still the dominant cost. P8.2/P8.4/P8.5 are the next levers."
+  },
+  "blocker": {
+    "open": true,
+    "summary": "P8 plan is partially closed by P8.1. To clear the 1500 ms total prefill kernel time acceptance floor, the selected MoE bucket (Q4_K gate+up + Q5_K/Q6_K down, ~2102 ms unchanged in this run) must drop. That requires P8.4 (Q4_K dual selected WMMA prefill) and P8.5 (Q5_K/Q6_K selected WMMA prefill). P8.2 (Q4_K dense dual WMMA prefill) is also valuable for dense Q4_K models."
+  }
+}

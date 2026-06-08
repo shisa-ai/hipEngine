@@ -1,0 +1,374 @@
+{
+  "profiler": {
+    "schema": 1,
+    "status": "captured",
+    "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-current-c8-profiler-477/profiler-c8-current.json",
+    "command": "HIP_VISIBLE_DEVICES=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-iter477-c8-profiler/raw -o c8-current -- python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter477-c8-profiler/c8-current-profiler-bench.json",
+    "rocprof_rc": "rocprof_rc=1",
+    "trace_dir": "/tmp/hipengine-iter477-c8-profiler/raw",
+    "trace_files": [
+      "/tmp/hipengine-iter477-c8-profiler/raw/c8-current_kernel_trace.csv"
+    ],
+    "raw_trace_sha256": "3703e8cbf9d6d5ee16b5a61c543a6e97fd45e8cd4adb2444285fe11e8f9b3518",
+    "raw_trace_size_bytes": 384831689,
+    "agent_info": {
+      "path": "/tmp/hipengine-iter477-c8-profiler/raw/c8-current_agent_info.csv",
+      "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+      "size_bytes": 1585
+    },
+    "kernel_trace_rows": 1363417,
+    "unique_trace_kernel_names": 61,
+    "total_kernel_duration_ns": 15414558413,
+    "kernel_duration_categories_ns": {
+      "attention_kv": 1874461378,
+      "copy_memset": 189221907,
+      "fused_norm_rotary_state": 4222505805,
+      "moe_router": 824903363,
+      "other": 902585052,
+      "projection_linear": 7390117084,
+      "sampling": 10763824
+    },
+    "kernel_duration_category_shares": {
+      "attention_kv": 0.12160331342473989,
+      "copy_memset": 0.012275532125553339,
+      "fused_norm_rotary_state": 0.2739297287581663,
+      "moe_router": 0.05351456336915306,
+      "other": 0.05855406478844033,
+      "projection_linear": 0.47942450805256165,
+      "sampling": 0.0006982894813854827
+    },
+    "expected_kernels_present": true,
+    "expected_kernel_checks": {
+      "native_batch_full_attention_context": true,
+      "native_batch_kv_append": true,
+      "batched_sampler_stage1": true,
+      "batched_sampler_stage2": true,
+      "selected_caware_projection": true,
+      "grouped_moe_scatter": true,
+      "router_select": true
+    },
+    "expected_kernel_names": [
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)",
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+      "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)",
+      "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
+      "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+      "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+      "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+      "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+      "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+    ],
+    "kernel_durations_ns": {
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)": 1754953264,
+      "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)": 1263842783,
+      "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)": 1218081519,
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 1147876064,
+      "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 1086093643,
+      "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": 855395686,
+      "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)": 768686190,
+      "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)": 734509856,
+      "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 672798624,
+      "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)": 602250293,
+      "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 472925386,
+      "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 470173360,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)": 410542298,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)": 377588529,
+      "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": 350090826,
+      "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)": 349976868,
+      "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 258603025,
+      "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)": 216762451,
+      "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)": 197994136,
+      "__amd_rocclr_copyBuffer": 189221907,
+      "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)": 169208213,
+      "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)": 154653746,
+      "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)": 150150885,
+      "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 145142031,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)": 127237494,
+      "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)": 124686045,
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)": 123949526,
+      "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)": 113738650,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 91415225,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)": 90170882,
+      "__amd_rocclr_fillBufferAligned": 84905885,
+      "(anonymous namespace)::qwen35_split_qgate_fp16_kernel(_Float16 const*, float*, _Float16*, long, long, long)": 71320011,
+      "(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)": 67172013,
+      "(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)": 59702640,
+      "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)": 50799382,
+      "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)": 45776388,
+      "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": 45219897,
+      "attn_fwd": 43854250,
+      "void (anonymous namespace)::weighted_lanes_sum_out_kernel<_Float16>(_Float16 const*, float const*, long const*, _Float16*, long, long, long)": 42875753,
+      "(anonymous namespace)::qwen35_full_attn_gate_mul_fp16_kernel(float const*, _Float16 const*, _Float16*, long)": 27403400,
+      "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)": 26266141,
+      "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)": 23201766,
+      "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)": 21944880,
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)": 20775118,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)": 17079297,
+      "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 13650947,
+      "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": 13029797,
+      "(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 11619283,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, unsigned short*, float*, float, long, long, long, long, long, long)": 7329031,
+      "(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)": 7217323,
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)": 7019706,
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)": 4983605,
+      "(anonymous namespace)::set_i64_vector_kernel(long*, long const*, long)": 4081837,
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 3620477,
+      "(anonymous namespace)::set_decode_positions_i64_kernel(long*, long*, long const*, unsigned char const*, long)": 2139350,
+      "void (anonymous namespace)::silu_mul_separate_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long)": 1484016,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 689489,
+      "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)": 338961,
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)": 214724,
+      "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 74281,
+      "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 49360
+    },
+    "kernel_counts": {
+      "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)": 14688,
+      "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)": 105808,
+      "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)": 1240,
+      "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 51408,
+      "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 51408,
+      "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": 270,
+      "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)": 59568,
+      "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)": 73168,
+      "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 103806,
+      "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)": 103176,
+      "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 88758,
+      "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)": 360,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)": 32640,
+      "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)": 4080,
+      "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": 51768,
+      "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)": 720,
+      "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)": 360,
+      "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)": 46784,
+      "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)": 51768,
+      "__amd_rocclr_copyBuffer": 76406,
+      "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)": 53008,
+      "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)": 4984,
+      "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)": 810,
+      "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)": 21850,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)": 21760,
+      "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)": 32640,
+      "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)": 43520,
+      "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)": 32640,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 14688,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)": 4350,
+      "__amd_rocclr_fillBufferAligned": 33722,
+      "(anonymous namespace)::qwen35_split_qgate_fp16_kernel(_Float16 const*, float*, _Float16*, long, long, long)": 21850,
+      "(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)": 26200,
+      "(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)": 36720,
+      "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)": 270,
+      "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)": 8700,
+      "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": 8248,
+      "attn_fwd": 90,
+      "void (anonymous namespace)::weighted_lanes_sum_out_kernel<_Float16>(_Float16 const*, float const*, long const*, _Float16*, long, long, long)": 8248,
+      "(anonymous namespace)::qwen35_full_attn_gate_mul_fp16_kernel(float const*, _Float16 const*, _Float16*, long)": 14688,
+      "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)": 270,
+      "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)": 8248,
+      "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)": 8248,
+      "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)": 8248,
+      "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)": 4350,
+      "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 8248,
+      "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": 8248,
+      "(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)": 90,
+      "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, unsigned short*, float*, float, long, long, long, long, long, long)": 90,
+      "(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)": 3506,
+      "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)": 1224,
+      "(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)": 1224,
+      "(anonymous namespace)::set_i64_vector_kernel(long*, long const*, long)": 1224,
+      "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 1224,
+      "(anonymous namespace)::set_decode_positions_i64_kernel(long*, long*, long const*, unsigned char const*, long)": 1224,
+      "void (anonymous namespace)::silu_mul_separate_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long)": 360,
+      "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 90,
+      "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)": 90,
+      "(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)": 9,
+      "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 16,
+      "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 16
+    },
+    "top_kernels": [
+      {
+        "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        "count": 14688,
+        "duration_ns": 1754953264,
+        "share": 0.11385037553329748
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "count": 105808,
+        "duration_ns": 1263842783,
+        "share": 0.08199020362037276
+      },
+      {
+        "name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "count": 1240,
+        "duration_ns": 1218081519,
+        "share": 0.07902149943995285
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "count": 51408,
+        "duration_ns": 1147876064,
+        "share": 0.07446700925483074
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "count": 51408,
+        "duration_ns": 1086093643,
+        "share": 0.07045895275754599
+      },
+      {
+        "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "count": 270,
+        "duration_ns": 855395686,
+        "share": 0.05549271429524667
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "count": 59568,
+        "duration_ns": 768686190,
+        "share": 0.049867545303907114
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "count": 73168,
+        "duration_ns": 734509856,
+        "share": 0.04765039881911536
+      },
+      {
+        "name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "count": 103806,
+        "duration_ns": 672798624,
+        "share": 0.04364696061825485
+      },
+      {
+        "name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "count": 103176,
+        "duration_ns": 602250293,
+        "share": 0.03907022678587322
+      },
+      {
+        "name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "count": 88758,
+        "duration_ns": 472925386,
+        "share": 0.03068043685255066
+      },
+      {
+        "name": "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "count": 360,
+        "duration_ns": 470173360,
+        "share": 0.0305019026431192
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+        "count": 32640,
+        "duration_ns": 410542298,
+        "share": 0.02663341284261284
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "count": 4080,
+        "duration_ns": 377588529,
+        "share": 0.024495578717425824
+      },
+      {
+        "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+        "count": 51768,
+        "duration_ns": 350090826,
+        "share": 0.02271169997998437
+      },
+      {
+        "name": "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)",
+        "count": 720,
+        "duration_ns": 349976868,
+        "share": 0.02270430709872584
+      },
+      {
+        "name": "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "count": 360,
+        "duration_ns": 258603025,
+        "share": 0.016776544489390297
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)",
+        "count": 46784,
+        "duration_ns": 216762451,
+        "share": 0.01406219011873811
+      },
+      {
+        "name": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)",
+        "count": 51768,
+        "duration_ns": 197994136,
+        "share": 0.012844619397790854
+      },
+      {
+        "name": "__amd_rocclr_copyBuffer",
+        "count": 76406,
+        "duration_ns": 189221907,
+        "share": 0.012275532125553339
+      },
+      {
+        "name": "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)",
+        "count": 53008,
+        "duration_ns": 169208213,
+        "share": 0.010977169015577949
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)",
+        "count": 4984,
+        "duration_ns": 154653746,
+        "share": 0.010032966359229041
+      },
+      {
+        "name": "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+        "count": 810,
+        "duration_ns": 150150885,
+        "share": 0.009740848941437659
+      },
+      {
+        "name": "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "count": 21850,
+        "duration_ns": 145142031,
+        "share": 0.009415905867118012
+      },
+      {
+        "name": "(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+        "count": 21760,
+        "duration_ns": 127237494,
+        "share": 0.00825437165249529
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)",
+        "count": 32640,
+        "duration_ns": 124686045,
+        "share": 0.008088849622500048
+      },
+      {
+        "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)",
+        "count": 43520,
+        "duration_ns": 123949526,
+        "share": 0.008041068883002584
+      },
+      {
+        "name": "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)",
+        "count": 32640,
+        "duration_ns": 113738650,
+        "share": 0.007378651204440442
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+        "count": 14688,
+        "duration_ns": 91415225,
+        "share": 0.005930447214297374
+      },
+      {
+        "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",
+        "count": 4350,
+        "duration_ns": 90170882,
+        "share": 0.005849722034460203
+      }
+    ]
+  }
+}

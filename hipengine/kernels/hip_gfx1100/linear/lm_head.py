@@ -17,6 +17,7 @@ _SYMBOL_ARGMAX = "hipengine_argmax_f32"
 _SYMBOL_ARGMAX_ROWS_I32 = "hipengine_argmax_f32_rows_i32"
 _SYMBOL_TOPK_ROWS_I32 = "hipengine_topk_f32_rows_i32"
 _SYMBOL_W8A16_LM_HEAD_ARGMAX_ROWS = "hipengine_w8a16_lm_head_argmax_rows_bf16"
+_SYMBOL_BATCH_ARGMAX = "hipengine_batch_argmax_f32"
 _ALLOWED_THREADS = {128, 256, 512}
 _MAX_TOPK = 8
 
@@ -308,6 +309,51 @@ def topk_f32_rows_i32(
         runtime.check(int(err))
 
 
+def batch_argmax_f32(
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i64_ptr: int,
+    out_index_i64_ptr: int,
+    out_value_f32_ptr: int,
+    rows: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_shape(rows, vocab_size, threads)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_BATCH_ARGMAX)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i64_ptr),
+        ctypes.c_void_p(out_index_i64_ptr),
+        ctypes.c_void_p(out_value_f32_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def lm_head_argmax_stage1_blocks(vocab_size: int, *, threads: int = 256) -> int:
     _check_shape(1, vocab_size, threads)
     return (int(vocab_size) + int(threads) * 4 - 1) // (int(threads) * 4)
@@ -398,6 +444,11 @@ def register_lm_head_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "argmax", "w4_paro", "batch_f32"),
+        batch_argmax_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "argmax", "w4_paro", "f32_rows_i32"),
         argmax_f32_rows_i32,
         replace=replace,
@@ -439,3 +490,4 @@ def _check_topk(top_k: int) -> None:
 
 
 register_lm_head_kernels()
+

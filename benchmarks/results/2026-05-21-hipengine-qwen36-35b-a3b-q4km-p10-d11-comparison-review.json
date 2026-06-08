@@ -1,0 +1,191 @@
+{
+  "schema": "hipengine_comparison_review_v1",
+  "status": "diagnostic_review",
+  "performance_claim": false,
+  "label": "p10_d11_post_splitk_re_review_vs_paro_llamacpp",
+  "date": "2026-05-21",
+  "hipengine_commit": "bc35ee1",
+  "scope": "Compare retained hipENGINE Qwen3.6-35B-A3B UD-Q4_K_M GGUF P10.D8 rows against source-lineage PARO target and llama.cpp HIP/Vulkan external baselines in benchmarks/README.md.",
+  "caveats": [
+    "PARO source-lineage rows use Qwen3.5-35B-A3B-PARO w4a16 AWQ/PARO on W7900 and are targets, not same-model GGUF measurements.",
+    "hipENGINE rows use local RX 7900 XTX / gfx1100 24 GiB card and unsafe-fastpath R&D opt-in with correctness gates; W7900 rerun remains unverified in the rollup.",
+    "llama.cpp tok/s values are the benchmark README source-of-truth PLAN rows; peak memory comes from retained diagnostic peak artifacts.",
+    "Total seconds are derived from independent prefill and decode tok/s rows and are for directional comparison only."
+  ],
+  "rows": [
+    {
+      "shape": "512/128",
+      "prompt_tokens": 512,
+      "decode_tokens": 128,
+      "hipengine": {
+        "prefill_tok_s": 2140.225,
+        "decode_tok_s": 89.322,
+        "peak_gib": 21.344,
+        "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json"
+      },
+      "comparisons": {
+        "paro_source_lineage": {
+          "model": "Qwen3.5-35B-A3B-PARO",
+          "quant": "w4a16_awq_paro",
+          "prefill_tok_s": 2696.4,
+          "decode_tok_s": 116.05,
+          "peak_gib": 18.8,
+          "source": "benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json",
+          "prefill_delta_pct": -20.6265761756416,
+          "decode_delta_pct": -23.031451960361903,
+          "peak_delta_gib": 2.5440000000000005,
+          "peak_delta_pct": 13.531914893617024,
+          "total_seconds_hipengine": 1.6722448056963168,
+          "total_seconds_baseline": 1.2928556632325954,
+          "total_seconds_delta_pct": 29.34505012841997
+        },
+        "llamacpp_hip": {
+          "model": "Qwen3.6-35B-A3B",
+          "quant": "UD-Q4_K_M GGUF",
+          "prefill_tok_s": 2436.049,
+          "decode_tok_s": 85.487,
+          "peak_gib": 21.125,
+          "source": "benchmarks/README.md external baseline; memory artifact benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json",
+          "prefill_delta_pct": -12.143598096754216,
+          "decode_delta_pct": 4.486062208288999,
+          "peak_delta_gib": 0.2190000000000012,
+          "peak_delta_pct": 1.0366863905325596,
+          "total_seconds_hipengine": 1.6722448056963168,
+          "total_seconds_baseline": 1.7074800798886107,
+          "total_seconds_delta_pct": -2.0635833241810064
+        },
+        "llamacpp_vulkan": {
+          "model": "Qwen3.6-35B-A3B",
+          "quant": "UD-Q4_K_M GGUF",
+          "prefill_tok_s": 1816.927,
+          "decode_tok_s": 127.515,
+          "peak_gib": 20.844,
+          "source": "benchmarks/README.md external baseline; memory artifact benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json",
+          "prefill_delta_pct": 17.793670301558628,
+          "decode_delta_pct": -29.9517703799553,
+          "peak_delta_gib": 0.5,
+          "peak_delta_pct": 2.3987718288236426,
+          "total_seconds_hipengine": 1.6722448056963168,
+          "total_seconds_baseline": 1.2855979545617762,
+          "total_seconds_delta_pct": 30.07525406855036
+        }
+      }
+    },
+    {
+      "shape": "4K/128",
+      "prompt_tokens": 4096,
+      "decode_tokens": 128,
+      "hipengine": {
+        "prefill_tok_s": 2700.015,
+        "decode_tok_s": 97.008,
+        "peak_gib": 22.584,
+        "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json"
+      },
+      "comparisons": {
+        "paro_source_lineage": {
+          "model": "Qwen3.5-35B-A3B-PARO",
+          "quant": "w4a16_awq_paro",
+          "prefill_tok_s": 2741.5,
+          "decode_tok_s": 113.05,
+          "peak_gib": 21.64,
+          "source": "benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json",
+          "prefill_delta_pct": -1.5132226883093236,
+          "decode_delta_pct": -14.190181335692175,
+          "peak_delta_gib": 0.9439999999999991,
+          "peak_delta_pct": 4.362292051756,
+          "total_seconds_hipengine": 2.8365074149720004,
+          "total_seconds_baseline": 2.626314958631734,
+          "total_seconds_delta_pct": 8.003322512764166
+        },
+        "llamacpp_hip": {
+          "model": "Qwen3.6-35B-A3B",
+          "quant": "UD-Q4_K_M GGUF",
+          "prefill_tok_s": 2176.905,
+          "decode_tok_s": 87.375,
+          "peak_gib": 21.197,
+          "source": "same",
+          "prefill_delta_pct": 24.029987528164966,
+          "decode_delta_pct": 11.024892703862665,
+          "peak_delta_gib": 1.3870000000000005,
+          "peak_delta_pct": 6.543378780016051,
+          "total_seconds_hipengine": 2.8365074149720004,
+          "total_seconds_baseline": 3.346520323135063,
+          "total_seconds_delta_pct": -15.240095947939025
+        },
+        "llamacpp_vulkan": {
+          "model": "Qwen3.6-35B-A3B",
+          "quant": "UD-Q4_K_M GGUF",
+          "prefill_tok_s": 1705.093,
+          "decode_tok_s": 120.163,
+          "peak_gib": 20.969,
+          "source": "same",
+          "prefill_delta_pct": 58.35001375291551,
+          "decode_delta_pct": -19.269658713580718,
+          "peak_delta_gib": 1.6149999999999984,
+          "peak_delta_pct": 7.701845581572786,
+          "total_seconds_hipengine": 2.8365074149720004,
+          "total_seconds_baseline": 3.467434754328197,
+          "total_seconds_delta_pct": -18.195795568140017
+        }
+      }
+    }
+  ],
+  "post_splitk_profile": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d10-splitk-rocprof.json",
+    "decode_4k_16_top_buckets": [
+      {
+        "bucket": "dense_q8_0_t16_gemv_decode_p9",
+        "share_pct": 35.45,
+        "ms_per_token": 3.469
+      },
+      {
+        "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+        "share_pct": 12.34,
+        "ms_per_token": 1.207
+      },
+      {
+        "bucket": "full_attention_decode",
+        "share_pct": 10.21,
+        "ms_per_token": 0.999
+      },
+      {
+        "bucket": "moe_q5_k_selected_t16_gemv_decode_p9",
+        "share_pct": 9.1,
+        "ms_per_token": 0.891
+      },
+      {
+        "bucket": "dense_q6_k_t16_gemv_decode_p9",
+        "share_pct": 6.73,
+        "ms_per_token": 0.659
+      },
+      {
+        "bucket": "rmsnorm",
+        "share_pct": 6.49,
+        "ms_per_token": 0.635
+      },
+      {
+        "bucket": "router",
+        "share_pct": 5.55,
+        "ms_per_token": 0.543
+      },
+      {
+        "bucket": "gdn_decode",
+        "share_pct": 5.54,
+        "ms_per_token": 0.542
+      }
+    ]
+  },
+  "conclusions": [
+    "hipENGINE now beats llama.cpp HIP on decode at both accepted shapes and beats it strongly on 4K prefill; 4K derived total time is about 15% lower than llama.cpp HIP.",
+    "hipENGINE beats llama.cpp Vulkan on prefill at both accepted shapes, and the 4K derived total time is lower because prefill dominates enough to offset Vulkan decode; Vulkan still has much faster short/medium decode.",
+    "hipENGINE is close to the PARO source-lineage 4K target on prefill (-1.5%) but remains behind PARO decode (-14.2%) and short-context prefill/decode (-20.6%/-23.0%).",
+    "The next performance focus should be Q8_0 T16 GEMV decode, especially the redundant per-lane T16 scale load/broadcast opportunity, before returning to selected-MoE T16 or RMSNorm/router launch cleanup.",
+    "Do not spend the next pass on attention split-K: post-D10 profiling shows full_attention_decode is now only about 10% of 4K decode kernel time."
+  ],
+  "recommended_next_order": [
+    "P10.D11: Q8_0 T16 GEMV scale-load/broadcast polish and split-output dense/shared GEMV audit; target the 35.45% decode bucket.",
+    "P10.D12: selected-MoE T16 GEMV revisit only after Q8_0 bucket shrinks; combined Q4/Q5 selected buckets are about 21.44% of 4K decode kernel time.",
+    "P10.D13: short-context split-K threshold=512 numeric fixture; only retain if split-vs-context outputs pass tolerance and token stream concern is explained.",
+    "P10.M0: memory-context pass for accepted 32K/128 and 128K/128 capability, because llama.cpp/PARO have long-context rows while hipENGINE current accepted rollup stops at 4K and 128K preflight is blocked."
+  ]
+}

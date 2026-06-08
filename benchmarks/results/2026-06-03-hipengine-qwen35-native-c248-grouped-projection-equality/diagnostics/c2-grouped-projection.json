@@ -1,0 +1,73 @@
+{
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/diagnostics/c2-grouped-projection.json",
+  "batch_blockers": [],
+  "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-primitive-attached/primitive-c2.json --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-grouped-projection-equality/native-c2-grouped-projection.json",
+  "correctness_passed": true,
+  "decision_accepted": false,
+  "decision_reason_summary": [
+    "profiler_json must be provided under benchmarks/results",
+    "scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim",
+    "profiler trace was not captured with expected kernels present",
+    "profiler.artifact_path must be under benchmarks/results",
+    "profiler.source_artifact_path must be a non-empty string",
+    "profiler.output_format must be csv",
+    "profiler.trace_dir must be a non-empty string",
+    "profiler.trace_files must be a non-empty string list",
+    "profiler.synthesized_fields must be a string list",
+    "profiler.status must be captured",
+    "profiler.expected_kernels_present must be true",
+    "profiler.trace_kernel_names must be a non-empty string list",
+    "profiler.expected_kernel_names must be a non-empty string list",
+    "profiler.kernel_durations_ns must be a non-empty object"
+  ],
+  "decode_blockers": [],
+  "decode_execution": {
+    "full_attention_decode_path": "native_batch",
+    "linear_attention_output_path": "batch_gemv",
+    "linear_attention_projection_path": "native_batch",
+    "moe_decode_path": "grouped_compact",
+    "moe_decode_rows": 2,
+    "moe_grouped_compact_layers": 40,
+    "moe_selected_c1_fallback_layers": 0,
+    "native_caware_decode": true,
+    "native_full_attention_layers": 10,
+    "post_attention_decode_path": "native_batch",
+    "rows": 2
+  },
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "generated_token_equality_passed": true,
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "name": "c2-grouped-projection",
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "primitive_batch_correctness_passed": true,
+  "projection_dispatch": {
+    "blockers": [],
+    "evidence": {
+      "accepted": true,
+      "aggregate_vs_row_gemv": 1.081395195821912,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+      "per_request_vs_row_gemv": 1.081395195821912
+    },
+    "path": "benchmark_accepted_caware_projection",
+    "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+    "throughput_claim_eligible": true
+  },
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "cc3263dfa9cc6f1ef6d44bb9a20ae2fd5b8ee979bdae133892809840adbc162b",
+  "raw_size_bytes": 138534,
+  "rows": 2,
+  "scaling_ratios": {
+    "aggregate_vs_c1": 0.8329825173327758,
+    "aggregate_vs_serial_bridge": 1.0741409658838408,
+    "per_request_vs_c1": 0.4164912586663879,
+    "per_request_vs_serial_bridge": 1.0741409658838408
+  },
+  "status": "blocked"
+}

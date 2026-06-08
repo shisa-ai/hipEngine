@@ -26,6 +26,11 @@ class GenerationRequest:
     temperature: float
     top_p: float
     ignore_eos: bool
+    kv_storage: str = "auto"
+    kv_scale_dtype: str = "fp16"
+    kv_scale_granularity: str = "per_token_head"
+    seed: int | None = None
+    row_seeds: tuple[int, ...] = ()
 
 
 class TextGenerator(Protocol):

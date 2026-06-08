@@ -1,0 +1,58 @@
+{
+  "batch_blockers": [
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch",
+  "full_attention_output_layer_paths": [],
+  "full_attention_row_chunk_size": null,
+  "full_attention_row_chunk_source": null,
+  "full_attention_segment_output_paths": [],
+  "generated_token_equality_passed": true,
+  "label": "c2-grouped-compact-moe-post-audit-equality",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "log_path": "/tmp/hipengine-iter231-c2-grouped-moe-equality.log",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "grouped_compact",
+  "moe_grouped_compact_layers": 40,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": true,
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "cd7cbb70fcbc6d25015c2aa51720446476be4a6d7c041d224de676e3ea7ec134",
+  "raw_size_bytes": 134961,
+  "raw_source_path": "/tmp/hipengine-iter231-c2-grouped-moe-equality.json",
+  "rows": 2,
+  "sampler_execution": {
+    "argmax_audit_enabled": false,
+    "argmax_mode": "serial_per_row",
+    "blockers": [],
+    "c2_equality_green": false,
+    "equality_artifact": null,
+    "equality_rows": null,
+    "mode": "serial_lm_head",
+    "native_row_aware_lm_head": false,
+    "requested_mode": "serial_lm_head",
+    "rows": 2
+  },
+  "status": "blocked",
+  "workload_batch_decode_moe_path": "grouped_compact",
+  "workload_batch_sample_argmax_audit": false,
+  "workload_batch_sample_argmax_mode": "batch",
+  "workload_batch_sample_eq_artifact": "",
+  "workload_batch_sample_eq_ok": false,
+  "workload_batch_sample_eq_rows": null,
+  "workload_batch_sample_mode": "serial_lm_head",
+  "workload_batch_size": 2,
+  "workload_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json"
+}

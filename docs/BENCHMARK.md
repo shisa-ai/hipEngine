@@ -106,6 +106,52 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 shootout entry. Reference for t
 
 mini-sglang is 1.47× faster on decode; nano-vllm is 1.49× faster on prefill. Both sit far below the 35B llama.cpp decode baseline despite being 0.6B — the current torch-SDPA paged decode path is the bottleneck.
 
+### llama.cpp MTP external comparison diagnostics
+
+llama.cpp MTP rows are external comparison diagnostics, not accepted hipEngine
+performance claims. Use them to answer "what does current llama.cpp do on this
+model and prompt mix?" before comparing hipEngine changes.
+
+Default config:
+
+- Runner: `python3 scripts/llamacpp_mtp_bench.py`
+- Config: `benchmarks/configs/llamacpp-mtp-qwen36-27b.json`
+- Prompt suite: `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
+- Model: `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`
+- Server: `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`
+- Hardware: W7900/gfx1100
+- Server flags: `-ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 --no-cache-prompt`
+- MTP flags: `--spec-type draft-mtp --spec-draft-n-max 2`
+
+Run both natural prompts and token-repeat prompts:
+
+```bash
+python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
+  --ctx-size 8192 \
+  --draft-max 2 \
+  --protocol both \
+  --mode both \
+  --output /tmp/llamacpp-mtp-qwen36-27b-diagnostic.json
+```
+
+Protocols:
+
+- `natural`: `/v1/chat/completions` over code, English, Japanese, and mixed
+  JA/EN prompts, `temperature=0`, `top_k=1`, `max_tokens=512`, `seed=12345`.
+- `token-repeat`: `/completion` with explicit prompt token arrays
+  `[9707] * {512,4096}`, `n_predict=128`, `ignore_eos=true`.
+
+Artifact status must be `diagnostic_retained` and `performance_claim=false`
+unless a future protocol defines a shared correctness gate. Reasons:
+
+- llama.cpp GGUF Q4_K_M and hipEngine PARO w4 are different quantizations.
+- MTP can change output hashes at `temperature=0` because target verification
+  changes the sampled path and batching shape.
+- Repeated-token prompts can produce perfect draft acceptance and overstate
+  natural-prompt MTP speedups.
+
 ## Standard Workloads
 
 Every new perf number should match one of these shapes unless there's a documented reason not to. Protocol-shape drift is how baselines become uncomparable.
@@ -252,6 +298,21 @@ uv run python scripts/smoke.py --model Qwen3-0.6B --prompt fixtures/smoke_prompt
 ```
 
 Runs the full `LLM.generate()` path on a fixed prompt set, saves logits, diffs against the archived CPU-reference logits. Same KL ≤ 0.05 / top-1 ≥ 90% gate.
+
+### P9 qwen35moe GGUF WMMA+GEMV decode gate
+
+For P9.A3/P9.B7-style qwen35moe GGUF benchmark rows that enable the P8 WMMA bulk-prefill opt-in and/or the P9 decode GEMV opt-in, run the resident 512/128 contract before reporting throughput:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --json benchmarks/results/<date>-qwen36-35b-a3b-q4km-p9-e2-correctness.json
+```
+
+The fixture compares a candidate launched with `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. The qwen35moe resident runtime currently safety-disables those two requested fast paths unless `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1` is set, because P9.E2 rejected their real opt-in output. The artifact records `fastpath_safety` with requested vs effective flags; a passing gate with `effective_* = false` is a correctness fallback only, not a performance acceptance for WMMA/GEMV. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
 
 Fixtures (prompts + reference logits) are tiny (< 10 MB) and *are* committed under `fixtures/`. They are not "benchmark outputs" and do not count against the never-commit rule.
 

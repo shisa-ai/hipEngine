@@ -378,6 +378,11 @@ def register_aotriton_wrap_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "full_attn_prefill", "gguf_qwen35", "aotriton_attn_fwd_v3"),
+        aotriton_attn_fwd_v3_compact_varlen,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "aotriton_attn_fwd_gqa_per_q_head"),
         aotriton_attn_fwd_compact_varlen_gqa_per_q_head,
         replace=replace,

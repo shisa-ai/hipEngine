@@ -1,0 +1,281 @@
+{
+  "all_layer_control": {
+    "passes": 3,
+    "prefix_lengths": [
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    ],
+    "runs": 3
+  },
+  "artifacts": {
+    "all_layer_c8_r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/all-layer-c8-r1-compact.json"
+    },
+    "all_layer_c8_r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/all-layer-c8-r2-compact.json"
+    },
+    "all_layer_c8_r3": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/all-layer-c8-r3-compact.json"
+    },
+    "final_gate_c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/final-gate-c2-compact.json"
+    },
+    "final_gate_c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/final-gate-c4-compact.json"
+    },
+    "final_gate_c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/final-gate-c8-compact.json"
+    },
+    "selected_c8_r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/selected-c8-r1-compact.json"
+    },
+    "selected_c8_r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/selected-c8-r2-compact.json"
+    },
+    "selected_c8_r3": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/selected-c8-r3-compact.json"
+    },
+    "selected_c8_r4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/selected-c8-r4-compact.json"
+    },
+    "selected_c8_r5": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/selected-c8-r5-compact.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-alllayer-demotion-297/summary.json"
+    }
+  },
+  "conclusion": "C8 selected rowchunk layers [3,7,11,15] are not repeat-stable: stress r2 reproduced a row-6 prefix-40 mismatch. Three all-layer rowchunk2 controls were green, so the correctness-first auto default demotes c8 back to all-layer rowchunk2. The final required c2/c4/c8 gate is green; no throughput/scaling claim is made.",
+  "created_at": "2026-06-04T19:50:46.689782+00:00",
+  "git_commit_before_commit": "6359c1d63431248d2e870c71c44b1cc751c9bfd4",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 297,
+  "kind": "c8_demote_to_all_layer_rowchunk2",
+  "performance_claim": false,
+  "result": {
+    "decode_blockers": {
+      "final_gate_c2": [],
+      "final_gate_c4": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "final_gate_c8": [
+        "full-attention decode forced to native row-chunk diagnostic path"
+      ]
+    },
+    "demoted_c8_to_all_layer_rowchunk2": true,
+    "full_attention_output_paths": {
+      "final_gate_c2": "batch",
+      "final_gate_c4": "batch_gemv",
+      "final_gate_c8": "batch"
+    },
+    "generated_equality_passed_final_gate": true,
+    "prefix_lengths": {
+      "final_gate_c2": [
+        137,
+        137
+      ],
+      "final_gate_c4": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "final_gate_c8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "requested_rowchunk_layers": {
+      "final_gate_c2": null,
+      "final_gate_c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_gate_c8": null
+    },
+    "rowchunk_layers": {
+      "final_gate_c2": null,
+      "final_gate_c4": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "final_gate_c8": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ]
+    }
+  },
+  "schema": 1,
+  "selected_layer_stress": {
+    "first_mismatch_indices": [
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        40,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    ],
+    "passes": 4,
+    "prefix_lengths": [
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        40,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    ],
+    "runs": 5
+  },
+  "source_tmp_dirs": {
+    "all_layer_control": "/tmp/hipengine-iter297-c8-alllayer-control",
+    "final_c248_gate": "/tmp/hipengine-iter297-c248-post-c8-demote",
+    "selected_layer_stress": "/tmp/hipengine-iter297-c8-selected-stress"
+  },
+  "status": "passed",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "primitive_correctness_c8": "benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c8.json",
+    "projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

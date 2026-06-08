@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": 48,
+  "title": "GGUF resident decode graph replay and GPU sampling",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "architecture": "qwen35",
+    "quant": "gguf_q4_k_m"
+  },
+  "change": {
+    "summary": "Qwen35GGUFResidentSession now keeps decode token/position state on device, samples with a GPU GGUF lm-head plus argmax, and exposes a one-step HIP graph replay path used by public LLM.generate for remaining greedy decode tokens.",
+    "implemented": [
+      "device-side token scalar updates via runtime_state set_i64_scalar",
+      "device-side position/context set and advance via runtime_state set_decode_position_i64 / advance_decode_position_i64",
+      "GGUF Q6_K embedding lookup consumes device token IDs inside eager and graph decode",
+      "GGUF Q6_K lm-head writes FP32 logits and argmax_f32 keeps greedy sampling on GPU",
+      "capture_decode_graph(position, steps_per_replay=1, max_replay_steps, record_steps) records generated token IDs into a device int64 buffer",
+      "public GGUF generator replays the one-step graph after the initial prefill sample"
+    ],
+    "caveats": [
+      "This is a correctness/profiler diagnostic, not a promoted throughput row.",
+      "The graph captures the resident c=1 decode path; public full-model prefill is still token-serial until the linear-attention bulk scheduler path lands."
+    ]
+  },
+  "graph_smoke": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_decode_graph_smoke.py --json /tmp/gguf_task48_graph_smoke.json",
+    "passed": true,
+    "prompt_ids": [760, 4087, 369],
+    "expected_generated_token_ids": [220, 16, 13, 271],
+    "eager_generated_token_ids": [220, 16, 13, 271],
+    "graph_generated_token_ids": [220, 16, 13, 271],
+    "eager_text": " 1.\n\n",
+    "graph_text": " 1.\n\n",
+    "final_logits": {
+      "shape": [1, 248320],
+      "finite": true,
+      "eager_top1": 271,
+      "graph_top1": 271,
+      "top1_equal": true,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "kl_eager_to_graph": 0.0
+    },
+    "timing_seconds": {
+      "eager_prefill": 0.20777172897942364,
+      "eager_decode": 0.19960052298847586,
+      "graph_prefill": 0.18850483500864357,
+      "graph_capture": 0.07165232597617432,
+      "graph_replay_decode_excludes_capture": 0.022451956989243627
+    },
+    "elapsed_wall": "0:22.12"
+  },
+  "public_e2e_gate": {
+    "command": "/usr/bin/time -f 'elapsed=%E exit=%x' env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task48_e2e.json",
+    "passed": true,
+    "outputs": [" 1.\n\n", " 1.\n\n"],
+    "generated_token_ids": [220, 16, 13, 271],
+    "torch_loaded_by_generate": false,
+    "elapsed_wall": "0:23.40"
+  },
+  "rocprof_graph_replay": {
+    "command": "env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file gguf_task48_decode_graph --output-directory /tmp/hipengine-gguf-task48-rocprof.D4qqHI -- python3 /tmp/profile_gguf_task48_graph.py",
+    "profile_dir": "/tmp/hipengine-gguf-task48-rocprof.D4qqHI",
+    "stdout": "{'ids': [220, 16, 13, 271], 'final_token': 271, 'position': 6}",
+    "total_dispatches": 2399,
+    "unique_kernel_names": 27,
+    "key_kernel_counts": {
+      "gguf_q6_k_embedding_bf16_out_kernel": 6,
+      "gguf_k_prefill_out_kernel<unsigned short,float,6>": 4,
+      "argmax_stage1_kernel": 4,
+      "argmax_stage2_kernel": 4,
+      "set_i64_scalar_kernel": 3,
+      "advance_decode_position_i64_kernel": 3,
+      "record_i64_scalar_indexed_kernel": 3,
+      "qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>": 36,
+      "qwen35_paged_full_attn_decode_context_tensor_kernel": 36
+    },
+    "duration_ns": {
+      "gguf_k_prefill_out_kernel<unsigned short,float,6>_total": 6461923,
+      "argmax_stage1_total": 24440,
+      "argmax_stage2_total": 17240,
+      "advance_decode_position_i64_total": 7400,
+      "record_i64_scalar_indexed_total": 8240,
+      "full_attn_kv_write_total": 124160,
+      "full_attn_decode_total": 274602
+    },
+    "resident_state_evidence": "Profiled graph run generated 4 fixture IDs with session.position=6 after prompt length 3 plus 3 graph replays. Kernel counts include 6 Q6_K embedding lookups and 36 full-attention KV append/decode launches, matching 6 resident token steps across 6 full-attention layers rather than full-context recompute per generated token. Device runtime-state kernels appear for the 3 replayed tokens: set_i64_scalar only during prefill, then advance_decode_position_i64 and record_i64_scalar_indexed once per graph replay."
+  },
+  "validation": {
+    "targeted_tests_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_runner.py tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_tokenizer.py tests/test_aotriton_discovery.py -q",
+    "targeted_tests_result": "36 passed"
+  }
+}

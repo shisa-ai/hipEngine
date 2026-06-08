@@ -1,0 +1,880 @@
+{
+  "schema": 2,
+  "task": "P9.B7",
+  "status": "rejected_correctness_and_perf",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "hardware": "local RX 7900 XTX / gfx1100 (W7900 target not rerun)",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "measured_runs": 3,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1
+  },
+  "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_b7/bench-512-128-gemvdecode.json",
+  "baseline_vs_task_16": {
+    "decode_tok_s": 62.557,
+    "source": "P9.C11/task #27 rollup carried forward from task #16 current decode baseline"
+  },
+  "wall_clock": {
+    "prefill_tok_s_median": 1835.3818292740948,
+    "decode_tok_s_median": 63.03335910673056,
+    "decode_target_tok_s": 95.0,
+    "decode_delta_tok_s": 0.4763591067305555,
+    "decode_delta_pct": 0.7614801009168559,
+    "prefill_seconds_median": 0.27896102698286995,
+    "decode_seconds_median": 2.0306707720155828,
+    "graph_capture_seconds_median": 0.18242454796563834,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      220,
+      220,
+      220
+    ],
+    "raw_bench_json_uncommitted": "/tmp/p9_b7/bench-512-128-gemvdecode.json"
+  },
+  "correctness_gate": {
+    "artifact": "benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_e2-e2e-correctness-rejected.json",
+    "status": "rejected_correctness",
+    "passed": false,
+    "kl_threshold": 0.05,
+    "top1_threshold": 0.9,
+    "worst_kl_mean": 5.9925541314326445,
+    "worst_top1_agreement": 0.05426356589147287,
+    "candidate_deterministic_tail": true,
+    "reference_final_token_id": 220,
+    "candidate_final_token_ids": [
+      220,
+      220,
+      220
+    ],
+    "first_top1_mismatch": {
+      "row": 0,
+      "reference_argmax": 128449,
+      "candidate_argmax": 59639
+    }
+  },
+  "rocprof": {
+    "prefill_512_0": {
+      "source_csv_uncommitted": "/tmp/p9_b7/rocprof-512-0-prefill/rocm/1074798_kernel_trace.csv",
+      "dispatches": 1638,
+      "kernel_total_ms": 269.734019,
+      "pack8_gemv_ms": 0.0,
+      "pack8_gemv_dispatches": 0,
+      "legacy_prefill_out_ms": 0.958806,
+      "legacy_prefill_out_dispatches": 1,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+          "total_ms": 57.837574,
+          "dispatches": 40,
+          "pct_kernel_time": 21.442446975885527
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+          "total_ms": 51.200823,
+          "dispatches": 30,
+          "pct_kernel_time": 18.98196719487578
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 41.091962,
+          "dispatches": 10,
+          "pct_kernel_time": 15.234252673186175
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 33.477515,
+          "dispatches": 90,
+          "pct_kernel_time": 12.411306191229812
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 27.162601,
+          "dispatches": 37,
+          "pct_kernel_time": 10.070142839491076
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 14.593245,
+          "dispatches": 40,
+          "pct_kernel_time": 5.410235258460299
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 13.607321,
+          "dispatches": 80,
+          "pct_kernel_time": 5.0447181450998215
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 3.446505,
+          "dispatches": 40,
+          "pct_kernel_time": 1.2777420559621735
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 3.273863,
+          "dispatches": 60,
+          "pct_kernel_time": 1.2137375226667273
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 3.247103,
+          "dispatches": 30,
+          "pct_kernel_time": 1.2038166383454956
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+          "total_ms": 2.794134,
+          "dispatches": 30,
+          "pct_kernel_time": 1.0358849100157441
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 2.714017,
+          "dispatches": 3,
+          "pct_kernel_time": 1.006182686952809
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 2.314853,
+          "dispatches": 40,
+          "pct_kernel_time": 0.8581983869079561
+        },
+        {
+          "kernel": "__amd_rocclr_copyBuffer",
+          "total_ms": 1.496524,
+          "dispatches": 292,
+          "pct_kernel_time": 0.5548147043328635
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+          "total_ms": 1.321087,
+          "dispatches": 30,
+          "pct_kernel_time": 0.48977396507038296
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+          "total_ms": 1.305886,
+          "dispatches": 40,
+          "pct_kernel_time": 0.4841384134049476
+        },
+        {
+          "kernel": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+          "total_ms": 1.153362,
+          "dispatches": 40,
+          "pct_kernel_time": 0.427592338658625
+        },
+        {
+          "kernel": "__amd_rocclr_fillBufferAligned",
+          "total_ms": 0.970408,
+          "dispatches": 200,
+          "pct_kernel_time": 0.3597647799849822
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 0.967203,
+          "dispatches": 40,
+          "pct_kernel_time": 0.3585765724270768
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 0.958806,
+          "dispatches": 1,
+          "pct_kernel_time": 0.3554635056989234
+        }
+      ],
+      "pack8_gemv_kernels": [],
+      "legacy_prefill_out_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 0.958806,
+          "dispatches": 1
+        }
+      ]
+    },
+    "graph_512_16_total": {
+      "source_csv_uncommitted": "/tmp/p9_b7/rocprof-512-16-eager/rocm/1068527_kernel_trace.csv",
+      "dispatches": 20464,
+      "kernel_total_ms": 505.559377,
+      "pack8_gemv_ms": 85.234705,
+      "pack8_gemv_dispatches": 1360,
+      "legacy_prefill_out_ms": 73.918352,
+      "legacy_prefill_out_dispatches": 3588,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+          "total_ms": 57.831432,
+          "dispatches": 40,
+          "pct_kernel_time": 11.43909788463878
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+          "total_ms": 50.638161,
+          "dispatches": 30,
+          "pct_kernel_time": 10.016263826513894
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 49.690711,
+          "dispatches": 2890,
+          "pct_kernel_time": 9.828857550791705
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 43.069102,
+          "dispatches": 629,
+          "pct_kernel_time": 8.519098637942978
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 41.165076,
+          "dispatches": 10,
+          "pct_kernel_time": 8.14248095728625
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 38.489665,
+          "dispatches": 680,
+          "pct_kernel_time": 7.613282781618745
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 33.168477,
+          "dispatches": 90,
+          "pct_kernel_time": 6.560748056305956
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 27.327541,
+          "dispatches": 170,
+          "pct_kernel_time": 5.405406811394184
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 27.045051,
+          "dispatches": 37,
+          "pct_kernel_time": 5.349530090903644
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 18.476169,
+          "dispatches": 18,
+          "pct_kernel_time": 3.654599210410848
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 14.39891,
+          "dispatches": 40,
+          "pct_kernel_time": 2.848114515340104
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 13.647508,
+          "dispatches": 80,
+          "pct_kernel_time": 2.699486671770307
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 7.700884,
+          "dispatches": 510,
+          "pct_kernel_time": 1.5232402661972582
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 6.62047,
+          "dispatches": 720,
+          "pct_kernel_time": 1.3095336178484134
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 6.114158,
+          "dispatches": 1080,
+          "pct_kernel_time": 1.2093847484901858
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 5.751472,
+          "dispatches": 680,
+          "pct_kernel_time": 1.1376452028502282
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 5.448073,
+          "dispatches": 720,
+          "pct_kernel_time": 1.0776326674680587
+        },
+        {
+          "kernel": "__amd_rocclr_fillBufferAligned",
+          "total_ms": 5.076907,
+          "dispatches": 1561,
+          "pct_kernel_time": 1.004215771869661
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 5.009985,
+          "dispatches": 1360,
+          "pct_kernel_time": 0.9909785532471689
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 4.752226,
+          "dispatches": 738,
+          "pct_kernel_time": 0.9399936419337742
+        }
+      ],
+      "pack8_gemv_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 43.069102,
+          "dispatches": 629
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 38.489665,
+          "dispatches": 680
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 3.675938,
+          "dispatches": 51
+        }
+      ],
+      "legacy_prefill_out_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 49.690711,
+          "dispatches": 2890
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 18.476169,
+          "dispatches": 18
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 5.751472,
+          "dispatches": 680
+        }
+      ]
+    },
+    "eager_512_16_total": {
+      "source_csv_uncommitted": "/tmp/p9_b7/rocprof-512-16-eager-nograph/rocm/1069447_kernel_trace.csv",
+      "dispatches": 20475,
+      "kernel_total_ms": 603.07287,
+      "pack8_gemv_ms": 123.48973,
+      "pack8_gemv_dispatches": 1360,
+      "legacy_prefill_out_ms": 95.684132,
+      "legacy_prefill_out_dispatches": 3588,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 62.837799,
+          "dispatches": 629,
+          "pct_kernel_time": 10.419603024092263
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 60.99811,
+          "dispatches": 2890,
+          "pct_kernel_time": 10.114550501998208
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+          "total_ms": 58.400814,
+          "dispatches": 40,
+          "pct_kernel_time": 9.683873525930622
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 55.157942,
+          "dispatches": 680,
+          "pct_kernel_time": 9.146148789614761
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+          "total_ms": 51.52582,
+          "dispatches": 30,
+          "pct_kernel_time": 8.543879614415419
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 41.20533,
+          "dispatches": 10,
+          "pct_kernel_time": 6.832562373432584
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 37.757279,
+          "dispatches": 170,
+          "pct_kernel_time": 6.260815380403366
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 34.14073,
+          "dispatches": 90,
+          "pct_kernel_time": 5.661128480211686
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 27.326575,
+          "dispatches": 37,
+          "pct_kernel_time": 4.5312227359854536
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 27.262382,
+          "dispatches": 18,
+          "pct_kernel_time": 4.520578416999591
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 14.288749,
+          "dispatches": 40,
+          "pct_kernel_time": 2.3693237933253406
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 13.626187,
+          "dispatches": 80,
+          "pct_kernel_time": 2.2594594580253626
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 10.818618,
+          "dispatches": 510,
+          "pct_kernel_time": 1.7939155512003053
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 9.509692,
+          "dispatches": 720,
+          "pct_kernel_time": 1.5768727915085952
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 7.42364,
+          "dispatches": 680,
+          "pct_kernel_time": 1.2309689872137672
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 7.391837,
+          "dispatches": 720,
+          "pct_kernel_time": 1.2256954951397498
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 7.383953,
+          "dispatches": 1080,
+          "pct_kernel_time": 1.224388190435428
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 7.3786,
+          "dispatches": 1360,
+          "pct_kernel_time": 1.2235005696741093
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 6.323377,
+          "dispatches": 738,
+          "pct_kernel_time": 1.048526192199626
+        },
+        {
+          "kernel": "__amd_rocclr_fillBufferAligned",
+          "total_ms": 6.315035,
+          "dispatches": 1560,
+          "pct_kernel_time": 1.0471429431073562
+        }
+      ],
+      "pack8_gemv_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 62.837799,
+          "dispatches": 629
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 55.157942,
+          "dispatches": 680
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 5.493989,
+          "dispatches": 51
+        }
+      ],
+      "legacy_prefill_out_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 60.99811,
+          "dispatches": 2890
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 27.262382,
+          "dispatches": 18
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 7.42364,
+          "dispatches": 680
+        }
+      ]
+    },
+    "graph_512_16_decode_delta": {
+      "source_csv_uncommitted": "/tmp/p9_b7/rocprof-512-16-eager/rocm/1068527_kernel_trace.csv",
+      "dispatches": 18826,
+      "kernel_total_ms": 237.945505,
+      "pack8_gemv_ms": 85.234705,
+      "pack8_gemv_dispatches": 1360,
+      "legacy_prefill_out_ms": 72.959546,
+      "legacy_prefill_out_dispatches": 3587,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 49.690711,
+          "dispatches": 2890,
+          "pct_kernel_time": 20.8832316458342
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 43.069102,
+          "dispatches": 629,
+          "pct_kernel_time": 18.10040580510231
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 38.489665,
+          "dispatches": 680,
+          "pct_kernel_time": 16.175831941015232
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 27.327541,
+          "dispatches": 170,
+          "pct_kernel_time": 11.48478976310143
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 17.517363,
+          "dispatches": 17,
+          "pct_kernel_time": 7.361922218282711
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 7.700884,
+          "dispatches": 510,
+          "pct_kernel_time": 3.236406588138742
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 5.751472,
+          "dispatches": 680,
+          "pct_kernel_time": 2.4171383275342815
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 5.653267,
+          "dispatches": 680,
+          "pct_kernel_time": 2.375866272405524
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 5.009985,
+          "dispatches": 1360,
+          "pct_kernel_time": 2.1055178159385695
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 4.783188,
+          "dispatches": 680,
+          "pct_kernel_time": 2.010203134537045
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 4.283022,
+          "dispatches": 697,
+          "pct_kernel_time": 1.8000012229690994
+        },
+        {
+          "kernel": "__amd_rocclr_fillBufferAligned",
+          "total_ms": 4.106499,
+          "dispatches": 1361,
+          "pct_kernel_time": 1.7258149087540025
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 3.675938,
+          "dispatches": 51,
+          "pct_kernel_time": 1.5448654934666657
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 2.840295,
+          "dispatches": 1020,
+          "pct_kernel_time": 1.19367457687423
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+          "total_ms": 2.470331,
+          "dispatches": 680,
+          "pct_kernel_time": 1.0381919170946305
+        },
+        {
+          "kernel": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+          "total_ms": 2.024694,
+          "dispatches": 680,
+          "pct_kernel_time": 0.8509065972899972
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
+          "total_ms": 1.989004,
+          "dispatches": 680,
+          "pct_kernel_time": 0.8359073645875345
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+          "total_ms": 1.589647,
+          "dispatches": 510,
+          "pct_kernel_time": 0.6680718763735419
+        },
+        {
+          "kernel": "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 1.441366,
+          "dispatches": 680,
+          "pct_kernel_time": 0.6057546663888439
+        },
+        {
+          "kernel": "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",
+          "total_ms": 1.258447,
+          "dispatches": 680,
+          "pct_kernel_time": 0.5288803417404334
+        }
+      ],
+      "pack8_gemv_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 43.069102,
+          "dispatches": 629
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 38.489665,
+          "dispatches": 680
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 3.675938,
+          "dispatches": 51
+        }
+      ],
+      "legacy_prefill_out_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 49.690711,
+          "dispatches": 2890
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 17.517363,
+          "dispatches": 17
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 5.751472,
+          "dispatches": 680
+        }
+      ],
+      "baseline_subtracted_csv_uncommitted": "/tmp/p9_b7/rocprof-512-0-prefill/rocm/1074798_kernel_trace.csv",
+      "interpretation": "graph 512/16 minus 512/0 by kernel name; compact decode-family approximation used because full 512/128 graph rocprof did not produce a CSV."
+    },
+    "eager_512_16_decode_delta": {
+      "source_csv_uncommitted": "/tmp/p9_b7/rocprof-512-16-eager-nograph/rocm/1069447_kernel_trace.csv",
+      "dispatches": 18837,
+      "kernel_total_ms": 334.040996,
+      "pack8_gemv_ms": 123.48973,
+      "pack8_gemv_dispatches": 1360,
+      "legacy_prefill_out_ms": 94.725326,
+      "legacy_prefill_out_dispatches": 3587,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 62.837799,
+          "dispatches": 629,
+          "pct_kernel_time": 18.81140331649592
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 60.99811,
+          "dispatches": 2890,
+          "pct_kernel_time": 18.260665825580283
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 55.157942,
+          "dispatches": 680,
+          "pct_kernel_time": 16.51232712765591
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 37.757279,
+          "dispatches": 170,
+          "pct_kernel_time": 11.30318716927787
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 26.303576,
+          "dispatches": 17,
+          "pct_kernel_time": 7.8743556374739105
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 10.818618,
+          "dispatches": 510,
+          "pct_kernel_time": 3.2387096582600297
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 8.542489,
+          "dispatches": 680,
+          "pct_kernel_time": 2.557317545538632
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 7.42364,
+          "dispatches": 680,
+          "pct_kernel_time": 2.2223739268218443
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 7.3786,
+          "dispatches": 1360,
+          "pct_kernel_time": 2.208890551865077
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 6.726952,
+          "dispatches": 680,
+          "pct_kernel_time": 2.0138103048884455
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 5.854173,
+          "dispatches": 697,
+          "pct_kernel_time": 1.7525312970866607
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 5.493989,
+          "dispatches": 51,
+          "pct_kernel_time": 1.6447050109981112
+        },
+        {
+          "kernel": "__amd_rocclr_fillBufferAligned",
+          "total_ms": 5.344627,
+          "dispatches": 1360,
+          "pct_kernel_time": 1.5999913375901922
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 4.11009,
+          "dispatches": 1020,
+          "pct_kernel_time": 1.2304148440510576
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+          "total_ms": 3.468615,
+          "dispatches": 680,
+          "pct_kernel_time": 1.0383800316533605
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
+          "total_ms": 2.889689,
+          "dispatches": 680,
+          "pct_kernel_time": 0.8650701664175376
+        },
+        {
+          "kernel": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+          "total_ms": 2.728139,
+          "dispatches": 680,
+          "pct_kernel_time": 0.8167078390581735
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+          "total_ms": 2.401734,
+          "dispatches": 510,
+          "pct_kernel_time": 0.7189937848227467
+        },
+        {
+          "kernel": "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 2.14653,
+          "dispatches": 680,
+          "pct_kernel_time": 0.6425947789953302
+        },
+        {
+          "kernel": "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 2.099211,
+          "dispatches": 680,
+          "pct_kernel_time": 0.6284291524504975
+        }
+      ],
+      "pack8_gemv_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 62.837799,
+          "dispatches": 629
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_pack8_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "total_ms": 55.157942,
+          "dispatches": 680
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_pack8_gemv_kernel<unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "total_ms": 5.493989,
+          "dispatches": 51
+        }
+      ],
+      "legacy_prefill_out_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 60.99811,
+          "dispatches": 2890
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 26.303576,
+          "dispatches": 17
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 7.42364,
+          "dispatches": 680
+        }
+      ],
+      "baseline_subtracted_csv_uncommitted": "/tmp/p9_b7/rocprof-512-0-prefill/rocm/1074798_kernel_trace.csv",
+      "interpretation": "eager 512/16 minus 512/0 by kernel name; compact decode-family approximation used because full 512/128 graph rocprof did not produce a CSV."
+    },
+    "notes": [
+      "Graph 512/128 kernel trace was attempted first and did not produce a CSV in /tmp/p9_b7/rocprof-512-128-graph.log; retained 512/16 traces plus a 512/0 prefill-only trace to approximate decode deltas by kernel-name subtraction.",
+      "Pack8 selected GEMV kernels are present in decode deltas, but legacy prefill_out kernels remain a large bucket. Q6_K lm-head logits pack8 fallback is allowed by task text, but Q8_0 dense/shared prefill_out and any non-lm-head prefill_out decode buckets are not acceptable for a retained B7 row.",
+      "Eager decode is much slower wall-clock because launch overhead is not hidden; graph replay is still required for throughput once correctness and kernel mix are fixed."
+    ]
+  },
+  "acceptance": {
+    "decode_tok_s_ge_95": false,
+    "p9_e2_correctness_passed": false,
+    "legacy_prefill_out_absent_from_decode": false,
+    "retained": false
+  },
+  "blockers": [
+    "P9.E2 correctness rejects the WMMA prefill + GEMV decode opt-in combination (KL/top-1 drift).",
+    "Decode median is ~63 tok/s, far below the 95 tok/s target and only +0.8% vs ~62.6 baseline.",
+    "Rocprof decode deltas show selected pack8 GEMV kernels are active, but legacy prefill_out kernels still consume a large bucket; decode needs GGUF repacking/layout work, not just graph replay."
+  ]
+}

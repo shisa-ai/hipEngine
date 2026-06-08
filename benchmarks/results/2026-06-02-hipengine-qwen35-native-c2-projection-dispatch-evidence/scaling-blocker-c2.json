@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/scaling-blocker-c2.json",
+  "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/retained-projection-check-c2.json",
+  "created_at": "2026-06-02T21:09:12.296955Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "Focused c=2 retained scaling blocker after correctness, primitive correctness, and projection dispatch are green.",
+  "blockers": [
+    "aggregate_vs_c1_below_retained_threshold"
+  ],
+  "decision": {
+    "accepted": false,
+    "reason": "scaling.ratios.aggregate_vs_c1=0.777001 is below the retained acceptance threshold > 1.0; native c=2 is correctness/projection green and beats serial bridge but is not a retained throughput claim."
+  },
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "ffd3f2104e126678f67c20f709ade544a0a79ddd",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "rows": 2,
+    "shape": "c=2 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "correctness": {
+    "generated_token_equality_passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "min_equal_prefix_tokens": 137,
+    "primitive_passed": true,
+    "primitive_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json"
+  },
+  "projection_dispatch": {
+    "rows": 2,
+    "selected_candidate": "batch",
+    "path": "benchmark_accepted_caware_projection",
+    "selection": {
+      "layer": "linear",
+      "quant": "w4_paro",
+      "variant": "batch"
+    },
+    "throughput_claim_eligible": true,
+    "blockers": [],
+    "evidence": {
+      "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json",
+      "aggregate_vs_row_gemv": 1.1144871753675365,
+      "per_request_vs_row_gemv": 1.1144871753675365,
+      "accepted": true
+    }
+  },
+  "projection_evidence": {
+    "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json",
+    "aggregate_vs_row_gemv": 1.1144871753675365,
+    "per_request_vs_row_gemv": 1.1144871753675365,
+    "accepted": true
+  },
+  "measurements": {
+    "native_decode_tok_s_aggregate": 104.20504173451897,
+    "native_decode_tok_s_per_request": 52.102520867259486,
+    "c1_decode_tok_s_aggregate": 134.1118139970783,
+    "c1_decode_tok_s_per_request": 134.1118139970783,
+    "serial_bridge_decode_tok_s_aggregate": 79.85063957880106,
+    "serial_bridge_decode_tok_s_per_request": 39.92531978940053,
+    "ratios": {
+      "aggregate_vs_c1": 0.7770012098769251,
+      "per_request_vs_c1": 0.38850060493846256,
+      "aggregate_vs_serial_bridge": 1.3049994625488708,
+      "per_request_vs_serial_bridge": 1.3049994625488708
+    }
+  },
+  "profiler_reference": {
+    "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/profiler-c2.json",
+    "status": "captured",
+    "expected_kernels_present": true,
+    "trace_dir": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/profile-c2",
+    "trace_files": [
+      "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/profile-c2/hipengine_kernel_trace.csv"
+    ],
+    "note": "Existing c=2 profiler-preflight artifact is retained as historical profiler evidence; this blocker artifact does not make a performance claim."
+  },
+  "source_hashes": {
+    "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/retained-projection-check-c2.json": {
+      "sha256": "2f0c98d38e2cb05f163ead7bdfe8a1f8e015d08c2fc4e1707e0364f5056f7d99",
+      "size_bytes": 136475
+    },
+    "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json": {
+      "sha256": "bc3bd0b3217295c95de2844ab49544627e86fa07b6551b5b88cf20e3c9174c84",
+      "size_bytes": 16857
+    },
+    "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/native-baseline-c1.json": {
+      "sha256": "9d44e9ec341178041233f2c61e03e30184417a95048f5895d00255168344ae14",
+      "size_bytes": 183565
+    },
+    "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/serial-bridge-c2.json": {
+      "sha256": "7a43eec8423a3886dff132155604fc21f719732e3341c06d18ed25cc0506008f",
+      "size_bytes": 76544
+    },
+    "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json": {
+      "sha256": "3d93c6fe800f14a991a364590a45dd8f6171aff0c304b09eef3e829811d00ce2",
+      "size_bytes": 869
+    },
+    "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/profiler-c2.json": {
+      "sha256": "b82f6ce25143fe6bd446746b320724ca85171254c4ede6983eeff568a49533ff",
+      "size_bytes": 3796
+    }
+  },
+  "commands": {
+    "native_projection_check": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json --json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/retained-projection-check-c2.json",
+    "full_retained_reject_log": "/tmp/hipengine-e2e-native-c2-retained-iter105-accepted.log",
+    "full_retained_reject_error": "scaling.ratios.aggregate_vs_c1 must be > 1.0 for accepted artifacts"
+  },
+  "notes": [
+    "This artifact intentionally remains blocked/performance_claim=false because aggregate native c=2 decode is slower than the independent c=1 baseline.",
+    "The native c=2 path is generated-token equal, primitive-correct, projection-dispatch green, and faster than the serial bridge; the remaining promotion target is aggregate_vs_c1 > 1.0."
+  ]
+}

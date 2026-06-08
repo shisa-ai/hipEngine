@@ -1,0 +1,186 @@
+{
+  "all_realshape_primitive_parity_green": true,
+  "artifacts": {
+    "c8_grouped_projection_repeatability": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c8-grouped-projection-repeatability/summary.json",
+      "sha256": "c43ed7048d09191c7a2fdda715627c5b9f12b768c718ac0d84a1ae5ca180b81f",
+      "size_bytes": 10074
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "primitive_c3_realshape": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c3-context520-realshape.json",
+      "sha256": "0f0f094077d02bb8d24e647b57a7ae9d0fa0de5d3a6ad65f2eb09037f531fc60",
+      "size_bytes": 916
+    },
+    "primitive_c4_realshape": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c4-context520-realshape.json",
+      "sha256": "ca713a284c09cc3d1ea338a1d7182da4f4b92aab1df6f454e8f4a967ba7aeffd",
+      "size_bytes": 924
+    },
+    "primitive_c8_realshape": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c8-context520-realshape.json",
+      "sha256": "c04fbe69aec57ae0f0716c976a45a1fb2b2e8bf4ac2bef8c25cb794fb88487c4",
+      "size_bytes": 961
+    },
+    "toy_c3_context520": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-long-context-primitive-attn/summary.json",
+      "sha256": "84212b09ca1c4033451b6536e7d78fbe7db1b3e6173907fb6db3ade811d8f595",
+      "size_bytes": 4175
+    },
+    "toy_c4_c8_context520": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c48-long-context-primitive-attn/summary.json",
+      "sha256": "7ec8f2df6f5976a6f3823cce35db317e6199efef96c432aaad6c0d493afe7d9f",
+      "size_bytes": 5951
+    }
+  },
+  "commands": {
+    "c3": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 3 --block-size 256 --max-context-len 640 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --context-lens 520,520,520 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c3-context520-realshape.json",
+    "c4": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --block-size 256 --max-context-len 640 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --context-lens 520,520,520,520 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c4-context520-realshape.json",
+    "c8": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --block-size 256 --max-context-len 640 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --context-lens 520,520,520,520,520,520,520,520 --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c8-context520-realshape.json"
+  },
+  "conclusion": "The BF16 paged KV append plus batched full-attention context primitive is green at Qwen/PARO full-attention geometry (16 Q heads, 2 KV heads, head_dim 256), context length 520, and row groups c3/c4/c8: batch-vs-independent-c1 max_abs is 0.0 and batch A/A max_abs is 0.0 for every row count, with numpy agreement within the primitive gate. This eliminates standalone append/context primitive arithmetic at the actual model GQA shape; the remaining E2E grouped>=3 blocker is the coupled full-attention layer trajectory around QKV/gate/O/post-attention/MoE.",
+  "created_at": "2026-06-03T19:19:31Z",
+  "git_commit": "dfcb3c1e0f76116149053d2eebf5e03889bb302a",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 204,
+  "kind": "native_c348_realshape_primitive_attention_parity",
+  "performance_claim": false,
+  "remaining_blockers": [
+    "c4/c8 full-native E2E attention still fails when full-attention row groups contain three or more rows",
+    "rowchunk2 remains the correctness path until the grouped>=3 model-layer trajectory is repaired"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c3-context520-realshape.json",
+      "artifact_sha256": "0f0f094077d02bb8d24e647b57a7ae9d0fa0de5d3a6ad65f2eb09037f531fc60",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.0489096641540527e-08,
+      "block_size": 256,
+      "context_lens": [
+        520,
+        520,
+        520
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 256,
+      "max_context_len": 640,
+      "num_kv_heads": 2,
+      "num_q_heads": 16,
+      "passed": true,
+      "rows": 3
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c4-context520-realshape.json",
+      "artifact_sha256": "ca713a284c09cc3d1ea338a1d7182da4f4b92aab1df6f454e8f4a967ba7aeffd",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.421438694000244e-08,
+      "block_size": 256,
+      "context_lens": [
+        520,
+        520,
+        520,
+        520
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 256,
+      "max_context_len": 640,
+      "num_kv_heads": 2,
+      "num_q_heads": 16,
+      "passed": true,
+      "rows": 4
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c8-context520-realshape.json",
+      "artifact_sha256": "c04fbe69aec57ae0f0716c976a45a1fb2b2e8bf4ac2bef8c25cb794fb88487c4",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.3283064365386963e-08,
+      "block_size": 256,
+      "context_lens": [
+        520,
+        520,
+        520,
+        520,
+        520,
+        520,
+        520,
+        520
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 256,
+      "max_context_len": 640,
+      "num_kv_heads": 2,
+      "num_q_heads": 16,
+      "passed": true,
+      "rows": 8
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "block_size": 256,
+    "context_lens": "all rows at 520 tokens",
+    "coverage": "BF16 paged KV append plus batched full-attention context decode vs independent c1 and numpy at grouped>=3 threshold and retained row counts",
+    "head_dim": 256,
+    "max_context_len": 640,
+    "model_geometry": "Qwen3.6-35B-A3B-PARO full-attention geometry from config.json",
+    "num_kv_heads": 2,
+    "num_q_heads": 16,
+    "rows": [
+      3,
+      4,
+      8
+    ]
+  }
+}

@@ -38,6 +38,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, append_kv_policy_flags, kv_policy_json, resolve_args_kv_policy
+
 BENCH_SCRIPT = REPO_ROOT / "scripts" / "qwen35_paro_bench.py"
 
 HOW_TO_PACK = textwrap.dedent(
@@ -264,6 +266,7 @@ def main() -> int:
         action="store_true",
         help="Forwarded to qwen35_paro_bench.py; fails if any kernel needs to be rebuilt.",
     )
+    add_kv_policy_args(parser, help_prefix="KV storage forwarded to qwen35_paro_bench.py")
     parser.add_argument(
         "--how-to-pack",
         action="store_true",
@@ -306,6 +309,8 @@ def main() -> int:
         common_args.extend(["--compiler-version-file", str(args.compiler_version_file)])
     if args.require_cached_build:
         common_args.append("--require-cached-build")
+    kv_forward = append_kv_policy_flags("", args).strip().split()
+    common_args.extend(kv_forward)
 
     results: list[RunResult] = []
     for spec in specs:
@@ -363,6 +368,7 @@ def main() -> int:
             "graph_steps_per_replay": args.graph_steps_per_replay,
             "checkpoints": [{"label": s.label, "path": str(s.path)} for s in specs],
             "baseline": args.baseline,
+            "kv_policy": kv_policy_json(resolve_args_kv_policy(args, block_size=256)),
         },
         "rows": [
             {

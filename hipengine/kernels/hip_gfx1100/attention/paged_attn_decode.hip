@@ -359,6 +359,12 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   float* warp_buf = scores + context_len;
   const int num_warps = blockDim.x / warpSize;
   float* q_shared = warp_buf + num_warps;
+  // For c=2 long-context Qwen decode, the 1024-thread launch would otherwise
+  // leave most threads idle while one thread per dim scans all values.
+  // Keep tiny primitive fixtures on the exact c1-style accumulation order.
+  const int raw_value_groups = (head_dim >= 128 && context_len >= 128) ? static_cast<int>(blockDim.x / static_cast<unsigned int>(head_dim)) : 0;
+  const int value_groups = (blockDim.x >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
+  float* value_partials = q_shared + head_dim;
   const int64_t q_head = blockIdx.x;
   if (q_head >= num_q_heads) {
     return;
@@ -440,24 +446,52 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   __syncthreads();
   const float inv_denom = warp_buf[0];
 
-  for (int64_t token = warp_id; token < context_len; token += num_warps) {
-    if (lane_id == 0) {
-      scores[token] *= inv_denom;
+  if (value_groups == 1) {
+    for (int64_t token = warp_id; token < context_len; token += num_warps) {
+      if (lane_id == 0) {
+        scores[token] *= inv_denom;
+      }
     }
+    __syncthreads();
   }
-  __syncthreads();
 
-  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
-    float acc = 0.0f;
-    for (int64_t token = 0; token < context_len; ++token) {
-      const int64_t logical_block = token / block_size;
-      const int64_t block_offset = token - logical_block * block_size;
-      const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-      const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
-      const int64_t v_offset = token_offset + kv_head * head_dim + dim;
-      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+  if (value_groups > 1) {
+    const int64_t value_thread_count = static_cast<int64_t>(value_groups) * head_dim;
+    if (static_cast<int64_t>(threadIdx.x) < value_thread_count) {
+      const int64_t dim = static_cast<int64_t>(threadIdx.x) % head_dim;
+      const int group = static_cast<int>(static_cast<int64_t>(threadIdx.x) / head_dim);
+      float acc = 0.0f;
+      for (int64_t token = group; token < context_len; token += value_groups) {
+        const int64_t logical_block = token / block_size;
+        const int64_t block_offset = token - logical_block * block_size;
+        const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+        const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+        const int64_t v_offset = token_offset + kv_head * head_dim + dim;
+        acc += (scores[token] * inv_denom) * bf16_bits_to_float(value_cache[v_offset]);
+      }
+      value_partials[static_cast<int64_t>(group) * head_dim + dim] = acc;
     }
-    out[q_offset + dim] = acc;
+    __syncthreads();
+    if (threadIdx.x < head_dim) {
+      float acc = 0.0f;
+      for (int group = 0; group < value_groups; ++group) {
+        acc += value_partials[static_cast<int64_t>(group) * head_dim + threadIdx.x];
+      }
+      out[q_offset + threadIdx.x] = acc;
+    }
+  } else {
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      float acc = 0.0f;
+      for (int64_t token = 0; token < context_len; ++token) {
+        const int64_t logical_block = token / block_size;
+        const int64_t block_offset = token - logical_block * block_size;
+        const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+        const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+        const int64_t v_offset = token_offset + kv_head * head_dim + dim;
+        acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+      }
+      out[q_offset + dim] = acc;
+    }
   }
 }
 
@@ -1927,6 +1961,509 @@ bool valid_paged_attn_shape(
       head_dim > 0 && head_dim <= 256 && ((max_context_len + block_size - 1) / block_size) <= block_table_len;
 }
 
+
+__global__ void qwen35_full_attn_gate_mul_bf16_to_bf16_kernel(
+    const uint16_t* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float gated = bf16_bits_to_float(attn[idx]) * sigmoid_f32(bf16_bits_to_float(gate[idx]));
+    out[idx] = float_to_bf16_bits(gated);
+  }
+}
+
+template <typename scale_t, int64_t q_per_kv, int64_t num_q_heads, int64_t num_kv_heads>
+__global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel(
+    const float* __restrict__ query,         // [1, num_q_heads, 256]
+    const int8_t* __restrict__ key_cache,    // [num_blocks, 256, num_kv_heads, 256]
+    const int8_t* __restrict__ value_cache,
+    const scale_t* __restrict__ k_scale,     // [num_blocks, 256, num_kv_heads]
+    const scale_t* __restrict__ v_scale,
+    const int32_t* __restrict__ block_table,
+    const int64_t* __restrict__ context_len_ptr,
+    float* __restrict__ partial_out,
+    float* __restrict__ partial_m,
+    float* __restrict__ partial_l,
+    int64_t chunk_size,
+    int64_t num_splits,
+    float scale) {
+  constexpr int64_t head_dim = 256;
+  constexpr int64_t block_size = 256;
+  const int64_t kv_head = blockIdx.x;
+  const int64_t split_idx = blockIdx.y;
+  if (kv_head >= num_kv_heads || split_idx >= num_splits) {
+    return;
+  }
+
+  const int64_t context_len = *context_len_ptr;
+  const int64_t token_start = split_idx * chunk_size;
+  const int64_t q_base = kv_head * q_per_kv;
+
+  if (token_start >= context_len) {
+    if (threadIdx.x == 0) {
+      for (int64_t h = 0; h < q_per_kv; ++h) {
+        const int64_t partial_idx = (q_base + h) * num_splits + split_idx;
+        partial_m[partial_idx] = -3.4028234663852886e38f;
+        partial_l[partial_idx] = 0.0f;
+      }
+    }
+    if (static_cast<int64_t>(threadIdx.x) < head_dim) {
+      const int64_t dim = threadIdx.x;
+      for (int64_t h = 0; h < q_per_kv; ++h) {
+        const int64_t partial_idx = (q_base + h) * num_splits + split_idx;
+        partial_out[partial_idx * head_dim + dim] = 0.0f;
+      }
+    }
+    return;
+  }
+
+  const int64_t token_end_raw = token_start + chunk_size;
+  const int64_t token_end = (token_end_raw < context_len) ? token_end_raw : context_len;
+  const int64_t chunk_len = token_end - token_start;
+
+  extern __shared__ float shared[];
+  float* scores = shared;                          // [q_per_kv, chunk_size]
+  const int num_warps = blockDim.x / warpSize;
+  float* partial = scores + q_per_kv * chunk_size;  // [q_per_kv, num_warps]
+  float* q_shared = partial + q_per_kv * num_warps; // [q_per_kv, 256]
+  int32_t* token_offsets = reinterpret_cast<int32_t*>(q_shared + q_per_kv * head_dim);
+  int32_t* split_meta = token_offsets + chunk_size;
+
+  for (int64_t h = 0; h < q_per_kv; ++h) {
+    q_shared[h * head_dim + threadIdx.x] = query[(q_base + h) * head_dim + threadIdx.x];
+  }
+  if (threadIdx.x == 0) {
+    const int64_t start_block = token_start >> 8;
+    const int64_t start_block_offset = token_start & 255;
+    const int64_t blocks_in_chunk = (start_block_offset + chunk_len + block_size - 1) >> 8;
+    const int32_t base_physical_block = block_table[start_block];
+    bool contiguous_blocks = true;
+    for (int64_t b = 1; b < blocks_in_chunk; ++b) {
+      if (block_table[start_block + b] != base_physical_block + static_cast<int32_t>(b)) {
+        contiguous_blocks = false;
+        break;
+      }
+    }
+    split_meta[0] = contiguous_blocks ? 1 : 0;
+    split_meta[1] = base_physical_block;
+  }
+  __syncthreads();
+
+  const int lane_id = threadIdx.x % warpSize;
+  const int warp_id = threadIdx.x / warpSize;
+  const bool contiguous_blocks = split_meta[0] != 0;
+  const int64_t base_physical_block = static_cast<int64_t>(split_meta[1]);
+  const int64_t contiguous_token_base = (token_start >> 8) << 8;
+
+  float local_max[q_per_kv];
+  for (int64_t h = 0; h < q_per_kv; ++h) {
+    local_max[h] = -3.4028234663852886e38f;
+  }
+
+  for (int64_t lt = warp_id; lt < chunk_len; lt += num_warps) {
+    const int64_t token = token_start + lt;
+    int64_t token_offset;
+    if (contiguous_blocks) {
+      token_offset = (base_physical_block << 8) + (token - contiguous_token_base);
+    } else {
+      const int64_t logical_block = token >> 8;
+      const int64_t block_offset = token & 255;
+      const int64_t physical_block = static_cast<int64_t>(block_table[logical_block]);
+      token_offset = (physical_block << 8) + block_offset;
+    }
+    const int64_t scale_offset = token_offset * num_kv_heads + kv_head;
+    const float key_s = scalar_to_float_qwen35(k_scale[scale_offset]);
+    const int64_t k_offset = (token_offset * num_kv_heads + kv_head) * head_dim;
+    float acc[q_per_kv];
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      acc[h] = 0.0f;
+    }
+    for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
+      const float k0 = static_cast<float>(key_cache[k_offset + dim + 0]) * key_s;
+      const float k1 = static_cast<float>(key_cache[k_offset + dim + 1]) * key_s;
+      const float k2 = static_cast<float>(key_cache[k_offset + dim + 2]) * key_s;
+      const float k3 = static_cast<float>(key_cache[k_offset + dim + 3]) * key_s;
+      for (int64_t h = 0; h < q_per_kv; ++h) {
+        const float* q = q_shared + h * head_dim + dim;
+        acc[h] += q[0] * k0;
+        acc[h] += q[1] * k1;
+        acc[h] += q[2] * k2;
+        acc[h] += q[3] * k3;
+      }
+    }
+    for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+      for (int64_t h = 0; h < q_per_kv; ++h) {
+        acc[h] += __shfl_down(acc[h], offset);
+      }
+    }
+    if (lane_id == 0) {
+      token_offsets[lt] = static_cast<int32_t>(token_offset);
+      for (int64_t h = 0; h < q_per_kv; ++h) {
+        const float score = acc[h] * scale;
+        scores[h * chunk_size + lt] = score;
+        local_max[h] = fmaxf(local_max[h], score);
+      }
+    }
+  }
+  if (lane_id == 0) {
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      partial[h * num_warps + warp_id] = local_max[h];
+    }
+  }
+  __syncthreads();
+
+  if (threadIdx.x < warpSize) {
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      float warp_max = (threadIdx.x < num_warps) ? partial[h * num_warps + threadIdx.x]
+                                                 : -3.4028234663852886e38f;
+      for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+        warp_max = fmaxf(warp_max, __shfl_down(warp_max, offset));
+      }
+      if (threadIdx.x == 0) {
+        partial[h * num_warps] = warp_max;
+      }
+    }
+  }
+  __syncthreads();
+
+  float chunk_max[q_per_kv];
+  for (int64_t h = 0; h < q_per_kv; ++h) {
+    chunk_max[h] = partial[h * num_warps];
+  }
+  __syncthreads();
+
+  float local_sum[q_per_kv];
+  for (int64_t h = 0; h < q_per_kv; ++h) {
+    local_sum[h] = 0.0f;
+    for (int64_t lt = threadIdx.x; lt < chunk_len; lt += blockDim.x) {
+      const float e = expf(scores[h * chunk_size + lt] - chunk_max[h]);
+      scores[h * chunk_size + lt] = e;
+      local_sum[h] += e;
+    }
+  }
+  for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      local_sum[h] += __shfl_down(local_sum[h], offset);
+    }
+  }
+  if (lane_id == 0) {
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      partial[h * num_warps + warp_id] = local_sum[h];
+    }
+  }
+  __syncthreads();
+
+  if (threadIdx.x < warpSize) {
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      float warp_sum = (threadIdx.x < num_warps) ? partial[h * num_warps + threadIdx.x] : 0.0f;
+      for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+        warp_sum += __shfl_down(warp_sum, offset);
+      }
+      if (threadIdx.x == 0) {
+        partial[h * num_warps] = warp_sum;
+      }
+    }
+  }
+  __syncthreads();
+
+  float chunk_sum[q_per_kv];
+  for (int64_t h = 0; h < q_per_kv; ++h) {
+    chunk_sum[h] = partial[h * num_warps];
+  }
+  __syncthreads();
+
+  if (static_cast<int64_t>(threadIdx.x) < head_dim) {
+    const int64_t dim = threadIdx.x;
+    float acc[q_per_kv];
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      acc[h] = 0.0f;
+    }
+    if (contiguous_blocks) {
+      const int64_t v_base = ((base_physical_block << 8) * num_kv_heads + kv_head) * head_dim + dim;
+      constexpr int64_t v_stride = num_kv_heads * head_dim;
+      for (int64_t lt = 0; lt < chunk_len; ++lt) {
+        const int64_t local_token_offset = token_start + lt - contiguous_token_base;
+        const int64_t token_offset = (base_physical_block << 8) + local_token_offset;
+        const int64_t scale_offset = token_offset * num_kv_heads + kv_head;
+        const float v = static_cast<float>(value_cache[v_base + local_token_offset * v_stride]) * scalar_to_float_qwen35(v_scale[scale_offset]);
+        for (int64_t h = 0; h < q_per_kv; ++h) {
+          acc[h] += scores[h * chunk_size + lt] * v;
+        }
+      }
+    } else {
+      for (int64_t lt = 0; lt < chunk_len; ++lt) {
+        const int64_t token_offset = static_cast<int64_t>(token_offsets[lt]);
+        const int64_t v_offset = (token_offset * num_kv_heads + kv_head) * head_dim + dim;
+        const int64_t scale_offset = token_offset * num_kv_heads + kv_head;
+        const float v = static_cast<float>(value_cache[v_offset]) * scalar_to_float_qwen35(v_scale[scale_offset]);
+        for (int64_t h = 0; h < q_per_kv; ++h) {
+          acc[h] += scores[h * chunk_size + lt] * v;
+        }
+      }
+    }
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      const int64_t partial_idx = (q_base + h) * num_splits + split_idx;
+      partial_out[partial_idx * head_dim + dim] = acc[h];
+    }
+  }
+
+  if (threadIdx.x == 0) {
+    for (int64_t h = 0; h < q_per_kv; ++h) {
+      const int64_t partial_idx = (q_base + h) * num_splits + split_idx;
+      partial_m[partial_idx] = chunk_max[h];
+      partial_l[partial_idx] = chunk_sum[h];
+    }
+  }
+}
+
+template <bool SHORT_BLOCK256>
+__global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
+    const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    const uint16_t* __restrict__ gate,     // [rows, num_q_heads, head_dim] BF16 view-compatible
+    uint16_t* __restrict__ out,            // [rows, num_q_heads * head_dim] BF16
+    const int32_t* __restrict__ block_tables,
+    const int64_t* __restrict__ context_counts,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale) {
+  const int64_t q_head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (q_head >= num_q_heads || row >= rows) {
+    return;
+  }
+  int64_t context_len = context_counts[row];
+  if (context_len <= 0) {
+    return;
+  }
+  context_len = context_len > max_context_len ? max_context_len : context_len;
+  const int64_t causal_position = row_positions ? row_positions[row] : (context_counts[row] - 1);
+  if (causal_position < 0) {
+    return;
+  }
+  const int64_t causal_len = causal_position + 1;
+  const int64_t visible_len = context_len < causal_len ? context_len : causal_len;
+  if (visible_len <= 0) {
+    return;
+  }
+
+  extern __shared__ float shared[];
+  float* scores = shared;
+  float* warp_buf = scores + visible_len;
+  const int num_warps = blockDim.x / warpSize;
+  float* q_shared = warp_buf + num_warps;
+  const int64_t kv_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / kv_group;
+  const float* q = query + (row * num_q_heads + q_head) * head_dim;
+  const int32_t* row_table = block_tables + row * block_table_len;
+  const int lane_id = threadIdx.x % warpSize;
+  const int warp_id = threadIdx.x / warpSize;
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    q_shared[dim] = q[dim];
+  }
+  __syncthreads();
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t token = warp_id; token < visible_len; token += num_warps) {
+    int64_t block_offset;
+    int64_t physical_block;
+    if constexpr (SHORT_BLOCK256) {
+      const int64_t logical_block = token >> 8;
+      block_offset = token & 255;
+      physical_block = (logical_block == 0)
+          ? (block_table_len > 0 ? static_cast<int64_t>(row_table[0]) : -1)
+          : (block_table_len > 1 ? static_cast<int64_t>(row_table[1]) : -1);
+    } else {
+      const int64_t logical_block = (block_size == 256) ? (token >> 8) : (token / block_size);
+      if (logical_block >= block_table_len) {
+        if (lane_id == 0) {
+          scores[token] = -3.4028234663852886e38f;
+        }
+        continue;
+      }
+      block_offset = (block_size == 256) ? (token & 255) : (token - logical_block * block_size);
+      physical_block = static_cast<int64_t>(row_table[logical_block]);
+    }
+    if (physical_block < 0) {
+      if (lane_id == 0) {
+        scores[token] = -3.4028234663852886e38f;
+      }
+      continue;
+    }
+    const int64_t k_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim;
+    float acc = 0.0f;
+    for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
+      acc += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset + dim + 0]);
+      acc += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset + dim + 1]);
+      acc += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset + dim + 2]);
+      acc += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset + dim + 3]);
+    }
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+      acc += __shfl_down(acc, offset);
+    }
+    if (lane_id == 0) {
+      const float score = acc * scale;
+      scores[token] = score;
+      local_max = fmaxf(local_max, score);
+    }
+  }
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    float other = __shfl_down(local_max, offset);
+    local_max = fmaxf(local_max, other);
+  }
+  if (lane_id == 0) {
+    warp_buf[warp_id] = local_max;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float max_score = warp_buf[0];
+    for (int i = 1; i < num_warps; ++i) {
+      max_score = fmaxf(max_score, warp_buf[i]);
+    }
+    warp_buf[0] = max_score;
+  }
+  __syncthreads();
+  const float max_score = warp_buf[0];
+
+  float local_sum = 0.0f;
+  for (int64_t token = warp_id; token < visible_len; token += num_warps) {
+    if (lane_id == 0) {
+      const float val = expf(scores[token] - max_score);
+      scores[token] = val;
+      local_sum += val;
+    }
+  }
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    local_sum += __shfl_down(local_sum, offset);
+  }
+  if (lane_id == 0) {
+    warp_buf[warp_id] = local_sum;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float total_sum = warp_buf[0];
+    for (int i = 1; i < num_warps; ++i) {
+      total_sum += warp_buf[i];
+    }
+    warp_buf[0] = 1.0f / fmaxf(total_sum, 1.0e-20f);
+  }
+  __syncthreads();
+  const float inv_denom = warp_buf[0];
+
+  for (int64_t token = warp_id; token < visible_len; token += num_warps) {
+    if (lane_id == 0) {
+      scores[token] *= inv_denom;
+    }
+  }
+  __syncthreads();
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t token = 0; token < visible_len; ++token) {
+      int64_t block_offset;
+      int64_t physical_block;
+      if constexpr (SHORT_BLOCK256) {
+        const int64_t logical_block = token >> 8;
+        block_offset = token & 255;
+        physical_block = (logical_block == 0)
+            ? (block_table_len > 0 ? static_cast<int64_t>(row_table[0]) : -1)
+            : (block_table_len > 1 ? static_cast<int64_t>(row_table[1]) : -1);
+      } else {
+        const int64_t logical_block = (block_size == 256) ? (token >> 8) : (token / block_size);
+        if (logical_block >= block_table_len) {
+          continue;
+        }
+        block_offset = (block_size == 256) ? (token & 255) : (token - logical_block * block_size);
+        physical_block = static_cast<int64_t>(row_table[logical_block]);
+      }
+      if (physical_block < 0) {
+        continue;
+      }
+      const int64_t v_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim + dim;
+      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+    }
+    const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + dim * gate_stride2;
+    const float gated = acc * sigmoid_f32(bf16_bits_to_float(gate[gate_idx]));
+    out[(row * num_q_heads + q_head) * head_dim + dim] = float_to_bf16_bits(gated);
+  }
+}
+
+bool valid_qwen35_gqa_split_shape(
+    int64_t chunk_size,
+    int64_t num_splits,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  return valid_paged_attn_shape(chunk_size * num_splits, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim) &&
+      chunk_size > 0 && num_splits > 0 && block_size == 256 && num_q_heads == 16 && num_kv_heads == 2 && head_dim == 256;
+}
+
+template <typename scale_t>
+int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const scale_t* k_scale,
+    const scale_t* v_scale,
+    float* partial_out,
+    float* partial_m,
+    float* partial_l,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t chunk_size,
+    int64_t num_splits,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (!valid_qwen35_gqa_split_shape(chunk_size, num_splits, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t q_per_kv = 8;
+  const size_t shared_bytes =
+      static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * threads + q_per_kv * head_dim) * sizeof(float) +
+      static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<scale_t, 8, 16, 2>),
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      partial_out,
+      partial_m,
+      partial_l,
+      chunk_size,
+      num_splits,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 
@@ -2638,8 +3175,15 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
   if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int threads = 256;
-  const size_t shared_bytes = static_cast<size_t>(max_context_len + 8 + head_dim) * sizeof(float);
+  // c=2 decode is dominated by fixed launch/context overhead. Give the
+  // small-row, sub-1K context batch path more warps so each head processes
+  // more context tokens concurrently while larger retained rows keep the
+  // existing 256-thread shape.
+  const int threads = (rows <= 2 && max_context_len < 1024) ? 1024 : 256;
+  const int max_warps = threads / 32;
+  const int raw_value_groups = (head_dim >= 128 && max_context_len >= 128) ? static_cast<int>(threads / head_dim) : 0;
+  const int value_groups = (threads >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
@@ -2662,3 +3206,174 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
       scale);
   return static_cast<int>(hipGetLastError());
 }
+
+extern "C" int hipengine_qwen35_full_attn_gate_mul_bf16_to_bf16(
+    const uint16_t* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total,
+    hipStream_t stream) {
+  if (total <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      qwen35_full_attn_gate_mul_bf16_to_bf16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      attn,
+      gate,
+      out,
+      total);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_f32_spans(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const float* k_scale,
+    const float* v_scale,
+    float* partial_out,
+    float* partial_m,
+    float* partial_l,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t chunk_size,
+    int64_t num_splits,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  return launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8<float>(
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      partial_out,
+      partial_m,
+      partial_l,
+      base_offsets,
+      live_counts,
+      chunk_size,
+      num_splits,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_fp16_spans(
+    const float* query,
+    const int8_t* key_cache,
+    const int8_t* value_cache,
+    const half_t* k_scale,
+    const half_t* v_scale,
+    float* partial_out,
+    float* partial_m,
+    float* partial_l,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t chunk_size,
+    int64_t num_splits,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  return launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8<half_t>(
+      query,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      partial_out,
+      partial_m,
+      partial_l,
+      base_offsets,
+      live_counts,
+      chunk_size,
+      num_splits,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const uint16_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || max_context_len <= 0 || block_size <= 0 || block_table_len <= 0 ||
+      num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || gate_stride1 <= 0 || gate_stride2 <= 0 ||
+      (num_q_heads % num_kv_heads) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = max_context_len <= 1024 ? 32 : 64;
+  const size_t shared = static_cast<size_t>(max_context_len + threads + head_dim) * sizeof(float);
+  const bool use_short_block256 = block_size == 256 && max_context_len <= 512;
+#define HIPENGINE_LAUNCH_PREFILL_GQA_BF16(SHORT) \
+  hipLaunchKernelGGL( \
+      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<SHORT>), \
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)), \
+      dim3(threads), \
+      shared, \
+      stream, \
+      query, \
+      key_cache, \
+      value_cache, \
+      gate, \
+      out, \
+      block_tables, \
+      context_counts, \
+      row_positions, \
+      rows, \
+      max_context_len, \
+      block_size, \
+      block_table_len, \
+      num_q_heads, \
+      num_kv_heads, \
+      head_dim, \
+      gate_stride1, \
+      gate_stride2, \
+      scale)
+  if (use_short_block256) {
+    HIPENGINE_LAUNCH_PREFILL_GQA_BF16(true);
+  } else {
+    HIPENGINE_LAUNCH_PREFILL_GQA_BF16(false);
+  }
+#undef HIPENGINE_LAUNCH_PREFILL_GQA_BF16
+  return static_cast<int>(hipGetLastError());
+}
+

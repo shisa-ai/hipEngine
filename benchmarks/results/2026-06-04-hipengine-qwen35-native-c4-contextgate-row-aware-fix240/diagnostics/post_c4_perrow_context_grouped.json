@@ -1,0 +1,49 @@
+{
+  "batch_blockers": [
+    "full-attention context/gate forced to per-row diagnostic path",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [
+    "full-attention context/gate forced to per-row diagnostic path"
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "per_row_context_gate_fallback",
+  "full_attention_decode_path": "native_batch",
+  "full_attention_gate_decode_path": null,
+  "full_attention_row_chunk_size": null,
+  "generated_token_equality_passed": true,
+  "label": "post_c4_perrow_context_grouped",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "grouped_compact",
+  "native_caware_decode": false,
+  "phase": "post",
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "84cd06512827cd882c3e3b3b71df81593ca82c5c3c2cc76bb12054f09b04da1c",
+  "raw_size_bytes": 216227,
+  "raw_source_path": "/tmp/hipengine-iter240-c4_perrow_context_grouped-conditional.json",
+  "repeat": 1,
+  "sampler_mode": "serial_lm_head",
+  "status": "blocked",
+  "variant": "per_row_context_grouped",
+  "workload_batch_decode_attention_context_path": "per_row",
+  "workload_batch_decode_attention_gate_path": "batch",
+  "workload_batch_decode_full_attention_path": "native_batch",
+  "workload_batch_decode_full_attention_row_chunk_size": 0,
+  "workload_batch_decode_moe_path": "grouped_compact",
+  "workload_batch_sample_mode": "batched_lm_head"
+}

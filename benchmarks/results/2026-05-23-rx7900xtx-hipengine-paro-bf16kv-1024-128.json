@@ -1,0 +1,6976 @@
+{
+  "schema": 1,
+  "model": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "requested_backend": "auto",
+  "target_arch": "gfx1100",
+  "mode": "actual_autoregressive_resident",
+  "prompt_source": "repeated_token_id",
+  "prompt": "Hello",
+  "prompt_length": 1024,
+  "decode_tokens": 128,
+  "warmup_decode_tokens": 1,
+  "max_layers": 40,
+  "shared_expert_format": "auto",
+  "tokens_per_step": 1,
+  "native_batched_prefill": true,
+  "native_prefill_execution": "single_request_native_full",
+  "native_prefill_plan": {
+    "path": "single_request_native_full",
+    "layer_limit": 40,
+    "linear_prefix_layers": 3,
+    "full_layer_limit_native": true,
+    "first_unsupported_layer": null,
+    "first_unsupported_type": null,
+    "blockers": []
+  },
+  "prefill_execution_detail": {
+    "path": "single_request_native_full",
+    "tokens": 1024,
+    "full_native": true,
+    "linear_prefix_layers": 3,
+    "layer_limit": 40,
+    "aotriton_attention": true,
+    "attn_aotriton_min_tokens": 512,
+    "kv_storage_dtype": "bf16",
+    "kv_scale_dtype": null,
+    "kv_scale_granularity": null,
+    "int8_prefill_oracle": false,
+    "decode_scratch_released_for_prefill": true
+  },
+  "serial_prefill_diagnostic": false,
+  "allow_rejected_native_prefill": false,
+  "attn_aotriton_min_tokens": 512,
+  "kv_storage_dtype": "bf16",
+  "kv_policy": {
+    "policy_class": "FixedPagedKVPolicy",
+    "spans_mode": "uniform",
+    "block_size": 256,
+    "requested_storage": "auto",
+    "resolved_storage_dtype": "bf16",
+    "storage_dtype": "bf16",
+    "requested_scale_dtype": "fp16",
+    "requested_scale_granularity": "per_token_head",
+    "scale_metadata_format": {
+      "present": false,
+      "scale_dtype": null,
+      "granularity": null,
+      "k_scale": null,
+      "v_scale": null
+    },
+    "int8_explicit": false,
+    "int8_admission_gated": false,
+    "selection_reason": "default_bf16"
+  },
+  "requested_prefill_chunk_sizes": {
+    "linear": 0,
+    "moe": 0,
+    "full_attn_query": 0,
+    "full_attn_post": 0,
+    "full_attn_rope": 0
+  },
+  "prefill_chunk_autotune": true,
+  "prefill_chunk_memory_budget_gib": 0.0,
+  "prefill_chunk_tuning": {
+    "enabled": true,
+    "applied": false,
+    "reason": "below_min_tokens",
+    "max_sequence_length": 1024,
+    "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+    "memory_budget_gib": 0.0
+  },
+  "prefill_chunk_sizes": {
+    "linear": 0,
+    "moe": 0,
+    "full_attn_query": 0,
+    "full_attn_post": 0,
+    "full_attn_rope": 0
+  },
+  "graph_replay": true,
+  "graph_steps_per_replay": 1,
+  "prefill_comparable_to_plan_moe2": true,
+  "decode_comparable_to_plan_moe2": "graph_replay_diagnostic",
+  "timings": {
+    "load_seconds": 33.120031268917955,
+    "prefill_seconds": 0.6255916010122746,
+    "warmup_decode_seconds": 0.015158780035562813,
+    "decode_seconds": 1.2367009100271389,
+    "decode_step_seconds": [
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023,
+      0.009661725859587023
+    ]
+  },
+  "throughput": {
+    "prefill_tok_s": 1636.8506200260003,
+    "token_by_token_prefill_tok_s": null,
+    "warmed_decode_tok_s": 103.50117717402755,
+    "warmed_decode_step_median_s": 0.009661725859587023
+  },
+  "memory": {
+    "tracked_peak_allocated_bytes": 19599558441,
+    "tracked_peak_allocated_gib": 18.253511228598654,
+    "tracked_current_allocated_bytes_before_close": 19250612837,
+    "tracked_current_allocated_gib_before_close": 17.92853031028062,
+    "tracked_current_allocated_bytes_after_close": 0,
+    "tracked_current_allocated_gib_after_close": 0.0,
+    "owned_session_peak_bytes": 1633437797,
+    "owned_session_peak_gib": 1.5212574945762753,
+    "hip_used_peak_sampled_bytes": 19494092800,
+    "hip_used_peak_sampled_gib": 18.155288696289062,
+    "kv_memory_audit": {
+      "passed": true,
+      "latest_label": "before_close",
+      "latest": {
+        "required": false,
+        "passed": true,
+        "kv_storage_dtype": "bf16",
+        "retained_kv_buffers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "retained_kv_payload_bytes": 26214400,
+        "retained_kv_payload_elements": 13107200,
+        "retained_kv_payload_bytes_per_element": 2.0,
+        "retained_kv_scale_bytes": 0,
+        "retained_kv_scale_elements": 0,
+        "retained_kv_total_bytes": 26214400,
+        "persistent_bf16_kv_layers": [],
+        "missing_int8_scale_layers": [],
+        "payload_dtype_mismatch_layers": [],
+        "payload_element_size_mismatch_layers": [],
+        "bf16_shadow_candidates": [],
+        "persistent_bf16_shadow_exists": false,
+        "violations": []
+      },
+      "snapshots": {
+        "after_load": {
+          "required": false,
+          "passed": true,
+          "kv_storage_dtype": "bf16",
+          "retained_kv_buffers": [
+            {
+              "layer_id": 3,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 7,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 11,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 15,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 19,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 23,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 27,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 31,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 35,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 39,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            }
+          ],
+          "retained_kv_payload_bytes": 26214400,
+          "retained_kv_payload_elements": 13107200,
+          "retained_kv_payload_bytes_per_element": 2.0,
+          "retained_kv_scale_bytes": 0,
+          "retained_kv_scale_elements": 0,
+          "retained_kv_total_bytes": 26214400,
+          "persistent_bf16_kv_layers": [],
+          "missing_int8_scale_layers": [],
+          "payload_dtype_mismatch_layers": [],
+          "payload_element_size_mismatch_layers": [],
+          "bf16_shadow_candidates": [],
+          "persistent_bf16_shadow_exists": false,
+          "violations": []
+        },
+        "after_prefill": {
+          "required": false,
+          "passed": true,
+          "kv_storage_dtype": "bf16",
+          "retained_kv_buffers": [
+            {
+              "layer_id": 3,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 7,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 11,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 15,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 19,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 23,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 27,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 31,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 35,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 39,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            }
+          ],
+          "retained_kv_payload_bytes": 26214400,
+          "retained_kv_payload_elements": 13107200,
+          "retained_kv_payload_bytes_per_element": 2.0,
+          "retained_kv_scale_bytes": 0,
+          "retained_kv_scale_elements": 0,
+          "retained_kv_total_bytes": 26214400,
+          "persistent_bf16_kv_layers": [],
+          "missing_int8_scale_layers": [],
+          "payload_dtype_mismatch_layers": [],
+          "payload_element_size_mismatch_layers": [],
+          "bf16_shadow_candidates": [],
+          "persistent_bf16_shadow_exists": false,
+          "violations": []
+        },
+        "after_warmup_decode": {
+          "required": false,
+          "passed": true,
+          "kv_storage_dtype": "bf16",
+          "retained_kv_buffers": [
+            {
+              "layer_id": 3,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 7,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 11,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 15,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 19,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 23,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 27,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 31,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 35,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 39,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            }
+          ],
+          "retained_kv_payload_bytes": 26214400,
+          "retained_kv_payload_elements": 13107200,
+          "retained_kv_payload_bytes_per_element": 2.0,
+          "retained_kv_scale_bytes": 0,
+          "retained_kv_scale_elements": 0,
+          "retained_kv_total_bytes": 26214400,
+          "persistent_bf16_kv_layers": [],
+          "missing_int8_scale_layers": [],
+          "payload_dtype_mismatch_layers": [],
+          "payload_element_size_mismatch_layers": [],
+          "bf16_shadow_candidates": [],
+          "persistent_bf16_shadow_exists": false,
+          "violations": []
+        },
+        "after_decode": {
+          "required": false,
+          "passed": true,
+          "kv_storage_dtype": "bf16",
+          "retained_kv_buffers": [
+            {
+              "layer_id": 3,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 7,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 11,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 15,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 19,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 23,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 27,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 31,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 35,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 39,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            }
+          ],
+          "retained_kv_payload_bytes": 26214400,
+          "retained_kv_payload_elements": 13107200,
+          "retained_kv_payload_bytes_per_element": 2.0,
+          "retained_kv_scale_bytes": 0,
+          "retained_kv_scale_elements": 0,
+          "retained_kv_total_bytes": 26214400,
+          "persistent_bf16_kv_layers": [],
+          "missing_int8_scale_layers": [],
+          "payload_dtype_mismatch_layers": [],
+          "payload_element_size_mismatch_layers": [],
+          "bf16_shadow_candidates": [],
+          "persistent_bf16_shadow_exists": false,
+          "violations": []
+        },
+        "before_close": {
+          "required": false,
+          "passed": true,
+          "kv_storage_dtype": "bf16",
+          "retained_kv_buffers": [
+            {
+              "layer_id": 3,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 7,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 11,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 15,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 19,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 23,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 27,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 31,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 35,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            },
+            {
+              "layer_id": 39,
+              "storage_dtype": "bf16",
+              "payload_dtype": "bf16",
+              "key_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_shape": [
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "value_full_shape": [
+                1,
+                5,
+                256,
+                2,
+                256
+              ],
+              "key_elements": 655360,
+              "value_elements": 655360,
+              "payload_elements": 1310720,
+              "key_buffer_bytes": 1310720,
+              "value_buffer_bytes": 1310720,
+              "payload_bytes": 2621440,
+              "payload_bytes_per_element": 2.0,
+              "scale_metadata": null
+            }
+          ],
+          "retained_kv_payload_bytes": 26214400,
+          "retained_kv_payload_elements": 13107200,
+          "retained_kv_payload_bytes_per_element": 2.0,
+          "retained_kv_scale_bytes": 0,
+          "retained_kv_scale_elements": 0,
+          "retained_kv_total_bytes": 26214400,
+          "persistent_bf16_kv_layers": [],
+          "missing_int8_scale_layers": [],
+          "payload_dtype_mismatch_layers": [],
+          "payload_element_size_mismatch_layers": [],
+          "bf16_shadow_candidates": [],
+          "persistent_bf16_shadow_exists": false,
+          "violations": []
+        }
+      },
+      "tracked_peak_allocated_bytes": 19599558441,
+      "tracked_peak_allocated_gib": 18.253511228598654,
+      "hip_used_peak_sampled_bytes": 19494092800,
+      "hip_used_peak_sampled_gib": 18.155288696289062
+    },
+    "notes": [
+      "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+      "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+      "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+    ]
+  },
+  "memory_snapshots": {
+    "before_load": {
+      "label": "before_load",
+      "tracked": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 0,
+        "total_allocated_bytes": 0,
+        "total_freed_bytes": 0,
+        "active_allocations": 0,
+        "peak_allocations": 0
+      },
+      "hip": {
+        "available": true,
+        "free_bytes": 25715277824,
+        "total_bytes": 25753026560,
+        "used_bytes": 37748736,
+        "free_gib": 23.94921875,
+        "total_gib": 23.984375,
+        "used_gib": 0.03515625
+      }
+    },
+    "after_load": {
+      "label": "after_load",
+      "tracked": {
+        "current_allocated_bytes": 19249957437,
+        "peak_allocated_bytes": 19249957437,
+        "total_allocated_bytes": 19249957437,
+        "total_freed_bytes": 0,
+        "active_allocations": 3646,
+        "peak_allocations": 3646
+      },
+      "hip": {
+        "available": true,
+        "free_bytes": 6308233216,
+        "total_bytes": 25753026560,
+        "used_bytes": 19444793344,
+        "free_gib": 5.875,
+        "total_gib": 23.984375,
+        "used_gib": 18.109375
+      },
+      "owned_session_bytes": 1632782397,
+      "owned_session_gib": 1.5206471057608724,
+      "owned_buffer_summary": {
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "full_attention_layer_count": 10,
+        "full_attention_layers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "full_attention_kv_payload_bytes": 26214400,
+        "full_attention_kv_payload_elements": 13107200,
+        "full_attention_kv_payload_bytes_per_element": 2.0,
+        "full_attention_kv_scale_bytes": 0,
+        "full_attention_kv_scale_elements": 0,
+        "full_attention_kv_total_bytes": 26214400,
+        "buffer_bytes": 94718301,
+        "allocation_bytes": 1526675456,
+        "owned_direct_bytes": 1621393757
+      },
+      "kv_memory_audit": {
+        "required": false,
+        "passed": true,
+        "kv_storage_dtype": "bf16",
+        "retained_kv_buffers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "retained_kv_payload_bytes": 26214400,
+        "retained_kv_payload_elements": 13107200,
+        "retained_kv_payload_bytes_per_element": 2.0,
+        "retained_kv_scale_bytes": 0,
+        "retained_kv_scale_elements": 0,
+        "retained_kv_total_bytes": 26214400,
+        "persistent_bf16_kv_layers": [],
+        "missing_int8_scale_layers": [],
+        "payload_dtype_mismatch_layers": [],
+        "payload_element_size_mismatch_layers": [],
+        "bf16_shadow_candidates": [],
+        "persistent_bf16_shadow_exists": false,
+        "violations": []
+      }
+    },
+    "after_prefill": {
+      "label": "after_prefill",
+      "tracked": {
+        "current_allocated_bytes": 19250612837,
+        "peak_allocated_bytes": 19599558441,
+        "total_allocated_bytes": 25401040741,
+        "total_freed_bytes": 6150427904,
+        "active_allocations": 3666,
+        "peak_allocations": 3666
+      },
+      "hip": {
+        "available": true,
+        "free_bytes": 6265225216,
+        "total_bytes": 25753026560,
+        "used_bytes": 19487801344,
+        "free_gib": 5.8349456787109375,
+        "total_gib": 23.984375,
+        "used_gib": 18.149429321289062
+      },
+      "owned_session_bytes": 1633437797,
+      "owned_session_gib": 1.5212574945762753,
+      "owned_buffer_summary": {
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "full_attention_layer_count": 10,
+        "full_attention_layers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "full_attention_kv_payload_bytes": 26214400,
+        "full_attention_kv_payload_elements": 13107200,
+        "full_attention_kv_payload_bytes_per_element": 2.0,
+        "full_attention_kv_scale_bytes": 0,
+        "full_attention_kv_scale_elements": 0,
+        "full_attention_kv_total_bytes": 26214400,
+        "buffer_bytes": 94718301,
+        "allocation_bytes": 1526675456,
+        "owned_direct_bytes": 1621393757
+      },
+      "kv_memory_audit": {
+        "required": false,
+        "passed": true,
+        "kv_storage_dtype": "bf16",
+        "retained_kv_buffers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "retained_kv_payload_bytes": 26214400,
+        "retained_kv_payload_elements": 13107200,
+        "retained_kv_payload_bytes_per_element": 2.0,
+        "retained_kv_scale_bytes": 0,
+        "retained_kv_scale_elements": 0,
+        "retained_kv_total_bytes": 26214400,
+        "persistent_bf16_kv_layers": [],
+        "missing_int8_scale_layers": [],
+        "payload_dtype_mismatch_layers": [],
+        "payload_element_size_mismatch_layers": [],
+        "bf16_shadow_candidates": [],
+        "persistent_bf16_shadow_exists": false,
+        "violations": []
+      }
+    },
+    "after_warmup_decode": {
+      "label": "after_warmup_decode",
+      "tracked": {
+        "current_allocated_bytes": 19250612837,
+        "peak_allocated_bytes": 19599558441,
+        "total_allocated_bytes": 25401040741,
+        "total_freed_bytes": 6150427904,
+        "active_allocations": 3666,
+        "peak_allocations": 3666
+      },
+      "hip": {
+        "available": true,
+        "free_bytes": 6261030912,
+        "total_bytes": 25753026560,
+        "used_bytes": 19491995648,
+        "free_gib": 5.8310394287109375,
+        "total_gib": 23.984375,
+        "used_gib": 18.153335571289062
+      },
+      "owned_session_bytes": 1633437797,
+      "owned_session_gib": 1.5212574945762753,
+      "owned_buffer_summary": {
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "full_attention_layer_count": 10,
+        "full_attention_layers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "full_attention_kv_payload_bytes": 26214400,
+        "full_attention_kv_payload_elements": 13107200,
+        "full_attention_kv_payload_bytes_per_element": 2.0,
+        "full_attention_kv_scale_bytes": 0,
+        "full_attention_kv_scale_elements": 0,
+        "full_attention_kv_total_bytes": 26214400,
+        "buffer_bytes": 94718301,
+        "allocation_bytes": 1526675456,
+        "owned_direct_bytes": 1621393757
+      },
+      "kv_memory_audit": {
+        "required": false,
+        "passed": true,
+        "kv_storage_dtype": "bf16",
+        "retained_kv_buffers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "retained_kv_payload_bytes": 26214400,
+        "retained_kv_payload_elements": 13107200,
+        "retained_kv_payload_bytes_per_element": 2.0,
+        "retained_kv_scale_bytes": 0,
+        "retained_kv_scale_elements": 0,
+        "retained_kv_total_bytes": 26214400,
+        "persistent_bf16_kv_layers": [],
+        "missing_int8_scale_layers": [],
+        "payload_dtype_mismatch_layers": [],
+        "payload_element_size_mismatch_layers": [],
+        "bf16_shadow_candidates": [],
+        "persistent_bf16_shadow_exists": false,
+        "violations": []
+      }
+    },
+    "after_decode": {
+      "label": "after_decode",
+      "tracked": {
+        "current_allocated_bytes": 19250612837,
+        "peak_allocated_bytes": 19599558441,
+        "total_allocated_bytes": 25401040741,
+        "total_freed_bytes": 6150427904,
+        "active_allocations": 3666,
+        "peak_allocations": 3666
+      },
+      "hip": {
+        "available": true,
+        "free_bytes": 6258933760,
+        "total_bytes": 25753026560,
+        "used_bytes": 19494092800,
+        "free_gib": 5.8290863037109375,
+        "total_gib": 23.984375,
+        "used_gib": 18.155288696289062
+      },
+      "owned_session_bytes": 1633437797,
+      "owned_session_gib": 1.5212574945762753,
+      "owned_buffer_summary": {
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "full_attention_layer_count": 10,
+        "full_attention_layers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "full_attention_kv_payload_bytes": 26214400,
+        "full_attention_kv_payload_elements": 13107200,
+        "full_attention_kv_payload_bytes_per_element": 2.0,
+        "full_attention_kv_scale_bytes": 0,
+        "full_attention_kv_scale_elements": 0,
+        "full_attention_kv_total_bytes": 26214400,
+        "buffer_bytes": 94718301,
+        "allocation_bytes": 1526675456,
+        "owned_direct_bytes": 1621393757
+      },
+      "kv_memory_audit": {
+        "required": false,
+        "passed": true,
+        "kv_storage_dtype": "bf16",
+        "retained_kv_buffers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "retained_kv_payload_bytes": 26214400,
+        "retained_kv_payload_elements": 13107200,
+        "retained_kv_payload_bytes_per_element": 2.0,
+        "retained_kv_scale_bytes": 0,
+        "retained_kv_scale_elements": 0,
+        "retained_kv_total_bytes": 26214400,
+        "persistent_bf16_kv_layers": [],
+        "missing_int8_scale_layers": [],
+        "payload_dtype_mismatch_layers": [],
+        "payload_element_size_mismatch_layers": [],
+        "bf16_shadow_candidates": [],
+        "persistent_bf16_shadow_exists": false,
+        "violations": []
+      }
+    },
+    "before_close": {
+      "label": "before_close",
+      "tracked": {
+        "current_allocated_bytes": 19250612837,
+        "peak_allocated_bytes": 19599558441,
+        "total_allocated_bytes": 25401040741,
+        "total_freed_bytes": 6150427904,
+        "active_allocations": 3666,
+        "peak_allocations": 3666
+      },
+      "hip": {
+        "available": true,
+        "free_bytes": 6258933760,
+        "total_bytes": 25753026560,
+        "used_bytes": 19494092800,
+        "free_gib": 5.8290863037109375,
+        "total_gib": 23.984375,
+        "used_gib": 18.155288696289062
+      },
+      "owned_session_bytes": 1633437797,
+      "owned_session_gib": 1.5212574945762753,
+      "owned_buffer_summary": {
+        "kv_storage_dtype": "bf16",
+        "kv_scale_dtype": null,
+        "kv_scale_granularity": null,
+        "full_attention_layer_count": 10,
+        "full_attention_layers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "full_attention_kv_payload_bytes": 26214400,
+        "full_attention_kv_payload_elements": 13107200,
+        "full_attention_kv_payload_bytes_per_element": 2.0,
+        "full_attention_kv_scale_bytes": 0,
+        "full_attention_kv_scale_elements": 0,
+        "full_attention_kv_total_bytes": 26214400,
+        "buffer_bytes": 94718301,
+        "allocation_bytes": 1526675456,
+        "owned_direct_bytes": 1621393757
+      },
+      "kv_memory_audit": {
+        "required": false,
+        "passed": true,
+        "kv_storage_dtype": "bf16",
+        "retained_kv_buffers": [
+          {
+            "layer_id": 3,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 7,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 11,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 15,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 19,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 23,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 27,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 31,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 35,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          },
+          {
+            "layer_id": 39,
+            "storage_dtype": "bf16",
+            "payload_dtype": "bf16",
+            "key_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_shape": [
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "value_full_shape": [
+              1,
+              5,
+              256,
+              2,
+              256
+            ],
+            "key_elements": 655360,
+            "value_elements": 655360,
+            "payload_elements": 1310720,
+            "key_buffer_bytes": 1310720,
+            "value_buffer_bytes": 1310720,
+            "payload_bytes": 2621440,
+            "payload_bytes_per_element": 2.0,
+            "scale_metadata": null
+          }
+        ],
+        "retained_kv_payload_bytes": 26214400,
+        "retained_kv_payload_elements": 13107200,
+        "retained_kv_payload_bytes_per_element": 2.0,
+        "retained_kv_scale_bytes": 0,
+        "retained_kv_scale_elements": 0,
+        "retained_kv_total_bytes": 26214400,
+        "persistent_bf16_kv_layers": [],
+        "missing_int8_scale_layers": [],
+        "payload_dtype_mismatch_layers": [],
+        "payload_element_size_mismatch_layers": [],
+        "bf16_shadow_candidates": [],
+        "persistent_bf16_shadow_exists": false,
+        "violations": []
+      }
+    },
+    "after_close": {
+      "label": "after_close",
+      "tracked": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 19599558441,
+        "total_allocated_bytes": 25401040741,
+        "total_freed_bytes": 25401040741,
+        "active_allocations": 0,
+        "peak_allocations": 3666
+      },
+      "hip": {
+        "available": true,
+        "free_bytes": 25514983424,
+        "total_bytes": 25753026560,
+        "used_bytes": 238043136,
+        "free_gib": 23.762680053710938,
+        "total_gib": 23.984375,
+        "used_gib": 0.2216949462890625
+      }
+    }
+  },
+  "generated_preview": [
+    {
+      "token_id": 9707,
+      "token_text": ".Q",
+      "logit": 27.426240921020508
+    },
+    {
+      "token_id": 9707,
+      "token_text": ".Q",
+      "logit": 27.26291275024414
+    }
+  ],
+  "notes": [
+    "Prefill execution is single_request_native_full via prefill_native(...); c>N compact slabs remain separate work.",
+    "Measured decode uses HIP graph replay (1 step(s) per replay) with device token/position state."
+  ]
+}

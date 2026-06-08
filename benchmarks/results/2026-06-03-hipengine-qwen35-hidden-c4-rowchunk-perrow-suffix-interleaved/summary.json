@@ -1,0 +1,1554 @@
+{
+  "artifacts": {
+    "hipcc-version.txt": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    }
+  },
+  "comparison_artifacts": {
+    "context_gate_o": "benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-context-gate-o/summary.json",
+    "perrow_preqkv": "benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-preqkv/summary.json"
+  },
+  "conclusion": "Forcing the whole full-attention post-context suffix to per-row interleaved order is not a safe fix. It removes the rowchunk3 L6 generated-token failure (rowchunk3 token_passed=true) but leaves rowchunk3 hidden/projection/stage drift, including L5 layer4 QKV/Z drift and L8 layer7 attn_input_pre_qkv/attn_context failures. The rowchunk2 control becomes token-red at L8 and gains QKV/Z drift under the same suffix. This eliminates suffix phasing/post-attention/MoE interleaving as a retained-compatible fix; the O-bearing suffix can move tokens but does not repair the inherited hidden trajectory.",
+  "created_utc": "2026-06-03T13:58:06Z",
+  "git_commit": "c6e50913e000567e7b1428e8a02ab809a833f78a",
+  "hardware": {
+    "device": "GPU1",
+    "gpu": "RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "kind": "hidden_trace_c4_rowchunk_perrow_suffix_interleaved",
+  "measurements": {
+    "rowchunk2": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 4 --warmup-decode-tokens 8 --c1-decode-path native_batch --max-layers 40 --layer-limits 4,5,6,7,8 --max-sequence-length 1024 --hidden-atol 0.004 --state-atol 0.004 --trace-decode-start 0 --trace-decode-end 4 --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-full-attn-output-path per_row --batch-decode-post-attn-path per_row --batch-decode-full-attn-moe-path per_row_c1 --batch-decode-attn-suffix-order interleaved --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/c4-rowchunk2-perrow-suffix-interleaved-layers4-8-trace0-4.json",
+      "correctness_passed": false,
+      "decode_blockers": [
+        "full-attention MoE forced to per-row selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention context/gate forced to per-row diagnostic path",
+        "full-attention KV append forced to per-row diagnostic path",
+        "full-attention context/output/post/MoE forced to interleaved per-row diagnostic order",
+        "full-attention O projection forced to per-row diagnostic path",
+        "post-attention add/rmsnorm forced to per-row diagnostic path"
+      ],
+      "failure_modes": [
+        "hidden",
+        "token"
+      ],
+      "first_hidden_bit_drift": {
+        "bit_mismatch": 1062,
+        "decode_step": 0,
+        "elements_over_atol": 0,
+        "generated_index": 1,
+        "last_layer_index": 3,
+        "last_layer_type": "full_attention",
+        "layer_limit": 4,
+        "max_abs": 0.00048828125,
+        "max_abs_flat_index": 1269,
+        "passed_under_atol": true,
+        "row": 0
+      },
+      "first_hidden_mismatch": {
+        "bit_mismatch": 2047,
+        "decode_step": 0,
+        "elements_over_atol": 1450,
+        "generated_index": 1,
+        "last_layer_index": 4,
+        "last_layer_type": "linear_attention",
+        "layer_limit": 5,
+        "max_abs": 0.0684814453125,
+        "max_abs_flat_index": 1538,
+        "passed_under_atol": false,
+        "row": 0
+      },
+      "first_token_mismatch": {
+        "batch_prefix": [
+          2074,
+          33166,
+          33166,
+          166559,
+          32169,
+          102851,
+          102851,
+          41301,
+          140846,
+          190274,
+          1060,
+          78951
+        ],
+        "c1_prefix": [
+          2074,
+          33166,
+          33166,
+          166559,
+          192705,
+          158408,
+          790,
+          106148,
+          132707,
+          105991,
+          2850,
+          107440
+        ],
+        "first_index": 4,
+        "layer_limit": 8,
+        "row": 3
+      },
+      "first_tolerance_hidden_mismatch": {
+        "bit_mismatch": 2047,
+        "decode_step": 0,
+        "elements_over_atol": 1450,
+        "generated_index": 1,
+        "last_layer_index": 4,
+        "last_layer_type": "linear_attention",
+        "layer_limit": 5,
+        "max_abs": 0.0684814453125,
+        "max_abs_flat_index": 1538,
+        "passed_under_atol": false,
+        "row": 0
+      },
+      "full_attention_bit_drift_layer_limits": [
+        {
+          "drift_stages": [
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 4
+        },
+        {
+          "drift_stages": [
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 5
+        },
+        {
+          "drift_stages": [
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 6
+        },
+        {
+          "drift_stages": [
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 7
+        },
+        {
+          "drift_stages": [
+            "input",
+            "attn_input_pre_qkv",
+            "attn_input_after_rotate",
+            "attn_input_after_project",
+            "q_proj_key_after_project",
+            "value_after_project",
+            "gate_after_split",
+            "attn_input_after_prepare",
+            "attn_input",
+            "gate",
+            "gated_attn",
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 8
+        }
+      ],
+      "full_attention_layer_limits": [
+        {
+          "failed_stages": [],
+          "layer_limit": 4,
+          "passed": true
+        },
+        {
+          "failed_stages": [],
+          "layer_limit": 5,
+          "passed": true
+        },
+        {
+          "failed_stages": [],
+          "layer_limit": 6,
+          "passed": true
+        },
+        {
+          "failed_stages": [],
+          "layer_limit": 7,
+          "passed": true
+        },
+        {
+          "failed_stages": [
+            "attn_input_pre_qkv",
+            "attn_input_after_rotate",
+            "attn_input_after_project",
+            "q_proj_key_after_project",
+            "query_raw_after_split",
+            "gate_after_split",
+            "query_after_prepare",
+            "key_after_prepare",
+            "attn_input_after_prepare",
+            "attn_input",
+            "gate",
+            "query",
+            "attn_context",
+            "mlp_input"
+          ],
+          "layer_limit": 8,
+          "passed": false
+        }
+      ],
+      "hidden_passed": false,
+      "key_full_attention_bit_drift_stages": {
+        "attn_context": {
+          "bit_drift_row_count": 0,
+          "bit_drift_rows": [],
+          "first": null,
+          "passed": true,
+          "total_bit_mismatch": 0
+        },
+        "attn_input_pre_qkv": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 1456,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.0029296875,
+            "max_abs_flat_index": 1475,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "passed": false,
+          "total_bit_mismatch": 23328
+        },
+        "gate": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 519,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.00390625,
+            "max_abs_flat_index": 508,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "gate"
+          },
+          "passed": false,
+          "total_bit_mismatch": 15098
+        },
+        "gated_attn": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 2703,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.00054931640625,
+            "max_abs_flat_index": 2449,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "gated_attn"
+          },
+          "passed": false,
+          "total_bit_mismatch": 51957
+        },
+        "input": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 1463,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.0001220703125,
+            "max_abs_flat_index": 114,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "input"
+          },
+          "passed": false,
+          "total_bit_mismatch": 23725
+        },
+        "mlp_input": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 489,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.00390625,
+            "max_abs_flat_index": 1296,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "mlp_input"
+          },
+          "passed": false,
+          "total_bit_mismatch": 36149
+        },
+        "o_proj": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 312,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.000244140625,
+            "max_abs_flat_index": 1269,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "o_proj"
+          },
+          "passed": false,
+          "total_bit_mismatch": 53532
+        },
+        "output": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 1062,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.00048828125,
+            "max_abs_flat_index": 1269,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "output"
+          },
+          "passed": false,
+          "total_bit_mismatch": 89912
+        },
+        "query": {
+          "bit_drift_row_count": 0,
+          "bit_drift_rows": [],
+          "first": null,
+          "passed": true,
+          "total_bit_mismatch": 0
+        },
+        "residual": {
+          "bit_drift_row_count": 4,
+          "bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "bit_mismatch": 123,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.00048828125,
+            "max_abs_flat_index": 1269,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "residual"
+          },
+          "passed": false,
+          "total_bit_mismatch": 34154
+        }
+      },
+      "key_full_attention_stages": {
+        "attn_context": {
+          "failure_row_count": 4,
+          "failure_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "comparison_kind": "fp32",
+            "decode_step": 0,
+            "elements_over_atol": 3,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.007130742073059082,
+            "max_abs_flat_index": 2449,
+            "row": 0,
+            "stage": "attn_context"
+          },
+          "passed": false
+        },
+        "attn_input_pre_qkv": {
+          "failure_row_count": 4,
+          "failure_rows": [
+            1,
+            3,
+            2,
+            0
+          ],
+          "first": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 1,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1538,
+            "row": 1,
+            "stage": "attn_input_pre_qkv"
+          },
+          "passed": false
+        },
+        "gate": {
+          "failure_row_count": 1,
+          "failure_rows": [
+            3
+          ],
+          "first": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 3,
+            "elements_over_atol": 1,
+            "generated_index": 4,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.005859375,
+            "max_abs_flat_index": 3580,
+            "row": 3,
+            "stage": "gate"
+          },
+          "passed": false
+        },
+        "gated_attn": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "input": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "mlp_input": {
+          "failure_row_count": 4,
+          "failure_rows": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "first": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 1,
+            "elements_over_atol": 1,
+            "generated_index": 2,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 859,
+            "row": 2,
+            "stage": "mlp_input"
+          },
+          "passed": false
+        },
+        "o_proj": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "output": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "query": {
+          "failure_row_count": 4,
+          "failure_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "first": {
+            "comparison_kind": "fp32",
+            "decode_step": 0,
+            "elements_over_atol": 4,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.005758762359619141,
+            "max_abs_flat_index": 821,
+            "row": 0,
+            "stage": "query"
+          },
+          "passed": false
+        },
+        "residual": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        }
+      },
+      "key_linear_projection_stages": {
+        "qkv": {
+          "bit_mismatch": 5075,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 9,
+          "generated_index": 1,
+          "layer_index": 4,
+          "layer_limit": 5,
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 64,
+          "passed_under_atol": false,
+          "row": 0,
+          "stage": "qkv"
+        },
+        "z": {
+          "bit_mismatch": 2334,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 7,
+          "generated_index": 1,
+          "layer_index": 4,
+          "layer_limit": 5,
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 349,
+          "passed_under_atol": false,
+          "row": 0,
+          "stage": "z"
+        }
+      },
+      "linear_projection_layer_limits": [
+        {
+          "drift_stages": [],
+          "first_over_atol_drift": null,
+          "layer_limit": 4,
+          "over_atol_drift_stages": []
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5075,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 9,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 5,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 5,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5075,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 9,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 6,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 6,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5075,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 9,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 7,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 7,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5075,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 9,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 8,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 8,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        }
+      ],
+      "raw_output_sha256": "660cb55d4c80b5ab27bba4d3501ce8edd6195738113e8e64acad61560548c958",
+      "raw_output_size_bytes": 24661464,
+      "row_failure_layer_limits": [
+        {
+          "failure_modes": [],
+          "hidden_failure_rows": [],
+          "layer_limit": 4,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_failure_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "layer_limit": 5,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_failure_rows": [
+            3
+          ],
+          "layer_limit": 6,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_failure_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "layer_limit": 7,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [
+            "hidden",
+            "token"
+          ],
+          "hidden_failure_rows": [
+            3,
+            0
+          ],
+          "layer_limit": 8,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "token_failure_rows": [
+            3
+          ]
+        }
+      ],
+      "status": "mismatch_found",
+      "token_passed": false
+    },
+    "rowchunk3": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 4 --warmup-decode-tokens 8 --c1-decode-path native_batch --max-layers 40 --layer-limits 4,5,6,7,8 --max-sequence-length 1024 --hidden-atol 0.004 --state-atol 0.004 --trace-decode-start 0 --trace-decode-end 4 --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 3 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-full-attn-output-path per_row --batch-decode-post-attn-path per_row --batch-decode-full-attn-moe-path per_row_c1 --batch-decode-attn-suffix-order interleaved --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-perrow-suffix-interleaved/c4-rowchunk3-perrow-suffix-interleaved-layers4-8-trace0-4.json",
+      "correctness_passed": false,
+      "decode_blockers": [
+        "full-attention MoE forced to per-row selected-c1 diagnostic path",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "full-attention context/gate forced to per-row diagnostic path",
+        "full-attention KV append forced to per-row diagnostic path",
+        "full-attention context/output/post/MoE forced to interleaved per-row diagnostic order",
+        "full-attention O projection forced to per-row diagnostic path",
+        "post-attention add/rmsnorm forced to per-row diagnostic path"
+      ],
+      "failure_modes": [
+        "hidden"
+      ],
+      "first_hidden_bit_drift": {
+        "bit_mismatch": 1051,
+        "decode_step": 0,
+        "elements_over_atol": 0,
+        "generated_index": 1,
+        "last_layer_index": 3,
+        "last_layer_type": "full_attention",
+        "layer_limit": 4,
+        "max_abs": 0.00048828125,
+        "max_abs_flat_index": 1269,
+        "passed_under_atol": true,
+        "row": 0
+      },
+      "first_hidden_mismatch": {
+        "bit_mismatch": 2046,
+        "decode_step": 0,
+        "elements_over_atol": 1449,
+        "generated_index": 1,
+        "last_layer_index": 4,
+        "last_layer_type": "linear_attention",
+        "layer_limit": 5,
+        "max_abs": 0.0684814453125,
+        "max_abs_flat_index": 1538,
+        "passed_under_atol": false,
+        "row": 0
+      },
+      "first_token_mismatch": null,
+      "first_tolerance_hidden_mismatch": {
+        "bit_mismatch": 2046,
+        "decode_step": 0,
+        "elements_over_atol": 1449,
+        "generated_index": 1,
+        "last_layer_index": 4,
+        "last_layer_type": "linear_attention",
+        "layer_limit": 5,
+        "max_abs": 0.0684814453125,
+        "max_abs_flat_index": 1538,
+        "passed_under_atol": false,
+        "row": 0
+      },
+      "full_attention_bit_drift_layer_limits": [
+        {
+          "drift_stages": [
+            "gated_attn",
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 4
+        },
+        {
+          "drift_stages": [
+            "gated_attn",
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 5
+        },
+        {
+          "drift_stages": [
+            "gated_attn",
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 6
+        },
+        {
+          "drift_stages": [
+            "gated_attn",
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 7
+        },
+        {
+          "drift_stages": [
+            "input",
+            "attn_input_pre_qkv",
+            "attn_input_after_rotate",
+            "attn_input_after_project",
+            "q_proj_key_after_project",
+            "value_after_project",
+            "gate_after_split",
+            "attn_input_after_prepare",
+            "attn_input",
+            "gate",
+            "gated_attn",
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output"
+          ],
+          "layer_limit": 8
+        }
+      ],
+      "full_attention_layer_limits": [
+        {
+          "failed_stages": [],
+          "layer_limit": 4,
+          "passed": true
+        },
+        {
+          "failed_stages": [],
+          "layer_limit": 5,
+          "passed": true
+        },
+        {
+          "failed_stages": [],
+          "layer_limit": 6,
+          "passed": true
+        },
+        {
+          "failed_stages": [],
+          "layer_limit": 7,
+          "passed": true
+        },
+        {
+          "failed_stages": [
+            "attn_input_pre_qkv",
+            "attn_input_after_rotate",
+            "attn_input_after_project",
+            "q_proj_key_after_project",
+            "query_raw_after_split",
+            "query_after_prepare",
+            "key_after_prepare",
+            "attn_input_after_prepare",
+            "attn_input",
+            "query",
+            "attn_context",
+            "mlp_input"
+          ],
+          "layer_limit": 8,
+          "passed": false
+        }
+      ],
+      "hidden_passed": false,
+      "key_full_attention_bit_drift_stages": {
+        "attn_context": {
+          "bit_drift_row_count": 0,
+          "bit_drift_rows": [],
+          "first": null,
+          "passed": true,
+          "total_bit_mismatch": 0
+        },
+        "attn_input_pre_qkv": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 1485,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 2,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1538,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "passed": false,
+          "total_bit_mismatch": 17387
+        },
+        "gate": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 885,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.00390625,
+            "max_abs_flat_index": 47,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "gate"
+          },
+          "passed": false,
+          "total_bit_mismatch": 9842
+        },
+        "gated_attn": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 2,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 4.76837158203125e-07,
+            "max_abs_flat_index": 3581,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "gated_attn"
+          },
+          "passed": false,
+          "total_bit_mismatch": 38909
+        },
+        "input": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 1476,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.000244140625,
+            "max_abs_flat_index": 1307,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "input"
+          },
+          "passed": false,
+          "total_bit_mismatch": 17516
+        },
+        "mlp_input": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 489,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.00390625,
+            "max_abs_flat_index": 1296,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "mlp_input"
+          },
+          "passed": false,
+          "total_bit_mismatch": 28086
+        },
+        "o_proj": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 312,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.000244140625,
+            "max_abs_flat_index": 1269,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "o_proj"
+          },
+          "passed": false,
+          "total_bit_mismatch": 41766
+        },
+        "output": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 1051,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.00048828125,
+            "max_abs_flat_index": 1269,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "output"
+          },
+          "passed": false,
+          "total_bit_mismatch": 67979
+        },
+        "query": {
+          "bit_drift_row_count": 0,
+          "bit_drift_rows": [],
+          "first": null,
+          "passed": true,
+          "total_bit_mismatch": 0
+        },
+        "residual": {
+          "bit_drift_row_count": 3,
+          "bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "bit_mismatch": 123,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 0,
+            "generated_index": 1,
+            "layer_index": 3,
+            "layer_limit": 4,
+            "max_abs": 0.00048828125,
+            "max_abs_flat_index": 1269,
+            "passed_under_atol": true,
+            "row": 0,
+            "stage": "residual"
+          },
+          "passed": false,
+          "total_bit_mismatch": 25986
+        }
+      },
+      "key_full_attention_stages": {
+        "attn_context": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            1,
+            2,
+            0
+          ],
+          "first": {
+            "comparison_kind": "fp32",
+            "decode_step": 0,
+            "elements_over_atol": 2,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.013164758682250977,
+            "max_abs_flat_index": 2812,
+            "row": 1,
+            "stage": "attn_context"
+          },
+          "passed": false
+        },
+        "attn_input_pre_qkv": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 2,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1538,
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "passed": false
+        },
+        "gate": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "gated_attn": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "input": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "mlp_input": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 1,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1307,
+            "row": 0,
+            "stage": "mlp_input"
+          },
+          "passed": false
+        },
+        "o_proj": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "output": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        },
+        "query": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first": {
+            "comparison_kind": "fp32",
+            "decode_step": 0,
+            "elements_over_atol": 6,
+            "generated_index": 1,
+            "layer_index": 7,
+            "layer_limit": 8,
+            "max_abs": 0.006135463714599609,
+            "max_abs_flat_index": 821,
+            "row": 0,
+            "stage": "query"
+          },
+          "passed": false
+        },
+        "residual": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first": null,
+          "passed": true
+        }
+      },
+      "key_linear_projection_stages": {
+        "qkv": {
+          "bit_mismatch": 5147,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 12,
+          "generated_index": 1,
+          "layer_index": 4,
+          "layer_limit": 5,
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 64,
+          "passed_under_atol": false,
+          "row": 0,
+          "stage": "qkv"
+        },
+        "z": {
+          "bit_mismatch": 2421,
+          "comparison_kind": "fp16_bits",
+          "decode_step": 0,
+          "elements_over_atol": 7,
+          "generated_index": 1,
+          "layer_index": 4,
+          "layer_limit": 5,
+          "max_abs": 0.0078125,
+          "max_abs_flat_index": 349,
+          "passed_under_atol": false,
+          "row": 0,
+          "stage": "z"
+        }
+      },
+      "linear_projection_layer_limits": [
+        {
+          "drift_stages": [],
+          "first_over_atol_drift": null,
+          "layer_limit": 4,
+          "over_atol_drift_stages": []
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5147,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 12,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 5,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 5,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5147,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 12,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 6,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 6,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5147,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 12,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 7,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 7,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        },
+        {
+          "drift_stages": [
+            "qkv",
+            "z"
+          ],
+          "first_over_atol_drift": {
+            "bit_mismatch": 5147,
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 12,
+            "generated_index": 1,
+            "layer_index": 4,
+            "layer_limit": 8,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 64,
+            "passed_under_atol": false,
+            "row": 0,
+            "stage": "qkv"
+          },
+          "layer_limit": 8,
+          "over_atol_drift_stages": [
+            "qkv",
+            "z"
+          ]
+        }
+      ],
+      "raw_output_sha256": "e9f4bc2456f2a50c5ba276e8b9129321d51273fa5a6b1ec88ea5a8ae4d717f84",
+      "raw_output_size_bytes": 21929293,
+      "row_failure_layer_limits": [
+        {
+          "failure_modes": [],
+          "hidden_failure_rows": [],
+          "layer_limit": 4,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_failure_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "layer_limit": 5,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [],
+          "hidden_failure_rows": [],
+          "layer_limit": 6,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_failure_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "layer_limit": 7,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "token_failure_rows": []
+        },
+        {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_failure_rows": [
+            0
+          ],
+          "layer_limit": 8,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1,
+            2
+          ],
+          "token_failure_rows": []
+        }
+      ],
+      "status": "mismatch_found",
+      "token_passed": true
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "notes": [
+    "Diagnostic-only run: per-row KV append/context/O/post-attention/MoE and suffix interleaving are explicit blockers; no throughput claim is allowed.",
+    "Raw hidden-bisect JSONs were compacted out after hashing/summarizing because they are large."
+  ],
+  "performance_claim": false,
+  "retained_ready": false,
+  "schema_version": 1,
+  "status": "diagnostic_recorded",
+  "workload": {
+    "batch_decode_attention_context_path": "per_row",
+    "batch_decode_attention_input_path": "batch",
+    "batch_decode_attention_qkv_path": "batch",
+    "batch_decode_attention_suffix_order": "interleaved",
+    "batch_decode_full_attention_kv_append_path": "per_row",
+    "batch_decode_full_attention_moe_path": "per_row_c1",
+    "batch_decode_full_attention_output_path": "per_row",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_full_attention_row_chunks": [
+      2,
+      3
+    ],
+    "batch_decode_linear_output_path": "batch_gemv",
+    "batch_decode_linear_projection_path": "batch",
+    "batch_decode_linear_state_path": "batch_segments",
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_decode_post_attention_path": "per_row",
+    "batch_size": 4,
+    "c1_decode_path": "native_batch",
+    "decode_tokens": 4,
+    "hidden_atol": 0.004,
+    "layer_limits": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_layers": 40,
+    "prompt_length": 512,
+    "state_atol": 0.004,
+    "trace_decode_window": [
+      0,
+      4
+    ],
+    "warmup_decode_tokens": 8
+  }
+}

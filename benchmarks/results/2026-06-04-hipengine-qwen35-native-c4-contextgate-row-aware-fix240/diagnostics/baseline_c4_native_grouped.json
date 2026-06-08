@@ -1,0 +1,101 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "native c>N decode is experimental and blocked until generated-token equality passes",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    118
+  ],
+  "full_attention_context_decode_path": "native_batch",
+  "full_attention_decode_path": "native_batch",
+  "full_attention_gate_decode_path": null,
+  "full_attention_row_chunk_size": null,
+  "generated_token_equality_passed": false,
+  "label": "baseline_c4_native_grouped",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "min_equal_prefix_tokens": 118,
+  "mismatch_count": 1,
+  "mismatch_summaries": [
+    {
+      "batch_matches_c1_rows": [],
+      "batch_matches_other_batch_rows": [],
+      "batch_prefixes_by_c1_row": [
+        {
+          "equal_prefix_tokens": 118,
+          "row": 3
+        },
+        {
+          "equal_prefix_tokens": 0,
+          "row": 0
+        },
+        {
+          "equal_prefix_tokens": 0,
+          "row": 1
+        },
+        {
+          "equal_prefix_tokens": 0,
+          "row": 2
+        }
+      ],
+      "batch_token_at_mismatch": 4203,
+      "batch_window": [
+        318,
+        3002,
+        220,
+        16,
+        17,
+        4203,
+        9781,
+        310,
+        328,
+        2078,
+        1
+      ],
+      "c1_token_at_mismatch": 9781,
+      "c1_window": [
+        318,
+        3002,
+        220,
+        16,
+        17,
+        9781,
+        80086,
+        279,
+        1483,
+        11316,
+        310
+      ],
+      "first_mismatch_index": 118,
+      "row": 3
+    }
+  ],
+  "moe_decode_path": "grouped_compact",
+  "native_caware_decode": true,
+  "phase": "baseline",
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    118
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "999e54f439249b35d8605c31a60b7e2600150db0a4d1a4408de4c22e94d9ee96",
+  "raw_size_bytes": 218811,
+  "raw_source_path": "/tmp/hipengine-iter240-c4_native_grouped.json",
+  "repeat": 1,
+  "sampler_mode": "serial_lm_head",
+  "status": "rejected_correctness",
+  "variant": "native_grouped",
+  "workload_batch_decode_attention_context_path": "batch",
+  "workload_batch_decode_attention_gate_path": "batch",
+  "workload_batch_decode_full_attention_path": "native_batch",
+  "workload_batch_decode_full_attention_row_chunk_size": 0,
+  "workload_batch_decode_moe_path": "grouped_compact",
+  "workload_batch_sample_mode": "batched_lm_head"
+}

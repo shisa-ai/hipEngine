@@ -1,0 +1,65 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "blocked_preflight_oom",
+  "performance_claim": false,
+  "label": "p10_long_context_32k_128k_preflight",
+  "date": "2026-05-21",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card",
+  "commit_under_test": "8ab3070",
+  "requested_shapes": [
+    {
+      "prompt_length": 32768,
+      "decode_tokens": 128
+    },
+    {
+      "prompt_length": 131072,
+      "decode_tokens": 128
+    }
+  ],
+  "accepted_command_shape": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length <PROMPT> --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <OUT>.json",
+  "preflight_method": "Static allocation model from Qwen35GGUFResidentSession/_FullStackScratch/_GGUFFullAttentionPrefillScratch, calibrated against measured tracked_current_allocated_gib_before_close for 512/128 and 4K/128 retained/review runs.",
+  "calibration": {
+    "observed_512x128_owned_session_gib": 21.34385324269533,
+    "estimated_512x128_owned_session_gib": 21.34385324269533,
+    "observed_4096x128_owned_session_gib": 22.584310591220856,
+    "estimated_4096x128_owned_session_gib": 22.582601606845856
+  },
+  "preflight_estimates": [
+    {
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "rounded_max_positions": 33024,
+      "estimated_owned_session_gib": 32.506046772003174,
+      "device_total_gib": 23.984375,
+      "estimated_over_device_gib": 8.521671772003174,
+      "blocked": true,
+      "primary_blocker": "Unchunked resident bulk prefill scratch scales with max_positions and is estimated at 10.536 GiB for this shape; current accepted path would exceed 24 GiB before the benchmark starts."
+    },
+    {
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "rounded_max_positions": 131328,
+      "estimated_owned_session_gib": 66.71092796325684,
+      "device_total_gib": 23.984375,
+      "estimated_over_device_gib": 42.726552963256836,
+      "blocked": true,
+      "primary_blocker": "Both dense resident long-context KV/state allocation and unchunked resident bulk prefill scratch exceed 24 GiB by a large margin."
+    }
+  ],
+  "next_actions": [
+    "Implement GGUF chunked bulk prefill so transient _GGUFFullAttentionPrefillScratch is sized by chunk rows (e.g. 4096) rather than max_sequence_length; this should make 32K/128 fit because the calibrated estimate drops near the 4K transient footprint plus the longer resident KV cache.",
+    "For 128K/128, dense resident KV plus even chunked prefill remains very tight or over 24 GiB; likely requires KV compression/eviction policy or more aggressive scratch lifetime reduction before a real run on W7900.",
+    "After long-context memory is resolved, turn to decode: 4K decode remains ~47 tok/s while 512 decode is ~90 tok/s, consistent with full-attention decode being memory/parallelism limited at longer contexts."
+  ],
+  "revalidation": {
+    "date": "2026-05-21",
+    "commit": "8ab3070",
+    "hipMemGetInfo_total_gib": 23.984375,
+    "hipMemGetInfo_free_gib_at_preflight": 23.949,
+    "decision": "real benchmark launches skipped to avoid deterministic OOM on shared local 24 GiB gfx1100",
+    "rollup_update": "not retained; no benchmarks/README.md row added"
+  }
+}

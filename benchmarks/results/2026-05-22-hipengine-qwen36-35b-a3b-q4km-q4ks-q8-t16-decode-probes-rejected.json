@@ -1,0 +1,65 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "rejected_perf",
+  "performance_claim": false,
+  "label": "q8_t16_decode_probes_rejected_dual_q4km_q4ks",
+  "date": "2026-05-22",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "note": "local diagnostic; W7900 not rerun"
+  },
+  "scope": "Task #2 dense/shared GGUF Q8_0 T16 decode GEMV probes. Requirement: retain only if acceptable for both Q4_K_M and Q4_K_S.",
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m": {"prefill_tok_s": 2552.0429915633204, "decode_tok_s": 96.26374663160384, "tracked_peak_gib": 22.571860380470753},
+    "gguf_q4_k_s": {"prefill_tok_s": 2637.147627613572, "decode_tok_s": 97.12117731314792, "tracked_peak_gib": 21.415610380470753}
+  },
+  "validation": {
+    "targeted_tests_after_each_probe": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q",
+    "targeted_tests_result": "61 passed"
+  },
+  "probes": [
+    {
+      "name": "T16_K_VEC4_scale_amortization",
+      "change": "Temporary vectorized K loop grouped four adjacent K lanes per thread to amortize the 16 fp16 Q8_0 T16 scale loads without lane0 shuffles.",
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S 4K/128 decode regressed before the Q4_K_M gate was attempted.",
+      "results": {
+        "gguf_q4_k_s_4k_128_single_run": {
+          "prefill_tok_s": 2631.8533755337035,
+          "decode_tok_s": 89.65280744721262,
+          "tracked_peak_gib": 21.415610380470753,
+          "json": "/tmp/hipengine-q4ks-q8vec4-candidate-4096-128.json",
+          "decode_delta_vs_baseline_pct": -7.689746857499274
+        }
+      }
+    },
+    {
+      "name": "scalar_fmaf_instruction_selection",
+      "change": "Temporary scalar-loop replacement of acc += xv * (d * q) with fmaf(xv, d * q, acc).",
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S was slightly positive, but Q4_K_M did not clear the dual-column gate on the 3-run 4K/128 measurement.",
+      "results": {
+        "gguf_q4_k_s_4k_128_3run": {
+          "prefill_tok_s_median": 2747.1311485217952,
+          "decode_tok_s_samples": [97.81505939885261, 97.58425086575406, 97.65793765859563],
+          "decode_tok_s_median": 97.65793765859563,
+          "tracked_peak_gib": 21.415610380470753,
+          "json": "/tmp/hipengine-q4ks-q8-fmaf-candidate-4096-128-3run.json",
+          "decode_delta_vs_baseline_pct": 0.5526707456610341
+        },
+        "gguf_q4_k_m_4k_128_3run": {
+          "prefill_tok_s_median": 2657.504514876133,
+          "decode_tok_s_samples": [95.84304721263898, 96.01745412479501, 95.87568889259876],
+          "decode_tok_s_median": 95.87568889259876,
+          "tracked_peak_gib": 22.571860380470753,
+          "json": "/tmp/hipengine-q4km-q8-fmaf-candidate-4096-128-3run.json",
+          "decode_delta_vs_baseline_pct": -0.40312029776008025
+        }
+      }
+    }
+  ],
+  "final_source_state": "All temporary Q8_0 T16 changes reverted; git diff for hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip is empty after probes.",
+  "decision": "No dense Q8_0 T16 decode change retained. Next decode-gap work should prioritize structural MoE fusion/launch reduction rather than local scalar Q8_0 tweaks."
+}

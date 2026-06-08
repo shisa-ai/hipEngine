@@ -1,0 +1,135 @@
+{
+  "schema": 2,
+  "mode": "gguf_true_llm_generate_e2e_correctness",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "backend": "hip_gfx1100",
+  "quant": "gguf_q4_k_m",
+  "fixture": "tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json",
+  "prompt": "Hello",
+  "prompt_ids": [
+    9419
+  ],
+  "max_new_tokens": 2,
+  "repeat": 2,
+  "expected_generated_text": "izio.",
+  "outputs": [
+    "izio.",
+    "izio."
+  ],
+  "deterministic": true,
+  "expected_text_match": true,
+  "expected_generated_token_ids": [
+    43482,
+    13
+  ],
+  "generated_token_ids": [
+    43482,
+    13
+  ],
+  "expected_token_ids_match": true,
+  "intake": {
+    "path": "/data/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "version": 3,
+    "architecture": "qwen35moe",
+    "file_type": 15,
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "tensor_count": 733,
+    "total_tensor_nbytes": 22123538944,
+    "tensor_count_by_type": {
+      "F32": 361,
+      "Q4_K": 80,
+      "Q5_K": 37,
+      "Q6_K": 4,
+      "Q8_0": 251
+    },
+    "unsupported_dequant_types": [],
+    "map_validation_passed": true,
+    "map_missing": [],
+    "map_unexpected": [],
+    "root_lm_head": "output.weight",
+    "config": {
+      "architecture": "qwen35moe",
+      "block_count": 40,
+      "hidden_size": 2048,
+      "vocab_size": 248320,
+      "context_length": 262144,
+      "full_attention_interval": 4,
+      "expert_count": 256,
+      "expert_used_count": 8,
+      "expert_feed_forward_length": 512,
+      "expert_shared_feed_forward_length": 512
+    },
+    "passed": true
+  },
+  "internal_tokenizer": {
+    "tokenizer_model": "qwen35moe",
+    "prompt_ids": [
+      9419
+    ],
+    "prompt_ids_match": true,
+    "prompt_roundtrip": "Hello",
+    "prompt_roundtrip_match": true,
+    "expected_text_ids": [
+      43482,
+      13
+    ],
+    "expected_text_ids_match": true,
+    "output_ids": [
+      43482,
+      13
+    ],
+    "output_ids_match": true,
+    "passed": true
+  },
+  "external_tokenizer": {
+    "oracle": "/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-tokenize",
+    "prompt_ids": [
+      9419
+    ],
+    "prompt_ids_match": true,
+    "generated_token_ids": [
+      43482,
+      13
+    ],
+    "expected_token_ids_match": true,
+    "passed": true
+  },
+  "tokenization_error": null,
+  "finite_logits_required": true,
+  "finite_logits": {
+    "prompt_ids": [
+      9419
+    ],
+    "shape": [
+      1,
+      248320
+    ],
+    "dtype": "float32",
+    "finite": true,
+    "argmax_token_id": 43482,
+    "argmax_recomputed_token_id": 43482,
+    "argmax_logit": 10.306183815002441,
+    "expected_first_token_id": 43482,
+    "expected_first_token_match": true,
+    "min_logit": -9.574250221252441,
+    "max_logit": 10.306183815002441,
+    "memory_stats": {
+      "current_allocated_bytes": 22220421596,
+      "peak_allocated_bytes": 22220421596,
+      "total_allocated_bytes": 66661264788,
+      "total_freed_bytes": 44440843192,
+      "active_allocations": 903,
+      "peak_allocations": 903
+    },
+    "passed": true
+  },
+  "torch_preloaded": false,
+  "torch_loaded_by_generate": false,
+  "errors": [],
+  "passed": true,
+  "notes": [
+    "Hard gate for GGUF E2E: this must call hipengine.LLM.generate(), not a lower-level runner.",
+    "Passing requires deterministic repeated generation, expected text/token match, GGUF intake, internal tokenizer parity, external llama-tokenize parity unless skipped, finite logits when required by the fixture, and no torch import by the generate path.",
+    "The qwen35moe 35B-A3B fixture is a narrow deterministic bring-up smoke; throughput and stronger model-quality comparisons are separate benchmark/correctness tasks."
+  ]
+}

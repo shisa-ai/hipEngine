@@ -1,0 +1,243 @@
+{
+  "artifacts": {
+    "c2-native_batch-projection.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/c2-native_batch-projection.json",
+      "sha256": "33ad1ab1807a5a5975e84c968f27eb8e45f90fa3adbb2dfed5aba929ab91abbc",
+      "size_bytes": 137068
+    },
+    "c2-selected_c1-projection.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/c2-selected_c1-projection.json",
+      "sha256": "c06cf883b9eb58e37bb9983add9a298d0fdbe6f39d050e915361b52db783d504",
+      "size_bytes": 144679
+    },
+    "hipcc-version.txt": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "native-profiled-c2-projection.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/native-profiled-c2-projection.json",
+      "sha256": "2f0de29a65550ec2f33192e1efadfee2fa35ca6642a2d4e76bf895d639df0611",
+      "size_bytes": 182232
+    },
+    "profile-c2-projection/hipengine_kernel_trace.csv": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/profile-c2-projection/hipengine_kernel_trace.csv",
+      "sha256": "147a06f42bc5a74b217e429b0f7f3285175d97b5d0dbe87a47c50e0e15150044",
+      "size_bytes": 10217
+    },
+    "profiler-c2-projection.json": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/profiler-c2-projection.json",
+      "sha256": "02c6e070135cf3c8878087dbde4551bd4ba35eec61dfaa1285373025b66441b0",
+      "size_bytes": 12088
+    },
+    "rocprof-command.txt": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/rocprof-command.txt",
+      "sha256": "8f6bbdb2c21582a2197759bd9cd15d892facd8a85d6d238ea8644ab6bd01755b",
+      "size_bytes": 1607
+    }
+  },
+  "code_change": "scripts/qwen35_batch_retained_bench.py now blocks retained performance acceptance when aggregate_vs_c1 or aggregate_vs_serial_bridge <= 1.0, so projection-dispatch evidence cannot promote an invalid accepted artifact.",
+  "commands": {
+    "native_batch_projection": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path batch --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-primitive-correctness.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/c2-native_batch-projection.json",
+    "row_gemv_selected_c1_projection": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/hipcc-version.txt --require-cached-build --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path selected_c1 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --c1-baseline-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c1-native-baseline.json --serial-bridge-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-serial-bridge-baseline.json --primitive-correctness-json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-baselines/c2-primitive-correctness.json --json benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/c2-selected_c1-projection.json"
+  },
+  "created_utc": "2026-06-03T09:46:50Z",
+  "evidence": {
+    "accepted": true,
+    "aggregate_vs_row_gemv": 1.081395195821912,
+    "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+    "per_request_vs_row_gemv": 1.081395195821912,
+    "source_artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json"
+  },
+  "final_retained_validation": {
+    "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/native-profiled-c2-projection.json",
+    "batch_blockers": [],
+    "batch_execution_throughput_claim_eligible": true,
+    "decision_accepted": false,
+    "decision_reason": "scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim",
+    "generated_token_equality_passed": true,
+    "graph_bucket_stats": {
+      "entries": 1,
+      "hits": 1,
+      "kernel_time_histogram_ns": {
+        "gt_10ms": 40,
+        "le_100us": 4,
+        "le_10ms": 12,
+        "le_10us": 0,
+        "le_1ms": 3
+      },
+      "miss_reasons": {
+        "cache_absent": 1
+      },
+      "misses": 1,
+      "replay_hit_rate": 0.5,
+      "replay_kernel_hits": 0
+    },
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "profiler_kernel_count": 59,
+    "profiler_status": "captured",
+    "projection_dispatch": {
+      "blockers": [],
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.081395195821912,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+        "per_request_vs_row_gemv": 1.081395195821912
+      },
+      "path": "benchmark_accepted_caware_projection",
+      "rows": 2,
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "gemv_awq_selected_dual_pack8_strided"
+      },
+      "throughput_claim_eligible": true
+    },
+    "scaling_ratios": {
+      "aggregate_vs_c1": 0.8371931213448722,
+      "aggregate_vs_serial_bridge": 1.0795705903554198,
+      "per_request_vs_c1": 0.4185965606724361,
+      "per_request_vs_serial_bridge": 1.0795705903554198
+    },
+    "status": "blocked"
+  },
+  "git_commit": "a78665977d7405758c945bb486943b25c2081763",
+  "hardware": {
+    "device": "GPU1",
+    "gpu": "RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "kind": "projection_dispatch_evidence",
+  "measurements": {
+    "native_batch_projection": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/c2-native_batch-projection.json",
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      },
+      "decode_tok_s_aggregate": 110.29661688842792,
+      "decode_tok_s_per_request": 55.14830844421396,
+      "generated_token_equality": true,
+      "prefix_lengths": [
+        137,
+        137
+      ]
+    },
+    "row_gemv_selected_c1_projection": {
+      "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/c2-selected_c1-projection.json",
+      "decode_execution": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_forced",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "decode_tok_s_aggregate": 101.99473542565282,
+      "decode_tok_s_per_request": 50.99736771282641,
+      "generated_token_equality": true,
+      "prefix_lengths": [
+        137,
+        137
+      ]
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "notes": "Projection-dispatch evidence covers c=2 only and makes runtime metadata select the measured native-batch projection candidate instead of row_gemv_until_caware_benchmark. The profiled retained validation remains blocked, not accepted, because aggregate_vs_c1 is below 1.0; no retained throughput claim is made.",
+  "performance_claim": false,
+  "profiler_result": {
+    "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/profiler-c2-projection.json",
+    "compact_trace_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/profile-c2-projection/hipengine_kernel_trace.csv",
+    "kernel_count": 59,
+    "kernel_duration_categories_ns": {
+      "attention": 592453443.0,
+      "graph_replay": 0.0,
+      "moe": 280347861.0,
+      "other": 1536161725.0,
+      "projection": 1994045356.0,
+      "sampling": 3377516.0
+    },
+    "status": "captured",
+    "top_kernel_durations_ns": [
+      {
+        "duration_ns": 468294032.0,
+        "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+      },
+      {
+        "duration_ns": 351090522.0,
+        "kernel": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)"
+      },
+      {
+        "duration_ns": 329386332.0,
+        "kernel": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+      },
+      {
+        "duration_ns": 304973022.0,
+        "kernel": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)"
+      },
+      {
+        "duration_ns": 293627735.0,
+        "kernel": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+      },
+      {
+        "duration_ns": 244886307.0,
+        "kernel": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)"
+      },
+      {
+        "duration_ns": 236452273.0,
+        "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)"
+      },
+      {
+        "duration_ns": 216869060.0,
+        "kernel": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)"
+      }
+    ],
+    "total_kernel_duration_ns": 4406385901.0
+  },
+  "projection_dispatch_candidates": [
+    {
+      "evidence": {
+        "accepted": true,
+        "aggregate_vs_row_gemv": 1.081395195821912,
+        "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c2-projection-dispatch/summary.json",
+        "per_request_vs_row_gemv": 1.081395195821912
+      },
+      "max_rows": 2,
+      "min_rows": 2,
+      "name": "gemv_awq_selected_dual_pack8_strided",
+      "selection": {
+        "layer": "linear",
+        "quant": "w4_paro",
+        "variant": "gemv_awq_selected_dual_pack8_strided"
+      }
+    }
+  ],
+  "remaining_blockers": [
+    "scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim"
+  ],
+  "retained_ready": false,
+  "rows": 2,
+  "status": "accepted",
+  "updated_utc": "2026-06-03T10:02:07Z",
+  "workload": {
+    "batch_decode_linear_projection_path_current": "batch",
+    "batch_decode_linear_projection_path_row_gemv_baseline": "selected_c1",
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_sample_mode": "batched_lm_head",
+    "concurrency": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

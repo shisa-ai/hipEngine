@@ -1,0 +1,114 @@
+{
+  "conclusion": "The c8 fullnative bug is not at layer3 full-attention input and not an immediate large layer3 output failure. The first over-atol effect appears when layer4 computes linear-attention attn_input from the slightly-drifted layer3 output, then amplifies by layer7 pre-QKV. Candidate fix targets are layer3 full-attention output numerical parity, layer4 RMSNorm sensitivity/precision, or a need to keep rowchunk/per-row semantics through the layer3\u21924 handoff.",
+  "created_at": "2026-06-07T06:31:50.977294+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "interpretation": {
+    "layer3_input": "exact for fullnative and rowchunk vs native-c1, so the first full-attention layer3 input is not the source.",
+    "layer3_output": "fullnative layer3 output has only small under-atol drift (max_abs 0.000122) and no failed rows; rowchunk exact.",
+    "layer4_input": "after layer3 handoff / layer4 RMSNorm, fullnative layer4 attn_input has first over-atol drift (max_abs 0.0078125 row0) while rowchunk remains exact.",
+    "layer4_output": "drift collapses back to under-atol by layer4 output in the L8/decode1 window, explaining why short final output can remain eq_ok.",
+    "layer7_preqkv": "fullnative over-atol drift expands to all rows by layer7 pre-QKV; rowchunk remains exact."
+  },
+  "iteration": 433,
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused upstream stage extraction localizes the c8 fullnative drift: layer3 input exact, layer3 output only under-atol drift, first over-atol drift appears at layer4 attn_input after handoff/RMSNorm, and expands by layer7 pre-QKV. This directly advances the hidden/full-attention blocker.",
+    "passed": true
+  },
+  "result": {
+    "all_rowchunk_stages_exact": true,
+    "fullnative_retained_prefix_lengths": [
+      137,
+      137,
+      137,
+      118,
+      45,
+      31,
+      68,
+      137
+    ],
+    "layer3_input_fullnative_max_abs": 0.0,
+    "layer3_output_failed_rows": [],
+    "layer3_output_fullnative_max_abs": 0.0001220703125,
+    "layer4_input_failed_rows": [
+      0
+    ],
+    "layer4_input_fullnative_max_abs": 0.0078125,
+    "layer4_output_failed_rows": [],
+    "layer4_output_fullnative_max_abs": 0.0001220703125,
+    "layer7_input_failed_rows": [],
+    "layer7_input_fullnative_max_abs": 0.0009765625,
+    "layer7_preqkv_failed_rows": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "layer7_preqkv_fullnative_max_abs": 0.015625
+  },
+  "stage_comparisons": {
+    "layer3_full_input": {
+      "fullnative_summary": {
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0
+      },
+      "rowchunk_exact": true
+    },
+    "layer3_full_output": {
+      "fullnative_summary": {
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0001220703125
+      },
+      "rowchunk_exact": true
+    },
+    "layer4_linear_input": {
+      "fullnative_summary": {
+        "elements_over_atol_total": 1,
+        "failed_rows": [
+          0
+        ],
+        "max_abs": 0.0078125
+      },
+      "rowchunk_exact": true
+    },
+    "layer4_linear_output": {
+      "fullnative_summary": {
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0001220703125
+      },
+      "rowchunk_exact": true
+    },
+    "layer7_full_input": {
+      "fullnative_summary": {
+        "elements_over_atol_total": 0,
+        "failed_rows": [],
+        "max_abs": 0.0009765625
+      },
+      "rowchunk_exact": true
+    },
+    "layer7_full_preqkv": {
+      "fullnative_summary": {
+        "elements_over_atol_total": 12,
+        "failed_rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "max_abs": 0.015625
+      },
+      "rowchunk_exact": true
+    }
+  }
+}

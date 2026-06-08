@@ -185,7 +185,61 @@ For every new/ported kernel:
 
 A perf win with a failed correctness gate is a failed change.
 
-### 5. Milestone closure
+### 5. K1 dense INT8 KV gate
+
+Use this gate for `storage_dtype="int8_per_token_head"` changes and for any
+long-context K1 benchmark update. It is a capacity/storage protocol first; do
+not describe it as a speed win unless the same artifact also shows an accepted
+throughput improvement.
+
+Required correctness commands:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py \
+  tests/test_qwen35_bench_memory_audit.py -q
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 \
+  --scale-dtype fp16 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --require-int8-hip --json /tmp/hipengine-int8-accuracy.json
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-int8-kv-e2e-fixture-gate.json
+```
+
+Required benchmark/profiler evidence for retained or blocked K1 rows:
+
+- exact benchmark command with model, quant, backend, hardware, prompt/decode
+  shape, chunk settings, `--kv-storage`, and output JSON path;
+- correctness status: layer-level INT8 accuracy, E2E fixture KL/top-1, generated
+  token match status, and no-shadow memory audit;
+- timing: prefill tok/s, warmed decode tok/s, and whether graph replay was used;
+- memory: tracked allocator peak, sampled HIP VRAM peak, retained KV payload
+  bytes/elements/bytes-per-element, scale bytes/dtype/granularity, and any
+  persistent BF16 shadow candidates;
+- `rocprofv3 --kernel-trace` summary for INT8 writer and decode kernels with
+  call count plus plausible duration (`DurationNs` or computed equivalent), not
+  raw CSVs.
+
+The 2026-05-18 K1 artifacts are the current reference rows:
+
+- 128K/128 BF16-vs-INT8 diagnostic:
+  `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`
+  (`max_kl=0.015328`, top-1 `100%`, no BF16 shadow; INT8 retained KV
+  `1.355 GB`; speed `-0.99%` prefill / `-3.20%` decode vs BF16).
+- 128K/256K INT8 AOTriton query-reuse + q3072 diagnostic:
+  `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`
+  (correctness/no-shadow pass, retained KV `2.708 GB` at 256K, sampled
+  `22.013 GiB` and tracked `23.766 GiB` pass the 24GiB-class target; the
+  temporary BF16 oracle workspace itself remains a follow-up).
+
+### 6. Milestone closure
 
 At milestone boundaries:
 

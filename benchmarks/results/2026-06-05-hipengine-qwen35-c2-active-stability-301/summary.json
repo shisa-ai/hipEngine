@@ -1,0 +1,123 @@
+{
+  "artifacts": {
+    "c2_active_r1": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/c2-active-r1-compact.json"
+    },
+    "c2_active_r2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/c2-active-r2-compact.json"
+    },
+    "c2_active_r3": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/c2-active-r3-compact.json"
+    },
+    "c2_active_r4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/c2-active-r4-compact.json"
+    },
+    "c2_active_r5": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/c2-active-r5-compact.json"
+    },
+    "current_c248_gate_reference": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-current-c248-post-c8-profiler-300/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-active-stability-301/summary.json"
+    }
+  },
+  "conclusion": "The active-loop c2 512/128 verify bench invocation is repeat-stable in this audit: five no-flag c2 runs all pass generated-token equality at [137,137] with full native/c-aware decode, batched_lm_head, and no decode blockers. This follows the current c2/c4/c8 post-c8-profiler gate and makes no throughput/scaling claim.",
+  "created_at": "2026-06-04T20:48:42.170781+00:00",
+  "git_commit_before_commit": "23e240d78163e7934419b9c0b3a0ec6e679124c5",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 301,
+  "kind": "active_c2_verify_stability_audit",
+  "performance_claim": false,
+  "result": {
+    "decode_blockers": [
+      [],
+      [],
+      [],
+      [],
+      []
+    ],
+    "first_mismatch_indices": [
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ]
+    ],
+    "full_attention_decode_path": [
+      "native_batch",
+      "native_batch",
+      "native_batch",
+      "native_batch",
+      "native_batch"
+    ],
+    "generated_equality_passed_all_repeats": true,
+    "native_caware_decode": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "prefix_lengths": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "repeat_runs": 5,
+    "sampler_modes": [
+      "batched_lm_head",
+      "batched_lm_head",
+      "batched_lm_head",
+      "batched_lm_head",
+      "batched_lm_head"
+    ]
+  },
+  "schema": 1,
+  "source_tmp_dir": "/tmp/hipengine-iter301-c2-active-stability",
+  "status": "passed",
+  "workload": {
+    "batch_size": 2,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "matches_active_loop_verify_bench_invocation": true,
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

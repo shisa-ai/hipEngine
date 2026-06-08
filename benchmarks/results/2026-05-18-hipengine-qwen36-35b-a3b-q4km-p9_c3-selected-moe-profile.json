@@ -1,0 +1,421 @@
+{
+  "schema": "p9_c3_selected_moe_profile_v1",
+  "status": "diagnostic_profile",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T05:22:13.358612+00:00",
+  "task": "#34 P9.C3 profile current raw GGUF-K selected WMMA internals",
+  "hardware": "AMD Radeon RX 7900 XTX / gfx1100 local profiling GPU",
+  "git_commit": "f7548265a260ef23890dd6f6d1d66a1810676ce8",
+  "git_status": "## gguf-bulk-prefill\n?? uv.lock",
+  "inputs": {
+    "replay_json": "/tmp/p9_c2/moe-replay-512-0-batched.json",
+    "retained_trace_csv": "/tmp/p9_c3/rocprof-replay-trace/rocm/197214_kernel_trace.csv",
+    "q4_legacy_trace_csv": "/tmp/p9_c3/rocprof-replay-q4legacy/rocm/199161_kernel_trace.csv",
+    "pmc_counter_csv": "/tmp/p9_c3/rocprof-replay-pmc/rocm/199972_counter_collection.csv",
+    "q4_code_object": "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-29686c2cdfa3d6c6/gguf_q4_k_selected_prefill.so.0.hipv4-amdgcn-amd-amdhsa--gfx1100",
+    "k_code_object": "/home/lhl/.cache/hipengine/build/gguf_k_selected_prefill-250e469ee311b172/gguf_k_selected_prefill.so.0.hipv4-amdgcn-amd-amdhsa--gfx1100"
+  },
+  "commands": {
+    "retained_trace": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p9_c3/rocprof-replay-trace -- python3 scripts/qwen35_gguf_moe_replay.py ... --warmup-iters 0 --replay-iters 1 --sample-groups 1 --require-cached-build --json /tmp/p9_c3/moe-replay-512-0-trace.json",
+    "q4_legacy_trace": "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M=16 HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N=16 rocprofv3 --kernel-trace ... --json /tmp/p9_c3/moe-replay-512-0-q4legacy.json",
+    "pmc_attempt": "rocprofv3 --kernel-trace --pmc SQ_WAVES SQ_INSTS_VALU SQ_INSTS_SALU SQ_INSTS_SMEM SQ_INSTS_TEX_LOAD SQ_WAIT_INST_ANY SQ_INST_CYCLES_VMEM ...",
+    "code_object_stats": "llvm-objdump --offloading <selected .so>; llvm-objdump -t <extracted amdgcn code object>"
+  },
+  "retained_trace_summary": {
+    "q4_dual": {
+      "dispatches": 40,
+      "total_ms": 61.476635,
+      "avg_ms": 1.536915875,
+      "median_ms": 1.4803895,
+      "min_ms": 1.247648,
+      "max_ms": 1.956052,
+      "vgpr_count": [
+        72
+      ],
+      "accum_vgpr_count": [
+        0
+      ],
+      "sgpr_count": [
+        128
+      ],
+      "scratch_size": [
+        0
+      ],
+      "lds_block_size": [
+        0
+      ],
+      "workgroup_size_x": [
+        32
+      ],
+      "grid_size_x": [
+        1024
+      ],
+      "grid_size_y_min": 266,
+      "grid_size_y_max": 309,
+      "kernel_name_sample": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)"
+    },
+    "q5_down": {
+      "dispatches": 37,
+      "total_ms": 28.800784,
+      "avg_ms": 0.7783995675675676,
+      "median_ms": 0.732324,
+      "min_ms": 0.674925,
+      "max_ms": 1.049327,
+      "vgpr_count": [
+        64
+      ],
+      "accum_vgpr_count": [
+        0
+      ],
+      "sgpr_count": [
+        128
+      ],
+      "scratch_size": [
+        0
+      ],
+      "lds_block_size": [
+        0
+      ],
+      "workgroup_size_x": [
+        32
+      ],
+      "grid_size_x": [
+        4096
+      ],
+      "grid_size_y_min": 266,
+      "grid_size_y_max": 309,
+      "kernel_name_sample": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)"
+    },
+    "q6_down": {
+      "dispatches": 3,
+      "total_ms": 2.818379,
+      "avg_ms": 0.9394596666666667,
+      "median_ms": 0.941326,
+      "min_ms": 0.912286,
+      "max_ms": 0.964767,
+      "vgpr_count": [
+        72
+      ],
+      "accum_vgpr_count": [
+        0
+      ],
+      "sgpr_count": [
+        128
+      ],
+      "scratch_size": [
+        0
+      ],
+      "lds_block_size": [
+        0
+      ],
+      "workgroup_size_x": [
+        32
+      ],
+      "grid_size_x": [
+        4096
+      ],
+      "grid_size_y_min": 296,
+      "grid_size_y_max": 308,
+      "kernel_name_sample": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)"
+    }
+  },
+  "q4_legacy_trace_summary": {
+    "q4_dual": {
+      "dispatches": 40,
+      "total_ms": 67.509671,
+      "avg_ms": 1.6877417749999999,
+      "median_ms": 1.587509,
+      "min_ms": 1.415648,
+      "max_ms": 2.386614,
+      "vgpr_count": [
+        56
+      ],
+      "accum_vgpr_count": [
+        0
+      ],
+      "sgpr_count": [
+        128
+      ],
+      "scratch_size": [
+        0
+      ],
+      "lds_block_size": [
+        0
+      ],
+      "workgroup_size_x": [
+        32
+      ],
+      "grid_size_x": [
+        2048
+      ],
+      "grid_size_y_min": 266,
+      "grid_size_y_max": 309,
+      "kernel_name_sample": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel<unsigned short>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)"
+    },
+    "q5_down": {
+      "dispatches": 37,
+      "total_ms": 28.355328,
+      "avg_ms": 0.7663602162162162,
+      "median_ms": 0.720604,
+      "min_ms": 0.671564,
+      "max_ms": 1.048286,
+      "vgpr_count": [
+        64
+      ],
+      "accum_vgpr_count": [
+        0
+      ],
+      "sgpr_count": [
+        128
+      ],
+      "scratch_size": [
+        0
+      ],
+      "lds_block_size": [
+        0
+      ],
+      "workgroup_size_x": [
+        32
+      ],
+      "grid_size_x": [
+        4096
+      ],
+      "grid_size_y_min": 266,
+      "grid_size_y_max": 309,
+      "kernel_name_sample": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)"
+    },
+    "q6_down": {
+      "dispatches": 3,
+      "total_ms": 2.856537,
+      "avg_ms": 0.952179,
+      "median_ms": 0.948086,
+      "min_ms": 0.882085,
+      "max_ms": 1.026366,
+      "vgpr_count": [
+        72
+      ],
+      "accum_vgpr_count": [
+        0
+      ],
+      "sgpr_count": [
+        128
+      ],
+      "scratch_size": [
+        0
+      ],
+      "lds_block_size": [
+        0
+      ],
+      "workgroup_size_x": [
+        32
+      ],
+      "grid_size_x": [
+        4096
+      ],
+      "grid_size_y_min": 296,
+      "grid_size_y_max": 308,
+      "kernel_name_sample": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)"
+    }
+  },
+  "pmc_summary": {
+    "note": "On this rocprofv3/ROCm build, SQ_WAVES is populated but instruction/busy counters returned zero for selected kernels; use trace VGPR/grid/duration plus code-object stats for diagnosis.",
+    "counters": {
+      "q4_dual": {
+        "SQ_INSTS_SALU": 0.0,
+        "SQ_INSTS_SMEM": 0.0,
+        "SQ_INSTS_TEX_LOAD": 0.0,
+        "SQ_INSTS_VALU": 0.0,
+        "SQ_INST_CYCLES_VMEM": 0.0,
+        "SQ_WAIT_INST_ANY": 0.0,
+        "SQ_WAVES": 371744.0
+      },
+      "q5_down": {
+        "SQ_INSTS_SALU": 0.0,
+        "SQ_INSTS_SMEM": 0.0,
+        "SQ_INSTS_TEX_LOAD": 0.0,
+        "SQ_INSTS_VALU": 0.0,
+        "SQ_INST_CYCLES_VMEM": 0.0,
+        "SQ_WAIT_INST_ANY": 0.0,
+        "SQ_WAVES": 1370496.0
+      },
+      "q6_down": {
+        "SQ_INSTS_SALU": 0.0,
+        "SQ_INSTS_SMEM": 0.0,
+        "SQ_INSTS_TEX_LOAD": 0.0,
+        "SQ_INSTS_VALU": 0.0,
+        "SQ_INST_CYCLES_VMEM": 0.0,
+        "SQ_WAIT_INST_ANY": 0.0,
+        "SQ_WAVES": 116480.0
+      }
+    }
+  },
+  "code_object_stats": {
+    "q4_dual_legacy_16x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 51
+    },
+    "q4_dual_generic_32x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 65
+    },
+    "q4_dual_generic_16x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 67
+    },
+    "q4_dual_generic_32x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 88
+    },
+    "q4_dual_generic_64x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 105
+    },
+    "q4_dual_generic_64x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 128
+    },
+    "q5_down_legacy_16x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 64
+    },
+    "q5_down_generic_32x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 76
+    },
+    "q5_down_generic_16x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 79
+    },
+    "q5_down_generic_32x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 99
+    },
+    "q5_down_generic_64x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 131
+    },
+    "q5_down_generic_64x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 139
+    },
+    "q6_down_legacy_16x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 65
+    },
+    "q6_down_generic_32x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 77
+    },
+    "q6_down_generic_16x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 81
+    },
+    "q6_down_generic_32x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 111
+    },
+    "q6_down_generic_64x16_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 118
+    },
+    "q6_down_generic_64x32_bf16": {
+      "private_seg_size": 0,
+      "num_agpr": 0,
+      "num_vgpr": 163
+    }
+  },
+  "throughput_estimates": {
+    "q4_dual": {
+      "flops": 5497558138880,
+      "unique_weight_bytes_active_experts": 18553503744,
+      "executed_weight_bytes_per_wmma_tile": 109631766528,
+      "activation_bytes_if_reloaded_per_col_tile": 194900918272,
+      "output_bytes": 2684354560,
+      "compact_rows": 163840,
+      "wmma_rows": 185872,
+      "row_tiles": 11617,
+      "active_experts": 1966,
+      "tflop_s": 89.42516354188872,
+      "unique_weight_bytes_active_experts_gb_s": 301.7976462765081,
+      "executed_weight_bytes_per_wmma_tile_gb_s": 1783.3078620519811,
+      "activation_bytes_if_reloaded_per_col_tile_gb_s": 3170.325088092411,
+      "output_bytes_gb_s": 43.66463063568785,
+      "duration_ms": 61.476635
+    },
+    "q5_down": {
+      "flops": 2542620639232,
+      "unique_weight_bytes_active_experts": 10173284352,
+      "executed_weight_bytes_per_wmma_tile": 61749067776,
+      "activation_bytes_if_reloaded_per_col_tile": 179633651712,
+      "output_bytes": 620756992,
+      "compact_rows": 151552,
+      "wmma_rows": 171312,
+      "row_tiles": 10707,
+      "active_experts": 1764,
+      "tflop_s": 88.28303560180862,
+      "unique_weight_bytes_active_experts_gb_s": 353.22942431011603,
+      "executed_weight_bytes_per_wmma_tile_gb_s": 2144.0064887122517,
+      "activation_bytes_if_reloaded_per_col_tile_gb_s": 6237.109785344733,
+      "output_bytes_gb_s": 21.55347548872281,
+      "duration_ms": 28.800784
+    },
+    "q6_down": {
+      "flops": 206158430208,
+      "unique_weight_bytes_active_experts": 1390018560,
+      "executed_weight_bytes_per_wmma_tile": 6261964800,
+      "activation_bytes_if_reloaded_per_col_tile": 15267266560,
+      "output_bytes": 50331648,
+      "compact_rows": 12288,
+      "wmma_rows": 14560,
+      "row_tiles": 910,
+      "active_experts": 202,
+      "tflop_s": 73.14787337260177,
+      "unique_weight_bytes_active_experts_gb_s": 493.19788431577155,
+      "executed_weight_bytes_per_wmma_tile_gb_s": 2221.832053105704,
+      "activation_bytes_if_reloaded_per_col_tile_gb_s": 5417.0381485243815,
+      "output_bytes_gb_s": 17.858367522607853,
+      "duration_ms": 2.818379
+    }
+  },
+  "diagnosis": {
+    "q4_dual": "Q4 dual dominates selected MoE. Retained 32x16 halves col-grid blocks (2048->1024 grid_x) and beats legacy 16x16 by ~6.0 ms despite higher VGPR (trace 72 vs 56; code num_vgpr 65 vs 51). It still reloads/dequantizes raw Q4_K scale/min and quant bytes for every WMMA row tile; executed-tile weight footprint estimate is ~107 GB and activation reload envelope is ~194 GB for 40 layers, far above unique active expert weight footprint (~10 GB). Bottleneck is inner-loop raw GGUF-K decode + repeated weight/activation work, not scheduler metadata or stores.",
+    "q5_down": "Q5 down is second largest. Legacy 16x16 has trace VGPR 64/code num_vgpr 64 and no scratch/LDS. Generic multi-tile variants increase code-object VGPR to 76-139 and were slower. Throughput is similar TFLOP/s to Q4, indicating WMMA math is busy but dequant/activation reload prevents enough gain from bigger tiles.",
+    "q6_down": "Q6 down is small (~2.8 ms) and not worth first attack except if Q5 design generalizes cheaply.",
+    "pmc": "Hardware counter collection was not usable beyond SQ_WAVES on this setup; trace metadata gives static occupancy/register evidence."
+  },
+  "ranked_plan": [
+    {
+      "rank": 1,
+      "item": "Prototype hot-expert Q4 dual kernel that keeps 32x16 block count reduction but reduces per-tile raw Q4 scale/min decode/register pressure. First target: Q4 dual <=45 ms replay, then <=40 ms full rocprof. Candidate: predecode Q4_K scale/min sidecar for active hot experts or split scale/min decode into sidecar while retaining raw q nibbles."
+    },
+    {
+      "rank": 2,
+      "item": "Avoid increasing VGPR above retained Q4 32x16. Q4 64x16/64x32 code-object num_vgpr 105/128 and Q5 64x* 131/139 explain prior slowdowns. New hot kernel should keep trace VGPR <=72 and no scratch."
+    },
+    {
+      "rank": 3,
+      "item": "After Q4, apply same sidecar/decode-pressure reduction to Q5 down. Target Q5 <=18 ms; Q6 remains legacy unless shared implementation is cheap."
+    },
+    {
+      "rank": 4,
+      "item": "Tail/no-padding hybrid remains secondary: padding ~13.45% bounds ideal savings to ~11 ms and cannot hit target without Q4/Q5 inner-loop redesign."
+    }
+  ]
+}

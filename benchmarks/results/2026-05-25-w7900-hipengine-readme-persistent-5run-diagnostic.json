@@ -1,0 +1,313 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-25",
+  "label": "w7900_hipengine_readme_persistent_5run_sweep",
+  "git_commit_under_test": "856903d",
+  "working_tree_at_write": "## main...origin/main\n M README.md\n M benchmarks/README.md\n M benchmarks/W7900.md\n M hipengine/runtime/qwen35_gguf_runner.py\n M hipengine/runtime/qwen35_paro_runner.py\n?? benchmarks/results/2026-05-25-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json\n?? benchmarks/results/2026-05-25-w7900-hipengine-paro-readme-persistent-5run.json\n?? scripts/qwen35_readme_sweep.py\n?? uv.lock\n",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipcc_version_text": "HIP version: 7.13.26162-1140233ffe\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n"
+  },
+  "workloads": [
+    "512/128",
+    "4K/128",
+    "32K/128",
+    "128K/128"
+  ],
+  "protocol": "One resident hipEngine session per model loaded at max_sequence_length for 128K/128; 1 warmup + 5 measured runs per shape; graph replay decode; measured decode excludes graph capture. Existing llama.cpp rows reused unchanged.",
+  "models": {
+    "hipengine_paro": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed, shared_expert_format=packed_paro_w4, BF16 KV",
+    "hipengine_gguf": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf, gguf_q4_k_s, decode-repack resident T16",
+    "llamacpp": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf, existing W7900 f16 KV rows"
+  },
+  "commands": {
+    "paro": "python scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json benchmarks/results/2026-05-25-w7900-hipengine-paro-readme-persistent-5run.json",
+    "gguf": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json benchmarks/results/2026-05-25-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json"
+  },
+  "results": {
+    "hipengine_paro": {
+      "512/128": {
+        "prefill_tok_s_median": 2718.4967327378927,
+        "prefill_tok_s_samples": [
+          2728.2151435327855,
+          2719.1721537038034,
+          2718.4967327378927,
+          2714.7314245604866,
+          2701.896155743118
+        ],
+        "decode_tok_s_median": 103.46029921985851,
+        "decode_tok_s_samples": [
+          104.56901415892628,
+          103.17408694304882,
+          104.54536549254571,
+          103.46029921985851,
+          102.07728096280547
+        ],
+        "tracked_peak_gib_median": 20.961961918510497,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 2838.772761692622,
+        "prefill_tok_s_samples": [
+          2855.0889754885247,
+          2851.5303487935234,
+          2830.56515350945,
+          2838.772761692622,
+          2828.1342700155806
+        ],
+        "decode_tok_s_median": 101.96404733307291,
+        "decode_tok_s_samples": [
+          103.62837427390907,
+          101.96404733307291,
+          101.3430901551333,
+          101.33714513208629,
+          103.49538839884087
+        ],
+        "tracked_peak_gib_median": 21.90629404131323,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "32K/128": {
+        "prefill_tok_s_median": 2074.6989160096628,
+        "prefill_tok_s_samples": [
+          2073.365154319533,
+          2076.2331344936247,
+          2073.1250936714814,
+          2074.6989160096628,
+          2075.7116059144637
+        ],
+        "decode_tok_s_median": 90.4376640333415,
+        "decode_tok_s_samples": [
+          90.41983234095892,
+          90.4558340086444,
+          90.46220837303251,
+          90.4376640333415,
+          90.42107788398137
+        ],
+        "tracked_peak_gib_median": 22.01566904131323,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "128K/128": {
+        "prefill_tok_s_median": 1055.453882747745,
+        "prefill_tok_s_samples": [
+          1055.7887124934646,
+          1055.4341886108084,
+          1056.3222949820558,
+          1055.453882747745,
+          1055.2322073084329
+        ],
+        "decode_tok_s_median": 59.59799261798683,
+        "decode_tok_s_samples": [
+          59.6150565995034,
+          59.579123132769936,
+          59.59799261798683,
+          59.593597577970364,
+          59.8566056830816
+        ],
+        "tracked_peak_gib_median": 22.121888593770564,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      }
+    },
+    "hipengine_gguf_q4_k_s": {
+      "512/128": {
+        "prefill_tok_s_median": 2258.8473039335986,
+        "prefill_tok_s_samples": [
+          2258.8473039335986,
+          2263.3136944413122,
+          2206.045379818259,
+          2227.371326713815,
+          2271.2259533275355
+        ],
+        "decode_tok_s_median": 109.15247706963741,
+        "decode_tok_s_samples": [
+          109.16619900438538,
+          109.15247706963741,
+          109.29198501732748,
+          109.01503409860857,
+          108.94467355432691
+        ],
+        "tracked_peak_gib_median": 25.107746124267578,
+        "final_token_ids": [
+          91888,
+          91888,
+          91888,
+          91888,
+          91888
+        ],
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 2576.6725579228587,
+        "prefill_tok_s_samples": [
+          2578.502575443634,
+          2592.4070568364405,
+          2576.6725579228587,
+          2573.542813841267,
+          2566.951371663793
+        ],
+        "decode_tok_s_median": 100.04834531294318,
+        "decode_tok_s_samples": [
+          100.39384434924756,
+          100.30641454406793,
+          99.98597071859925,
+          100.04834531294318,
+          99.78007014682639
+        ],
+        "tracked_peak_gib_median": 25.107746124267578,
+        "final_token_ids": [
+          85,
+          85,
+          85,
+          85,
+          85
+        ],
+        "final_token_ids_stable": true
+      },
+      "32K/128": {
+        "prefill_tok_s_median": 1893.967481440247,
+        "prefill_tok_s_samples": [
+          1896.3228352699086,
+          1895.483840039171,
+          1893.967481440247,
+          1893.0426673399836,
+          1893.072801075595
+        ],
+        "decode_tok_s_median": 86.77388617316356,
+        "decode_tok_s_samples": [
+          86.79508011790199,
+          86.77388617316356,
+          86.77607395668251,
+          86.62177447986727,
+          86.59313254351815
+        ],
+        "tracked_peak_gib_median": 25.107746124267578,
+        "final_token_ids": [
+          13883,
+          13883,
+          13883,
+          13883,
+          13883
+        ],
+        "final_token_ids_stable": true
+      },
+      "128K/128": {
+        "prefill_tok_s_median": 998.1432872984783,
+        "prefill_tok_s_samples": [
+          999.4171456955688,
+          998.3833889639714,
+          998.1432872984783,
+          997.7309363977718,
+          997.9042080947943
+        ],
+        "decode_tok_s_median": 57.954336767285106,
+        "decode_tok_s_samples": [
+          57.89183526820224,
+          57.954336767285106,
+          58.01057471064593,
+          57.91346822835967,
+          57.9929974376011
+        ],
+        "tracked_peak_gib_median": 25.107746124267578,
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true
+      }
+    },
+    "llamacpp_hip_q4_k_m_existing": {
+      "512/128": {
+        "prefill_tok_s": 2436.049,
+        "decode_tok_s": 85.487,
+        "peak_gib": 21.125
+      },
+      "4K/128": {
+        "prefill_tok_s": 2176.905,
+        "decode_tok_s": 87.375,
+        "peak_gib": 21.197
+      },
+      "32K/128": {
+        "prefill_tok_s": 1496.409,
+        "decode_tok_s": 76.994,
+        "peak_gib": 21.738
+      },
+      "128K/128": {
+        "prefill_tok_s": 710.213,
+        "decode_tok_s": 57.341,
+        "peak_gib": 23.605
+      }
+    },
+    "llamacpp_vulkan_q4_k_m_existing": {
+      "512/128": {
+        "prefill_tok_s": 1816.927,
+        "decode_tok_s": 127.515,
+        "peak_gib": 20.844
+      },
+      "4K/128": {
+        "prefill_tok_s": 1705.093,
+        "decode_tok_s": 120.163,
+        "peak_gib": 20.969
+      },
+      "32K/128": {
+        "prefill_tok_s": 1128.554,
+        "decode_tok_s": 98.073,
+        "peak_gib": 21.533
+      },
+      "128K/128": {
+        "prefill_tok_s": 480.539,
+        "decode_tok_s": 64.478,
+        "peak_gib": 23.596
+      }
+    }
+  },
+  "validation": {
+    "mechanical": "python -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_readme_sweep.py",
+    "paro": "5 measured runs per shape; final token IDs stable within each shape; finite final logit true.",
+    "gguf": "5 measured runs per shape; final token IDs stable within each shape; finite_final_logits true in raw output.",
+    "correctness_gate": "Diagnostic README refresh only; no new KL/top-1 gate, so performance_claim=false."
+  },
+  "raw_artifacts": {
+    "paro": "benchmarks/results/2026-05-25-w7900-hipengine-paro-readme-persistent-5run.json",
+    "gguf": "benchmarks/results/2026-05-25-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json",
+    "llamacpp_existing": "benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json"
+  },
+  "notes": [
+    "Because each hipEngine session is allocated for the maximum requested context, tracked peak GiB is a max-context persistent-session high-water mark, not a per-shape minimum allocation.",
+    "GGUF short-context decode improved under one max-context resident session after passing active_context rather than scratch.max_positions to the non-split decode context kernel."
+  ]
+}

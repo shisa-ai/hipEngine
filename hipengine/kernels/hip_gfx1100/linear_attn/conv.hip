@@ -116,7 +116,10 @@ __global__ void qwen35_linear_attn_conv_prefill_kernel(
       volatile float product1 = value1 * conv_weight[offset + 1];
       volatile float product2 = value2 * conv_weight[offset + 2];
       volatile float product3 = value3 * conv_weight[offset + 3];
-      acc = (product0 + product1) + (product2 + product3);
+      acc += product0;
+      acc += product1;
+      acc += product2;
+      acc += product3;
     } else {
       for (int64_t k = 0; k < kernel_size; ++k) {
         const int64_t padded = token + k;
@@ -165,7 +168,10 @@ __global__ void qwen35_linear_attn_conv_prefill_lowp_kernel(
       volatile float product1 = value1 * conv_weight[offset + 1];
       volatile float product2 = value2 * conv_weight[offset + 2];
       volatile float product3 = value3 * conv_weight[offset + 3];
-      acc = (product0 + product1) + (product2 + product3);
+      acc += product0;
+      acc += product1;
+      acc += product2;
+      acc += product3;
     } else {
       for (int64_t k = 0; k < kernel_size; ++k) {
         const int64_t padded = token + k;
@@ -279,7 +285,10 @@ __global__ void qwen35_linear_attn_conv_prefill_segments_kernel(
       volatile float product1 = value1 * conv_weight[channel * kernel_size + 1];
       volatile float product2 = value2 * conv_weight[channel * kernel_size + 2];
       volatile float product3 = value3 * conv_weight[channel * kernel_size + 3];
-      acc = (product0 + product1) + (product2 + product3);
+      acc += product0;
+      acc += product1;
+      acc += product2;
+      acc += product3;
     } else {
       for (int64_t k = 0; k < kernel_size; ++k) {
         const int64_t padded = token + k;

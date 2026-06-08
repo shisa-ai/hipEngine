@@ -1,0 +1,247 @@
+{
+  "iteration": 478,
+  "kind": "current_c4_default_rocprof_kernel_trace_smoke",
+  "created_at": "2026-06-07T11:05:30.550186+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "result": {
+    "bench_status": "blocked",
+    "decision_accepted": false,
+    "generated_token_equality": {
+      "passed": true,
+      "rows": 4,
+      "tokens_per_sequence": 137,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch_count": 0,
+      "mismatch_summaries": []
+    },
+    "decode_execution": {
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "full_attention_layers": [
+        {
+          "layer_index": 3,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 7,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 11,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 15,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "native_caware_decode": false,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 19,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 23,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 27,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 31,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 35,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        },
+        {
+          "layer_index": 39,
+          "full_attention_decode_path": "native_batch",
+          "native_caware_decode": true,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "full_attention_output_decode_path": "batch_gemv"
+        }
+      ]
+    },
+    "workload_paths": {
+      "batch_decode_full_attention_row_chunk_size": 2,
+      "batch_decode_full_attention_row_chunk_layers": "3,15",
+      "batch_decode_full_attention_path": "native_batch",
+      "batch_decode_full_attention_output_path": "batch_gemv"
+    }
+  },
+  "profiler": {
+    "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-current-c4-profiler-478/profiler-c4-current.json",
+    "status": "captured",
+    "rocprof_rc": "rocprof_rc=1",
+    "expected_kernels_present": true,
+    "expected_kernel_checks": {
+      "native_batch_full_attention_context": true,
+      "native_batch_kv_append": true,
+      "batched_sampler_stage1": true,
+      "batched_sampler_stage2": true,
+      "selected_caware_projection": true,
+      "grouped_moe_scatter": true,
+      "router_select": true
+    },
+    "kernel_trace_rows": 748825,
+    "unique_trace_kernel_names": 61,
+    "total_kernel_duration_ns": 8046260093,
+    "kernel_duration_categories_ns": {
+      "attention_kv": 1001109167,
+      "copy_memset": 104419805,
+      "fused_norm_rotary_state": 2178116369,
+      "moe_router": 446464345,
+      "other": 488995168,
+      "projection_linear": 3821279025,
+      "sampling": 5876214
+    },
+    "kernel_duration_category_shares": {
+      "attention_kv": 0.12441919045979316,
+      "copy_memset": 0.012977433465125249,
+      "fused_norm_rotary_state": 0.2706992247112288,
+      "moe_router": 0.055487187816413035,
+      "other": 0.06077297556232501,
+      "projection_linear": 0.4749136842250968,
+      "sampling": 0.0007303037600179152
+    },
+    "top_kernels": [
+      {
+        "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        "count": 7072,
+        "duration_ns": 941072744,
+        "share": 0.1169577832586725
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "count": 54672,
+        "duration_ns": 637320372,
+        "share": 0.07920703092290655
+      },
+      {
+        "name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "count": 688,
+        "duration_ns": 609607712,
+        "share": 0.07576286435611745
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "count": 27472,
+        "duration_ns": 605010192,
+        "share": 0.07519147840203927
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "count": 27472,
+        "duration_ns": 553715433,
+        "share": 0.06881649693150181
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "count": 35632,
+        "duration_ns": 411083518,
+        "share": 0.051090011166508284
+      },
+      {
+        "name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "count": 38352,
+        "duration_ns": 387494514,
+        "share": 0.04815833810009552
+      },
+      {
+        "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "count": 150,
+        "duration_ns": 338102399,
+        "share": 0.042019819778649554
+      },
+      {
+        "name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "count": 55494,
+        "duration_ns": 332279741,
+        "share": 0.041296172030167555
+      },
+      {
+        "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "count": 4080,
+        "duration_ns": 324961320,
+        "share": 0.04038662884918503
+      },
+      {
+        "name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "count": 55144,
+        "duration_ns": 316284387,
+        "share": 0.039308247974131204
+      },
+      {
+        "name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "count": 48222,
+        "duration_ns": 252843921,
+        "share": 0.031423781741776714
+      }
+    ],
+    "raw_trace_sha256": "5e3db7f3e7166396e90849bf6fe38970eff992ec49f791da60d8022a5c5024bb",
+    "raw_trace_size_bytes": 209425453,
+    "trace_dir": "/tmp/hipengine-iter478-c4-profiler/raw"
+  },
+  "interpretation": {
+    "positive_result": "Current no-flag c4 512/128 stays generated-token green under rocprofv3 with rowchunk layers 3,15 and expected native batch attention/KV/projection/MoE/sampler kernels present.",
+    "status_nuance": "rocprofv3 returned rc=1 because the profiled retained-bench process exits blocked/non-retained, but it emitted a valid bench JSON and kernel trace. The blocked status is due to retained performance/scaling/provenance gates, not generated-token equality.",
+    "no_claim": "This is profiler/runtime evidence only; no retained throughput/scaling claim is made while c4 uses selected rowchunked full attention and native_caware_decode=false."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: c4 generated-token equality is green under rocprofv3 and expected native batch attention/KV/projection/MoE/sampler kernels are present on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX; no performance claim."
+  },
+  "conclusion": "Current c4 default profiler smoke is green for token equality and expected-kernel presence; retained performance remains blocked by rowchunk/native-caware status and claim prerequisites."
+}

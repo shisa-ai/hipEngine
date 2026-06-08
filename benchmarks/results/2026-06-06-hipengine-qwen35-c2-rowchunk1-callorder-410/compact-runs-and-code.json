@@ -1,0 +1,1912 @@
+{
+  "active_verify": {
+    "active_default_green": {
+      "correctness_passed": false,
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_decode_path": "native_batch",
+        "full_attention_kv_append_decode_path": "native_batch",
+        "native_caware_decode": true
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "raw_json": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "2f0b74b8d81c226734f3f8280deba5cd9d6d57416b366c0ae834ff9ed642ed41",
+        "size_bytes": 138428
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "2f0b74b8d81c226734f3f8280deba5cd9d6d57416b366c0ae834ff9ed642ed41",
+        "size_bytes": 138428
+      },
+      "sampler_execution": {
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    }
+  },
+  "code_evidence": {
+    "runner_row_context_lists": {
+      "end_line": 4587,
+      "lines": [
+        {
+          "line": 4555,
+          "text": "                        per_row_contexts = None"
+        },
+        {
+          "line": 4556,
+          "text": "                        per_row_append_contexts = None"
+        },
+        {
+          "line": 4557,
+          "text": "                        if ("
+        },
+        {
+          "line": 4558,
+          "text": "                            not force_per_row_full_attention_skip_batch_setup"
+        },
+        {
+          "line": 4559,
+          "text": "                            and ("
+        },
+        {
+          "line": 4560,
+          "text": "                                force_per_row_full_attention_context"
+        },
+        {
+          "line": 4561,
+          "text": "                                or force_per_row_full_attention_context_only"
+        },
+        {
+          "line": 4562,
+          "text": "                                or layer_force_per_row_dense_context_only"
+        },
+        {
+          "line": 4563,
+          "text": "                                or layer_force_per_row_dense_context_batch_gate"
+        },
+        {
+          "line": 4564,
+          "text": "                                or layer_force_per_row_paged_context_only"
+        },
+        {
+          "line": 4565,
+          "text": "                                or force_batch_compact_full_attention_context"
+        },
+        {
+          "line": 4566,
+          "text": "                                or force_per_row_full_attention_kv_append"
+        },
+        {
+          "line": 4567,
+          "text": "                                or force_per_row_full_attention_suffix"
+        },
+        {
+          "line": 4568,
+          "text": "                                or force_per_row_full_attention_scratch"
+        },
+        {
+          "line": 4569,
+          "text": "                                or force_per_row_full_attention_batch_scratch"
+        },
+        {
+          "line": 4570,
+          "text": "                                or force_per_row_full_attention_attn_batch_moe"
+        },
+        {
+          "line": 4571,
+          "text": "                                or force_per_row_full_attention_attn_batch_post_moe"
+        },
+        {
+          "line": 4572,
+          "text": "                                or force_per_row_full_attention_attn_batch_o_post_moe"
+        },
+        {
+          "line": 4573,
+          "text": "                                or force_per_row_full_attention_preqkv_append_batch_context_o_post_moe"
+        },
+        {
+          "line": 4574,
+          "text": "                                or force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe"
+        },
+        {
+          "line": 4575,
+          "text": "                                or force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe"
+        },
+        {
+          "line": 4576,
+          "text": "                                or force_per_row_full_attention_persistent_scratch"
+        },
+        {
+          "line": 4577,
+          "text": "                            )"
+        },
+        {
+          "line": 4578,
+          "text": "                        ):"
+        },
+        {
+          "line": 4579,
+          "text": "                            per_row_contexts = [] if force_per_row_full_attention_context or force_per_row_full_attention_context_only or layer_force_per_row_dense_context_only or layer_force_per_row_dense_context_batch_gate or layer_force_per_row_paged_context_only or force_batch_compact_full_attention_context or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_attn_batch_moe or force_per_row_full_attention_attn_batch_post_moe or force_per_row_full_attention_attn_batch_o_post_moe or force_per_row_full_attention_preqkv_append_batch_context_o_post_moe or force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe or force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe or force_per_row_full_attention_persistent_scratch else None"
+        },
+        {
+          "line": 4580,
+          "text": "                            per_row_append_contexts = [] if force_per_row_full_attention_kv_append or force_per_row_full_attention_suffix or force_per_row_full_attention_scratch or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_attn_batch_moe or force_per_row_full_attention_attn_batch_post_moe or force_per_row_full_attention_attn_batch_o_post_moe or force_per_row_full_attention_preqkv_append_batch_context_o_post_moe or force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe or force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe or force_per_row_full_attention_persistent_scratch else None"
+        },
+        {
+          "line": 4581,
+          "text": "                            for slot in slots:"
+        },
+        {
+          "line": 4582,
+          "text": "                                row_key_cache, row_value_cache = self._slot_full_cache(layer_id, slot)"
+        },
+        {
+          "line": 4583,
+          "text": "                                _row_position, row_append_spans, row_decode_spans = self._slot_full_spans(layer_id, slot)"
+        },
+        {
+          "line": 4584,
+          "text": "                                if per_row_contexts is not None:"
+        },
+        {
+          "line": 4585,
+          "text": "                                    per_row_contexts.append((row_key_cache, row_value_cache, row_decode_spans))"
+        },
+        {
+          "line": 4586,
+          "text": "                                if per_row_append_contexts is not None:"
+        },
+        {
+          "line": 4587,
+          "text": "                                    per_row_append_contexts.append((row_key_cache, row_value_cache, row_append_spans))"
+        }
+      ],
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "sha256": "dc4ea6a6737adf2d2e217b8030b839a1273148ded833806fcc3fc95d24e97528",
+      "start_line": 4555
+    },
+    "runner_rowchunk_branch": {
+      "end_line": 4812,
+      "lines": [
+        {
+          "line": 4640,
+          "text": "                        if layer_force_full_attention_row_chunks:"
+        },
+        {
+          "line": 4641,
+          "text": "                            chunk_records: list[dict[str, Any]] = []"
+        },
+        {
+          "line": 4642,
+          "text": "                            chunk_size = int(full_attention_row_chunk_size)"
+        },
+        {
+          "line": 4643,
+          "text": "                            if key_cache is None or value_cache is None:"
+        },
+        {
+          "line": 4644,
+          "text": "                                key_cache, value_cache = self._full_cache_all_slots(layer_id)"
+        },
+        {
+          "line": 4645,
+          "text": "                            for chunk_start in range(0, rows, chunk_size):"
+        },
+        {
+          "line": 4646,
+          "text": "                                chunk_end = min(rows, chunk_start + chunk_size)"
+        },
+        {
+          "line": 4647,
+          "text": "                                chunk_rows = int(chunk_end - chunk_start)"
+        },
+        {
+          "line": 4648,
+          "text": "                                chunk_slots = tuple(int(slot) for slot in slots[chunk_start:chunk_end])"
+        },
+        {
+          "line": 4649,
+          "text": "                                chunk_positions = tuple(int(position) for position in positions[chunk_start:chunk_end])"
+        },
+        {
+          "line": 4650,
+          "text": "                                chunk_hidden = Tensor.from_handle("
+        },
+        {
+          "line": 4651,
+          "text": "                                    hidden.ptr + chunk_start * self.hidden_nbytes,"
+        },
+        {
+          "line": 4652,
+          "text": "                                    (chunk_rows, self.config.hidden_size),"
+        },
+        {
+          "line": 4653,
+          "text": "                                    hidden.dtype,"
+        },
+        {
+          "line": 4654,
+          "text": "                                    hidden.device,"
+        },
+        {
+          "line": 4655,
+          "text": "                                )"
+        },
+        {
+          "line": 4656,
+          "text": "                                chunk_position_tensor, chunk_append_spans, chunk_decode_spans = self._batch_full_spans("
+        },
+        {
+          "line": 4657,
+          "text": "                                    layer_id,"
+        },
+        {
+          "line": 4658,
+          "text": "                                    rows=chunk_rows,"
+        },
+        {
+          "line": 4659,
+          "text": "                                    positions=chunk_positions,"
+        },
+        {
+          "line": 4660,
+          "text": "                                    slots=chunk_slots,"
+        },
+        {
+          "line": 4661,
+          "text": "                                )"
+        },
+        {
+          "line": 4662,
+          "text": "                                chunk_metadata = getattr(self, \"_last_batch_full_spans_metadata\", None)"
+        },
+        {
+          "line": 4663,
+          "text": "                                chunk_records.append("
+        },
+        {
+          "line": 4664,
+          "text": "                                    {"
+        },
+        {
+          "line": 4665,
+          "text": "                                        \"row_start\": int(chunk_start),"
+        },
+        {
+          "line": 4666,
+          "text": "                                        \"rows\": int(chunk_rows),"
+        },
+        {
+          "line": 4667,
+          "text": "                                        \"slots\": [int(slot) for slot in chunk_slots],"
+        },
+        {
+          "line": 4668,
+          "text": "                                        \"positions\": [int(position) for position in chunk_positions],"
+        },
+        {
+          "line": 4669,
+          "text": "                                        \"segment_metadata\": chunk_metadata,"
+        },
+        {
+          "line": 4670,
+          "text": "                                    }"
+        },
+        {
+          "line": 4671,
+          "text": "                                )"
+        },
+        {
+          "line": 4672,
+          "text": "                                chunk_attention_scratch = self._ensure_full_decode_batch_scratch(layer_id, chunk_rows)"
+        },
+        {
+          "line": 4673,
+          "text": "                                chunk_moe_scratch = self._ensure_moe_decode_batch_scratch("
+        },
+        {
+          "line": 4674,
+          "text": "                                    layer_id,"
+        },
+        {
+          "line": 4675,
+          "text": "                                    chunk_rows,"
+        },
+        {
+          "line": 4676,
+          "text": "                                    force_selected_c1_moe=("
+        },
+        {
+          "line": 4677,
+          "text": "                                        force_selected_c1_moe"
+        },
+        {
+          "line": 4678,
+          "text": "                                        or force_per_row_full_attention_moe"
+        },
+        {
+          "line": 4679,
+          "text": "                                        or force_per_row_full_attention_scratch"
+        },
+        {
+          "line": 4680,
+          "text": "                                        or force_per_row_full_attention_batch_scratch"
+        },
+        {
+          "line": 4681,
+          "text": "                                        or force_per_row_full_attention_suffix"
+        },
+        {
+          "line": 4682,
+          "text": "                                    ),"
+        },
+        {
+          "line": 4683,
+          "text": "                                )"
+        },
+        {
+          "line": 4684,
+          "text": "                                chunk_post_input_rmsnorm_trace = None"
+        },
+        {
+          "line": 4685,
+          "text": "                                chunk_input_scratch_trace = None"
+        },
+        {
+          "line": 4686,
+          "text": "                                chunk_qkv_tensor_trace = None"
+        },
+        {
+          "line": 4687,
+          "text": "                                if isinstance(getattr(self, \"_decode_full_attention_trace\", None), list):"
+        },
+        {
+          "line": 4688,
+          "text": "                                    def chunk_post_input_rmsnorm_trace("
+        },
+        {
+          "line": 4689,
+          "text": "                                        attention_scratch: Qwen35ParoAttentionScratch,"
+        },
+        {
+          "line": 4690,
+          "text": "                                        *,"
+        },
+        {
+          "line": 4691,
+          "text": "                                        _layer_id: int = layer_id,"
+        },
+        {
+          "line": 4692,
+          "text": "                                        _rows: int = chunk_rows,"
+        },
+        {
+          "line": 4693,
+          "text": "                                        _stream: int = stream,"
+        },
+        {
+          "line": 4694,
+          "text": "                                    ) -> None:"
+        },
+        {
+          "line": 4695,
+          "text": "                                        self._trace_decode_full_attention("
+        },
+        {
+          "line": 4696,
+          "text": "                                            layer_id=_layer_id,"
+        },
+        {
+          "line": 4697,
+          "text": "                                            stage=\"attn_input_pre_qkv\","
+        },
+        {
+          "line": 4698,
+          "text": "                                            hidden=attention_scratch.attn_input,"
+        },
+        {
+          "line": 4699,
+          "text": "                                            rows=_rows,"
+        },
+        {
+          "line": 4700,
+          "text": "                                            stream=_stream,"
+        },
+        {
+          "line": 4701,
+          "text": "                                        )"
+        },
+        {
+          "line": 4702,
+          "text": ""
+        },
+        {
+          "line": 4703,
+          "text": "                                    def chunk_input_scratch_trace("
+        },
+        {
+          "line": 4704,
+          "text": "                                        stage: str,"
+        },
+        {
+          "line": 4705,
+          "text": "                                        row: int,"
+        },
+        {
+          "line": 4706,
+          "text": "                                        attention_scratch: Qwen35ParoAttentionScratch,"
+        },
+        {
+          "line": 4707,
+          "text": "                                        *,"
+        },
+        {
+          "line": 4708,
+          "text": "                                        _layer_id: int = layer_id,"
+        },
+        {
+          "line": 4709,
+          "text": "                                        _stream: int = stream,"
+        },
+        {
+          "line": 4710,
+          "text": "                                    ) -> None:"
+        },
+        {
+          "line": 4711,
+          "text": "                                        self._trace_decode_full_attention("
+        },
+        {
+          "line": 4712,
+          "text": "                                            layer_id=_layer_id,"
+        },
+        {
+          "line": 4713,
+          "text": "                                            stage=stage,"
+        },
+        {
+          "line": 4714,
+          "text": "                                            hidden=attention_scratch.attn_input,"
+        },
+        {
+          "line": 4715,
+          "text": "                                            rows=1,"
+        },
+        {
+          "line": 4716,
+          "text": "                                            stream=_stream,"
+        },
+        {
+          "line": 4717,
+          "text": "                                        )"
+        },
+        {
+          "line": 4718,
+          "text": ""
+        },
+        {
+          "line": 4719,
+          "text": "                                    def chunk_qkv_tensor_trace("
+        },
+        {
+          "line": 4720,
+          "text": "                                        stage: str,"
+        },
+        {
+          "line": 4721,
+          "text": "                                        row: int,"
+        },
+        {
+          "line": 4722,
+          "text": "                                        tensor: Tensor,"
+        },
+        {
+          "line": 4723,
+          "text": "                                        *,"
+        },
+        {
+          "line": 4724,
+          "text": "                                        _layer_id: int = layer_id,"
+        },
+        {
+          "line": 4725,
+          "text": "                                        _stream: int = stream,"
+        },
+        {
+          "line": 4726,
+          "text": "                                    ) -> None:"
+        },
+        {
+          "line": 4727,
+          "text": "                                        self._trace_decode_full_attention_tensor("
+        },
+        {
+          "line": 4728,
+          "text": "                                            layer_id=_layer_id,"
+        },
+        {
+          "line": 4729,
+          "text": "                                            stage=stage,"
+        },
+        {
+          "line": 4730,
+          "text": "                                            tensor=tensor,"
+        },
+        {
+          "line": 4731,
+          "text": "                                            rows=1,"
+        },
+        {
+          "line": 4732,
+          "text": "                                            stream=_stream,"
+        },
+        {
+          "line": 4733,
+          "text": "                                        )"
+        },
+        {
+          "line": 4734,
+          "text": "                                chunk_per_row_contexts = ("
+        },
+        {
+          "line": 4735,
+          "text": "                                    per_row_contexts[chunk_start:chunk_end] if per_row_contexts is not None else None"
+        },
+        {
+          "line": 4736,
+          "text": "                                )"
+        },
+        {
+          "line": 4737,
+          "text": "                                chunk_per_row_append_contexts = ("
+        },
+        {
+          "line": 4738,
+          "text": "                                    per_row_append_contexts[chunk_start:chunk_end]"
+        },
+        {
+          "line": 4739,
+          "text": "                                    if per_row_append_contexts is not None"
+        },
+        {
+          "line": 4740,
+          "text": "                                    else None"
+        },
+        {
+          "line": 4741,
+          "text": "                                )"
+        },
+        {
+          "line": 4742,
+          "text": "                                chunk_force_batch_gemv_output = use_batch_gemv_full_attention_output"
+        },
+        {
+          "line": 4743,
+          "text": "                                if ("
+        },
+        {
+          "line": 4744,
+          "text": "                                    force_native_row_chunk_full_attention_output"
+        },
+        {
+          "line": 4745,
+          "text": "                                    and not chunk_force_batch_gemv_output"
+        },
+        {
+          "line": 4746,
+          "text": "                                    and not force_per_row_full_attention_output"
+        },
+        {
+          "line": 4747,
+          "text": "                                    and chunk_rows > 1"
+        },
+        {
+          "line": 4748,
+          "text": "                                ):"
+        },
+        {
+          "line": 4749,
+          "text": "                                    layer_row_chunk_native_full_attention_output = True"
+        },
+        {
+          "line": 4750,
+          "text": "                                    row_chunk_native_full_attention_output = True"
+        },
+        {
+          "line": 4751,
+          "text": "                                    chunk_records[-1][\"full_attention_output_decode_path\"] = \"native_batch_row_chunk_forced\""
+        },
+        {
+          "line": 4752,
+          "text": "                                elif ("
+        },
+        {
+          "line": 4753,
+          "text": "                                    not chunk_force_batch_gemv_output"
+        },
+        {
+          "line": 4754,
+          "text": "                                    and not force_per_row_full_attention_output"
+        },
+        {
+          "line": 4755,
+          "text": "                                    and chunk_rows > 1"
+        },
+        {
+          "line": 4756,
+          "text": "                                ):"
+        },
+        {
+          "line": 4757,
+          "text": "                                    # The native fused rows>1 O projection is not"
+        },
+        {
+          "line": 4758,
+          "text": "                                    # equality-stable for every prompt/window even"
+        },
+        {
+          "line": 4759,
+          "text": "                                    # in the leading row chunk.  Keep the native"
+        },
+        {
+          "line": 4760,
+          "text": "                                    # context/MoE work, but use the row-aware GEMV"
+        },
+        {
+          "line": 4761,
+          "text": "                                    # O projection that matches c=1 numerics.  Two-"
+        },
+        {
+          "line": 4762,
+          "text": "                                    # row chunks inherit the accepted rows=2"
+        },
+        {
+          "line": 4763,
+          "text": "                                    # batch_gemv_auto default; larger chunks remain"
+        },
+        {
+          "line": 4764,
+          "text": "                                    # an explicit rowchunk O repair until covered by"
+        },
+        {
+          "line": 4765,
+          "text": "                                    # equality evidence.  A dedicated diagnostic env"
+        },
+        {
+          "line": 4766,
+          "text": "                                    # may temporarily bypass this to re-test native"
+        },
+        {
+          "line": 4767,
+          "text": "                                    # row-chunk O with artifact evidence."
+        },
+        {
+          "line": 4768,
+          "text": "                                    chunk_force_batch_gemv_output = True"
+        },
+        {
+          "line": 4769,
+          "text": "                                    if chunk_rows == 2:"
+        },
+        {
+          "line": 4770,
+          "text": "                                        layer_row_chunk_auto_batch_gemv_full_attention_output = True"
+        },
+        {
+          "line": 4771,
+          "text": "                                        row_chunk_auto_batch_gemv_full_attention_output = True"
+        },
+        {
+          "line": 4772,
+          "text": "                                        chunk_records[-1][\"full_attention_output_decode_path\"] = \"batch_gemv_auto_row_chunk\""
+        },
+        {
+          "line": 4773,
+          "text": "                                    else:"
+        },
+        {
+          "line": 4774,
+          "text": "                                        layer_row_chunk_batch_gemv_full_attention_output = True"
+        },
+        {
+          "line": 4775,
+          "text": "                                        row_chunk_batch_gemv_full_attention_output = True"
+        },
+        {
+          "line": 4776,
+          "text": "                                        chunk_records[-1][\"full_attention_output_decode_path\"] = \"batch_gemv_row_chunk\""
+        },
+        {
+          "line": 4777,
+          "text": "                                chunk_out = state.run_full_attention_moe_decode_batch_layer_fp16("
+        },
+        {
+          "line": 4778,
+          "text": "                                    chunk_hidden,"
+        },
+        {
+          "line": 4779,
+          "text": "                                    key_cache=key_cache,"
+        },
+        {
+          "line": 4780,
+          "text": "                                    value_cache=value_cache,"
+        },
+        {
+          "line": 4781,
+          "text": "                                    append_spans=chunk_append_spans,"
+        },
+        {
+          "line": 4782,
+          "text": "                                    decode_spans=chunk_decode_spans,"
+        },
+        {
+          "line": 4783,
+          "text": "                                    cos_table=self.cos,"
+        },
+        {
+          "line": 4784,
+          "text": "                                    sin_table=self.sin,"
+        },
+        {
+          "line": 4785,
+          "text": "                                    positions=chunk_position_tensor,"
+        },
+        {
+          "line": 4786,
+          "text": "                                    max_positions=self.max_sequence_length,"
+        },
+        {
+          "line": 4787,
+          "text": "                                    attention_scratch=chunk_attention_scratch,"
+        },
+        {
+          "line": 4788,
+          "text": "                                    moe_scratch=chunk_moe_scratch,"
+        },
+        {
+          "line": 4789,
+          "text": "                                    tokens=chunk_rows,"
+        },
+        {
+          "line": 4790,
+          "text": "                                    force_selected_c1_moe=force_selected_c1_moe,"
+        },
+        {
+          "line": 4791,
+          "text": "                                    force_per_row_input_rmsnorm=force_per_row_full_attention_input,"
+        },
+        {
+          "line": 4792,
+          "text": "                                    force_per_row_qkv_scratch=force_per_row_full_attention_qkv,"
+        },
+        {
+          "line": 4793,
+          "text": "                                    force_per_row_layer_scratch=force_per_row_full_attention_scratch,"
+        },
+        {
+          "line": 4794,
+          "text": "                                    force_per_row_layer_batch_scratch=force_per_row_full_attention_batch_scratch,"
+        },
+        {
+          "line": 4795,
+          "text": "                                    force_per_row_attention_batch_moe=force_per_row_full_attention_attn_batch_moe,"
+        },
+        {
+          "line": 4796,
+          "text": "                                    force_per_row_attention_batch_post_moe=force_per_row_full_attention_attn_batch_post_moe,"
+        },
+        {
+          "line": 4797,
+          "text": "                                    force_per_row_attention_batch_o_post_moe=force_per_row_full_attention_attn_batch_o_post_moe,"
+        },
+        {
+          "line": 4798,
+          "text": "                                    force_per_row_preqkv_append_batch_context_o_post_moe=force_per_row_full_attention_preqkv_append_batch_context_o_post_moe,"
+        },
+        {
+          "line": 4799,
+          "text": "                                    force_per_row_preqkv_append_context_batch_gate_o_post_moe=force_per_row_full_attention_preqkv_append_context_batch_gate_o_post_moe,"
+        },
+        {
+          "line": 4800,
+          "text": "                                    force_per_row_preqkv_append_context_gate_batch_o_post_moe=force_per_row_full_attention_preqkv_append_context_gate_batch_o_post_moe,"
+        },
+        {
+          "line": 4801,
+          "text": "                                    force_per_row_context=force_per_row_full_attention_context,"
+        },
+        {
+          "line": 4802,
+          "text": "                                    force_per_row_context_only=force_per_row_full_attention_context_only,"
+        },
+        {
+          "line": 4803,
+          "text": "                                    force_per_row_dense_context_only=layer_force_per_row_dense_context_only,"
+        },
+        {
+          "line": 4804,
+          "text": "                                    force_per_row_dense_context_batch_gate=layer_force_per_row_dense_context_batch_gate,"
+        },
+        {
+          "line": 4805,
+          "text": "                                    force_per_row_paged_context_only=layer_force_per_row_paged_context_only,"
+        },
+        {
+          "line": 4806,
+          "text": "                                    force_batch_temp_context=force_batch_temp_full_attention_context,"
+        },
+        {
+          "line": 4807,
+          "text": "                                    force_batch_compact_context=force_batch_compact_full_attention_context,"
+        },
+        {
+          "line": 4808,
+          "text": "                                    force_per_row_gate=force_per_row_full_attention_gate,"
+        },
+        {
+          "line": 4809,
+          "text": "                                    per_row_contexts=chunk_per_row_contexts,"
+        },
+        {
+          "line": 4810,
+          "text": "                                    force_per_row_kv_append=force_per_row_full_attention_kv_append,"
+        },
+        {
+          "line": 4811,
+          "text": "                                    per_row_append_contexts=chunk_per_row_append_contexts,"
+        },
+        {
+          "line": 4812,
+          "text": "                                    force_per_row_append_context=force_per_row_full_attention_append_context,"
+        }
+      ],
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "sha256": "dc4ea6a6737adf2d2e217b8030b839a1273148ded833806fcc3fc95d24e97528",
+      "start_line": 4640
+    },
+    "runtime_append_context_branch": {
+      "end_line": 4662,
+      "lines": [
+        {
+          "line": 4617,
+          "text": "        if force_per_row_append_context and tokens > 1 and not (force_per_row_kv_append and force_per_row_context):"
+        },
+        {
+          "line": 4618,
+          "text": "            raise ValueError(\"per-row append+context interleave requires per-row KV append and context diagnostics\")"
+        },
+        {
+          "line": 4619,
+          "text": "        if force_per_row_append_context and tokens > 1:"
+        },
+        {
+          "line": 4620,
+          "text": "            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:"
+        },
+        {
+          "line": 4621,
+          "text": "                raise ValueError(\"per_row_append_contexts must provide one key/value/span tuple per decode row\")"
+        },
+        {
+          "line": 4622,
+          "text": "            if per_row_contexts is None or len(per_row_contexts) != tokens:"
+        },
+        {
+          "line": 4623,
+          "text": "                raise ValueError(\"per_row_contexts must provide one key/value/span tuple per decode row\")"
+        },
+        {
+          "line": 4624,
+          "text": "            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate("
+        },
+        {
+          "line": 4625,
+          "text": "                zip(per_row_append_contexts, per_row_contexts, strict=True)"
+        },
+        {
+          "line": 4626,
+          "text": "            ):"
+        },
+        {
+          "line": 4627,
+          "text": "                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple"
+        },
+        {
+          "line": 4628,
+          "text": "                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:"
+        },
+        {
+          "line": 4629,
+          "text": "                    raise ValueError(\"per-row append/context diagnostics must use matching row cache views\")"
+        },
+        {
+          "line": 4630,
+          "text": "                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)"
+        },
+        {
+          "line": 4631,
+          "text": "                self.append_full_attention_kv_fp16("
+        },
+        {
+          "line": 4632,
+          "text": "                    row_scratch,"
+        },
+        {
+          "line": 4633,
+          "text": "                    key_cache=row_key_cache,"
+        },
+        {
+          "line": 4634,
+          "text": "                    value_cache=row_value_cache,"
+        },
+        {
+          "line": 4635,
+          "text": "                    spans=row_append_spans,"
+        },
+        {
+          "line": 4636,
+          "text": "                    block_size=block_size,"
+        },
+        {
+          "line": 4637,
+          "text": "                    library=library,"
+        },
+        {
+          "line": 4638,
+          "text": "                    stream=stream,"
+        },
+        {
+          "line": 4639,
+          "text": "                )"
+        },
+        {
+          "line": 4640,
+          "text": "                row_gate = self._row_tensor_view(gate, row)"
+        },
+        {
+          "line": 4641,
+          "text": "                self.decode_full_attention_context_gate_fp16("
+        },
+        {
+          "line": 4642,
+          "text": "                    row_scratch,"
+        },
+        {
+          "line": 4643,
+          "text": "                    key_cache=row_key_cache,"
+        },
+        {
+          "line": 4644,
+          "text": "                    value_cache=row_value_cache,"
+        },
+        {
+          "line": 4645,
+          "text": "                    spans=row_decode_spans,"
+        },
+        {
+          "line": 4646,
+          "text": "                    gate=row_gate,"
+        },
+        {
+          "line": 4647,
+          "text": "                    block_size=block_size,"
+        },
+        {
+          "line": 4648,
+          "text": "                    library=library,"
+        },
+        {
+          "line": 4649,
+          "text": "                    stream=stream,"
+        },
+        {
+          "line": 4650,
+          "text": "                )"
+        },
+        {
+          "line": 4651,
+          "text": "                row_context = self._row_tensor_view(attention_scratch.query_raw, row)"
+        },
+        {
+          "line": 4652,
+          "text": "                self.runtime.memcpy_async("
+        },
+        {
+          "line": 4653,
+          "text": "                    row_context.ptr,"
+        },
+        {
+          "line": 4654,
+          "text": "                    attention_scratch.attn_out.ptr,"
+        },
+        {
+          "line": 4655,
+          "text": "                    self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,"
+        },
+        {
+          "line": 4656,
+          "text": "                    HipMemcpyKind.DEVICE_TO_DEVICE,"
+        },
+        {
+          "line": 4657,
+          "text": "                    stream,"
+        },
+        {
+          "line": 4658,
+          "text": "                )"
+        },
+        {
+          "line": 4659,
+          "text": "            gated = attention_scratch.gated_attn"
+        },
+        {
+          "line": 4660,
+          "text": "        else:"
+        },
+        {
+          "line": 4661,
+          "text": "            if force_per_row_kv_append and tokens > 1:"
+        },
+        {
+          "line": 4662,
+          "text": "                if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:"
+        }
+      ],
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "sha256": "50953e9481a52d3bb8eac1178761b04b87ca3c9a39ce93023f4b333fd00c919b",
+      "start_line": 4617
+    },
+    "runtime_batch_append_else": {
+      "end_line": 4680,
+      "lines": [
+        {
+          "line": 4661,
+          "text": "            if force_per_row_kv_append and tokens > 1:"
+        },
+        {
+          "line": 4662,
+          "text": "                if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:"
+        },
+        {
+          "line": 4663,
+          "text": "                    raise ValueError(\"per_row_append_contexts must provide one key/value/span tuple per decode row\")"
+        },
+        {
+          "line": 4664,
+          "text": "                for row, (row_key_cache, row_value_cache, row_append_spans) in enumerate(per_row_append_contexts):"
+        },
+        {
+          "line": 4665,
+          "text": "                    row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)"
+        },
+        {
+          "line": 4666,
+          "text": "                    self.append_full_attention_kv_fp16("
+        },
+        {
+          "line": 4667,
+          "text": "                        row_scratch,"
+        },
+        {
+          "line": 4668,
+          "text": "                        key_cache=row_key_cache,"
+        },
+        {
+          "line": 4669,
+          "text": "                        value_cache=row_value_cache,"
+        },
+        {
+          "line": 4670,
+          "text": "                        spans=row_append_spans,"
+        },
+        {
+          "line": 4671,
+          "text": "                        block_size=block_size,"
+        },
+        {
+          "line": 4672,
+          "text": "                        library=library,"
+        },
+        {
+          "line": 4673,
+          "text": "                        stream=stream,"
+        },
+        {
+          "line": 4674,
+          "text": "                    )"
+        },
+        {
+          "line": 4675,
+          "text": "            else:"
+        },
+        {
+          "line": 4676,
+          "text": "                self.append_full_attention_kv_fp16_decode_batch("
+        },
+        {
+          "line": 4677,
+          "text": "                    attention_scratch,"
+        },
+        {
+          "line": 4678,
+          "text": "                    key_cache=key_cache,"
+        },
+        {
+          "line": 4679,
+          "text": "                    value_cache=value_cache,"
+        },
+        {
+          "line": 4680,
+          "text": "                    spans=append_spans,"
+        }
+      ],
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "sha256": "50953e9481a52d3bb8eac1178761b04b87ca3c9a39ce93023f4b333fd00c919b",
+      "start_line": 4661
+    }
+  },
+  "hidden_runs": {
+    "direct_interleaved_green": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 0,
+          "hidden_failure_rows": [],
+          "layer_limits": [
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 0,
+          "strict_hidden_bit_drift_rows": [],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": true,
+          "decode_full_context_oracle_passed": true,
+          "decode_full_kv_sample_passed": true,
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "first_context_oracle_failure": null,
+          "first_full_attention_failure": null,
+          "first_kv_sample_failure": null,
+          "hidden_failure_rows": [],
+          "hidden_passed": true,
+          "layer_limit": 8,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-direct-interleaved-green-atol4e-3-focus1269.json",
+        "sha256": "97564094188712b21d498ee40b704907f2b3aba740b4861e3dfc0bc1189ae171",
+        "size_bytes": 7384897
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-direct-interleaved-green-atol4e-3-focus1269.log",
+        "sha256": "97564094188712b21d498ee40b704907f2b3aba740b4861e3dfc0bc1189ae171",
+        "size_bytes": 7384897
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_attention_append_context_order": "interleaved",
+        "batch_decode_attention_context_path": "per_row",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_layers": "",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "decode_tokens": 16,
+        "full_attention_decode_path": "batch_context",
+        "warmup_decode_tokens": 0
+      }
+    },
+    "iter409_long_interleaved_green": {
+      "correctness": {
+        "failure_modes": [],
+        "hidden_passed": true,
+        "passed": true,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 0,
+          "hidden_failure_rows": [],
+          "layer_limits": [
+            {
+              "failure_modes": [],
+              "hidden_failure_row_count": 0,
+              "hidden_failure_rows": [],
+              "layer_limit": 40,
+              "strict_hidden_bit_drift_row_count": 0,
+              "strict_hidden_bit_drift_rows": [],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 0,
+          "strict_hidden_bit_drift_rows": [],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": true,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": true,
+          "decode_linear_stage_passed": true,
+          "decode_linear_state_passed": true,
+          "first_context_oracle_failure": {
+            "comparison": "batch_context_vs_numpy",
+            "context_len": 514,
+            "context_len_match": true,
+            "decode_step": 1,
+            "elements_over_atol": 1,
+            "generated_index": 2,
+            "layer_index": 15,
+            "max_abs": 4.00543212890625e-05,
+            "max_abs_flat_index": 2033,
+            "max_abs_index": [
+              0,
+              2033
+            ],
+            "row": 1
+          },
+          "first_full_attention_failure": null,
+          "first_kv_sample_failure": null,
+          "hidden_failure_rows": [],
+          "hidden_passed": true,
+          "layer_limit": 40,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter409-L40-c2-retained-default-interleaved-warm8-decode32-atol4e-3-focus1269.json",
+        "sha256": "a052b4bbd0da01ccd110a7ffaf6aaf30e4ab723eee7ad4030569b8eabe5d3933",
+        "size_bytes": 90529525
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter409-L40-c2-retained-default-interleaved-warm8-decode32-atol4e-3-focus1269.log",
+        "sha256": "a052b4bbd0da01ccd110a7ffaf6aaf30e4ab723eee7ad4030569b8eabe5d3933",
+        "size_bytes": 90529525
+      },
+      "status": "eq_ok",
+      "workload": {
+        "batch_decode_attention_append_context_order": "interleaved",
+        "batch_decode_attention_context_path": "per_row",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_layers": "",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "decode_tokens": 32,
+        "full_attention_decode_path": "batch_context",
+        "warmup_decode_tokens": 8
+      }
+    },
+    "iter409_perrow_kv_append_phased_red": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            },
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                1,
+                0
+              ],
+              "layer_limit": 40,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": false,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": false,
+          "decode_linear_stage_passed": false,
+          "decode_linear_state_passed": false,
+          "first_context_oracle_failure": {
+            "comparison": "batch_numpy_vs_c1_numpy",
+            "context_len": 513,
+            "context_len_match": true,
+            "decode_step": 0,
+            "elements_over_atol": 3142,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.007256507873535156,
+            "max_abs_flat_index": 2812,
+            "max_abs_index": [
+              0,
+              2812
+            ],
+            "row": 0
+          },
+          "first_full_attention_failure": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 3,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1269,
+            "max_abs_index": [
+              0,
+              1269
+            ],
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "first_kv_sample_failure": {
+            "bit_mismatch": 143,
+            "check": "batch_source_vs_c1_source",
+            "decode_step": 0,
+            "elements_over_atol": 143,
+            "generated_index": 1,
+            "kind": "key",
+            "layer_index": 7,
+            "max_abs": 0.03125,
+            "max_abs_flat_index": 214,
+            "max_abs_index": [
+              214
+            ],
+            "row": 0,
+            "sample_index": 4,
+            "sample_label": "current",
+            "sample_position": 512,
+            "source_stage": "key_after_prepare"
+          },
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "hidden_passed": false,
+          "layer_limit": 8,
+          "token_failure_rows": [],
+          "token_passed": true
+        },
+        {
+          "decode_full_attention_input_passed": false,
+          "decode_full_attention_output_passed": false,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": false,
+          "decode_linear_stage_passed": false,
+          "decode_linear_state_passed": false,
+          "first_context_oracle_failure": {
+            "comparison": "c1_context_vs_numpy",
+            "context_len": 514,
+            "context_len_match": true,
+            "decode_step": 1,
+            "elements_over_atol": 1,
+            "generated_index": 2,
+            "layer_index": 15,
+            "max_abs": 4.00543212890625e-05,
+            "max_abs_flat_index": 2033,
+            "max_abs_index": [
+              0,
+              2033
+            ],
+            "row": 1
+          },
+          "first_full_attention_failure": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 1,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1197,
+            "max_abs_index": [
+              0,
+              1197
+            ],
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "first_kv_sample_failure": {
+            "bit_mismatch": 123,
+            "check": "batch_source_vs_c1_source",
+            "decode_step": 0,
+            "elements_over_atol": 123,
+            "generated_index": 1,
+            "kind": "key",
+            "layer_index": 7,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 122,
+            "max_abs_index": [
+              122
+            ],
+            "row": 0,
+            "sample_index": 4,
+            "sample_label": "current",
+            "sample_position": 512,
+            "source_stage": "key_after_prepare"
+          },
+          "hidden_failure_rows": [
+            1,
+            0
+          ],
+          "hidden_passed": false,
+          "layer_limit": 40,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter409-L8-L40-c2-perrow-kv-append-phased-atol4e-3-focus1269.json",
+        "sha256": "42bbfb91f75a682adaf9b4cf9638f95cb4c4edf6482ffcec6f54be8f10b1f76d",
+        "size_bytes": 144538568
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter409-L8-L40-c2-perrow-kv-append-phased-atol4e-3-focus1269.log",
+        "sha256": "42bbfb91f75a682adaf9b4cf9638f95cb4c4edf6482ffcec6f54be8f10b1f76d",
+        "size_bytes": 144538568
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_layers": "",
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "decode_tokens": 16,
+        "full_attention_decode_path": "batch_context",
+        "warmup_decode_tokens": 0
+      }
+    },
+    "iter409_rowchunk1_native_red": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            },
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                1,
+                0
+              ],
+              "layer_limit": 40,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": false,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": false,
+          "decode_linear_stage_passed": false,
+          "decode_linear_state_passed": false,
+          "first_context_oracle_failure": {
+            "comparison": "batch_numpy_vs_c1_numpy",
+            "context_len": 513,
+            "context_len_match": true,
+            "decode_step": 0,
+            "elements_over_atol": 3142,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.007256507873535156,
+            "max_abs_flat_index": 2812,
+            "max_abs_index": [
+              0,
+              2812
+            ],
+            "row": 0
+          },
+          "first_full_attention_failure": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 3,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1269,
+            "max_abs_index": [
+              0,
+              1269
+            ],
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "first_kv_sample_failure": {
+            "bit_mismatch": 143,
+            "check": "batch_source_vs_c1_source",
+            "decode_step": 0,
+            "elements_over_atol": 143,
+            "generated_index": 1,
+            "kind": "key",
+            "layer_index": 7,
+            "max_abs": 0.03125,
+            "max_abs_flat_index": 214,
+            "max_abs_index": [
+              214
+            ],
+            "row": 0,
+            "sample_index": 4,
+            "sample_label": "current",
+            "sample_position": 512,
+            "source_stage": "key_after_prepare"
+          },
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "hidden_passed": false,
+          "layer_limit": 8,
+          "token_failure_rows": [],
+          "token_passed": true
+        },
+        {
+          "decode_full_attention_input_passed": false,
+          "decode_full_attention_output_passed": false,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": false,
+          "decode_linear_stage_passed": false,
+          "decode_linear_state_passed": false,
+          "first_context_oracle_failure": {
+            "comparison": "c1_context_vs_numpy",
+            "context_len": 514,
+            "context_len_match": true,
+            "decode_step": 1,
+            "elements_over_atol": 1,
+            "generated_index": 2,
+            "layer_index": 15,
+            "max_abs": 4.00543212890625e-05,
+            "max_abs_flat_index": 2033,
+            "max_abs_index": [
+              0,
+              2033
+            ],
+            "row": 1
+          },
+          "first_full_attention_failure": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 1,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "max_abs_flat_index": 1197,
+            "max_abs_index": [
+              0,
+              1197
+            ],
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "first_kv_sample_failure": {
+            "bit_mismatch": 123,
+            "check": "batch_source_vs_c1_source",
+            "decode_step": 0,
+            "elements_over_atol": 123,
+            "generated_index": 1,
+            "kind": "key",
+            "layer_index": 7,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 122,
+            "max_abs_index": [
+              122
+            ],
+            "row": 0,
+            "sample_index": 4,
+            "sample_label": "current",
+            "sample_position": 512,
+            "source_stage": "key_after_prepare"
+          },
+          "hidden_failure_rows": [
+            1,
+            0
+          ],
+          "hidden_passed": false,
+          "layer_limit": 40,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter409-L8-L40-c2-rowchunk1-native-atol4e-3-focus1269.json",
+        "sha256": "d26edffa275c338aaf1fb37c0baed636a937faab807453c0e0c03d9e9ac074f6",
+        "size_bytes": 144938049
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter409-L8-L40-c2-rowchunk1-native-atol4e-3-focus1269.log",
+        "sha256": "d26edffa275c338aaf1fb37c0baed636a937faab807453c0e0c03d9e9ac074f6",
+        "size_bytes": 144938049
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_attention_append_context_order": "phased",
+        "batch_decode_attention_context_path": "batch",
+        "batch_decode_full_attention_kv_append_path": "batch",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_layers": "",
+        "batch_decode_full_attention_row_chunk_size": 1,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "decode_tokens": 16,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "warmup_decode_tokens": 0
+      }
+    },
+    "rowchunk1_interleave_flags_red": {
+      "correctness": {
+        "failure_modes": [
+          "hidden"
+        ],
+        "hidden_passed": false,
+        "passed": false,
+        "row_failure_summary": {
+          "hidden_failure_row_count": 2,
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "layer_limits": [
+            {
+              "failure_modes": [
+                "hidden"
+              ],
+              "hidden_failure_row_count": 2,
+              "hidden_failure_rows": [
+                0,
+                1
+              ],
+              "layer_limit": 8,
+              "strict_hidden_bit_drift_row_count": 2,
+              "strict_hidden_bit_drift_rows": [
+                0,
+                1
+              ],
+              "token_failure_row_count": 0,
+              "token_failure_rows": []
+            }
+          ],
+          "strict_hidden_bit_drift_row_count": 2,
+          "strict_hidden_bit_drift_rows": [
+            0,
+            1
+          ],
+          "token_failure_row_count": 0,
+          "token_failure_rows": []
+        },
+        "token_passed": true
+      },
+      "layers": [
+        {
+          "decode_full_attention_input_passed": true,
+          "decode_full_attention_output_passed": false,
+          "decode_full_context_oracle_passed": false,
+          "decode_full_kv_sample_passed": false,
+          "decode_linear_stage_passed": false,
+          "decode_linear_state_passed": false,
+          "first_context_oracle_failure": {
+            "comparison": "batch_numpy_vs_c1_numpy",
+            "context_len": 513,
+            "context_len_match": true,
+            "decode_step": 0,
+            "elements_over_atol": 3142,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.007256507873535156,
+            "max_abs_flat_index": 2812,
+            "max_abs_index": [
+              0,
+              2812
+            ],
+            "row": 0
+          },
+          "first_full_attention_failure": {
+            "comparison_kind": "fp16_bits",
+            "decode_step": 0,
+            "elements_over_atol": 3,
+            "generated_index": 1,
+            "layer_index": 7,
+            "max_abs": 0.015625,
+            "max_abs_flat_index": 1269,
+            "max_abs_index": [
+              0,
+              1269
+            ],
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "first_kv_sample_failure": {
+            "bit_mismatch": 143,
+            "check": "batch_source_vs_c1_source",
+            "decode_step": 0,
+            "elements_over_atol": 143,
+            "generated_index": 1,
+            "kind": "key",
+            "layer_index": 7,
+            "max_abs": 0.03125,
+            "max_abs_flat_index": 214,
+            "max_abs_index": [
+              214
+            ],
+            "row": 0,
+            "sample_index": 4,
+            "sample_label": "current",
+            "sample_position": 512,
+            "source_stage": "key_after_prepare"
+          },
+          "hidden_failure_rows": [
+            0,
+            1
+          ],
+          "hidden_passed": false,
+          "layer_limit": 8,
+          "token_failure_rows": [],
+          "token_passed": true
+        }
+      ],
+      "raw_json": {
+        "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.json",
+        "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+        "size_bytes": 18752608
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.log",
+        "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+        "size_bytes": 18752608
+      },
+      "status": "mismatch_found",
+      "workload": {
+        "batch_decode_attention_append_context_order": "interleaved",
+        "batch_decode_attention_context_path": "per_row",
+        "batch_decode_full_attention_kv_append_path": "per_row",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_layers": "",
+        "batch_decode_full_attention_row_chunk_size": 1,
+        "batch_decode_linear_output_path": "batch_gemv",
+        "batch_decode_linear_projection_path": "batch",
+        "batch_decode_linear_state_path": "batch_segments",
+        "batch_decode_moe_path": "grouped_compact",
+        "decode_tokens": 16,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "warmup_decode_tokens": 0
+      }
+    }
+  }
+}

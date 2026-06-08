@@ -1,0 +1,85 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for nonzero row chunks",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "correctness_passed": false,
+  "decision_accepted": false,
+  "decision_reason_summary": [
+    "batch_execution.throughput_claim_eligible=false",
+    "artifact_path must be a repo-relative path under benchmarks/results",
+    "primitive_correctness_json must be provided under benchmarks/results",
+    "c1_baseline_json must be provided under benchmarks/results",
+    "serial_bridge_json must be provided under benchmarks/results",
+    "profiler_json must be provided under benchmarks/results",
+    "compiler_version_file must be a repo-relative path under benchmarks/results",
+    "primitive c>N correctness gate did not pass: no primitive correctness artifact path provided",
+    "scaling comparison vs c=1 and serial bridge baselines is incomplete",
+    "profiler trace was not captured with expected kernels present",
+    "profiler.artifact_path must be under benchmarks/results",
+    "profiler.source_artifact_path must be a non-empty string",
+    "profiler.output_format must be csv",
+    "profiler.trace_dir must be a non-empty string",
+    "profiler.trace_files must be a non-empty string list",
+    "profiler.synthesized_fields must be a string list",
+    "profiler.status must be captured",
+    "profiler.expected_kernels_present must be true",
+    "profiler.trace_kernel_names must be a non-empty string list",
+    "profiler.expected_kernel_names must be a non-empty string list"
+  ],
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for nonzero row chunks"
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_output_layer_paths": [
+    "native_batch_with_tail_batch_gemv"
+  ],
+  "full_attention_row_chunk_size": 2,
+  "full_attention_row_chunk_source": "env",
+  "full_attention_segment_output_paths": [
+    "batch_gemv_tail_chunk"
+  ],
+  "generated_token_equality_passed": true,
+  "log_path": "/tmp/hipengine-iter209-c8-default-output-batch.log",
+  "measurement_decode_tok_s_aggregate": 165.79546087599405,
+  "min_equal_prefix_tokens": 137,
+  "moe_decode_path": "grouped_compact",
+  "moe_grouped_compact_layers": 40,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": false,
+  "output_mode": "batch",
+  "path_label": "retained_default",
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "49706b2a1dde0ab3ea3b505c0f3faa8e588c464cc3ce03430f321c669c9b6348",
+  "raw_size_bytes": 412035,
+  "raw_source_path": "/tmp/hipengine-iter209-c8-default-output-batch.json",
+  "rows": 8,
+  "rows_label": "c8",
+  "status": "blocked",
+  "workload_full_attention_output_path": "batch",
+  "workload_full_attention_path": "native_batch",
+  "workload_full_attention_row_chunk_size": 2
+}

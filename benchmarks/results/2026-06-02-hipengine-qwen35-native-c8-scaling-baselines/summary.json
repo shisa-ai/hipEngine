@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/summary.json",
+  "status": "baselines_recorded",
+  "created_at": "2026-06-02T18:46:36.802802Z",
+  "performance_claim": false,
+  "retained_ready": false,
+  "purpose": "Record c=1 native and c=8 serial-bridge baseline artifacts required before any retained c=8 scaling claim.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "workload": {
+    "prompt_tokens_per_request": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "native_batch_size": 8
+  },
+  "commands": {
+    "c1_baseline": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen35-c1-native-512-128-baseline-iter95.json",
+    "serial_bridge_baseline": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen35-c8-serial-bridge-512-128-baseline-iter95.json",
+    "native_reference_source": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c8-512-128-iter94.json"
+  },
+  "artifacts": {
+    "c1_baseline_json": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c1-native-512x128-baseline.json",
+    "serial_bridge_json": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-scaling-baselines/c8-serial-bridge-512x128-baseline.json",
+    "native_c8_source_json": "/tmp/hipengine-e2e-native-c8-512-128-iter94.json"
+  },
+  "rates": {
+    "native_c8_decode_tok_s_aggregate": 205.84196031135855,
+    "native_c8_decode_tok_s_per_request": 25.73024503891982,
+    "c1_decode_tok_s": 133.91159204248916,
+    "serial_bridge_decode_tok_s_aggregate": 104.431831201549,
+    "serial_bridge_decode_tok_s_per_request": 13.053978900193625
+  },
+  "ratios_inferred_not_retained": {
+    "native_c8_aggregate_vs_c1": 1.5371481824071394,
+    "native_c8_per_request_vs_c1": 0.19214352280089242,
+    "native_c8_aggregate_vs_serial_bridge": 1.9710653154601139,
+    "native_c8_per_request_vs_serial_bridge": 1.9710653154601139
+  },
+  "source_artifacts": {
+    "c1": {
+      "path": "/tmp/hipengine-qwen35-c1-native-512-128-baseline-iter95.json",
+      "sha256": "6d661b0dd059d4758cbcd3ebdb2569b045efa95a7d0748485aae87302b317eee",
+      "size_bytes": 183559
+    },
+    "serial_bridge": {
+      "path": "/tmp/hipengine-qwen35-c8-serial-bridge-512-128-baseline-iter95.json",
+      "sha256": "619bb910f29ae37d83de1aef5589bb7dc5602424e6ff4a06cc33aab61943495b",
+      "size_bytes": 264890
+    },
+    "native_c8": {
+      "path": "/tmp/hipengine-e2e-native-c8-512-128-iter94.json",
+      "sha256": "05b5ca6671447eebc096dbfeadd0bb8dce9ba167be7b1b59cbbfd61214b3a52d",
+      "size_bytes": 365666
+    }
+  },
+  "result": "Baseline artifacts recorded only. c=8 native reference from iteration 94 was generated-token equal, but profiler evidence and full retained artifact validation are still missing, so no retained performance/scaling claim is made.",
+  "next_required_evidence": [
+    "rocprofv3 kernel trace for native retained c8",
+    "primitive correctness artifact copied under benchmarks/results",
+    "retained bench rerun with repo-relative baseline/profiler references",
+    "benchmarks rollup update only after accepted retained status"
+  ]
+}

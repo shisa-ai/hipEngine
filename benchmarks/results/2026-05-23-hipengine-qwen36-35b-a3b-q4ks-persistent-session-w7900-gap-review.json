@@ -1,0 +1,525 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "label": "qwen36_35b_a3b_gguf_q4ks_persistent_session_and_w7900_gap_review",
+  "date": "2026-05-23",
+  "git_commit_under_test": "worktree after 8648a81 (scripts/qwen35_gguf_bench.py --persistent-session)",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "host": "epyc"
+  },
+  "implementation": {
+    "change": "Add scripts/qwen35_gguf_bench.py --persistent-session, loading one Qwen35GGUFResidentSession and session.reset() between runs.",
+    "graph_policy": "Persistent mode captures one reusable decode graph and resets the full-attention device position scalar before each replay. Reusable graph disables generated-token recording because the generated-index buffer is stateful; final-token sanity uses read_sample().",
+    "default_compatibility": "Default remains historical per-run session mode."
+  },
+  "validation": {
+    "py_compile": "python -m py_compile scripts/qwen35_gguf_bench.py -> passed",
+    "pytest": "PYTHONPATH=. python -m pytest tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_gguf_decode_repack_semantics.py -q -> 7 passed",
+    "runtime_runs": "W7900 Q4_K_S persistent-session sweep at 512/128, 4K/128, 32K/128, 128K/128, 1 warmup + 3 measured runs each; all finite logits and stable final IDs."
+  },
+  "persistent_session_clean_gpu_sweep": {
+    "512/128": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-512-128-persistent-rerun-clear-gpu.json",
+      "session_mode": "persistent",
+      "persistent_session_load_seconds": 61.879018047009595,
+      "prefill_tok_s_samples": [
+        1555.1628708656806,
+        1535.5334128216714,
+        1563.1952229658689
+      ],
+      "prefill_tok_s_median": 1555.1628708656806,
+      "decode_tok_s_samples": [
+        93.81603327103548,
+        93.89734276660946,
+        93.80933976780423
+      ],
+      "decode_tok_s_median": 93.81603327103548,
+      "tracked_peak_allocated_gib_median": 20.18540597707033,
+      "hip_used_peak_sampled_gib_median": 20.7197265625,
+      "final_token_ids": [
+        51515,
+        51515,
+        51515
+      ],
+      "finite_final_logits_all": true,
+      "decode_graph_reused_all_measured": [
+        true,
+        true,
+        true
+      ],
+      "decode_graph_recorded_tokens_all_measured": [
+        false,
+        false,
+        false
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 768,
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+        "memory_budget_gib": 0.0
+      },
+      "persistent_memory_summary": {
+        "tracked_peak_allocated_bytes": 21673914632,
+        "tracked_peak_allocated_gib": 20.18540597707033,
+        "tracked_current_allocated_bytes_before_close": 21673914632,
+        "tracked_current_allocated_gib_before_close": 20.18540597707033,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 21673914632,
+        "owned_session_peak_gib": 20.18540597707033,
+        "hip_used_peak_sampled_bytes": 22247636992,
+        "hip_used_peak_sampled_gib": 20.7197265625,
+        "notes": [
+          "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+        ]
+      },
+      "wall_real_seconds": 69.502,
+      "comparison_vs_original_per_run_w7900_sweep": {
+        "artifact": "/tmp/q4ks-w7900-bench/q4ks-512-128.json",
+        "prefill_tok_s_median_old": 1584.8222710307004,
+        "prefill_delta_pct": -1.871465381776258,
+        "decode_tok_s_median_old": 92.93641679658063,
+        "decode_delta_pct": 0.9464712593559046,
+        "wall_real_seconds_old": 250.151,
+        "wall_real_seconds_new": 69.502,
+        "wall_speedup_x": 3.5991913901758226
+      }
+    },
+    "4K/128": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-rerun-clear-gpu.json",
+      "session_mode": "persistent",
+      "persistent_session_load_seconds": 65.22708782399422,
+      "prefill_tok_s_samples": [
+        1739.5307432624918,
+        1733.900737042995,
+        1729.76260251282
+      ],
+      "prefill_tok_s_median": 1733.900737042995,
+      "decode_tok_s_samples": [
+        101.1668279227764,
+        101.04969459698923,
+        100.96607065501338
+      ],
+      "decode_tok_s_median": 101.04969459698923,
+      "tracked_peak_allocated_gib_median": 21.334858000278473,
+      "hip_used_peak_sampled_gib_median": 21.9169921875,
+      "final_token_ids": [
+        85,
+        85,
+        85
+      ],
+      "finite_final_logits_all": true,
+      "decode_graph_reused_all_measured": [
+        true,
+        true,
+        true
+      ],
+      "decode_graph_recorded_tokens_all_measured": [
+        false,
+        false,
+        false
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "manual_long_equiv_gt1k",
+        "max_sequence_length": 4352,
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+        "memory_budget_gib": 24.74140625,
+        "estimated_peak_gib": 20.0,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      },
+      "persistent_memory_summary": {
+        "tracked_peak_allocated_bytes": 22908129344,
+        "tracked_peak_allocated_gib": 21.334858000278473,
+        "tracked_current_allocated_bytes_before_close": 22908129344,
+        "tracked_current_allocated_gib_before_close": 21.334858000278473,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 22908129344,
+        "owned_session_peak_gib": 21.334858000278473,
+        "hip_used_peak_sampled_bytes": 23533191168,
+        "hip_used_peak_sampled_gib": 21.9169921875,
+        "notes": [
+          "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+        ]
+      },
+      "wall_real_seconds": 80.567,
+      "comparison_vs_original_per_run_w7900_sweep": {
+        "artifact": "/tmp/q4ks-w7900-bench/q4ks-4096-128.json",
+        "prefill_tok_s_median_old": 1736.8117380107483,
+        "prefill_delta_pct": -0.16760601647519138,
+        "decode_tok_s_median_old": 101.34146183923446,
+        "decode_delta_pct": -0.28790510512674533,
+        "wall_real_seconds_old": 256.022,
+        "wall_real_seconds_new": 80.567,
+        "wall_speedup_x": 3.1777526778954166
+      }
+    },
+    "32K/128": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-32768-128-persistent-rerun-clear-gpu.json",
+      "session_mode": "persistent",
+      "persistent_session_load_seconds": 61.48165384499589,
+      "prefill_tok_s_samples": [
+        1379.3642454629573,
+        1369.8033828622495,
+        1370.2442772338957
+      ],
+      "prefill_tok_s_median": 1370.2442772338957,
+      "decode_tok_s_samples": [
+        86.99681420770445,
+        86.85803970961534,
+        86.90888533732026
+      ],
+      "decode_tok_s_median": 86.90888533732026,
+      "tracked_peak_allocated_gib_median": 22.145784854888916,
+      "hip_used_peak_sampled_gib_median": 22.7373046875,
+      "final_token_ids": [
+        13883,
+        13883,
+        13883
+      ],
+      "finite_final_logits_all": true,
+      "decode_graph_reused_all_measured": [
+        true,
+        true,
+        true
+      ],
+      "decode_graph_recorded_tokens_all_measured": [
+        false,
+        false,
+        false
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "manual_long_equiv_gt1k",
+        "max_sequence_length": 33024,
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+        "memory_budget_gib": 24.74140625,
+        "estimated_peak_gib": 20.0,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      },
+      "persistent_memory_summary": {
+        "tracked_peak_allocated_bytes": 23778855424,
+        "tracked_peak_allocated_gib": 22.145784854888916,
+        "tracked_current_allocated_bytes_before_close": 23778855424,
+        "tracked_current_allocated_gib_before_close": 22.145784854888916,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 23778855424,
+        "owned_session_peak_gib": 22.145784854888916,
+        "hip_used_peak_sampled_bytes": 24413995008,
+        "hip_used_peak_sampled_gib": 22.7373046875,
+        "notes": [
+          "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+        ]
+      },
+      "wall_real_seconds": 163.083,
+      "comparison_vs_original_per_run_w7900_sweep": {
+        "artifact": "/tmp/q4ks-w7900-bench/q4ks-32768-128.json",
+        "prefill_tok_s_median_old": 1384.0324098337894,
+        "prefill_delta_pct": -0.9962290262805031,
+        "decode_tok_s_median_old": 87.01563911229412,
+        "decode_delta_pct": -0.12268343491231655,
+        "wall_real_seconds_old": 341.179,
+        "wall_real_seconds_new": 163.083,
+        "wall_speedup_x": 2.092057418615061
+      }
+    },
+    "128K/128": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-131072-128-persistent-rerun-clear-gpu.json",
+      "session_mode": "persistent",
+      "persistent_session_load_seconds": 61.321482933009975,
+      "prefill_tok_s_samples": [
+        832.494711529022,
+        830.8504333671586,
+        829.787900513729
+      ],
+      "prefill_tok_s_median": 830.8504333671586,
+      "decode_tok_s_samples": [
+        58.16842685768508,
+        58.039211802374524,
+        58.14809559008367
+      ],
+      "decode_tok_s_median": 58.14809559008367,
+      "tracked_peak_allocated_gib_median": 25.107746124267578,
+      "hip_used_peak_sampled_gib_median": 25.7021484375,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "finite_final_logits_all": true,
+      "decode_graph_reused_all_measured": [
+        true,
+        true,
+        true
+      ],
+      "decode_graph_recorded_tokens_all_measured": [
+        false,
+        false,
+        false
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "manual_long_equiv_gt1k",
+        "max_sequence_length": 131328,
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+        "memory_budget_gib": 24.74140625,
+        "estimated_peak_gib": 20.0,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      },
+      "persistent_memory_summary": {
+        "tracked_peak_allocated_bytes": 26959237120,
+        "tracked_peak_allocated_gib": 25.107746124267578,
+        "tracked_current_allocated_bytes_before_close": 26959237120,
+        "tracked_current_allocated_gib_before_close": 25.107746124267578,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 26959237120,
+        "owned_session_peak_gib": 25.107746124267578,
+        "hip_used_peak_sampled_bytes": 27597471744,
+        "hip_used_peak_sampled_gib": 25.7021484375,
+        "notes": [
+          "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+        ]
+      },
+      "wall_real_seconds": 700.66,
+      "comparison_vs_original_per_run_w7900_sweep": {
+        "artifact": "/tmp/q4ks-w7900-bench/q4ks-131072-128.json",
+        "prefill_tok_s_median_old": 831.3860855974989,
+        "prefill_delta_pct": -0.06442881828546428,
+        "decode_tok_s_median_old": 58.1233417145926,
+        "decode_delta_pct": 0.04258852770823625,
+        "wall_real_seconds_old": 881.492,
+        "wall_real_seconds_new": 700.66,
+        "wall_speedup_x": 1.258088088373819
+      }
+    }
+  },
+  "four_k_no_chunk_probe": {
+    "summary": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-rerun-clear-gpu-nochunk.json",
+      "session_mode": "persistent",
+      "persistent_session_load_seconds": 60.558077529014554,
+      "prefill_tok_s_samples": [
+        1716.070602008081,
+        1711.245389625873,
+        1706.602548203497
+      ],
+      "prefill_tok_s_median": 1711.245389625873,
+      "decode_tok_s_samples": [
+        101.40270657081717,
+        101.18740582773172,
+        100.96798663538867
+      ],
+      "decode_tok_s_median": 101.18740582773172,
+      "tracked_peak_allocated_gib_median": 21.415609419345856,
+      "hip_used_peak_sampled_gib_median": 22.0166015625,
+      "final_token_ids": [
+        85,
+        85,
+        85
+      ],
+      "finite_final_logits_all": true,
+      "decode_graph_reused_all_measured": [
+        true,
+        true,
+        true
+      ],
+      "decode_graph_recorded_tokens_all_measured": [
+        false,
+        false,
+        false
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": false,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning": {
+        "enabled": false,
+        "applied": false,
+        "reason": "disabled",
+        "max_sequence_length": 4352,
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+        "memory_budget_gib": 0.0
+      },
+      "persistent_memory_summary": {
+        "tracked_peak_allocated_bytes": 22994835520,
+        "tracked_peak_allocated_gib": 21.415609419345856,
+        "tracked_current_allocated_bytes_before_close": 22994835520,
+        "tracked_current_allocated_gib_before_close": 21.415609419345856,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 22994835520,
+        "owned_session_peak_gib": 21.415609419345856,
+        "hip_used_peak_sampled_bytes": 23640145920,
+        "hip_used_peak_sampled_gib": 22.0166015625,
+        "notes": [
+          "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+        ]
+      },
+      "wall_real_seconds": null
+    },
+    "comparison_vs_w7900_chunked_prefill_delta_pct": -1.3066115570005739,
+    "comparison_vs_rx7900xtx_final_gate_prefill_delta_pct": -37.14452053564663
+  },
+  "w7900_clock_probe_4k_no_chunk": {
+    "sample_count": 3348,
+    "gpu_busy_ge_1": {
+      "samples": 186,
+      "sclk_mhz_min": 0,
+      "sclk_mhz_max": 2984,
+      "sclk_mhz_mean": 2027.3978494623657,
+      "mclk_mhz_min": 96,
+      "mclk_mhz_max": 1124,
+      "mclk_mhz_mean": 847.6559139784946,
+      "fclk_mhz_min": 601,
+      "fclk_mhz_max": 2301,
+      "fclk_mhz_mean": 1539.4408602150538,
+      "gpu_busy_mean_pct": 86.03225806451613,
+      "mem_busy_mean_pct": 23.155913978494624,
+      "mem_busy_max_pct": 61
+    },
+    "gpu_busy_ge_50": {
+      "samples": 158,
+      "sclk_mhz_min": 0,
+      "sclk_mhz_max": 2972,
+      "sclk_mhz_mean": 2178.0379746835442,
+      "mclk_mhz_min": 96,
+      "mclk_mhz_max": 1124,
+      "mclk_mhz_mean": 954.8354430379746,
+      "fclk_mhz_min": 601,
+      "fclk_mhz_max": 2301,
+      "fclk_mhz_mean": 1675.367088607595,
+      "gpu_busy_mean_pct": 97.18987341772151,
+      "mem_busy_mean_pct": 26.936708860759495,
+      "mem_busy_max_pct": 61
+    },
+    "gpu_busy_ge_90": {
+      "samples": 145,
+      "sclk_mhz_min": 0,
+      "sclk_mhz_max": 2972,
+      "sclk_mhz_mean": 2281.655172413793,
+      "mclk_mhz_min": 96,
+      "mclk_mhz_max": 1124,
+      "mclk_mhz_mean": 1003.4758620689655,
+      "fclk_mhz_min": 601,
+      "fclk_mhz_max": 2301,
+      "fclk_mhz_mean": 1738.5862068965516,
+      "gpu_busy_mean_pct": 99.64137931034483,
+      "mem_busy_mean_pct": 28.606896551724137,
+      "mem_busy_max_pct": 61
+    }
+  },
+  "w7900_vs_rx7900xtx_evidence": {
+    "gguf_q4_k_s_4k_128": {
+      "w7900_chunked_persistent_prefill_tok_s": 1733.900737042995,
+      "w7900_chunked_persistent_decode_tok_s": 101.04969459698923,
+      "w7900_nochunk_persistent_prefill_tok_s": 1711.245389625873,
+      "w7900_nochunk_persistent_decode_tok_s": 101.18740582773172,
+      "rx7900xtx_final_gate_prefill_tok_s": 2722.5078930411396,
+      "rx7900xtx_final_gate_decode_tok_s": 100.25740752656847,
+      "w7900_nochunk_vs_rx_prefill_delta_pct": -37.14452053564663,
+      "w7900_nochunk_vs_rx_decode_delta_pct": 0.9276105617600375,
+      "note": "Disabling W7900 chunking does not close the gap; prefill remains ~37% below RX while decode is slightly faster."
+    },
+    "packed_paro_4k_128": {
+      "w7900_prefill_tok_s": 2899.685123274641,
+      "w7900_decode_tok_s": 113.09393762934415,
+      "rx7900xtx_local_prefill_tok_s": 2710.86881040786,
+      "rx7900xtx_local_decode_tok_s": 106.63671890443203,
+      "w7900_vs_rx_prefill_delta_pct": 6.9651586289184015,
+      "w7900_vs_rx_decode_delta_pct": 6.055342654249417,
+      "caveat": "Existing RX PARO row is from 2026-05-21 local memory comparison, not an exact same-commit rerun against the W7900 README packed artifact. Still, available evidence does not show W7900 slower on PARO."
+    }
+  },
+  "findings": [
+    "The clean-GPU persistent sweep matches the original W7900 per-run sweep within noise; concurrent GPU use was not the source of the low W7900 GGUF prefill number.",
+    "Persistent-session mode cuts wall time substantially by loading/repacking once: ~3.60x at 512/128, ~3.18x at 4K/128, ~2.09x at 32K/128, ~1.26x at 128K/128.",
+    "Repeated graph capture in one long-lived process caused HIP-internal VRAM growth; retaining/reusing one decode graph fixes the growth and keeps final IDs correct after resetting the full-attention device position scalar before each replay.",
+    "The W7900-vs-RX 4K prefill gap is not explained by chunk policy: W7900 no-chunk 4K Q4_K_S is 1711 tok/s vs RX final-gate 2723 tok/s. It is also not explained by clocks: during no-chunk 4K, sampled SCLK reaches 2984 MHz, MCLK 1124 MHz, FCLK 2301 MHz.",
+    "Available PARO logs do not show a general W7900 problem. W7900 packed PARO 4K/128 is 2899.7/113.1 tok/s, while the existing local RX PARO 4K/128 row is 2710.9/106.6 tok/s. For rigorous cross-host device attribution, rerun PARO on RX 7900 XTX and GGUF on both hosts at the same commit/compiler with clock sampling."
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for nonzero row chunks",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "correctness_passed": false,
+  "decision_accepted": false,
+  "decode_blockers": [
+    "full-attention decode forced to native row-chunk diagnostic path",
+    "full-attention O projection forced to batch GEMV for nonzero row chunks"
+  ],
+  "first_full_attention_chunks": [
+    {
+      "output_path": "native_batch",
+      "row_start": 0,
+      "rows": 2,
+      "slots": [
+        0,
+        1
+      ]
+    },
+    {
+      "output_path": "batch_gemv_tail_chunk",
+      "row_start": 2,
+      "rows": 2,
+      "slots": [
+        2,
+        3
+      ]
+    },
+    {
+      "output_path": "batch_gemv_tail_chunk",
+      "row_start": 4,
+      "rows": 2,
+      "slots": [
+        4,
+        5
+      ]
+    },
+    {
+      "output_path": "batch_gemv_tail_chunk",
+      "row_start": 6,
+      "rows": 2,
+      "slots": [
+        6,
+        7
+      ]
+    },
+    {
+      "output_path": "native_batch",
+      "row_start": 8,
+      "rows": 1,
+      "slots": [
+        8
+      ]
+    }
+  ],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "native_batch",
+  "full_attention_decode_path": "native_batch_row_chunks",
+  "full_attention_output_layer_paths": [
+    "native_batch_with_tail_batch_gemv"
+  ],
+  "full_attention_row_chunk_size": 2,
+  "full_attention_row_chunk_source": "env",
+  "full_attention_segment_output_paths": [
+    "batch_gemv_tail_chunk"
+  ],
+  "generated_token_equality_passed": true,
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "log_path": "/tmp/hipengine-iter216-c9-rowchunk2_selectedc1_moe.log",
+  "min_equal_prefix_tokens": 137,
+  "moe_decode_path": "selected_c1_batch",
+  "moe_grouped_compact_layers": 0,
+  "moe_selected_c1_fallback_layers": 0,
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "2e4c5703baad5da5aa6a43623d47029a884892e1198e2802134943a502c9f5a8",
+  "raw_size_bytes": 465655,
+  "raw_source_path": "/tmp/hipengine-iter216-c9-rowchunk2_selectedc1_moe.json",
+  "rows": 9,
+  "status": "blocked",
+  "variant": "rowchunk2-selectedc1-moe-batch-linear",
+  "workload_batch_decode_full_attention_output_path": "batch",
+  "workload_batch_decode_full_attention_path": "native_batch",
+  "workload_batch_decode_full_attention_row_chunk_size": 2,
+  "workload_batch_decode_linear_output_path": "batch_gemv",
+  "workload_batch_decode_linear_projection_path": "batch",
+  "workload_batch_decode_moe_path": "selected_c1"
+}

@@ -1,0 +1,211 @@
+{
+  "iteration": 481,
+  "kind": "c4_layer3_selected_native_row_semantics_inspection",
+  "created_at": "2026-06-07T15:06:22.184834+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "inspection_findings": {
+    "no_safe_code_change_made": true,
+    "row_major_block_table_is_intentional": "The _batch_full_spans implementation explicitly writes physical slot ids as row-relative block-table deltas (slot-row)*blocks, and the HIP context kernel then adds the active row base. This matches the row-major full KV cache shape, so changing that arithmetic would be speculative and unsafe.",
+    "rowchunk_semantics": "Rowchunking layer3 does not switch to a different context kernel; it slices hidden/slots/positions and calls the same native full-attention batch layer with tokens=chunk_rows plus row-aware GEMV O output. Therefore the difference under test is active row group size/row semantics, not a separate kernel family.",
+    "hidden_bisect_result": "For layer limit 4 and decode trace window 80..105, both current rowchunk(3,15) and layer3-native/layer15-rowchunk paths are hidden_passed=true and token_passed=true at hidden_atol=1e-3. Full-attention stage traces show only fp16-bit mlp_input drift under tolerance, with input/output/stage checks otherwise passed.",
+    "blocker_refinement": "Iter480 proved the full-model layer3-native path diverges at generated-token row0@82, but iter481 shows no immediate >atol hidden/token failure through layer4. The remaining blocker is likely later-layer amplification of sub-ulp/bit drift or a row-group-size-sensitive stage beyond layer4, not an obviously wrong row-major KV/cache indexing bug.",
+    "next_target": "Avoid a speculative kernel row-index edit. Use a narrower later-layer hidden-bisect window or add cheap first-failing-layer search support before attempting a native layer3 fix; keep c4 auto rowchunk layers at 3,15."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused hidden/full-attention parity evidence shows both the current c4 rowchunk path and the layer3-native diagnostic are hidden/token-green through layer4 in the known divergence window, eliminating immediate layer3 >atol hidden/context/O failure and refining the blocker to later-layer amplification/row-group semantics. No performance claim."
+  },
+  "conclusion": "No code change was made: source inspection found the suspected row-major block-table arithmetic intentional, and hidden-bisect eliminated immediate layer3 >atol hidden/token failure through layer4. Keep c4 default rowchunk layers at 3,15 and target later-layer first-failure localization next.",
+  "hidden_bisect_overview": [
+    {
+      "case": "current_rowchunk_3_15",
+      "status": "eq_ok",
+      "workload": {
+        "batch_size": 4,
+        "layer_limits": [
+          4
+        ],
+        "trace_decode_window": [
+          80,
+          106
+        ],
+        "row_chunk_layers": "3,15",
+        "row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false
+      },
+      "correctness": {
+        "passed": true,
+        "hidden_passed": true,
+        "token_passed": true,
+        "failure_modes": [],
+        "hidden_failure_rows": [],
+        "token_failure_rows": [],
+        "strict_hidden_bit_drift_rows": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "decode_linear_handoff_copy_passed": true,
+        "decode_linear_handoff_producer_passed": true,
+        "decode_linear_projection_passed_under_atol": true,
+        "decode_full_attention_failed_stages": [
+          "mlp_input"
+        ],
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": true,
+        "first_stage_failure": {
+          "layer_limit": 4,
+          "decode_step": 80,
+          "generated_index": 81,
+          "layer_index": 3,
+          "stage": "mlp_input",
+          "row": 2,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.001953125,
+          "max_abs_flat_index": 140,
+          "max_abs_index": [
+            0,
+            140
+          ],
+          "elements_over_atol": 1
+        },
+        "layer_summaries": [
+          {
+            "layer_limit": 4,
+            "hidden_passed": true,
+            "token_passed": true,
+            "token_prefix_lengths": null,
+            "token_first_mismatch_indices": null,
+            "first_hidden_mismatch": null
+          }
+        ]
+      },
+      "note": "Current green c4 default: rowchunk layer3 and layer15, layer limit 4, trace decode window 80..105."
+    },
+    {
+      "case": "layer3_native_layer15_rowchunk",
+      "status": "eq_ok",
+      "workload": {
+        "batch_size": 4,
+        "layer_limits": [
+          4
+        ],
+        "trace_decode_window": [
+          80,
+          106
+        ],
+        "row_chunk_layers": "15",
+        "row_chunk_size": 2,
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "native_caware_decode": false
+      },
+      "correctness": {
+        "passed": true,
+        "hidden_passed": true,
+        "token_passed": true,
+        "failure_modes": [],
+        "hidden_failure_rows": [],
+        "token_failure_rows": [],
+        "strict_hidden_bit_drift_rows": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "decode_linear_handoff_copy_passed": true,
+        "decode_linear_handoff_producer_passed": true,
+        "decode_linear_projection_passed_under_atol": true,
+        "decode_full_attention_failed_stages": [
+          "mlp_input"
+        ],
+        "decode_full_attention_input_passed": true,
+        "decode_full_attention_output_passed": true,
+        "first_stage_failure": {
+          "layer_limit": 4,
+          "decode_step": 80,
+          "generated_index": 81,
+          "layer_index": 3,
+          "stage": "mlp_input",
+          "row": 2,
+          "comparison_kind": "fp16_bits",
+          "max_abs": 0.001953125,
+          "max_abs_flat_index": 140,
+          "max_abs_index": [
+            0,
+            140
+          ],
+          "elements_over_atol": 1
+        },
+        "layer_summaries": [
+          {
+            "layer_limit": 4,
+            "hidden_passed": true,
+            "token_passed": true,
+            "token_prefix_lengths": null,
+            "token_first_mismatch_indices": null,
+            "first_hidden_mismatch": null
+          }
+        ]
+      },
+      "note": "Diagnostic layer3-native path: only layer15 rowchunked, layer limit 4, same trace window."
+    }
+  ],
+  "source_inspection_overview": [
+    {
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "line_start": 3847,
+      "line_end": 3892,
+      "label": "_batch_full_spans encodes row-relative block table offsets intentionally"
+    },
+    {
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "line_start": 4640,
+      "line_end": 4662,
+      "label": "rowchunk branch slices rows/slots/positions before span construction"
+    },
+    {
+      "path": "hipengine/runtime/qwen35_paro_runner.py",
+      "line_start": 4760,
+      "line_end": 4805,
+      "label": "rowchunk branch calls the same full-attention batch layer with smaller token count and row-aware O path"
+    },
+    {
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "line_start": 3623,
+      "line_end": 3643,
+      "label": "batch context/gate wrapper is explicitly the retained short-context decode path"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+      "line_start": 347,
+      "line_end": 392,
+      "label": "batch paged-attention context kernel row/head indexing header"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+      "line_start": 393,
+      "line_end": 443,
+      "label": "batch paged-attention context kernel reads row-relative block table with row-major cache addressing"
+    }
+  ],
+  "timeout_attempts": [
+    {
+      "case": "layer3_native_layer15_rowchunk_layer_limits_attempt",
+      "status": "timeout_no_json",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py ... --layer-limits 4,8,12,16,20,24,28,32,36,40 --trace-decode-start 80 --trace-decode-end 106 --batch-decode-full-attn-row-chunk-layers 15",
+      "timeout_seconds": 12000,
+      "json_path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/layer3_native_layer15_rowchunk_layer_limits.json",
+      "json_exists": false,
+      "log_tmp": {
+        "path": "/tmp/hipengine-iter481-c4-layer3-hidden-bisect/layer3_native_layer15_rowchunk_layer_limits.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      "used_for_conclusion": false
+    }
+  ]
+}

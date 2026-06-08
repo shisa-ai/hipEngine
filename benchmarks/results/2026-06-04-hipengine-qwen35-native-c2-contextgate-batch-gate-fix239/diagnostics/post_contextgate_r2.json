@@ -1,0 +1,40 @@
+{
+  "batch_blockers": [
+    "full-attention context/gate forced to per-row diagnostic path",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "decode_blockers": [
+    "full-attention context/gate forced to per-row diagnostic path"
+  ],
+  "first_mismatch_indices": [
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "per_row_context_gate_fallback",
+  "full_attention_decode_path": "native_batch",
+  "full_attention_gate_decode_path": null,
+  "generated_token_equality_passed": true,
+  "label": "post_contextgate_r2",
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "min_equal_prefix_tokens": 137,
+  "mismatch_count": 0,
+  "mismatch_summaries": [],
+  "moe_decode_path": "selected_c1_batch",
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "bcb43e5a0f7e4ff00eca4fada1a54f7cf3684393ff33981742d84db0354f0d4b",
+  "raw_size_bytes": 143150,
+  "raw_source_path": "/tmp/hipengine-iter239-post-contextgate-r2.json",
+  "repeat": 2,
+  "status": "blocked",
+  "variant": "per_row_context_gate",
+  "workload_batch_decode_attention_context_path": "per_row",
+  "workload_batch_decode_attention_gate_path": "batch",
+  "workload_batch_decode_moe_path": "selected_c1",
+  "workload_batch_sample_mode": "serial_lm_head"
+}

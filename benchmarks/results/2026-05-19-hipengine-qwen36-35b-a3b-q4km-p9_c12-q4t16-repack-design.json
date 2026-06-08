@@ -1,0 +1,102 @@
+{
+  "schema": "p9_c12_q4_selected_dual_repack_layout_design_v1",
+  "status": "design_selected",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T14:46:46.074039+00:00",
+  "task": "#43 P9.C12 deeper Q4 selected-dual repack/layout path",
+  "git_commit": "ade0474a89c6f5673b8a38fd3e7fdb652ea15bde",
+  "git_status": "## gguf-bulk-prefill\n?? uv.lock",
+  "source_evidence": {
+    "final_blocked_artifact": "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json",
+    "q4_hot_fulltile_rejected": "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c4-q4-hot-fulltile-v1-rejected.json",
+    "q4_sidemeta_rejected": "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c5-q4-sidemeta-v1-rejected.json",
+    "tail_decision": "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c9-tail-no-padding-not-retained.json"
+  },
+  "qwen35moe_actual_shape": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "linear_attention_moe_layers": 30,
+    "block_count": 40,
+    "hidden_size": 2048,
+    "expert_count": 256,
+    "top_k": 8,
+    "expert_ffn": 512,
+    "q4_gate_or_up_shape": [
+      256,
+      512,
+      2048
+    ],
+    "q4_gate_or_up_byte_shape": [
+      256,
+      512,
+      1152
+    ],
+    "blocks_per_row": 8,
+    "combined_gate_up_out_features": 1024,
+    "selected_dual_col_tiles_16": 64,
+    "selected_dual_col_tiles_32": 32
+  },
+  "current_blocker": {
+    "q4_selected_dual_ms": 58.126,
+    "q5_selected_down_ms": 27.043,
+    "q6_selected_down_ms": 2.656,
+    "q8_wmma_ms": 52.285,
+    "combined_ms": 140.11,
+    "target_ms": 110.0,
+    "gap_ms": 30.110000000000014,
+    "q4_ms_needed_if_only_q4_fixes_gap": 28.015999999999984,
+    "first_layer_baseline_ms_from_p9_c5": 1.6778446656341355
+  },
+  "memory_model": {
+    "raw_q4_block_bytes": 144,
+    "raw_gate_or_up_tensor_bytes": 150994944,
+    "raw_gate_up_layer_bytes": 301989888,
+    "raw_gate_up_all_moe_layers_bytes": 9059696640,
+    "p9_c5_fp16_scale_min_sidecar_gate_or_up_bytes_actual_shape": 33554432,
+    "p9_c5_fp16_scale_min_sidecar_gate_up_layer_bytes_actual_shape": 67108864,
+    "note": "P9.C5 measured side metadata as slower regardless of cache size. This artifact recomputes actual qwen35moe bytes from GGUF metadata (expert_ffn=512). Final runtime repack must replace raw allocation, not duplicate all Q4 gate/up weights, because duplicating raw-size repack for all MoE layers would add ~8.4 GiB."
+  },
+  "rejected_designs": {
+    "hot_fulltile_plus_fallback": "Correct but Q4 replay 65-66 ms vs retained 59.9 ms; hot full-tile alone ~49 ms but fallback ~17.5 ms.",
+    "fp16_scale_min_sidecar": "Correct but first real layer 2.339 ms vs raw 1.678 ms; extra side stream lost despite removing bitfield decode.",
+    "tail_no_padding": "Residual rows only 5.4%; measured tail fallback cost exceeded padding gain."
+  },
+  "candidate_layouts": [
+    {
+      "name": "Q4T16 tile-major replacement layout (selected v1)",
+      "description": "Repack each Q4_K gate/up tensor from raw [E,out,row_bytes] into tile-major [E,out_tile16,k_block] slabs. Within each slab, store d/dmin fp16 per output column, predecoded scale/min uint8 per subblock/column, and q4 nibbles arranged by [subblock, kt, k_lane16, col] so a wave loading a 16-column B fragment reads contiguous/coalesced bytes instead of 16 strided raw GGUF rows. Final runtime should store this as the resident allocation replacing raw for Q4 gate/up; replay prototype may allocate one-layer side buffers.",
+      "bytes_per_16col_kblock": 2368,
+      "raw_bytes_per_16col_kblock": 2304,
+      "storage_overhead_pct": 2.777777777777768,
+      "gate_or_up_tensor_bytes": 155189248,
+      "gate_up_layer_bytes": 310378496,
+      "expected_kernel_changes": [
+        "new qweight_tile pointer ABI for Q4 selected dual only",
+        "load d/dmin and uint8 scale/min from contiguous column vectors",
+        "load q nibbles by k-lane/column tile instead of raw GGUF q pair stride",
+        "keep compact selected output ABI unchanged",
+        "support retained 32x16 by consuming two adjacent Q4T16 slabs per wave or initially one 16x16 slab for lower risk"
+      ],
+      "go_no_go": [
+        "synthetic CPU decode of Q4T16 equals raw GGUF Q4_K exactly",
+        "first qwen layer gate+up <=1.35 ms (>=20% faster than 1.678 ms raw) before full runtime wiring",
+        "full Q4 replay <=45 ms to continue; <=35 ms to be a plausible #27 target closer"
+      ]
+    },
+    {
+      "name": "Q4H16 half-expanded B fragments (rejected for v1)",
+      "description": "Pre-expand every q4 block to fp16 or int8 B fragments. It would minimize kernel decode but roughly doubles or quadruples weight bytes and cannot replace raw within the 24 GiB budget without broad loader changes. Keep only as a microbenchmark upper-bound if Q4T16 is inconclusive.",
+      "decision": "not v1"
+    },
+    {
+      "name": "Expert-major persistent selected-MoE scheduler (defer)",
+      "description": "Avoid per-layer row/tile fallback overhead by persistent expert blocks and compact tail lists. P9.C9 shows tail alone is not enough without a faster weight layout, so defer until a Q4T16-like layout proves a faster hot kernel.",
+      "decision": "dependency after P9.C15 if repack is insufficient"
+    }
+  ],
+  "selected_v1": {
+    "layout": "Q4T16 tile-major replacement layout",
+    "next_task": "#44 P9.C13 materializer prototype",
+    "prototype_scope": "Build host materializer from GGUFReader raw bytes for one or more layers; add CPU roundtrip tests and device-copy support in replay. Do not change default runtime until kernel improves.",
+    "runtime_integration_rule": "If retained, materialization must provide a new allocation kind (e.g. q4_k_tile16_dual) and dispatch by registry variant; avoid backend/quant if-branches in core runtime. It should replace raw Q4 gate/up allocations under a model-load option rather than duplicate them for all layers."
+  }
+}

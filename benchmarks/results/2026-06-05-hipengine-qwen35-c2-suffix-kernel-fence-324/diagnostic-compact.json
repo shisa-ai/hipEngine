@@ -1,0 +1,1013 @@
+{
+  "c2_full_batch_suffix_kernel_fence_repeats": [
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-1",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-1.json",
+        "sha256": "bdbc79b5e1ca6eeb229b266dbcba277b9ba4fbacb9c655fff5768f3256cee152",
+        "size_bytes": 138124
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-1.log",
+        "sha256": "bdbc79b5e1ca6eeb229b266dbcba277b9ba4fbacb9c655fff5768f3256cee152",
+        "size_bytes": 138124
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-2",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-2.json",
+        "sha256": "a10feffa6afd3946baae3a5a71dbf1570c0b37247e9060e0ef03f42d043267c1",
+        "size_bytes": 138129
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-2.log",
+        "sha256": "a10feffa6afd3946baae3a5a71dbf1570c0b37247e9060e0ef03f42d043267c1",
+        "size_bytes": 138129
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-3",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-3.json",
+        "sha256": "a512f38a522f0f108453e1c587850ac05ae4a1e02978237d41c6853b43e44481",
+        "size_bytes": 138112
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-3.log",
+        "sha256": "a512f38a522f0f108453e1c587850ac05ae4a1e02978237d41c6853b43e44481",
+        "size_bytes": 138112
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-4",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-4.json",
+        "sha256": "69dbdcb8a6d2aea759f14d60e554ff65be2e2bae7f585be4f34364c2a4b14b8a",
+        "size_bytes": 138109
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-4.log",
+        "sha256": "69dbdcb8a6d2aea759f14d60e554ff65be2e2bae7f585be4f34364c2a4b14b8a",
+        "size_bytes": 138109
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-5",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-5.json",
+        "sha256": "3a0ae855cee6731162f84257fbf1d88b77735d99750b92de5bfde83276b935d8",
+        "size_bytes": 138115
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-5.log",
+        "sha256": "3a0ae855cee6731162f84257fbf1d88b77735d99750b92de5bfde83276b935d8",
+        "size_bytes": 138115
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-6",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-6.json",
+        "sha256": "b384342b986d33274905d1ea546318d3a46ae47e954cc832e512c27e16b496cf",
+        "size_bytes": 138119
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-6.log",
+        "sha256": "b384342b986d33274905d1ea546318d3a46ae47e954cc832e512c27e16b496cf",
+        "size_bytes": 138119
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-7",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-7.json",
+        "sha256": "a7b39be6a2f11d147ff85e3fe77570640b5026da560dab87863b71fa97da8553",
+        "size_bytes": 138110
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-7.log",
+        "sha256": "a7b39be6a2f11d147ff85e3fe77570640b5026da560dab87863b71fa97da8553",
+        "size_bytes": 138110
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [
+            "batched LM-head serial suffix kernel fence enabled"
+          ],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": true
+        },
+        "suffix_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_norm_cast_lm_head_argmax_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          }
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "c2-full-batch-suffix-kernel-fence-repeat-8",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-8.json",
+        "sha256": "72bce4a144bcb17191307937d09849bdfd1c715f682a5288b007736eaf8b74c4",
+        "size_bytes": 138120
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/c2-batch-norm-cast-suffix-kernel-fence-8.log",
+        "sha256": "72bce4a144bcb17191307937d09849bdfd1c715f682a5288b007736eaf8b74c4",
+        "size_bytes": 138120
+      },
+      "rows": 2,
+      "status": "blocked"
+    }
+  ],
+  "c2_suffix_kernel_fence_summary": {
+    "failed_count": 0,
+    "fence_checked_rows": [
+      272,
+      272,
+      272,
+      272,
+      272,
+      272,
+      272,
+      272
+    ],
+    "fence_checked_steps": [
+      136,
+      136,
+      136,
+      136,
+      136,
+      136,
+      136,
+      136
+    ],
+    "fence_host_reads": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "fence_kind": [
+      "serial_final_norm_cast_lm_head_argmax_kernel_only"
+    ],
+    "final_cast_paths": [
+      "batch"
+    ],
+    "final_norm_paths": [
+      "batch"
+    ],
+    "first_mismatch_indices": [
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ]
+    ],
+    "passed_count": 8,
+    "prefix_lengths": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "sampler_blockers": [
+      [
+        "batched LM-head serial suffix kernel fence enabled"
+      ]
+    ],
+    "sampler_modes": [
+      "batched_lm_head"
+    ]
+  },
+  "postdiag_default_controls": [
+    {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunked_layers": null,
+        "native_caware_decode": true,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "serial_per_row",
+          "blockers": [],
+          "equality_artifact": null,
+          "equality_rows": null,
+          "final_cast_path": "serial_per_row",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "serial_per_row",
+          "lm_head_audit_enabled": false,
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "serial_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": false
+        },
+        "suffix_fence": {
+          "checked_rows": null,
+          "checked_steps": null,
+          "enabled": null,
+          "host_reads": null,
+          "kind": null,
+          "last_step": null
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-c2-default-control",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/postdiag-c2-default-control.json",
+        "sha256": "bfacae048817b5c9f0dbe7de90c02f364b897779f5b481ad1acc5b5cc2f9ace7",
+        "size_bytes": 137599
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/postdiag-c2-default-control.log",
+        "sha256": "bfacae048817b5c9f0dbe7de90c02f364b897779f5b481ad1acc5b5cc2f9ace7",
+        "size_bytes": 137599
+      },
+      "rows": 2,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+          "equality_rows": 4,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": false
+        },
+        "suffix_fence": {
+          "checked_rows": null,
+          "checked_steps": null,
+          "enabled": null,
+          "host_reads": null,
+          "kind": null,
+          "last_step": null
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-c4-default-control",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/postdiag-c4-default-control.json",
+        "sha256": "4c441ce309b5d92d0d17cf879395486f308fe98f314bb247bad73c08a9e86383",
+        "size_bytes": 237878
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/postdiag-c4-default-control.log",
+        "sha256": "4c441ce309b5d92d0d17cf879395486f308fe98f314bb247bad73c08a9e86383",
+        "size_bytes": 237878
+      },
+      "rows": 4,
+      "status": "blocked"
+    },
+    {
+      "batch_execution": {
+        "blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "projection_blockers": [],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "projection_path": "benchmark_accepted_caware_projection"
+      },
+      "decode_execution": {
+        "blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunked_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "native_caware_decode": false,
+        "sampler_execution": {
+          "argmax_audit_enabled": false,
+          "argmax_mode": "batch",
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+          "equality_rows": 8,
+          "final_cast_path": "batch",
+          "final_norm_audit_enabled": false,
+          "final_norm_path": "batch",
+          "lm_head_audit_enabled": false,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head",
+          "suffix_fence_enabled": false,
+          "suffix_kernel_fence_enabled": false
+        },
+        "suffix_fence": {
+          "checked_rows": null,
+          "checked_steps": null,
+          "enabled": null,
+          "host_reads": null,
+          "kind": null,
+          "last_step": null
+        }
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "label": "postdiag-c8-default-control",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/postdiag-c8-default-control.json",
+        "sha256": "3124cdea00c4fcf6582f024a1f1a0bfad55eb2513e5d78e54bdcbfb529578c37",
+        "size_bytes": 415369
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter324-c2-suffix-kernel-fence/postdiag-c8-default-control.log",
+        "sha256": "3124cdea00c4fcf6582f024a1f1a0bfad55eb2513e5d78e54bdcbfb529578c37",
+        "size_bytes": 415369
+      },
+      "rows": 8,
+      "status": "blocked"
+    }
+  ],
+  "postdiag_default_summary": {
+    "c2": {
+      "argmax_mode": "serial_per_row",
+      "final_cast_path": "serial_per_row",
+      "final_norm_path": "serial_per_row",
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "sampler_mode": "serial_lm_head"
+    },
+    "c4": {
+      "argmax_mode": "batch",
+      "final_cast_path": "batch",
+      "final_norm_path": "batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+      "sampler_mode": "batched_lm_head"
+    },
+    "c8": {
+      "argmax_mode": "batch",
+      "final_cast_path": "batch",
+      "final_norm_path": "batch",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "full_attention_row_chunked_layers": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+      "sampler_mode": "batched_lm_head"
+    }
+  }
+}

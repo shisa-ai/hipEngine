@@ -1,0 +1,48 @@
+{
+  "schema": "p9_c13_q4t16_materializer_prototype_v1",
+  "status": "prototype_materializer_ready",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T14:54:13.050759+00:00",
+  "task": "#44 P9.C13 Build Q4 selected-dual repack materializer prototype",
+  "git_commit": "debdadc9292ebc5b59c86f3a0a9cc009d64a559f",
+  "git_status": "## gguf-bulk-prefill\n M hipengine/quant/__init__.py\n M hipengine/quant/gguf_q4_k.py\n M scripts/qwen35_gguf_moe_replay.py\n?? tests/test_gguf_q4_k_tile16_repack.py\n?? uv.lock",
+  "summary": "Implemented CPU Q4T16 tile-major materializer and exact inverse unpack for rank-3 raw GGUF Q4_K expert tensors. Added replay harness flag that builds/copies Q4T16 gate+up buffers for the first N MoE layers without using them for compute. This unblocks the HIP kernel prototype task (#45).",
+  "layout": {
+    "tile_shape": "[experts, out_tiles16, blocks_per_row, 2368]",
+    "tile_bytes": 2368,
+    "raw_tile_bytes": 2304,
+    "overhead_pct": 2.777777777777768,
+    "per_16col_kblock_fields": {
+      "d_fp16_bits_bytes": 32,
+      "dmin_fp16_bits_bytes": 32,
+      "scale_uint8_bytes": 128,
+      "min_uint8_bytes": 128,
+      "q4_nibbles_tile_major_bytes": 2048
+    }
+  },
+  "code": {
+    "materializer": "hipengine/quant/gguf_q4_k.py::repack_gguf_q4_k_tile16",
+    "inverse": "hipengine/quant/gguf_q4_k.py::unpack_gguf_q4_k_tile16",
+    "replay_flag": "scripts/qwen35_gguf_moe_replay.py --q4-tile16-materialize-layers N"
+  },
+  "validation": {
+    "unit_tests_command": "uv run --with pytest pytest tests/test_gguf_q4_k_tile16_repack.py tests/test_qwen35_gguf_moe_replay.py -q --tb=short",
+    "unit_tests_result": "7 passed",
+    "roundtrip": "Synthetic finite-metadata Q4_K raw expert tensors roundtrip bit-exact through Q4T16 pack/unpack.",
+    "replay_smoke_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --token-id 9707 --warmup-iters 0 --replay-iters 1 --sample-groups 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --q4-tile16-materialize-layers 1 --json /tmp/p9_c13/moe-replay-tile16-materialize1.json",
+    "replay_smoke_json": "/tmp/p9_c13/moe-replay-tile16-materialize1.json",
+    "first_layer_tile16_materialized": {
+      "tile_m": 32,
+      "tile_n": 16,
+      "hot_fulltile_threshold": null,
+      "sidemeta": false,
+      "tile16_materialized": true,
+      "tile16_materialized_bytes": 310378496
+    }
+  },
+  "notes": [
+    "Replay materialization smoke is not a performance claim; the Q4T16 buffers are allocated/copied and freed but not consumed by any kernel yet.",
+    "The first materialized qwen35moe layer copied 310,378,496 bytes for gate+up, matching 2 * 155,189,248-byte Q4T16 tensors.",
+    "Next task #45 should implement a HIP kernel consuming this layout, then measure first-layer and full-replay go/no-go gates from P9.C12."
+  ]
+}

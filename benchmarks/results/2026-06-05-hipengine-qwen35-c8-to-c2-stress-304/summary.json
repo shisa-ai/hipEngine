@@ -1,0 +1,216 @@
+{
+  "artifacts": {
+    "cycle1-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/cycle1-c8-compact.json"
+    },
+    "cycle1-post-c8-c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/cycle1-post-c8-c2-compact.json"
+    },
+    "cycle2-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/cycle2-c8-compact.json"
+    },
+    "cycle2-post-c8-c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/cycle2-post-c8-c2-compact.json"
+    },
+    "cycle3-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/cycle3-c8-compact.json"
+    },
+    "cycle3-post-c8-c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/cycle3-post-c8-c2-compact.json"
+    },
+    "final-c4-spot": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/final-c4-spot-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_noarg_projection_default": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-noarg-c248-post-projection-default-303/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json"
+    }
+  },
+  "conclusion": "Three current no-arg c8 all-layer rowchunk2 runs, each followed immediately by a current no-arg c2 run, stayed generated-token green on GPU1/XTX. The post-c8 c2 runs all passed [137,137] with accepted c2 projection and full native/c-aware decode, so the current c8 default does not immediately reproduce the intermittent c2 flake observed in iter303. A final c4 no-arg spot check stayed [137]*4 with accepted c4 projection and selected rowchunk layers [3,7,11,15]. This is correctness/runtime evidence only; c4/c8 remain rowchunk-diagnostic and no retained throughput/scaling claim is made.",
+  "created_at": "2026-06-04T21:39:59.426502+00:00",
+  "git_commit_before_commit": "8d98dff097b760c0dd5b0e58233201594285793c",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 304,
+  "kind": "c8_to_c2_noarg_stress_audit",
+  "performance_claim": false,
+  "result": {
+    "accepted_final_matrix": {
+      "c2": [
+        137,
+        137
+      ],
+      "c4": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "c8": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ]
+    },
+    "c8_control_cycles": {
+      "all_passed": true,
+      "prefix_lengths": [
+        [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      ],
+      "projection_candidates": [
+        "gemv_awq_selected_dual_pack8_strided_c8",
+        "gemv_awq_selected_dual_pack8_strided_c8",
+        "gemv_awq_selected_dual_pack8_strided_c8"
+      ],
+      "rowchunk_layers": [
+        [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ]
+      ],
+      "runs": 3
+    },
+    "final_c4_spot": {
+      "native_caware_decode": false,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+      "rowchunk_layers": [
+        3,
+        7,
+        11,
+        15
+      ]
+    },
+    "post_c8_c2_cycles": {
+      "all_passed": true,
+      "native_caware_decode": [
+        true,
+        true,
+        true
+      ],
+      "prefix_lengths": [
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ],
+        [
+          137,
+          137
+        ]
+      ],
+      "projection_candidates": [
+        "gemv_awq_selected_dual_pack8_strided_c2",
+        "gemv_awq_selected_dual_pack8_strided_c2",
+        "gemv_awq_selected_dual_pack8_strided_c2"
+      ],
+      "runs": 3
+    }
+  },
+  "schema": 1,
+  "sequence": [
+    "cycle1-c8",
+    "cycle1-post-c8-c2",
+    "cycle2-c8",
+    "cycle2-post-c8-c2",
+    "cycle3-c8",
+    "cycle3-post-c8-c2",
+    "final-c4-spot"
+  ],
+  "source_tmp_dir": "/tmp/hipengine-iter304-c8-then-c2-stress",
+  "status": "passed",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "expected_auto_projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "explicit_projection_dispatch_artifact": null,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

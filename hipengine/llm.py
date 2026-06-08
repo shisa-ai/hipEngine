@@ -6,8 +6,9 @@ through a registry at call time so backend/quant choices do not become engine br
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -19,6 +20,11 @@ class SamplingParams:
     temperature: float = 0.0
     top_p: float = 1.0
     ignore_eos: bool = False
+    kv_storage: str = "auto"
+    kv_scale_dtype: str = "fp16"
+    kv_scale_granularity: str = "per_token_head"
+    seed: int | None = None
+    row_seeds: tuple[int, ...] = ()
 
 
 class LLM:
@@ -37,6 +43,7 @@ class LLM:
         self._resolved_backend: str | None = None
         self._weight_index: Any | None = None
         self._model_plugin: Any | None = None
+        self._text_generator: Any | None = None
 
     def generate(
         self,
@@ -46,13 +53,61 @@ class LLM:
         prompt_tuple = _normalize_prompts(prompts)
         if not prompt_tuple:
             return []
-        params = sampling_params or SamplingParams()
+        generator = self._get_text_generator()
+        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        return generator.generate(request)
 
-        from hipengine.generation import (
-            GenerationRequest,
-            register_builtin_generators,
-            resolve_text_generator,
+    def stream(
+        self,
+        prompt: str,
+        sampling_params: SamplingParams | None = None,
+    ) -> Iterator[str]:
+        """Yield generated text chunks for a single prompt when supported."""
+
+        generator = self._get_text_generator()
+        request = _generation_request((str(prompt),), sampling_params or SamplingParams())
+        streamer = getattr(generator, "stream", None)
+        if callable(streamer):
+            yield from streamer(request)
+            return
+        for text in generator.generate(request):
+            yield text
+
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: SamplingParams | None = None,
+    ) -> int | None:
+        """Eagerly prepare a resident session when the generator supports it.
+
+        Passing ``max_sequence_length=None`` lets generators choose the largest
+        context they can preallocate for the selected model/KV policy.
+        """
+
+        generator = self._get_text_generator()
+        preparer = getattr(generator, "prepare", None)
+        if not callable(preparer):
+            return None
+        return preparer(
+            max_sequence_length=None if max_sequence_length is None else int(max_sequence_length),
+            sampling_params=sampling_params or SamplingParams(),
         )
+
+    def count_tokens(self, text: str) -> int:
+        """Return tokenizer token count when the resolved generator exposes one."""
+
+        generator = self._get_text_generator()
+        counter = getattr(generator, "count_tokens", None)
+        if not callable(counter):
+            raise NotImplementedError("token counting is not supported by this generator")
+        return int(counter(str(text)))
+
+    def _get_text_generator(self) -> Any:
+        if self._text_generator is not None:
+            return self._text_generator
+
+        from hipengine.generation import SubmitPollTextGenerator, register_builtin_generators, resolve_text_generator
 
         register_builtin_generators()
         weight_index, model_plugin = self._load_model_metadata()
@@ -62,20 +117,14 @@ class LLM:
             backend=backend,
             quant=self.quant,
         )
-        generator = factory(
-            model_path=self.model,
-            weight_index=weight_index,
-            model_plugin=model_plugin,
-        )
-        return generator.generate(
-            GenerationRequest(
-                prompts=prompt_tuple,
-                max_tokens=params.max_tokens,
-                temperature=params.temperature,
-                top_p=params.top_p,
-                ignore_eos=params.ignore_eos,
+        self._text_generator = SubmitPollTextGenerator(
+            factory(
+                model_path=self.model,
+                weight_index=weight_index,
+                model_plugin=model_plugin,
             )
         )
+        return self._text_generator
 
     def _resolve_backend(self) -> str:
         if self._resolved_backend is not None:
@@ -90,17 +139,48 @@ class LLM:
         if self._weight_index is not None and self._model_plugin is not None:
             return self._weight_index, self._model_plugin
 
-        from hipengine.loading import load_weight_index
+        from hipengine.loading import discover_gguf_files, load_gguf_index, load_weight_index, resolve_model_path
         from hipengine.models import resolve_model
 
-        index = load_weight_index(self.model)
-        # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
-        # real directory instead of an HF model ID string.
-        self.model = str(index.model_path)
-        plugin = resolve_model(_primary_architecture(index.config))
+        model_path = resolve_model_path(self.model)
+        if _looks_like_gguf_path(model_path):
+            index = load_gguf_index(discover_gguf_files(model_path)[0])
+            self.model = str(index.path)
+            plugin = resolve_model(index.architecture or "")
+        else:
+            index = load_weight_index(self.model)
+            # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
+            # real directory instead of an HF model ID string.
+            self.model = str(index.model_path)
+            plugin = resolve_model(_primary_architecture(index.config))
         self._weight_index = index
         self._model_plugin = plugin
         return index, plugin
+
+
+def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
+    from hipengine.generation import GenerationRequest
+
+    return GenerationRequest(
+        prompts=prompt_tuple,
+        max_tokens=params.max_tokens,
+        temperature=params.temperature,
+        top_p=params.top_p,
+        ignore_eos=params.ignore_eos,
+        kv_storage=params.kv_storage,
+        kv_scale_dtype=params.kv_scale_dtype,
+        kv_scale_granularity=params.kv_scale_granularity,
+        seed=params.seed,
+        row_seeds=params.row_seeds,
+    )
+
+
+def _looks_like_gguf_path(path: Path) -> bool:
+    if path.is_file():
+        return path.suffix.lower() == ".gguf"
+    if path.is_dir():
+        return any(path.glob("*.gguf"))
+    return path.suffix.lower() == ".gguf"
 
 
 def _normalize_prompts(prompts: str | Iterable[str]) -> tuple[str, ...]:

@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "rows": 3,
+  "seed": 1234,
+  "block_size": 256,
+  "max_context_len": 640,
+  "num_q_heads": 16,
+  "num_kv_heads": 2,
+  "head_dim": 256,
+  "context_lens": [
+    520,
+    520,
+    520
+  ],
+  "device": {
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    },
+    "hipGetDeviceCount_error": 0,
+    "visible_device_count": 1,
+    "hipGetDevice_error": 0,
+    "current_device": 0,
+    "hipDeviceGetName_error": 0,
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "append_key_mismatch": 0,
+  "append_value_mismatch": 0,
+  "append_batch_aa_key_mismatch": 0,
+  "append_batch_aa_value_mismatch": 0,
+  "attn_batch_vs_c1_max_abs": 0.0,
+  "attn_batch_vs_numpy_max_abs": 2.0489096641540527e-08,
+  "attn_batch_aa_max_abs": 0.0,
+  "aa_passed": true,
+  "passed": true,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c348-realshape-primitive-attn/primitive-c3-context520-realshape.json"
+}

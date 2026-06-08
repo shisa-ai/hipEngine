@@ -1,0 +1,193 @@
+{
+  "commands": [
+    "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-decode-linear-projection-path batch --json /tmp/hipengine-e2e-native-c2-512-128-native-projection-iter79.json",
+    "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-decode-linear-projection-path batch_gemv --json /tmp/hipengine-e2e-native-c2-512-128-proj-batch_gemv-iter79.json",
+    "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-decode-linear-projection-path batch_gemv_selected_ab --json /tmp/hipengine-e2e-native-c2-512-128-proj-batch_gemv_selected_ab-iter79.json",
+    "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-decode-linear-projection-path selected_ab --json /tmp/hipengine-e2e-native-c2-512-128-proj-selected_ab-iter79.json"
+  ],
+  "conclusion": "Rejected: native_batch, batch_gemv, batch_gemv_selected_ab, and selected_ab projection paths all failed generated-token equality with prefixes [82,104]. The selected-QKV/Z correctness fallback remains required; the native projection/projection-dispatch blocker is not eliminated.",
+  "created_at": "2026-06-02T15:11:08.965626Z",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "goal": "Probe whether any current non-selected-QKV/Z c=2 projection path is ready to replace the selected-QKV/Z correctness fallback under grouped MoE defaults.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "probes": [
+    {
+      "batch_decode_linear_projection_path": "batch",
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "blockers": [],
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      },
+      "generated_equality_passed": false,
+      "min_equal_prefix_tokens": 82,
+      "mismatch_summary": [
+        {
+          "batch_token": 8204,
+          "c1_token": 27502,
+          "first_mismatch_index": 82,
+          "row": 0
+        },
+        {
+          "batch_token": 2713,
+          "c1_token": 799,
+          "first_mismatch_index": 104,
+          "row": 1
+        }
+      ],
+      "name": "native_batch",
+      "prefix_lengths": [
+        82,
+        104
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-native-projection-iter79.json"
+    },
+    {
+      "batch_decode_linear_projection_path": "batch_gemv",
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "linear-attention projections forced to batch GEMV diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "blockers": [
+          "linear-attention projections forced to batch GEMV diagnostic path"
+        ],
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "batch_gemv",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "generated_equality_passed": false,
+      "min_equal_prefix_tokens": 82,
+      "mismatch_summary": [
+        {
+          "batch_token": 8204,
+          "c1_token": 27502,
+          "first_mismatch_index": 82,
+          "row": 0
+        },
+        {
+          "batch_token": 2713,
+          "c1_token": 799,
+          "first_mismatch_index": 104,
+          "row": 1
+        }
+      ],
+      "name": "batch_gemv",
+      "prefix_lengths": [
+        82,
+        104
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-proj-batch_gemv-iter79.json"
+    },
+    {
+      "batch_decode_linear_projection_path": "batch_gemv_selected_ab",
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "linear-attention A/B projections forced to selected-c1 diagnostic path",
+        "linear-attention projections forced to batch GEMV diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "blockers": [
+          "linear-attention A/B projections forced to selected-c1 diagnostic path",
+          "linear-attention projections forced to batch GEMV diagnostic path"
+        ],
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "batch_gemv_selected_c1_ab",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "generated_equality_passed": false,
+      "min_equal_prefix_tokens": 82,
+      "mismatch_summary": [
+        {
+          "batch_token": 8204,
+          "c1_token": 27502,
+          "first_mismatch_index": 82,
+          "row": 0
+        },
+        {
+          "batch_token": 2713,
+          "c1_token": 799,
+          "first_mismatch_index": 104,
+          "row": 1
+        }
+      ],
+      "name": "batch_gemv_selected_ab",
+      "prefix_lengths": [
+        82,
+        104
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-proj-batch_gemv_selected_ab-iter79.json"
+    },
+    {
+      "batch_decode_linear_projection_path": "selected_ab",
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "linear-attention A/B projections forced to selected-c1 diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_execution": {
+        "blockers": [
+          "linear-attention A/B projections forced to selected-c1 diagnostic path"
+        ],
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "selected_c1_ab",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "generated_equality_passed": false,
+      "min_equal_prefix_tokens": 82,
+      "mismatch_summary": [
+        {
+          "batch_token": 8204,
+          "c1_token": 27502,
+          "first_mismatch_index": 82,
+          "row": 0
+        },
+        {
+          "batch_token": 2713,
+          "c1_token": 799,
+          "first_mismatch_index": 104,
+          "row": 1
+        }
+      ],
+      "name": "selected_ab",
+      "prefix_lengths": [
+        82,
+        104
+      ],
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-proj-selected_ab-iter79.json"
+    }
+  ],
+  "retained_ready": false,
+  "schema": 1,
+  "status": "blocked",
+  "workload": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

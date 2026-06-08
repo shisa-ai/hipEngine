@@ -1,0 +1,189 @@
+{
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-c4-c8-native-batched-lm-head-equality.json",
+  "artifact_type": "qwen35_native_batched_lm_head_equality_summary",
+  "hardware": {
+    "arch": "gfx1100",
+    "default_hardware": false,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "rocm_smi": {
+      "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "output": "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status\n\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 36.0\nGPU[0]\t\t: Temperature (Sensor junction) (C): 44.0\nGPU[0]\t\t: Temperature (Sensor memory) (C): 48.0\nGPU[1]\t\t: Temperature (Sensor edge) (C): 45.0\nGPU[1]\t\t: Temperature (Sensor junction) (C): 56.0\nGPU[1]\t\t: Temperature (Sensor memory) (C): 66.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 0\nGPU[1]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 48301604864\nGPU[0]\t\t: VRAM Total Used Memory (B): 28065792\nGPU[1]\t\t: VRAM Total Memory (B): 25753026560\nGPU[1]\t\t: VRAM Total Used Memory (B): 410050560\n==========================================================================================\n================================== End of ROCm SMI Log ===================================",
+      "returncode": 0
+    },
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|gfx'\"'\"' | head -4'",
+      "output": "Name:                    AMD Ryzen 9 5950X 16-Core Processor\n  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor\n  Vendor Name:             CPU                                \n  Name:                    gfx1100",
+      "returncode": 0
+    },
+    "visible_device": {
+      "current_device": 0,
+      "device_name": "AMD Radeon RX 7900 XTX",
+      "env": {
+        "HIP_VISIBLE_DEVICES": "1"
+      },
+      "hipDeviceGetName_error": 0,
+      "hipGetDeviceCount_error": 0,
+      "hipGetDevice_error": 0,
+      "visible_device_count": 1
+    }
+  },
+  "notes": "Correctness/runtime-evidence artifact only; not a retained throughput/scaling claim and no profiler/scaling rollup is implied.",
+  "performance_claim": false,
+  "rows": [
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-batched-lm-head.json",
+      "concurrency": 2,
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "performance_claim": false,
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "equality_rows": 2,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "rows": 2
+      },
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-batched-lm-head.json",
+      "status": "blocked",
+      "workload": {
+        "batch_decode_full_attention_moe_path": "per_row_c1",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_projection_path": "selected_qkv_z",
+        "batch_decode_post_attention_path": "batch",
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+        "batch_sample_eq_rows": 2,
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 2,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c4-512-128-batched-lm-head.json",
+      "concurrency": 4,
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "performance_claim": false,
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "equality_rows": 4,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "rows": 4
+      },
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c4-512-128-batched-lm-head.json",
+      "status": "blocked",
+      "workload": {
+        "batch_decode_full_attention_moe_path": "per_row_c1",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_projection_path": "selected_qkv_z",
+        "batch_decode_post_attention_path": "batch",
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "batch_sample_eq_rows": 4,
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 4,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c8-512-128-batched-lm-head.json",
+      "concurrency": 8,
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "mismatches": [],
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ]
+      },
+      "performance_claim": false,
+      "sampler_execution": {
+        "blockers": [],
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+        "equality_rows": 8,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "requested_mode": "batched_lm_head",
+        "rows": 8
+      },
+      "source_artifact_path": "/tmp/hipengine-e2e-native-c8-512-128-batched-lm-head.json",
+      "status": "blocked",
+      "workload": {
+        "batch_decode_full_attention_moe_path": "per_row_c1",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_linear_projection_path": "selected_c1",
+        "batch_decode_post_attention_path": "batch",
+        "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+        "batch_sample_eq_rows": 8,
+        "batch_sample_mode": "batched_lm_head",
+        "concurrency": 8,
+        "gen_tokens_per_request": 128,
+        "max_layers": 40,
+        "prompt_tokens_per_request": 512,
+        "warmup_decode_tokens": 8
+      }
+    }
+  ],
+  "schema": 1,
+  "source_artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-c4-c8-native-batched-lm-head-equality.json",
+  "status": "passed_equality_blocked_retained",
+  "summary": "c=2/c=4/c=8 Qwen/PARO 512/128 generated-token equality stayed green with requested native batched_lm_head sampler/LM-head and same-row equality evidence artifacts."
+}

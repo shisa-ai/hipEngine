@@ -1,0 +1,111 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "diagnostic_smoke_passed",
+  "performance_claim": false,
+  "label": "p10_gguf_chunked_prefill_32k_128_smoke_after_review",
+  "date": "2026-05-21",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local 24 GiB gfx1100 card; W7900 not rerun for this smoke"
+  },
+  "command": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 32768 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/hipengine-gguf-32k-128-chunked-review-smoke.json",
+  "git_commit_under_test": null,
+  "workload": {
+    "prompt_length": 32768,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "max_sequence_length": 32898,
+    "prompt_source": "repeated_token_id",
+    "token_id": 9707
+  },
+  "prefill_policy": {
+    "requested_prefill_chunk_size": 0,
+    "requested_prefill_chunk_sizes": {
+      "linear": 0,
+      "moe": 0,
+      "full_attn_query": 0,
+      "full_attn_post": 0,
+      "full_attn_rope": 0
+    },
+    "prefill_chunk_autotune": true,
+    "resolved_prefill_chunk_sizes": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024,
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 32768
+    },
+    "prefill_chunk_tuning": {
+      "enabled": true,
+      "applied": true,
+      "reason": "long_context_static_budget",
+      "max_sequence_length": 33024,
+      "source": "p5.2_profile_derived",
+      "memory_budget_gib": 13.191406250000002,
+      "estimated_peak_gib": 23.3,
+      "chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      }
+    },
+    "aotriton": "V3 compact-varlen bottom-right causal via persistent atomic buffer"
+  },
+  "fastpath": {
+    "allow_unsafe_qwen35moe_fastpaths": true,
+    "decode_repack": true,
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "effective_use_gemv_decode": true,
+    "fastpath_safety": {
+      "is_qwen35moe": true,
+      "allow_unsafe_qwen35moe_fastpaths": true,
+      "requested_wmma_prefill": true,
+      "requested_gemv_decode": true,
+      "effective_wmma_prefill": true,
+      "effective_gemv_decode": true,
+      "disabled_wmma_prefill": false,
+      "disabled_gemv_decode": false,
+      "reason": null
+    }
+  },
+  "result": {
+    "prefill_tok_s": 1859.3283062619478,
+    "decode_tok_s": 85.14469271677153,
+    "prefill_seconds": 17.62356862402521,
+    "decode_seconds_excluding_graph_capture": 1.5033232949208468,
+    "tracked_peak_allocated_gib": 23.368930347263813,
+    "owned_session_peak_gib": 23.368929386138916,
+    "hip_used_peak_sampled_gib": 23.87451171875,
+    "finite_final_logits": true,
+    "final_token_id": 220,
+    "final_logit": 14.558538436889648
+  },
+  "baseline_blocked_artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-preflight-blocked.json",
+  "previous_blocked_estimate": {
+    "estimated_owned_session_gib": 32.506046772003174,
+    "device_total_gib": 23.984375,
+    "status": "blocked_preflight_oom_before_chunked_prefill"
+  },
+  "validation": {
+    "pytest": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q -> 11 passed",
+    "correctness_scope": "finite logits and deterministic smoke only; not a full KL/text-quality gate"
+  },
+  "decision": "diagnostic evidence only; do not update benchmark rollup until repeated runs and W7900 rerun / correctness gate are complete",
+  "notes": [
+    "This run demonstrates 32K/128 now fits on the local RX 7900 XTX 24 GiB card after chunked prefill review fixes.",
+    "The result should not be compared directly to W7900 PARO rows until rerun on W7900.",
+    "128K/128 remains untested after this correction pass."
+  ]
+}

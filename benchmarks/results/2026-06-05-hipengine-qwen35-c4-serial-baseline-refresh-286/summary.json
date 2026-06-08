@@ -1,0 +1,99 @@
+{
+  "artifacts": {
+    "compact_c1_baseline_json": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json",
+    "compact_serial_bridge_json": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-serial-baseline-refresh-286/c4-serial-bridge-scaling.json",
+    "raw_retained_with_baselines_json": "/tmp/hipengine-iter286-c4-scaling-baseline/c4-retained-with-baselines.json",
+    "raw_serial_bridge_json": "/tmp/hipengine-iter286-c4-scaling-baseline/c4-serial-bridge.json"
+  },
+  "baselines": {
+    "c1": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json",
+      "decode_tok_s_aggregate": 134.35835066115024,
+      "decode_tok_s_per_request": 134.35835066115024,
+      "status": "loaded"
+    },
+    "serial_bridge_c4": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c4-serial-baseline-refresh-286/c4-serial-bridge-scaling.json",
+      "correctness_passed": true,
+      "decision_reason": "batch_execution.throughput_claim_eligible=false: current c>N path is scheduler_serial_slot_bridge",
+      "decode_tok_s_aggregate": 108.52410193473959,
+      "decode_tok_s_per_request": 27.131025483684898,
+      "status": "blocked"
+    }
+  },
+  "commands": {
+    "retained_with_compact_baselines": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json --c1-baseline-json benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json --serial-bridge-json benchmarks/results/2026-06-05-hipengine-qwen35-c4-serial-baseline-refresh-286/c4-serial-bridge-scaling.json --json /tmp/hipengine-iter286-c4-scaling-baseline/c4-retained-with-baselines.json",
+    "serial_bridge": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter286-c4-scaling-baseline/c4-serial-bridge.json"
+  },
+  "created_utc": "2026-06-04T16:52:22Z",
+  "finding": "Collected a reusable compact c4 scheduler-serial-bridge scaling baseline on GPU1/XTX and attached it with the committed compact c1 baseline to a current c4 retained rowchunk2 run. The retained c4 run stayed generated-token green ([137]*4) and scaling.complete=true; aggregate native/c1 was 1.053 and native/serial-bridge was 1.303, but retained scaling remains blocked because the run is still the diagnostic rowchunk2 full-attention path with native_caware_decode=false, so no throughput/scaling claim is made.",
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 286,
+  "mode": "qwen35_c4_serial_baseline_refresh",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: adds required c4 serial-bridge baseline runtime evidence and a c4 scaling-complete retained attachment on GPU1/XTX while generated-token equality remains green; no retained throughput/scaling claim.",
+    "passed": true
+  },
+  "retained_c4_with_compact_baselines": {
+    "batch_blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "c1_reason": null,
+    "decode_blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_row_chunk_size": 2,
+    "generated_token_equality_passed": true,
+    "native": {
+      "decode_tok_s_aggregate": 141.42019924107,
+      "decode_tok_s_per_request": 35.3550498102675
+    },
+    "native_caware_decode": false,
+    "performance_claim": false,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "ratios": {
+      "aggregate_vs_c1": 1.0525598040253534,
+      "aggregate_vs_serial_bridge": 1.3031225020052442,
+      "per_request_vs_c1": 0.26313995100633836,
+      "per_request_vs_serial_bridge": 1.3031225020052442
+    },
+    "retained_blocker_summary": [
+      "rowchunk2 full-attention diagnostic path keeps native_caware_decode=false",
+      "profiler JSON was not attached to this baseline-attachment run",
+      "artifact/compiler-version paths were /tmp diagnostics, not retained benchmark rollup paths"
+    ],
+    "scaling_complete": true,
+    "serial_bridge_reason": null,
+    "status": "blocked"
+  },
+  "retained_ready": false,
+  "schema": 1,
+  "software": {
+    "hipengine_commit": "8cb615f428450157991eb42c8a7654c78d8420cd"
+  },
+  "status": "passed_required_runtime_evidence",
+  "validation": {
+    "compact_references_positive_decode_rates": true,
+    "compact_references_reason_none": true
+  },
+  "workload": {
+    "batch_size": 4,
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

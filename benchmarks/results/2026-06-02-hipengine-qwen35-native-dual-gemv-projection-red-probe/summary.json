@@ -1,0 +1,166 @@
+{
+  "change": "Rejected temporary batch-GEMV QKV/Z projection rewrite that used one dual GEMV over c rows followed by planar qkv/z copies.",
+  "comparison_to_prior": {
+    "batch_gemv_prefix_lengths_after_temporary_patch": [
+      82,
+      137
+    ],
+    "batch_gemv_prefix_lengths_before": [
+      82,
+      104
+    ],
+    "prior_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-native-projection-red-probe/summary.json",
+    "selected_qkv_z_input_prefix_lengths_after_temporary_patch": [
+      82,
+      104
+    ],
+    "selected_qkv_z_input_prefix_lengths_before": [
+      82,
+      104
+    ]
+  },
+  "conclusion": [
+    "The dual-GEMV planar-copy experiment improves only the second row for the batch_gemv generated probe; the minimum c=2 prefix remains 82, so it cannot replace selected-QKV/Z.",
+    "The selected-QKV/Z-input probe remains generated-token red at [82,104], so token-1 rotary inputs plus this dual GEMV are still insufficient.",
+    "Layer-1 hidden probes show QKV/Z projection drift is under the hidden tolerance but not bit-exact, and hidden parity remains red; selected-QKV/Z remains required.",
+    "No runtime code was retained and no c>N performance/scaling claim is made."
+  ],
+  "created_at": "2026-06-02T15:35:10.642060Z",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "probes": {
+    "generated_512x128": [
+      {
+        "batch_decode_linear_projection_path": "batch_gemv",
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-linear-projection-path batch_gemv --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-dual-gemv-batch_gemv-iter80.json",
+        "first_mismatch_indices": [
+          82,
+          null
+        ],
+        "generated_token_equality_passed": false,
+        "min_equal_prefix_tokens": 82,
+        "name": "batch_gemv_with_temporary_dual_gemv_planar_copy",
+        "notes": [
+          "Compared with the prior grouped-default projection refresh artifact; still rejected because min prefix remains below 137."
+        ],
+        "prefix_lengths": [
+          82,
+          137
+        ],
+        "prior_prefix_lengths": [
+          82,
+          104
+        ],
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-dual-gemv-batch_gemv-iter80.json",
+        "status": "rejected_correctness"
+      },
+      {
+        "batch_decode_linear_projection_path": "selected_qkv_z_input",
+        "command": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-linear-projection-path selected_qkv_z_input --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128-dual-gemv-selected_qkv_z_input-iter80.json",
+        "first_mismatch_indices": [
+          82,
+          104
+        ],
+        "generated_token_equality_passed": false,
+        "min_equal_prefix_tokens": 82,
+        "name": "selected_qkv_z_input_with_temporary_dual_gemv_planar_copy",
+        "notes": [
+          "Compared with the prior grouped-default projection refresh artifact; still rejected because min prefix remains below 137."
+        ],
+        "prefix_lengths": [
+          82,
+          104
+        ],
+        "prior_prefix_lengths": [
+          82,
+          104
+        ],
+        "source_artifact_path": "/tmp/hipengine-e2e-native-c2-512-128-dual-gemv-selected_qkv_z_input-iter80.json",
+        "status": "rejected_correctness"
+      }
+    ],
+    "hidden_layer1_decode1": [
+      {
+        "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --layer-limits 1 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-linear-projection-path batch_gemv --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-batch-gemv-dual-nativec1-l1-d1-iter80.json",
+        "correctness_passed": false,
+        "failure_modes": [
+          "hidden"
+        ],
+        "first_hidden_mismatch": {
+          "decode_step": 0,
+          "elements_over_atol": 1857,
+          "layer_limit": 1,
+          "max_abs": 0.504638671875,
+          "max_abs_index": [
+            0,
+            1269
+          ],
+          "row": 0
+        },
+        "hidden_passed": false,
+        "name": "batch_gemv_with_temporary_dual_gemv_planar_copy",
+        "projection_bit_exact": false,
+        "projection_drift_stages": [
+          "qkv",
+          "z"
+        ],
+        "projection_over_atol_drift_stages": [],
+        "projection_passed_under_atol": true,
+        "source_artifact_path": "/tmp/hipengine-hidden-batch-gemv-dual-nativec1-l1-d1-iter80.json",
+        "status": "mismatch_found",
+        "token_passed": true
+      },
+      {
+        "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --layer-limits 1 --trace-decode-start 0 --trace-decode-end 1 --c1-decode-path native_batch --batch-decode-linear-projection-path selected_qkv_z_input --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-hidden-selected-qkvz-input-dual-nativec1-l1-d1-iter80.json",
+        "correctness_passed": false,
+        "failure_modes": [
+          "hidden"
+        ],
+        "first_hidden_mismatch": {
+          "decode_step": 0,
+          "elements_over_atol": 1857,
+          "layer_limit": 1,
+          "max_abs": 0.504638671875,
+          "max_abs_index": [
+            0,
+            1269
+          ],
+          "row": 0
+        },
+        "hidden_passed": false,
+        "name": "selected_qkv_z_input_with_temporary_dual_gemv_planar_copy",
+        "projection_bit_exact": false,
+        "projection_drift_stages": [
+          "qkv",
+          "z"
+        ],
+        "projection_over_atol_drift_stages": [],
+        "projection_passed_under_atol": true,
+        "source_artifact_path": "/tmp/hipengine-hidden-selected-qkvz-input-dual-nativec1-l1-d1-iter80.json",
+        "status": "mismatch_found",
+        "token_passed": true
+      }
+    ]
+  },
+  "retained_ready": false,
+  "schema": 1,
+  "status": "blocked",
+  "temporary_patch": {
+    "file": "hipengine/runtime/qwen35_paro.py",
+    "function": "Qwen35ParoDecodeState.project_linear_attention_qkv_z_fp16",
+    "retained": false,
+    "summary": "In the force_gemv branch, replaced two independent qkv/z GEMV launches with gemv_awq_dual_pack8_transposed_fp16 into a row-interleaved temporary buffer, then copied each row into the existing planar qkv/z scratch views."
+  },
+  "workload": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  }
+}

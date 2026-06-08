@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-score-scale/summary.json",
+  "created_at": "2026-06-02T22:23:31.347578Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "c=2 native batch full-attention score-scaling cleanup: the value-parallel path now applies inv_denom while reading scores instead of rewriting normalized scores first. Correctness remains green and profiler context-kernel time improves slightly, but end-to-end projection-check throughput is neutral/noisy and c2 remains below c1; no retained c2 claim.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "e24506d09b3a3adcbd4d810df41df900894148af",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "code_change": {
+    "file": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+    "description": "In the long-context value-parallel branch, skip the separate scores[token] *= inv_denom shared-memory writeback and apply inv_denom in the value accumulation read. The value_groups==1 primitive/c1-style branch is unchanged."
+  },
+  "rejected_alternatives": [
+    {
+      "name": "parallel_softmax_writeback",
+      "status": "rejected",
+      "evidence": "Dirty c2 primary run stayed generated-token green but slowed to 110.080 tok/s aggregate, below the kept value-scan baseline; not retained."
+    },
+    {
+      "name": "512_thread_value_groups",
+      "status": "rejected",
+      "evidence": "Dirty c2 primary run stayed generated-token green but slowed to 107.328 tok/s aggregate; 1024-thread c2 launch retained."
+    }
+  ],
+  "workload": {
+    "rows": 2,
+    "shape": "c=2 prompt=512 decode=128",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch",
+    "batch_sample_mode": "batched_lm_head"
+  },
+  "correctness": {
+    "primary_equal_prefix": 137,
+    "primary_prefixes": [
+      137,
+      137
+    ],
+    "projection_check_prefixes": [
+      [
+        137,
+        137
+      ],
+      [
+        137,
+        137
+      ]
+    ],
+    "profiled_prefixes": [
+      137,
+      137
+    ],
+    "primitive_c2_tmp_artifact": "/tmp/hipengine-e2e-primitive-c2.json",
+    "primitive_c8_tmp_artifact": "/tmp/hipengine-e2e-primitive-c8.json"
+  },
+  "measurements": {
+    "primary_verify_decode_tok_s_aggregate": 112.49676733685209,
+    "primary_verify_decode_tok_s_per_request": 56.248383668426044,
+    "prior_value_scan_primary_verify_decode_tok_s_aggregate": 110.6770211313767,
+    "primary_delta_vs_prior_value_scan": 1.0164419514265324,
+    "projection_check_decode_tok_s_aggregate_runs": [
+      112.2724886276211,
+      110.26390713670745
+    ],
+    "projection_check_decode_tok_s_aggregate_best": 112.2724886276211,
+    "projection_check_decode_tok_s_aggregate_mean": 111.26819788216427,
+    "prior_value_scan_projection_check_decode_tok_s_aggregate": 112.43271729808264,
+    "projection_check_best_delta_vs_prior_value_scan": 0.9985748928398063,
+    "projection_check_mean_delta_vs_prior_value_scan": 0.989642521821909,
+    "c1_decode_tok_s_aggregate": 134.1118139970783,
+    "projection_check_best_vs_c1": 0.8371558424380646,
+    "serial_bridge_decode_tok_s_aggregate": 79.85063957880106,
+    "projection_check_best_vs_serial_bridge": 1.4060311754525692
+  },
+  "profiler": {
+    "raw_trace_tmp_path": "/tmp/hipengine-e2e-native-c2-invscale-profile-clean-iter111/epyc/190431_kernel_trace.csv",
+    "raw_trace_sha256": "94f9e77d8f1c3d03608ab85ca566624bb728d87bf2a0a61195b186521045b267",
+    "raw_trace_size_bytes": 127848746,
+    "raw_trace_not_retained_reason": "raw rocprof CSV is large and intentionally left under /tmp; this compact artifact records aggregate evidence only",
+    "profiled_decode_tok_s_aggregate": 81.57757493115152,
+    "attention_context_kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+    "attention_context_duration_ns": 467859228,
+    "attention_context_calls": 4080,
+    "prior_value_scan_attention_context_duration_ns": 470598389,
+    "attention_context_duration_delta_vs_prior_value_scan": 0.9941794084637209,
+    "top_kernels": [
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+        "duration_ns": 467859228,
+        "calls": 4080
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",
+        "duration_ns": 336391335,
+        "calls": 29920
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+        "duration_ns": 326992094,
+        "calls": 16320
+      },
+      {
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",
+        "duration_ns": 305719348,
+        "calls": 412
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",
+        "duration_ns": 289355543,
+        "calls": 16320
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+        "duration_ns": 238665039,
+        "calls": 24480
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+        "duration_ns": 236764348,
+        "calls": 4080
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "duration_ns": 213164638,
+        "calls": 21760
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+        "duration_ns": 189334792,
+        "calls": 32970
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",
+        "duration_ns": 174298496,
+        "calls": 32760
+      }
+    ]
+  },
+  "source_tmp_artifacts": {
+    "primary_verify": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "projection_check_runs": [
+      "/tmp/hipengine-e2e-native-c2-invscale-projcheck-clean-iter111.json",
+      "/tmp/hipengine-e2e-native-c2-invscale-projcheck-clean-iter111-r2.json"
+    ],
+    "profiled_projection_check": "/tmp/hipengine-e2e-native-c2-invscale-profiled-clean-iter111.json",
+    "dirty_kept_primary_before_commit": "/tmp/hipengine-e2e-native-c2-invscale-dirty-iter111.json",
+    "dirty_kept_projection_before_commit": "/tmp/hipengine-e2e-native-c2-invscale-projcheck-dirty-iter111.json",
+    "rejected_parallel_softmax": "/tmp/hipengine-e2e-native-c2-softmax-dirty-iter111.json",
+    "rejected_512_threads": "/tmp/hipengine-e2e-native-c2-threads512-valuegroups-dirty-iter111.json"
+  },
+  "source_artifacts": {
+    "prior_value_scan": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-value-scan/summary.json",
+    "prior_scaling_blocker": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/scaling-blocker-c2.json",
+    "projection_evidence": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json"
+  },
+  "conclusion": {
+    "accepted": false,
+    "reason": "The score-scaling cleanup preserves c2 generated-token equality and slightly reduces the traced native batch context-kernel duration to 0.994x of the prior value-scan artifact. Primary default verify improved to 1.016x prior, but projection-check throughput was neutral/noisy (best 0.999x, mean 0.989x prior) and remains below c1; no retained c2 performance claim."
+  },
+  "commands": {
+    "primary_verify": "active loop verify command at clean commit e24506d0 with HIP_VISIBLE_DEVICES=1; output /tmp/hipengine-e2e-native-c2-512-128.json",
+    "projection_check": "Two HIP_VISIBLE_DEVICES=1 retained-bench projection-check runs with --primitive-correctness-json benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/primitive-c2.json and --projection-dispatch-artifact benchmarks/results/2026-06-02-hipengine-qwen35-native-c2-projection-dispatch-evidence/summary.json",
+    "profiled": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-e2e-native-c2-invscale-profile-clean-iter111 -- env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --json /tmp/hipengine-e2e-native-c2-invscale-profiled-clean-iter111.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json"
+  }
+}

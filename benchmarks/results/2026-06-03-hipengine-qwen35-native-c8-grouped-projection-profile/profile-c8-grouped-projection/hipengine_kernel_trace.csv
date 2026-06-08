@@ -1,0 +1,62 @@
+Kernel_Name,DurationNs,Calls
+"(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",1862758701,16320
+"void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)",1271325304,107440
+"(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)",1218810351,1240
+"void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",1159821685,53040
+"void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",1093468091,53040
+"(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",882675623,270
+"void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",764165850,61200
+"void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",736933894,74800
+"void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",692889512,107070
+"void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)",594022632,106440
+"void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",479192004,90390
+"void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",470680709,360
+"void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",410549674,32640
+"void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",378281096,4080
+"(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",360658283,53400
+"void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)",348498783,720
+"void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)",258387799,360
+"void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)",225538296,48960
+"void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)",209882156,53400
+__amd_rocclr_copyBuffer,197820349,79670
+"void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)",176772638,54640
+"void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<_Float16, 4>(_Float16 const*, unsigned short const*, float*, long, long, long)",150745620,4440
+"void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<32, 32, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",149719754,810
+"(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_position_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",128777039,21760
+"void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)",127431619,43520
+"void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",117623102,21850
+"void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)",112859653,32640
+"void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)",108954577,32640
+__amd_rocclr_fillBufferAligned,101246513,40250
+"void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",91019563,16320
+"(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_kernel(float const*, float const*, float const*, float*, int const*, long const*, long, long, long)",90493385,4350
+"(anonymous namespace)::qwen35_split_qgate_fp16_kernel(_Float16 const*, float*, _Float16*, long, long, long)",75681761,21850
+"(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)",66661236,26200
+"(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)",62749320,36720
+"void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",50618280,270
+"(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",50082355,9880
+"void (anonymous namespace)::weighted_lanes_sum_out_kernel<_Float16>(_Float16 const*, float const*, long const*, _Float16*, long, long, long)",47106639,9880
+"void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",45884556,8700
+attn_fwd,43727214,90
+"(anonymous namespace)::qwen35_full_attn_gate_mul_fp16_kernel(float const*, _Float16 const*, _Float16*, long)",30081127,16320
+"(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)",27608909,9880
+"(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",26344819,9880
+"(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)",26195559,270
+"void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<_Float16>(_Float16 const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long, long)",23333749,9880
+"(anonymous namespace)::qwen35_linear_attn_conv_prefill_segments_state_kernel(float const*, float*, int const*, long const*, long, long, long)",17183790,4350
+"(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",16151039,9880
+"(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)",15545311,9880
+"(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",11307668,90
+"(anonymous namespace)::qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, long const*, unsigned short*, float*, float, long, long, long, long, long, long)",7308664,90
+"(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)",7063461,1224
+"(anonymous namespace)::embedding_lookup_batch_mapped_bf16_i64_kernel(unsigned short const*, long const*, int const*, unsigned short*, long, long, long, long)",4685167,1224
+"(anonymous namespace)::set_i64_vector_kernel(long*, long const*, long)",4021069,1224
+"(anonymous namespace)::fp16_to_bf16_kernel(_Float16 const*, unsigned short*, long)",3744317,1330
+"(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)",3615796,1224
+"(anonymous namespace)::set_decode_positions_i64_kernel(long*, long*, long const*, unsigned char const*, long)",2132421,1224
+"void (anonymous namespace)::silu_mul_separate_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long)",1482650,360
+"void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",681248,90
+"(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",336165,90
+"(anonymous namespace)::embedding_lookup_batch_bf16_i64_kernel(unsigned short const*, long const*, unsigned short*, long, long, long)",215242,9
+"(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",73760,16
+"(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",50640,16

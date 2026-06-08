@@ -1,0 +1,319 @@
+{
+  "failed_count": 0,
+  "min_prefix": 137,
+  "passed_count": 8,
+  "runs": [
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r1",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r1.json",
+        "sha256": "bd1bd23d950cf3469ff83414b1769bfdfe9560f791b75b5eda5ba9a3b9881d3f",
+        "size_bytes": 137062
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r1.log",
+        "sha256": "bd1bd23d950cf3469ff83414b1769bfdfe9560f791b75b5eda5ba9a3b9881d3f",
+        "size_bytes": 137062
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r2",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r2.json",
+        "sha256": "334a2fae3f2f6aa8389fc46e65936b148caa96e5ec57678e3f128621353a0cf5",
+        "size_bytes": 137065
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r2.log",
+        "sha256": "334a2fae3f2f6aa8389fc46e65936b148caa96e5ec57678e3f128621353a0cf5",
+        "size_bytes": 137065
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r3",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r3.json",
+        "sha256": "45d92b0cd397aa7e21c002d2a59877b194b3a315d13d34e0b88d278497c0a941",
+        "size_bytes": 137056
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r3.log",
+        "sha256": "45d92b0cd397aa7e21c002d2a59877b194b3a315d13d34e0b88d278497c0a941",
+        "size_bytes": 137056
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r4",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r4.json",
+        "sha256": "dda67e587d367dc7676f6bc9c8aeeb4cbc0b842dc2906d7cc5cf4ce133d065c4",
+        "size_bytes": 137077
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r4.log",
+        "sha256": "dda67e587d367dc7676f6bc9c8aeeb4cbc0b842dc2906d7cc5cf4ce133d065c4",
+        "size_bytes": 137077
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r5",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r5.json",
+        "sha256": "16161d4d8e94fcec0a5ebf5601ecbaa39be87474d1f60632a8b58710265bec2a",
+        "size_bytes": 137075
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r5.log",
+        "sha256": "16161d4d8e94fcec0a5ebf5601ecbaa39be87474d1f60632a8b58710265bec2a",
+        "size_bytes": 137075
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r6",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r6.json",
+        "sha256": "46062c33b6ee3f43c1f155abed961cb65517340aa875f09672626546a3b8c27c",
+        "size_bytes": 137073
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r6.log",
+        "sha256": "46062c33b6ee3f43c1f155abed961cb65517340aa875f09672626546a3b8c27c",
+        "size_bytes": 137073
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r7",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r7.json",
+        "sha256": "9ec07b9ea1efea1ab4614416b7bb19d617cac9552a868e4381abb6787d6056d3",
+        "size_bytes": 137042
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r7.log",
+        "sha256": "9ec07b9ea1efea1ab4614416b7bb19d617cac9552a868e4381abb6787d6056d3",
+        "size_bytes": 137042
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    },
+    {
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_decode_path": "native_batch",
+      "full_attention_row_chunked_layers": null,
+      "label": "postfix-active-c2-repeat-r8",
+      "mismatch_summary": [],
+      "native_caware_decode": true,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2",
+      "projection_path": "benchmark_accepted_caware_projection",
+      "raw_artifact": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r8.json",
+        "sha256": "700dc7c0194ec46ea2549db89c31e5a7add6d79f790e93db6b2bb0214b68bcdf",
+        "size_bytes": 137066
+      },
+      "raw_log": {
+        "path": "/tmp/hipengine-iter310-c2-sampler-demotion/postfix-active-c2-repeat-r8.log",
+        "sha256": "700dc7c0194ec46ea2549db89c31e5a7add6d79f790e93db6b2bb0214b68bcdf",
+        "size_bytes": 137066
+      },
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "equality_artifact": null,
+        "equality_rows": null,
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head"
+      },
+      "status": "blocked"
+    }
+  ]
+}

@@ -1,0 +1,1422 @@
+{
+  "iteration": 480,
+  "kind": "c4_layer3_native_full_attention_localization",
+  "created_at": "2026-06-07T11:35:51.679056+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "git_commit_before_commit": "f38c67d0a3dad90a346fc9a0f80671e42e65013e",
+  "performance_claim": false,
+  "retained_ready": false,
+  "cases": [
+    {
+      "case": "baseline",
+      "note": "negative control: layer3 native batch, layer15 rowchunk2; reproduces iter475 drop3 failure",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter480-c4-layer3-native-diags/baseline.json",
+      "top_level_status": "rejected_correctness",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": false,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          82,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 82,
+        "first_mismatch_indices": [
+          82,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 1,
+        "mismatch_summaries": [
+          {
+            "row": 0,
+            "first_mismatch_index": 82,
+            "batch_token_at_mismatch": 27502,
+            "c1_token_at_mismatch": 8204,
+            "batch_window": [
+              19,
+              60,
+              48306,
+              32907,
+              27502,
+              27502,
+              9640,
+              2713,
+              220,
+              15,
+              13
+            ],
+            "c1_window": [
+              19,
+              60,
+              48306,
+              32907,
+              27502,
+              8204,
+              1228,
+              9640,
+              2713,
+              220,
+              15
+            ],
+            "batch_matches_c1_rows": [],
+            "batch_matches_other_batch_rows": [],
+            "batch_prefixes_by_c1_row": [
+              {
+                "row": 0,
+                "equal_prefix_tokens": 82
+              },
+              {
+                "row": 1,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 2,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 3,
+                "equal_prefix_tokens": 0
+              }
+            ]
+          }
+        ],
+        "first_mismatch_excerpt": {
+          "row": 0,
+          "index": 82,
+          "batch_at_index": 27502,
+          "c1_at_index": 8204,
+          "batch_window": [
+            48306,
+            32907,
+            27502,
+            27502,
+            9640,
+            2713,
+            220
+          ],
+          "c1_window": [
+            48306,
+            32907,
+            27502,
+            8204,
+            1228,
+            9640,
+            2713
+          ]
+        }
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "layer3": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "native_caware_decode": true,
+          "max_context": 648
+        },
+        "layer15": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "full_attention_layer_paths": [
+          {
+            "layer_index": 3,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 7,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 11,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 15,
+            "path": "native_batch_row_chunks",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": 2
+          },
+          {
+            "layer_index": 19,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 23,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 27,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 31,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 35,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 39,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "15",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_attn_context_path": null
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags/baseline.json",
+          "sha256": "c7b1405123b949b13fd3a4fa0ba7da384f119d85bbc0f096de961759bf5d5574",
+          "size_bytes": 224879
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags/baseline.log",
+          "sha256": "c7b1405123b949b13fd3a4fa0ba7da384f119d85bbc0f096de961759bf5d5574",
+          "size_bytes": 224879
+        }
+      }
+    },
+    {
+      "case": "per_row_context_only",
+      "note": "global per-row context-only fallback engages but moves failure from row0@82 to row1@104 rather than restoring equality",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-attn-context-path per_row_context_only --json /tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_context_only.json",
+      "top_level_status": "rejected_correctness",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": false,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          104,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 104,
+        "first_mismatch_indices": [
+          null,
+          104,
+          null,
+          null
+        ],
+        "mismatch_count": 1,
+        "mismatch_summaries": [
+          {
+            "row": 1,
+            "first_mismatch_index": 104,
+            "batch_token_at_mismatch": 2713,
+            "c1_token_at_mismatch": 799,
+            "batch_window": [
+              198,
+              256,
+              471,
+              561,
+              1483,
+              2713,
+              74988,
+              16,
+              25,
+              16,
+              17
+            ],
+            "c1_window": [
+              198,
+              256,
+              471,
+              561,
+              1483,
+              799,
+              369,
+              3799,
+              974,
+              25,
+              74988
+            ],
+            "batch_matches_c1_rows": [],
+            "batch_matches_other_batch_rows": [],
+            "batch_prefixes_by_c1_row": [
+              {
+                "row": 1,
+                "equal_prefix_tokens": 104
+              },
+              {
+                "row": 0,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 2,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 3,
+                "equal_prefix_tokens": 0
+              }
+            ]
+          }
+        ],
+        "first_mismatch_excerpt": {
+          "row": 1,
+          "index": 104,
+          "batch_at_index": 2713,
+          "c1_at_index": 799,
+          "batch_window": [
+            471,
+            561,
+            1483,
+            2713,
+            74988,
+            16,
+            25
+          ],
+          "c1_window": [
+            471,
+            561,
+            1483,
+            799,
+            369,
+            3799,
+            974
+          ]
+        }
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers",
+          "full-attention context forced to per-row diagnostic path with diagnostic gate"
+        ],
+        "layer3": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_context_decode_path": "per_row_context_only_fallback",
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "layer15": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_context_decode_path": "per_row_context_only_fallback",
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "full_attention_layer_paths": [
+          {
+            "layer_index": 3,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 7,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 11,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 15,
+            "path": "native_batch_row_chunks",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": 2
+          },
+          {
+            "layer_index": 19,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 23,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 27,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 31,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 35,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 39,
+            "path": "native_batch",
+            "context_path": "per_row_context_only_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "15",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_attn_context_path": null
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_context_only.json",
+          "sha256": "a0d83feb1c77ef39bf4740ea452cb9c95f2678d7d8b4917af52192f6aa3b3575",
+          "size_bytes": 228426
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_context_only.log",
+          "sha256": "a0d83feb1c77ef39bf4740ea452cb9c95f2678d7d8b4917af52192f6aa3b3575",
+          "size_bytes": 228426
+        }
+      }
+    },
+    {
+      "case": "layer3_dense_context_batch_gate",
+      "note": "layer3-scoped dense-context/batch-gate fallback engages for layer3 only; still fails at row1@104",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-attn-dense-context-batch-gate-layers 3 --json /tmp/hipengine-iter480-c4-layer3-native-diags-cli/layer3_dense_context_batch_gate.json",
+      "top_level_status": "rejected_correctness",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": false,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          104,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 104,
+        "first_mismatch_indices": [
+          null,
+          104,
+          null,
+          null
+        ],
+        "mismatch_count": 1,
+        "mismatch_summaries": [
+          {
+            "row": 1,
+            "first_mismatch_index": 104,
+            "batch_token_at_mismatch": 2713,
+            "c1_token_at_mismatch": 799,
+            "batch_window": [
+              198,
+              256,
+              471,
+              561,
+              1483,
+              2713,
+              74988,
+              16,
+              25,
+              16,
+              17
+            ],
+            "c1_window": [
+              198,
+              256,
+              471,
+              561,
+              1483,
+              799,
+              369,
+              3799,
+              974,
+              25,
+              74988
+            ],
+            "batch_matches_c1_rows": [],
+            "batch_matches_other_batch_rows": [],
+            "batch_prefixes_by_c1_row": [
+              {
+                "row": 1,
+                "equal_prefix_tokens": 104
+              },
+              {
+                "row": 0,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 2,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 3,
+                "equal_prefix_tokens": 0
+              }
+            ]
+          }
+        ],
+        "first_mismatch_excerpt": {
+          "row": 1,
+          "index": 104,
+          "batch_at_index": 2713,
+          "c1_at_index": 799,
+          "batch_window": [
+            471,
+            561,
+            1483,
+            2713,
+            74988,
+            16,
+            25
+          ],
+          "c1_window": [
+            471,
+            561,
+            1483,
+            799,
+            369,
+            3799,
+            974
+          ]
+        }
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers",
+          "full-attention context forced to row-local dense diagnostic path with batch gate on selected layers"
+        ],
+        "layer3": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_context_decode_path": "per_row_dense_context_batch_gate_fallback",
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "layer15": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "full_attention_layer_paths": [
+          {
+            "layer_index": 3,
+            "path": "native_batch",
+            "context_path": "per_row_dense_context_batch_gate_fallback",
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 7,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 11,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 15,
+            "path": "native_batch_row_chunks",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": 2
+          },
+          {
+            "layer_index": 19,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 23,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 27,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 31,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 35,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 39,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "15",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_attn_context_path": null
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/layer3_dense_context_batch_gate.json",
+          "sha256": "463320237118aa76ab1f1948c76e344cf7eeb84fd7c82e64964df2b3f2d8398f",
+          "size_bytes": 225754
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/layer3_dense_context_batch_gate.log",
+          "sha256": "463320237118aa76ab1f1948c76e344cf7eeb84fd7c82e64964df2b3f2d8398f",
+          "size_bytes": 225754
+        }
+      }
+    },
+    {
+      "case": "per_row_kv_append",
+      "note": "per-row KV append fallback engages but leaves row0@82 failure unchanged",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-kv-append-path per_row --json /tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_kv_append.json",
+      "top_level_status": "rejected_correctness",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": false,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          82,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 82,
+        "first_mismatch_indices": [
+          82,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 1,
+        "mismatch_summaries": [
+          {
+            "row": 0,
+            "first_mismatch_index": 82,
+            "batch_token_at_mismatch": 27502,
+            "c1_token_at_mismatch": 8204,
+            "batch_window": [
+              19,
+              60,
+              48306,
+              32907,
+              27502,
+              27502,
+              9640,
+              2713,
+              220,
+              15,
+              13
+            ],
+            "c1_window": [
+              19,
+              60,
+              48306,
+              32907,
+              27502,
+              8204,
+              1228,
+              9640,
+              2713,
+              220,
+              15
+            ],
+            "batch_matches_c1_rows": [],
+            "batch_matches_other_batch_rows": [],
+            "batch_prefixes_by_c1_row": [
+              {
+                "row": 0,
+                "equal_prefix_tokens": 82
+              },
+              {
+                "row": 1,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 2,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 3,
+                "equal_prefix_tokens": 0
+              }
+            ]
+          }
+        ],
+        "first_mismatch_excerpt": {
+          "row": 0,
+          "index": 82,
+          "batch_at_index": 27502,
+          "c1_at_index": 8204,
+          "batch_window": [
+            48306,
+            32907,
+            27502,
+            27502,
+            9640,
+            2713,
+            220
+          ],
+          "c1_window": [
+            48306,
+            32907,
+            27502,
+            8204,
+            1228,
+            9640,
+            2713
+          ]
+        }
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers",
+          "full-attention KV append forced to per-row diagnostic path"
+        ],
+        "layer3": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": "per_row_kv_append_fallback",
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "layer15": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": "per_row_kv_append_fallback",
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "batch_gemv",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "full_attention_layer_paths": [
+          {
+            "layer_index": 3,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 7,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 11,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 15,
+            "path": "native_batch_row_chunks",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": 2
+          },
+          {
+            "layer_index": 19,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 23,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 27,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 31,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 35,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 39,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": "per_row_kv_append_fallback",
+            "output_path": "batch_gemv",
+            "row_chunk_size": null
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "15",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_attn_context_path": null
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_kv_append.json",
+          "sha256": "b7e9194a23ce27c2c679114ac2f8fe56e7ac5638d4f79d2b3ab752f4585e5967",
+          "size_bytes": 226846
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_kv_append.log",
+          "sha256": "b7e9194a23ce27c2c679114ac2f8fe56e7ac5638d4f79d2b3ab752f4585e5967",
+          "size_bytes": 226846
+        }
+      }
+    },
+    {
+      "case": "per_row_output",
+      "note": "per-row full-attention output fallback engages but leaves row0@82 failure unchanged",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-output-path per_row --json /tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_output.json",
+      "top_level_status": "rejected_correctness",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": false,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          82,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 82,
+        "first_mismatch_indices": [
+          82,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 1,
+        "mismatch_summaries": [
+          {
+            "row": 0,
+            "first_mismatch_index": 82,
+            "batch_token_at_mismatch": 27502,
+            "c1_token_at_mismatch": 8204,
+            "batch_window": [
+              19,
+              60,
+              48306,
+              32907,
+              27502,
+              27502,
+              9640,
+              2713,
+              220,
+              15,
+              13
+            ],
+            "c1_window": [
+              19,
+              60,
+              48306,
+              32907,
+              27502,
+              8204,
+              1228,
+              9640,
+              2713,
+              220,
+              15
+            ],
+            "batch_matches_c1_rows": [],
+            "batch_matches_other_batch_rows": [],
+            "batch_prefixes_by_c1_row": [
+              {
+                "row": 0,
+                "equal_prefix_tokens": 82
+              },
+              {
+                "row": 1,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 2,
+                "equal_prefix_tokens": 0
+              },
+              {
+                "row": 3,
+                "equal_prefix_tokens": 0
+              }
+            ]
+          }
+        ],
+        "first_mismatch_excerpt": {
+          "row": 0,
+          "index": 82,
+          "batch_at_index": 27502,
+          "c1_at_index": 8204,
+          "batch_window": [
+            48306,
+            32907,
+            27502,
+            27502,
+            9640,
+            2713,
+            220
+          ],
+          "c1_window": [
+            48306,
+            32907,
+            27502,
+            8204,
+            1228,
+            9640,
+            2713
+          ]
+        }
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers",
+          "full-attention O projection forced to per-row diagnostic path"
+        ],
+        "layer3": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "per_row_o_projection_fallback",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "layer15": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": "per_row_o_projection_fallback",
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": 2,
+          "row_chunk_source": "env",
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "full_attention_layer_paths": [
+          {
+            "layer_index": 3,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 7,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 11,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 15,
+            "path": "native_batch_row_chunks",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": 2
+          },
+          {
+            "layer_index": 19,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 23,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 27,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 31,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 35,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 39,
+            "path": "native_batch",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": "per_row_o_projection_fallback",
+            "row_chunk_size": null
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "15",
+        "batch_decode_full_attention_output_path": "per_row",
+        "batch_decode_attn_context_path": null
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_output.json",
+          "sha256": "fe530b096ff8660accd55c5e5a031b5b6fc1a44866646f9860b3778d631baaff",
+          "size_bytes": 226174
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/per_row_output.log",
+          "sha256": "fe530b096ff8660accd55c5e5a031b5b6fc1a44866646f9860b3778d631baaff",
+          "size_bytes": 226174
+        }
+      }
+    },
+    {
+      "case": "full_attention_per_row_control",
+      "note": "green diagnostic control: full-attention per-row fallback restores equality for the same c4 workload",
+      "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-path per_row --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-row-chunk-layers 15 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-iter480-c4-layer3-native-diags-cli/full_attention_per_row_control.json",
+      "top_level_status": "blocked",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": true,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137,
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 0,
+        "mismatch_summaries": [],
+        "first_mismatch_excerpt": null
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_blockers": [
+          "full-attention decode used a per-row fallback"
+        ],
+        "layer3": {
+          "full_attention_decode_path": "per_row_context_fallback",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": null,
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "layer15": {
+          "full_attention_decode_path": "per_row_context_fallback",
+          "full_attention_context_decode_path": null,
+          "full_attention_kv_append_decode_path": null,
+          "full_attention_gate_decode_path": null,
+          "full_attention_output_decode_path": null,
+          "attn_context_trace_source": null,
+          "full_attention_row_chunk_size": null,
+          "row_chunk_source": null,
+          "native_caware_decode": false,
+          "max_context": 648
+        },
+        "full_attention_layer_paths": [
+          {
+            "layer_index": 3,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 7,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 11,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 15,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 19,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 23,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 27,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 31,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 35,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          },
+          {
+            "layer_index": 39,
+            "path": "per_row_context_fallback",
+            "context_path": null,
+            "kv_append_path": null,
+            "output_path": null,
+            "row_chunk_size": null
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_path": "per_row",
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "15",
+        "batch_decode_full_attention_output_path": "batch_gemv",
+        "batch_decode_attn_context_path": null
+      },
+      "references": {
+        "raw_json_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/full_attention_per_row_control.json",
+          "sha256": "ef22580e86fb9c5248b6f659ecea6c723da92f229d231ba36e17292b908f91c9",
+          "size_bytes": 208855
+        },
+        "raw_log_tmp": {
+          "path": "/tmp/hipengine-iter480-c4-layer3-native-diags-cli/full_attention_per_row_control.log",
+          "sha256": "ef22580e86fb9c5248b6f659ecea6c723da92f229d231ba36e17292b908f91c9",
+          "size_bytes": 208855
+        }
+      }
+    }
+  ],
+  "localization": {
+    "green_control": {
+      "case": "full_attention_per_row_control",
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "path": "all full-attention layers use per_row_context_fallback",
+      "interpretation": "The c4 workload and independent-c1 comparison remain sound; a broad per-row full-attention replay restores equality."
+    },
+    "native_layer3_negative_control": {
+      "case": "baseline",
+      "prefix_lengths": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        82,
+        null,
+        null,
+        null
+      ],
+      "interpretation": "Layer3 selected native batch with only layer15 rowchunked fails row0 at token 82, matching iter475."
+    },
+    "subpath_findings": [
+      "Per-row KV append fallback and per-row output fallback do not move the layer3-native failure: row0 still diverges at token 82.",
+      "Context-only and layer3-scoped dense-context/batch-gate fallback engage and move the first failure to row1 at token 104, but do not restore equality.",
+      "Therefore the remaining blocker is in the selected native full-attention/context/gating semantics for layer3 rather than a simple KV append or O-projection-only issue."
+    ],
+    "next_target": "Investigate selected native full-attention context/gating row semantics around layer3; keep c4 auto rowchunk layers at 3,15 until a native layer3 fix makes the layer3-native probe green."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused c4 full-attention parity evidence includes a green per-row full-attention control for the same c4 512/128 workload, plus concrete red subpath diagnostics localizing layer3 selected-native failure; no performance claim."
+  },
+  "conclusion": "Layer3 selected native full attention remains blocked for c4, but the full-attention per-row control is green; KV append and O-projection fallbacks are not sufficient, while context/gate fallback changes the failure row without restoring equality.",
+  "references": {
+    "prior_c4_drop3_rejected_475": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-rowchunk2-drop3-rejected-475/summary.json",
+      "sha256": "a1c7380b6664e2d2a593c6e5c3a11a7c2410a8cdb2bafde33dede112c44dd972",
+      "size_bytes": 8650
+    },
+    "current_c248_matrix_476": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-current-c248-defaults-476/summary.json",
+      "sha256": "a4e2cc67b7f94f65bf792b73a99a283a1e2f44fdbc0a1a35028cec996e136f42",
+      "size_bytes": 18238
+    },
+    "current_c4_profiler_478": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-current-c4-profiler-478/summary.json",
+      "sha256": "7aea1de6c2b2d87e25c204ee97ea48273f5ab8bdbeecdd25cc8a7b2f8d22f3ab",
+      "size_bytes": 12537
+    }
+  },
+  "artifacts": {
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-layer3-native-full-attn-localization-480/summary.json"
+    },
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-layer3-native-full-attn-localization-480/compact-runs.json",
+      "sha256": "17730714db6a6b722360dc7deae715f2ff686e782c3a0d53e1a410c697a9df30",
+      "size_bytes": 10581
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "retained_accepted",
+  "performance_claim": true,
+  "label": "p10_d8_context_threshold_split_k_gqa_decode",
+  "date": "2026-05-21",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card",
+  "commit_under_test": "0801e24+worktree-p10-d8-splitk-decode",
+  "change_summary": [
+    "Route GGUF full-attention decode through existing split-K gated BF16 attention when active context >= HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT (default 1024).",
+    "Use grouped-GQA split-K gated specialization for Qwen3.5 shape at 4K context; keep the original context+gate path below threshold so 512/128 is guarded.",
+    "Routing is context-based and intentionally independent of HIPENGINE_GGUF_DECODE_REPACK."
+  ],
+  "command_512x128": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_d8_512_128.json",
+  "command_4096x128": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_d8_4096_128.json",
+  "baseline": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-retained-safe-mode.json",
+    "512x128_prefill_tok_s_median": 2051.747,
+    "512x128_decode_tok_s_median": 89.678,
+    "4096x128_prefill_tok_s_median": 2696.901,
+    "4096x128_decode_tok_s_median": 47.171
+  },
+  "benchmark_512x128": {
+    "prefill_tok_s_samples": [2140.224874691402, 2070.6277454637507, 2147.3802791109297],
+    "prefill_tok_s_median": 2140.224874691402,
+    "decode_tok_s_samples": [89.22721942122553, 89.34253728474029, 89.32162281070651],
+    "decode_tok_s_median": 89.32162281070651,
+    "decode_delta_vs_baseline_pct": -0.3973867102277164,
+    "tracked_peak_allocated_gib_median": 21.34385420382023,
+    "tracked_current_allocated_gib_before_close_median": 21.34385324269533,
+    "finite_final_logits_all": true,
+    "final_token_ids": [3561, 3561, 3561]
+  },
+  "benchmark_4096x128": {
+    "prefill_tok_s_samples": [2690.53375055135, 2700.903322419589, 2700.014663795538],
+    "prefill_tok_s_median": 2700.014663795538,
+    "decode_tok_s_samples": [97.0081493090461, 97.30649694348241, 96.90931696155005],
+    "decode_tok_s_median": 97.0081493090461,
+    "decode_delta_vs_baseline_pct": 105.64786930198736,
+    "tracked_peak_allocated_gib_median": 22.584311552345753,
+    "tracked_current_allocated_gib_before_close_median": 22.584310591220856,
+    "finite_final_logits_all": true,
+    "final_token_ids": [220, 220, 220]
+  },
+  "correctness": {
+    "status": "accepted",
+    "checks": [
+      "PYTHONPATH=. uv run pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py -q -> 8 passed",
+      "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_graph_policy.py -q -> 5 passed",
+      "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py -q -s -> 3 passed; layer0 max diff 0.000977, mean diff 0.000004",
+      "PYTHONPATH=. uv run pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_gguf_q8_0_t16_wmma_prefill.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_compact_moe_wmma_resolver.py -q -> 127 passed"
+    ]
+  },
+  "notes": [
+    "512/128 remains below the default split-K threshold throughout decode, providing the short-context regression guard.",
+    "4K/128 now uses split-K gated full-attention decode for all measured decode tokens, eliminating the prior long-context decode cliff.",
+    "Graph replay decode remains enabled; reported decode throughput excludes graph capture time."
+  ]
+}

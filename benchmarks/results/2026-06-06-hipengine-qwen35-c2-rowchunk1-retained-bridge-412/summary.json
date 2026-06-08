@@ -1,0 +1,646 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-retained-bridge-412/compact-runs.json",
+      "sha256": "5e2a1e1d696a56bab75201ed5a7a17f5e7ea50034949ea5ec597c60376775d2a",
+      "size_bytes": 20141
+    },
+    "raw_equality": {
+      "active_default_green": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "7712d3d88128d65be53e4cc7bb56767886c67f6ae9b63064dcc28ac8152f1adf",
+        "size_bytes": 138435
+      },
+      "rowchunk1_interleaved_retained_red_first": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-iter412.json",
+        "sha256": "85baa9d50639d1f8aff21a15cfdb2273bf5b6abac818ee738210b5fb4df08ad9",
+        "size_bytes": 169240
+      },
+      "rowchunk1_interleaved_retained_red_repeat": {
+        "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-repeat-iter412.json",
+        "sha256": "ec98a8bcbc90d02635c1d2840348e899570740d8c8f29b272fbf658b31e01aca",
+        "size_bytes": 169269
+      }
+    },
+    "raw_hidden": {
+      "rowchunk1_interleaved_l40_warm8_decode112_green": {
+        "path": "/tmp/hipengine-hidden-bisect-iter412-L40-c2-rowchunk1-interleaved-warm8-decode112-atol4e-3-focus1269.json",
+        "sha256": "093dab15bba981065533616bf32e124c1e4c9fbef92933e626975d7cd1f17835",
+        "size_bytes": 273205744
+      },
+      "rowchunk1_interleaved_l8_l40_green_iter411": {
+        "path": "/tmp/hipengine-hidden-bisect-iter411-L8-L40-c2-rowchunk1-interleave-flags-atol4e-3-focus1269.json",
+        "sha256": "cafbc44dcf3f9381554ab85f385aa73c08907f8f0f146c5051e9fb7c1402c23b",
+        "size_bytes": 44127142
+      },
+      "rowchunk1_same_flags_red_iter410_before_fix": {
+        "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.json",
+        "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+        "size_bytes": 18752608
+      }
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-retained-bridge-412/summary.json"
+    }
+  },
+  "code_change": "No runtime code changed. This iteration bridges the iter411 rowchunk1 append/context interleave diagnostic into longer hidden-bisect and full retained-bench windows.",
+  "commands": {
+    "active_verify": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "rowchunk1_interleaved_hidden_long_green": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --batch-size 2 --warmup-decode-tokens 8 --decode-tokens 112 --max-layers 40 --layer-limits 40 --batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-attn-append-context-order interleaved --json /tmp/hipengine-hidden-bisect-iter412-L40-c2-rowchunk1-interleaved-warm8-decode112-atol4e-3-focus1269.json",
+    "rowchunk1_interleaved_retained_red": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-row-chunk-size 1 --batch-decode-full-attn-kv-append-path per_row --batch-decode-attn-context-path per_row --batch-decode-attn-append-context-order interleaved --json /tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-iter412.json"
+  },
+  "conclusion": "Rowchunk1 plus per-row KV append/context and interleaved ordering is hidden/token green through L40 warmup8+decode112, extending iter411 L8/L40 decode16 hidden parity. However the full retained 512/128 bench with the same diagnostic flags is deterministically rejected at prefixes [137,104] across two repeats, while the active no-flag default run is green at [137,137]. This narrows the remaining rowchunk1 diagnostic gap away from the traced hidden/full-attention path and toward full retained E2E/sampler or post-hidden feedback beyond what hidden-bisect currently captures. The diagnostic remains non-retained because rowchunk/per-row append/context blockers are active.",
+  "created_at": "2026-06-06T03:45:22.111926+00:00",
+  "git_commit_before_commit": "425596235b01d57f69c92191ed86bf75a5481596",
+  "guard": {
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      }
+    ]
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 412,
+  "kind": "c2_rowchunk1_retained_bridge",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: focused C2.3 hidden/full-attention evidence advanced with a longer L40 warmup8+decode112 rowchunk1 append/context interleave hidden-bisect that is hidden/token green. The full retained 512/128 red contrast is preserved and narrows the remaining issue to full E2E/sampler or post-hidden feedback; no retained throughput/scaling claim is made.",
+    "passed": true
+  },
+  "result": {
+    "equality_runs": {
+      "active_default_green": {
+        "correctness_passed": false,
+        "decode_execution": {
+          "blockers": [],
+          "full_attention_context_decode_path": "native_batch",
+          "full_attention_decode_path": "native_batch",
+          "full_attention_kv_append_decode_path": "native_batch",
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": true
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            null
+          ],
+          "min_equal_prefix_tokens": 137,
+          "passed": true,
+          "prefix_lengths": [
+            137,
+            137
+          ]
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+          "sha256": "7712d3d88128d65be53e4cc7bb56767886c67f6ae9b63064dcc28ac8152f1adf",
+          "size_bytes": 138435
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+          "sha256": "7712d3d88128d65be53e4cc7bb56767886c67f6ae9b63064dcc28ac8152f1adf",
+          "size_bytes": 138435
+        },
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "serial_lm_head"
+        },
+        "status": "blocked",
+        "workload": {
+          "batch_decode_attention_append_context_order": "phased",
+          "batch_decode_attention_context_path": "batch",
+          "batch_decode_full_attention_kv_append_path": "batch",
+          "batch_decode_full_attention_output_path": "batch",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_size": 0,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head"
+        }
+      },
+      "rowchunk1_interleaved_retained_red_first": {
+        "correctness_passed": false,
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path",
+            "full-attention context/gate forced to per-row diagnostic path",
+            "full-attention KV append forced to per-row diagnostic path",
+            "full-attention append+context forced to interleaved per-row diagnostic order"
+          ],
+          "full_attention_context_decode_path": "per_row_context_gate_fallback",
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_kv_append_decode_path": "per_row_kv_append_fallback",
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            104
+          ],
+          "min_equal_prefix_tokens": 104,
+          "passed": false,
+          "prefix_lengths": [
+            137,
+            104
+          ]
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-iter412.json",
+          "sha256": "85baa9d50639d1f8aff21a15cfdb2273bf5b6abac818ee738210b5fb4df08ad9",
+          "size_bytes": 169240
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-iter412.log",
+          "sha256": "85baa9d50639d1f8aff21a15cfdb2273bf5b6abac818ee738210b5fb4df08ad9",
+          "size_bytes": 169240
+        },
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "serial_lm_head"
+        },
+        "status": "rejected_correctness",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head"
+        }
+      },
+      "rowchunk1_interleaved_retained_red_repeat": {
+        "correctness_passed": false,
+        "decode_execution": {
+          "blockers": [
+            "full-attention decode forced to native row-chunk diagnostic path",
+            "full-attention context/gate forced to per-row diagnostic path",
+            "full-attention KV append forced to per-row diagnostic path",
+            "full-attention append+context forced to interleaved per-row diagnostic order"
+          ],
+          "full_attention_context_decode_path": "per_row_context_gate_fallback",
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_kv_append_decode_path": "per_row_kv_append_fallback",
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false
+        },
+        "generated_token_equality": {
+          "first_mismatch_indices": [
+            null,
+            104
+          ],
+          "min_equal_prefix_tokens": 104,
+          "passed": false,
+          "prefix_lengths": [
+            137,
+            104
+          ]
+        },
+        "raw_json": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-repeat-iter412.json",
+          "sha256": "ec98a8bcbc90d02635c1d2840348e899570740d8c8f29b272fbf658b31e01aca",
+          "size_bytes": 169269
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-e2e-native-c2-512-128-rowchunk1-interleaved-repeat-iter412.log",
+          "sha256": "ec98a8bcbc90d02635c1d2840348e899570740d8c8f29b272fbf658b31e01aca",
+          "size_bytes": 169269
+        },
+        "sampler_execution": {
+          "blockers": [],
+          "mode": "serial_lm_head",
+          "native_row_aware_lm_head": false,
+          "requested_mode": "serial_lm_head"
+        },
+        "status": "rejected_correctness",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "batch_sample_mode": "serial_lm_head"
+        }
+      }
+    },
+    "hidden_runs": {
+      "rowchunk1_interleaved_l40_warm8_decode112_green": {
+        "correctness": {
+          "failure_modes": [],
+          "hidden_passed": true,
+          "passed": true,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 0,
+            "hidden_failure_rows": [],
+            "layer_limits": [
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 40,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 0,
+            "strict_hidden_bit_drift_rows": [],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": false,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": {
+              "comparison": "batch_context_vs_numpy",
+              "context_len": 514,
+              "context_len_match": true,
+              "decode_step": 1,
+              "elements_over_atol": 1,
+              "generated_index": 2,
+              "layer_index": 15,
+              "max_abs": 4.00543212890625e-05,
+              "max_abs_flat_index": 2033,
+              "max_abs_index": [
+                0,
+                2033
+              ],
+              "row": 1
+            },
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 40,
+            "token_failure_rows": [],
+            "token_mismatches": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter412-L40-c2-rowchunk1-interleaved-warm8-decode112-atol4e-3-focus1269.json",
+          "sha256": "093dab15bba981065533616bf32e124c1e4c9fbef92933e626975d7cd1f17835",
+          "size_bytes": 273205744
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter412-L40-c2-rowchunk1-interleaved-warm8-decode112-atol4e-3-focus1269.log",
+          "sha256": "093dab15bba981065533616bf32e124c1e4c9fbef92933e626975d7cd1f17835",
+          "size_bytes": 273205744
+        },
+        "status": "eq_ok",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 112,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "warmup_decode_tokens": 8
+        }
+      },
+      "rowchunk1_interleaved_l8_l40_green_iter411": {
+        "correctness": {
+          "failure_modes": [],
+          "hidden_passed": true,
+          "passed": true,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 0,
+            "hidden_failure_rows": [],
+            "layer_limits": [
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 8,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              },
+              {
+                "failure_modes": [],
+                "hidden_failure_row_count": 0,
+                "hidden_failure_rows": [],
+                "layer_limit": 40,
+                "strict_hidden_bit_drift_row_count": 0,
+                "strict_hidden_bit_drift_rows": [],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 0,
+            "strict_hidden_bit_drift_rows": [],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": true,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": null,
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 8,
+            "token_failure_rows": [],
+            "token_mismatches": [],
+            "token_passed": true
+          },
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": true,
+            "decode_full_context_oracle_passed": false,
+            "decode_full_kv_sample_passed": true,
+            "decode_linear_stage_passed": true,
+            "decode_linear_state_passed": true,
+            "first_context_oracle_failure": {
+              "comparison": "batch_context_vs_numpy",
+              "context_len": 514,
+              "context_len_match": true,
+              "decode_step": 1,
+              "elements_over_atol": 1,
+              "generated_index": 2,
+              "layer_index": 15,
+              "max_abs": 4.00543212890625e-05,
+              "max_abs_flat_index": 2033,
+              "max_abs_index": [
+                0,
+                2033
+              ],
+              "row": 1
+            },
+            "first_full_attention_failure": null,
+            "first_kv_sample_failure": null,
+            "hidden_failure_rows": [],
+            "hidden_passed": true,
+            "layer_limit": 40,
+            "token_failure_rows": [],
+            "token_mismatches": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter411-L8-L40-c2-rowchunk1-interleave-flags-atol4e-3-focus1269.json",
+          "sha256": "cafbc44dcf3f9381554ab85f385aa73c08907f8f0f146c5051e9fb7c1402c23b",
+          "size_bytes": 44127142
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter411-L8-L40-c2-rowchunk1-interleave-flags-atol4e-3-focus1269.log",
+          "sha256": "cafbc44dcf3f9381554ab85f385aa73c08907f8f0f146c5051e9fb7c1402c23b",
+          "size_bytes": 44127142
+        },
+        "status": "eq_ok",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 16,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "warmup_decode_tokens": 0
+        }
+      },
+      "rowchunk1_same_flags_red_iter410_before_fix": {
+        "correctness": {
+          "failure_modes": [
+            "hidden"
+          ],
+          "hidden_passed": false,
+          "passed": false,
+          "row_failure_summary": {
+            "hidden_failure_row_count": 2,
+            "hidden_failure_rows": [
+              0,
+              1
+            ],
+            "layer_limits": [
+              {
+                "failure_modes": [
+                  "hidden"
+                ],
+                "hidden_failure_row_count": 2,
+                "hidden_failure_rows": [
+                  0,
+                  1
+                ],
+                "layer_limit": 8,
+                "strict_hidden_bit_drift_row_count": 2,
+                "strict_hidden_bit_drift_rows": [
+                  0,
+                  1
+                ],
+                "token_failure_row_count": 0,
+                "token_failure_rows": []
+              }
+            ],
+            "strict_hidden_bit_drift_row_count": 2,
+            "strict_hidden_bit_drift_rows": [
+              0,
+              1
+            ],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          },
+          "token_passed": true
+        },
+        "layers": [
+          {
+            "decode_full_attention_input_passed": true,
+            "decode_full_attention_output_passed": false,
+            "decode_full_context_oracle_passed": false,
+            "decode_full_kv_sample_passed": false,
+            "decode_linear_stage_passed": false,
+            "decode_linear_state_passed": false,
+            "first_context_oracle_failure": {
+              "comparison": "batch_numpy_vs_c1_numpy",
+              "context_len": 513,
+              "context_len_match": true,
+              "decode_step": 0,
+              "elements_over_atol": 3142,
+              "generated_index": 1,
+              "layer_index": 7,
+              "max_abs": 0.007256507873535156,
+              "max_abs_flat_index": 2812,
+              "max_abs_index": [
+                0,
+                2812
+              ],
+              "row": 0
+            },
+            "first_full_attention_failure": {
+              "comparison_kind": "fp16_bits",
+              "decode_step": 0,
+              "elements_over_atol": 3,
+              "generated_index": 1,
+              "layer_index": 7,
+              "max_abs": 0.015625,
+              "max_abs_flat_index": 1269,
+              "max_abs_index": [
+                0,
+                1269
+              ],
+              "row": 0,
+              "stage": "attn_input_pre_qkv"
+            },
+            "first_kv_sample_failure": {
+              "bit_mismatch": 143,
+              "check": "batch_source_vs_c1_source",
+              "decode_step": 0,
+              "elements_over_atol": 143,
+              "generated_index": 1,
+              "kind": "key",
+              "layer_index": 7,
+              "max_abs": 0.03125,
+              "max_abs_flat_index": 214,
+              "max_abs_index": [
+                214
+              ],
+              "row": 0,
+              "sample_index": 4,
+              "sample_label": "current",
+              "sample_position": 512,
+              "source_stage": "key_after_prepare"
+            },
+            "hidden_failure_rows": [
+              0,
+              1
+            ],
+            "hidden_passed": false,
+            "layer_limit": 8,
+            "token_failure_rows": [],
+            "token_mismatches": [],
+            "token_passed": true
+          }
+        ],
+        "raw_json": {
+          "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.json",
+          "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+          "size_bytes": 18752608
+        },
+        "raw_log": {
+          "path": "/tmp/hipengine-hidden-bisect-iter410-L8-c2-rowchunk1-interleave-flags-red-atol4e-3-focus1269.log",
+          "sha256": "b5b8140d1bbba0ed8316c20769bdf506a8860a92313170a9153e8176978000da",
+          "size_bytes": 18752608
+        },
+        "status": "mismatch_found",
+        "workload": {
+          "batch_decode_attention_append_context_order": "interleaved",
+          "batch_decode_attention_context_path": "per_row",
+          "batch_decode_full_attention_kv_append_path": "per_row",
+          "batch_decode_full_attention_output_path": "batch_gemv",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_full_attention_row_chunk_layers": "",
+          "batch_decode_full_attention_row_chunk_size": 1,
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_projection_path": "batch",
+          "batch_decode_linear_state_path": "batch_segments",
+          "batch_decode_moe_path": "grouped_compact",
+          "decode_tokens": 16,
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "warmup_decode_tokens": 0
+        }
+      }
+    },
+    "previous_artifacts": {
+      "iter411": {
+        "path": "benchmarks/results/2026-06-06-hipengine-qwen35-c2-rowchunk1-interleave-fix-411/summary.json",
+        "sha256": "78c87d340e209dc2a150dbf47f6c9941031cddf224896304c6bcbbab6b2bc594",
+        "size_bytes": 34880
+      }
+    }
+  },
+  "schema": 1
+}

@@ -1,0 +1,387 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-c8-full-attn-parity-blocker/summary.json",
+  "created_at": "2026-06-02T23:51:29.049098Z",
+  "status": "blocked",
+  "performance_claim": false,
+  "summary": "Current native c=4/c=8 defaults fail generated-token equality, but forcing only the full-attention decode context to the per-row fallback makes both c=4 and c=8 green. This isolates the next correctness blocker to native batch full-attention for larger row counts; no retained c>N claim is made because the passing path is not native c-aware.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "03ce4be19d6510d04c27e32a1a2cd7c33b50a86e",
+    "hipengine_dirty": false,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "batch_sizes": [
+      2,
+      4,
+      8
+    ],
+    "kv_storage_dtype": "bf16",
+    "scheduler_path": "scheduler_native_compact_batch"
+  },
+  "primary_metric": {
+    "native_c2_512x128_min_equal_prefix_tokens": 137,
+    "prefixes": [
+      137,
+      137
+    ],
+    "decode_tok_s_aggregate": 124.82511854770017,
+    "paths": {
+      "full_attention_decode_path": "native_batch",
+      "full_attention_input_decode_path": "native_batch",
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_output_path": null,
+      "post_attention_decode_path": "native_batch",
+      "linear_attention_projection_path": "native_batch",
+      "linear_attention_output_path": "batch_gemv",
+      "linear_attention_state_path": "native_segments",
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true
+    }
+  },
+  "default_native_full_attention_results": [
+    {
+      "name": "c4_current_default_native_full_attention",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-c4-c8-current-defaults-iter117/native-equality-c4-p512-d128.json",
+      "tmp_artifact_sha256": "f8e628660f88a3d9f97eb3dc5c9de2a1149adebb53bd2cc71731e35e0080c6d2",
+      "tmp_artifact_size_bytes": 217571,
+      "status": "rejected_correctness",
+      "performance_claim": false,
+      "software_commit": "03ce4be19d6510d04c27e32a1a2cd7c33b50a86e",
+      "software_dirty": false,
+      "batch_size": null,
+      "prefixes": [
+        82,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 82,
+      "generated_token_equality_passed": false,
+      "first_mismatch_indices": [
+        82,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 155.0395892557363,
+      "decode_tok_s_per_request": 38.759897313934076,
+      "throughput_claim_eligible": false,
+      "native_caware_decode": true,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      }
+    },
+    {
+      "name": "c8_current_default_native_full_attention",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c2-c4-c8-current-defaults-iter117/native-equality-c8-p512-d128.json",
+      "tmp_artifact_sha256": "ce5b27055c926f964bfd151e115cfa8be7ca355f25d3cc3f6212e5e6ec74c9d2",
+      "tmp_artifact_size_bytes": 381406,
+      "status": "rejected_correctness",
+      "performance_claim": false,
+      "software_commit": "03ce4be19d6510d04c27e32a1a2cd7c33b50a86e",
+      "software_dirty": false,
+      "batch_size": null,
+      "prefixes": [
+        82,
+        137,
+        137,
+        137,
+        45,
+        11,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 11,
+      "generated_token_equality_passed": false,
+      "first_mismatch_indices": [
+        82,
+        null,
+        null,
+        null,
+        45,
+        11,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 211.69389562555637,
+      "decode_tok_s_per_request": 26.461736953194546,
+      "throughput_claim_eligible": false,
+      "native_caware_decode": true,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "native c>N decode is experimental and blocked until generated-token equality passes",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": true
+      }
+    }
+  ],
+  "per_row_full_attention_results": [
+    {
+      "name": "c4_per_row_full_attention_auto_projection",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c4-perrowfull-proj-sweep-iter117/native-equality-c4-perrowfull-auto-p512-d128.json",
+      "tmp_artifact_sha256": "9203443fca105bf345836165f9cb310597994c8515aaca27a894752d10fd62db",
+      "tmp_artifact_size_bytes": 205590,
+      "status": "blocked",
+      "performance_claim": false,
+      "software_commit": "03ce4be19d6510d04c27e32a1a2cd7c33b50a86e",
+      "software_dirty": false,
+      "batch_size": null,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "generated_token_equality_passed": true,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 157.13487284705744,
+      "decode_tok_s_per_request": 39.28371821176436,
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "native_caware_decode": false
+      }
+    },
+    {
+      "name": "c8_per_row_full_attention_auto_projection",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c8-perrowfull-proj-sweep-iter117/native-equality-c8-perrowfull-auto-p512-d128.json",
+      "tmp_artifact_sha256": "fa1044c6d1816298c8d0de51642c667eaedb8c298ecf2a9604f9293a13735ba6",
+      "tmp_artifact_size_bytes": 353174,
+      "status": "blocked",
+      "performance_claim": false,
+      "software_commit": "03ce4be19d6510d04c27e32a1a2cd7c33b50a86e",
+      "software_dirty": false,
+      "batch_size": null,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "generated_token_equality_passed": true,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 187.43182155067854,
+      "decode_tok_s_per_request": 23.428977693834817,
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "native_caware_decode": false
+      }
+    }
+  ],
+  "selected_qkvz_crosscheck_results": [
+    {
+      "name": "c4_per_row_full_attention_selected_qkvz",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c4-c8-perrowfull-probe-iter117/native-equality-c4-perrowfull-qkvz-p512-d128.json",
+      "tmp_artifact_sha256": "12763238c5d026e16092cb12ec294fe7ba79398ad418199164dd39e21f15398e",
+      "tmp_artifact_size_bytes": 212727,
+      "status": "blocked",
+      "performance_claim": false,
+      "software_commit": "03ce4be19d6510d04c27e32a1a2cd7c33b50a86e",
+      "software_dirty": false,
+      "batch_size": null,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "generated_token_equality_passed": true,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 130.96757017562885,
+      "decode_tok_s_per_request": 32.74189254390721,
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "native_caware_decode": false
+      }
+    },
+    {
+      "name": "c8_per_row_full_attention_selected_qkvz",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c4-c8-perrowfull-probe-iter117/native-equality-c8-perrowfull-qkvz-p512-d128.json",
+      "tmp_artifact_sha256": "d550b803e05a1a038120503b782447d3363285e44fe66f340fc88c6576df4a9a",
+      "tmp_artifact_size_bytes": 360298,
+      "status": "blocked",
+      "performance_claim": false,
+      "software_commit": "03ce4be19d6510d04c27e32a1a2cd7c33b50a86e",
+      "software_dirty": false,
+      "batch_size": null,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "min_equal_prefix_tokens": 137,
+      "generated_token_equality_passed": true,
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 151.53136393988606,
+      "decode_tok_s_per_request": 18.941420492485758,
+      "throughput_claim_eligible": false,
+      "native_caware_decode": false,
+      "batch_execution_blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode used a per-row fallback, so this is not native c-aware decode",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "per_row_context_fallback",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_context_decode_path": "native_batch",
+        "full_attention_output_path": null,
+        "post_attention_decode_path": "native_batch",
+        "linear_attention_projection_path": "selected_c1_qkv_z",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
+        "native_caware_decode": false
+      }
+    }
+  ],
+  "measurements": {
+    "c2_default_min_equal_prefix": 137,
+    "c4_default_min_equal_prefix": 82,
+    "c8_default_min_equal_prefix": 11,
+    "c4_per_row_full_attention_min_equal_prefix": 137,
+    "c8_per_row_full_attention_min_equal_prefix": 137,
+    "c4_per_row_full_attention_vs_default_decode_tok_s": 1.0135145068519562,
+    "c8_per_row_full_attention_vs_default_decode_tok_s": 0.8853907714099015
+  },
+  "verdicts": {
+    "active_c2_default_generated_equality_passed": true,
+    "current_defaults_c4_c8_generated_equality_passed": false,
+    "per_row_full_attention_c4_c8_generated_equality_passed": true,
+    "isolated_blocker": "native_batch_full_attention_context_for_c4_c8",
+    "retained_ready": false
+  },
+  "retained_claim_blockers": [
+    "c=4/c=8 current defaults with native batch full-attention still fail generated-token equality",
+    "passing c=4/c=8 path uses per-row full-attention context fallback and is explicitly not native c-aware",
+    "projection dispatch remains blocked for retained rows; no c>N throughput/scaling claim is made"
+  ],
+  "commands": {
+    "default_matrix": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-size {2,4,8} --require-cached-build --json /tmp/hipengine-e2e-native-c2-c4-c8-current-defaults-iter117/native-equality-c{N}-p512-d128.json",
+    "per_row_full_attention_auto_projection": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py ... --batch-size {4,8} --batch-decode-full-attn-path per_row --batch-decode-linear-projection-path auto --require-cached-build --json /tmp/hipengine-e2e-native-c{N}-perrowfull-proj-sweep-iter117/native-equality-c{N}-perrowfull-auto-p512-d128.json",
+    "active_verify": "active loop verify command at /tmp/hipengine-e2e-native-c2-512-128.json returned metric 137",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json"
+  }
+}

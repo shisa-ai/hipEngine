@@ -1,0 +1,509 @@
+{
+  "schema": "hipengine_rocprof_baseline_v1",
+  "status": "diagnostic_not_retained",
+  "performance_claim": false,
+  "label": "p10_r1_post_p10_x1_rocprof_launch_census",
+  "date": "2026-05-21",
+  "commit_under_test": "cc2fb5a",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 (W7900 rerun unverified)",
+  "scope": [
+    "P10.R1",
+    "P10.C6",
+    "P10.C7",
+    "P10.C8",
+    "P10.C9",
+    "P10.D6",
+    "P10.D7"
+  ],
+  "excluded_scope": [
+    "DFlash/speculative decode",
+    "DMS/KV-cache compression"
+  ],
+  "correctness_status": "P10.X1 fixed T16 decode-repack; full safe-mode remains diagnostic_not_retained because P10.X2 bulk WMMA prefill correctness is still open.",
+  "baseline_compared": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r0-rocprof-baseline.json",
+    "commit_under_test": "c30ec59",
+    "label": "p10_r0_wave1_head_rocprof_launch_census_before_p10_x1",
+    "note": "R0 was pre-P10.X1 and model-wrong under decode-repack; comparisons are diagnostic, not retained perf claims."
+  },
+  "raw_traces_not_committed": {
+    "prefill_512x0_csv": "/tmp/hipengine-p10-r1-safe-512x0-prof/p10_r1_safe_512x0_kernel_trace.csv",
+    "decode_512x128_graph8_csv": "/tmp/hipengine-p10-r1-safe-512x128-graph8-prof/p10_r1_safe_512x128_graph8_kernel_trace.csv",
+    "decode_512x16_graph1_csv": "/tmp/hipengine-p10-r1-safe-512x16-prof/p10_r1_safe_512x16_kernel_trace.csv",
+    "decode_512x128_eager_csv": "/tmp/hipengine-p10-r1-safe-512x128-eager-prof/p10_r1_safe_512x128_eager_kernel_trace.csv",
+    "note": "Raw rocprof CSVs are local artifacts and intentionally not committed."
+  },
+  "commands": {
+    "prefill_512x0": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-p10-r1-safe-512x0-prof --output-file p10_r1_safe_512x0 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_r1_safe_512x0_bench.json",
+    "decode_512x128_graph8_profiled": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-p10-r1-safe-512x128-graph8-prof --output-file p10_r1_safe_512x128_graph8 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 8 --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_r1_safe_512x128_graph8_bench.json",
+    "decode_512x16_graph1_profiled": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-p10-r1-safe-512x16-prof --output-file p10_r1_safe_512x16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 16 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_r1_safe_512x16_prof_bench.json",
+    "decode_512x128_graph1_unprofiled": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_r1_safe_512x128_unprofiled_graph_bench.json",
+    "decode_512x128_eager_profiled": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-p10-r1-safe-512x128-eager-prof --output-file p10_r1_safe_512x128_eager -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-graph-replay-decode --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_r1_safe_512x128_eager_bench.json",
+    "summary_graph8": "python3 scripts/qwen35_gguf_rocprof_summary.py --prefill-csv /tmp/hipengine-p10-r1-safe-512x0-prof/p10_r1_safe_512x0_kernel_trace.csv --decode-csv /tmp/hipengine-p10-r1-safe-512x128-graph8-prof/p10_r1_safe_512x128_graph8_kernel_trace.csv --strip-prefill-prefix --tokens-prefill 512 --tokens-decode 128 --top 40 --json /tmp/p10_r1_safe_rocprof_summary_512x0_512x128_graph8.json"
+  },
+  "profiler_anomalies": [
+    "Default graph replay (graph_steps_per_replay=1) 512/128 rocprofv3 --kernel-trace timed out twice before emitting a CSV (1200s and 1800s).",
+    "The same 512/128 graph1 command without rocprof completed (89.588 tok/s), and graph1 512/16 under rocprof completed, so the blocker is profiler/trace scale rather than a runtime hang.",
+    "For a full 512/128 kernel census this artifact uses graph_steps_per_replay=8 under rocprof, plus graph1 512/16 and eager 512/128 as cross-checks."
+  ],
+  "profiled_wall_observation": {
+    "prefill_512x0_tok_s_under_profiler": 1683.347185449043,
+    "prefill_512x0_wall_ms_under_profiler": 304.155913,
+    "decode_512x128_graph8_prefill_tok_s_under_profiler": 1667.5239541506528,
+    "decode_512x128_graph8_decode_tok_s_under_profiler": 81.25894034976511,
+    "decode_512x128_graph8_decode_wall_ms_under_profiler_excluding_capture": 1575.211287,
+    "decode_512x128_graph8_graph_capture_ms": 851.499143,
+    "decode_512x16_graph1_decode_tok_s_under_profiler": 78.53543273453795,
+    "decode_512x128_graph1_unprofiled_decode_tok_s": 89.58787219819412,
+    "decode_512x128_graph1_unprofiled_decode_wall_ms_excluding_capture": 1428.764819,
+    "decode_512x128_eager_decode_tok_s_under_profiler": 8.669623195157351,
+    "finite_final_logits_512x128_graph8": true,
+    "final_token_id_512x128_graph8": 220,
+    "tracked_peak_allocated_gib_512x0": 21.34312082082033,
+    "tracked_peak_allocated_gib_512x128_graph8": 21.34312178194523
+  },
+  "launch_census": {
+    "prefill_total_dispatches": 2346,
+    "prefill_dispatches_per_prompt_token": 4.58203125,
+    "decode_graph8_total_dispatches_after_stripping_prefill_prefix": 85382,
+    "decode_graph8_dispatches_per_generated_token": 667.046875,
+    "decode_graph1_512x16_dispatches_after_stripping_prefill_prefix": 10678,
+    "decode_graph1_512x16_dispatches_per_generated_token": 667.375,
+    "decode_eager_512x128_dispatches_after_stripping_prefill_prefix": 85505,
+    "decode_eager_512x128_dispatches_per_generated_token": 668.0078125,
+    "decode_prefill_prefix_dispatches_stripped": 2346
+  },
+  "kernel_time": {
+    "prefill_total_kernel_ms": 262.802104,
+    "prefill_ms_per_prompt_token": 0.513285359,
+    "decode_graph8_total_kernel_ms": 1184.018059,
+    "decode_graph8_ms_per_generated_token": 9.250141086,
+    "decode_graph1_512x16_total_kernel_ms": 155.553787,
+    "decode_graph1_512x16_ms_per_generated_token": 9.722111687,
+    "decode_eager_512x128_total_kernel_ms": 1581.632054,
+    "decode_eager_512x128_ms_per_generated_token": 12.356500422
+  },
+  "comparison_to_r0": {
+    "prefill_kernel_ms_delta": 1.947578,
+    "prefill_dispatch_delta": 40,
+    "decode_graph8_kernel_ms_delta_vs_r0_graph1": 124.833468,
+    "decode_graph8_dispatch_delta_vs_r0_graph1": 5120,
+    "decode_graph8_dispatches_per_token_delta_vs_r0_graph1": 40.0,
+    "decode_graph1_512x16_dispatches_per_token_delta_vs_r0_graph1": 40.328125,
+    "interpretation": "P10.X1 preserved prefill mix but correctness-preserving decode graph semantics added roughly 40 dispatches/token and made full-attention decode a top bucket. R0 was wrong, so this is not a retained perf regression claim; it is the correct post-X1 optimization baseline."
+  },
+  "wall_minus_kernel_residue": {
+    "profiled_prefill_wall_ms": 304.155913,
+    "profiled_prefill_wall_minus_kernel_ms": 41.353809,
+    "profiled_graph8_decode_wall_ms_excluding_capture": 1575.211287,
+    "profiled_graph8_decode_wall_minus_kernel_ms": 391.193228,
+    "unprofiled_graph1_decode_wall_ms_excluding_capture": 1428.764819,
+    "unprofiled_graph1_decode_wall_minus_profiled_graph8_kernel_ms_estimate": 244.74676,
+    "interpretation": "Even with graph replay, the 512/128 row still shows about 667 traced dispatches/token. Using the unprofiled graph1 wall and profiled graph8 kernel sum leaves ~1.9 ms/token of host/profile-mode residue, keeping P10.D6 graph batching/capture work relevant after P10.X1."
+  },
+  "top_buckets": {
+    "prefill": [
+      {
+        "bucket": "dense_q8_0_wmma_prefill",
+        "total_ms": 59.624823,
+        "dispatches": 250,
+        "avg_dispatch_ms": 0.238499292,
+        "share_of_phase": 0.226881,
+        "ms_per_token": 0.116454732
+      },
+      {
+        "bucket": "gdn_prefill_recurrent",
+        "total_ms": 50.200678,
+        "dispatches": 30,
+        "avg_dispatch_ms": 1.673355933,
+        "share_of_phase": 0.191021,
+        "ms_per_token": 0.098048199
+      },
+      {
+        "bucket": "full_attention_prefill",
+        "total_ms": 41.108332,
+        "dispatches": 10,
+        "avg_dispatch_ms": 4.1108332,
+        "share_of_phase": 0.156423,
+        "ms_per_token": 0.080289711
+      },
+      {
+        "bucket": "moe_q4_k_selected_dual_wmma_prefill",
+        "total_ms": 37.102822,
+        "dispatches": 40,
+        "avg_dispatch_ms": 0.92757055,
+        "share_of_phase": 0.141182,
+        "ms_per_token": 0.072466449
+      },
+      {
+        "bucket": "moe_q5_k_selected_wmma_prefill",
+        "total_ms": 25.92591,
+        "dispatches": 37,
+        "avg_dispatch_ms": 0.70070027,
+        "share_of_phase": 0.098652,
+        "ms_per_token": 0.050636543
+      },
+      {
+        "bucket": "router",
+        "total_ms": 15.336353,
+        "dispatches": 160,
+        "avg_dispatch_ms": 0.095852206,
+        "share_of_phase": 0.058357,
+        "ms_per_token": 0.029953814
+      },
+      {
+        "bucket": "other",
+        "total_ms": 6.151882,
+        "dispatches": 239,
+        "avg_dispatch_ms": 0.025740092,
+        "share_of_phase": 0.023409,
+        "ms_per_token": 0.012015395
+      },
+      {
+        "bucket": "linear_attn_conv",
+        "total_ms": 3.412504,
+        "dispatches": 90,
+        "avg_dispatch_ms": 0.037916711,
+        "share_of_phase": 0.012985,
+        "ms_per_token": 0.006665047
+      },
+      {
+        "bucket": "copy",
+        "total_ms": 2.731256,
+        "dispatches": 533,
+        "avg_dispatch_ms": 0.005124308,
+        "share_of_phase": 0.010393,
+        "ms_per_token": 0.005334484
+      },
+      {
+        "bucket": "moe_q6_k_selected_wmma_prefill",
+        "total_ms": 2.268777,
+        "dispatches": 3,
+        "avg_dispatch_ms": 0.756259,
+        "share_of_phase": 0.008633,
+        "ms_per_token": 0.004431205
+      },
+      {
+        "bucket": "rmsnorm",
+        "total_ms": 2.220254,
+        "dispatches": 182,
+        "avg_dispatch_ms": 0.012199198,
+        "share_of_phase": 0.008448,
+        "ms_per_token": 0.004336434
+      },
+      {
+        "bucket": "dense_q8_0_t16_gemv_decode_p9",
+        "total_ms": 2.2137,
+        "dispatches": 130,
+        "avg_dispatch_ms": 0.017028462,
+        "share_of_phase": 0.008423,
+        "ms_per_token": 0.004323633
+      }
+    ],
+    "decode_graph8_512x128": [
+      {
+        "bucket": "dense_q8_0_t16_gemv_decode_p9",
+        "total_ms": 229.131566,
+        "dispatches": 16640,
+        "avg_dispatch_ms": 0.013769926,
+        "share_of_phase": 0.19352,
+        "ms_per_token": 1.790090359
+      },
+      {
+        "bucket": "full_attention_decode",
+        "total_ms": 214.719418,
+        "dispatches": 1280,
+        "avg_dispatch_ms": 0.167749545,
+        "share_of_phase": 0.181348,
+        "ms_per_token": 1.677495453
+      },
+      {
+        "bucket": "other",
+        "total_ms": 183.659373,
+        "dispatches": 16001,
+        "avg_dispatch_ms": 0.011477993,
+        "share_of_phase": 0.155115,
+        "ms_per_token": 1.434838852
+      },
+      {
+        "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+        "total_ms": 132.04407,
+        "dispatches": 5120,
+        "avg_dispatch_ms": 0.025789857,
+        "share_of_phase": 0.111522,
+        "ms_per_token": 1.031594297
+      },
+      {
+        "bucket": "moe_q5_k_selected_t16_gemv_decode_p9",
+        "total_ms": 96.838396,
+        "dispatches": 4736,
+        "avg_dispatch_ms": 0.020447296,
+        "share_of_phase": 0.081788,
+        "ms_per_token": 0.756549969
+      },
+      {
+        "bucket": "dense_q6_k_t16_gemv_decode_p9",
+        "total_ms": 72.836762,
+        "dispatches": 128,
+        "avg_dispatch_ms": 0.569037203,
+        "share_of_phase": 0.061517,
+        "ms_per_token": 0.569037203
+      },
+      {
+        "bucket": "rmsnorm",
+        "total_ms": 71.049704,
+        "dispatches": 11648,
+        "avg_dispatch_ms": 0.006099734,
+        "share_of_phase": 0.060007,
+        "ms_per_token": 0.555075813
+      },
+      {
+        "bucket": "router",
+        "total_ms": 59.536468,
+        "dispatches": 5120,
+        "avg_dispatch_ms": 0.011628216,
+        "share_of_phase": 0.050283,
+        "ms_per_token": 0.465128656
+      },
+      {
+        "bucket": "gdn_decode",
+        "total_ms": 58.434237,
+        "dispatches": 3840,
+        "avg_dispatch_ms": 0.015217249,
+        "share_of_phase": 0.049352,
+        "ms_per_token": 0.456517477
+      },
+      {
+        "bucket": "copy",
+        "total_ms": 15.502505,
+        "dispatches": 5125,
+        "avg_dispatch_ms": 0.003024879,
+        "share_of_phase": 0.013093,
+        "ms_per_token": 0.12111332
+      },
+      {
+        "bucket": "moe_combine",
+        "total_ms": 14.911886,
+        "dispatches": 5120,
+        "avg_dispatch_ms": 0.002912478,
+        "share_of_phase": 0.012594,
+        "ms_per_token": 0.116499109
+      },
+      {
+        "bucket": "linear_attn_conv",
+        "total_ms": 12.307109,
+        "dispatches": 3840,
+        "avg_dispatch_ms": 0.003204976,
+        "share_of_phase": 0.010394,
+        "ms_per_token": 0.096149289
+      }
+    ],
+    "decode_graph1_512x16": [
+      {
+        "bucket": "dense_q8_0_t16_gemv_decode_p9",
+        "total_ms": 30.252552,
+        "dispatches": 2080,
+        "avg_dispatch_ms": 0.014544496,
+        "share_of_phase": 0.194483,
+        "ms_per_token": 1.8907845
+      },
+      {
+        "bucket": "full_attention_decode",
+        "total_ms": 25.64905,
+        "dispatches": 160,
+        "avg_dispatch_ms": 0.160306562,
+        "share_of_phase": 0.164889,
+        "ms_per_token": 1.603065625
+      },
+      {
+        "bucket": "other",
+        "total_ms": 24.691368,
+        "dispatches": 2001,
+        "avg_dispatch_ms": 0.012339514,
+        "share_of_phase": 0.158732,
+        "ms_per_token": 1.5432105
+      },
+      {
+        "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+        "total_ms": 18.069694,
+        "dispatches": 640,
+        "avg_dispatch_ms": 0.028233897,
+        "share_of_phase": 0.116164,
+        "ms_per_token": 1.129355875
+      },
+      {
+        "bucket": "moe_q5_k_selected_t16_gemv_decode_p9",
+        "total_ms": 13.247347,
+        "dispatches": 592,
+        "avg_dispatch_ms": 0.022377275,
+        "share_of_phase": 0.085162,
+        "ms_per_token": 0.827959187
+      },
+      {
+        "bucket": "dense_q6_k_t16_gemv_decode_p9",
+        "total_ms": 9.653767,
+        "dispatches": 16,
+        "avg_dispatch_ms": 0.603360438,
+        "share_of_phase": 0.062061,
+        "ms_per_token": 0.603360438
+      },
+      {
+        "bucket": "rmsnorm",
+        "total_ms": 9.584245,
+        "dispatches": 1456,
+        "avg_dispatch_ms": 0.006582586,
+        "share_of_phase": 0.061614,
+        "ms_per_token": 0.599015312
+      },
+      {
+        "bucket": "router",
+        "total_ms": 7.956682,
+        "dispatches": 640,
+        "avg_dispatch_ms": 0.012432316,
+        "share_of_phase": 0.051151,
+        "ms_per_token": 0.497292625
+      },
+      {
+        "bucket": "gdn_decode",
+        "total_ms": 7.836782,
+        "dispatches": 480,
+        "avg_dispatch_ms": 0.016326629,
+        "share_of_phase": 0.05038,
+        "ms_per_token": 0.489798875
+      },
+      {
+        "bucket": "copy",
+        "total_ms": 2.0194,
+        "dispatches": 645,
+        "avg_dispatch_ms": 0.003130853,
+        "share_of_phase": 0.012982,
+        "ms_per_token": 0.1262125
+      },
+      {
+        "bucket": "moe_combine",
+        "total_ms": 1.965234,
+        "dispatches": 640,
+        "avg_dispatch_ms": 0.003070678,
+        "share_of_phase": 0.012634,
+        "ms_per_token": 0.122827125
+      },
+      {
+        "bucket": "linear_attn_conv",
+        "total_ms": 1.623623,
+        "dispatches": 480,
+        "avg_dispatch_ms": 0.003382548,
+        "share_of_phase": 0.010438,
+        "ms_per_token": 0.101476438
+      }
+    ],
+    "decode_eager_512x128": [
+      {
+        "bucket": "full_attention_decode",
+        "total_ms": 290.345488,
+        "dispatches": 1280,
+        "avg_dispatch_ms": 0.226832412,
+        "share_of_phase": 0.183573,
+        "ms_per_token": 2.268324125
+      },
+      {
+        "bucket": "dense_q8_0_t16_gemv_decode_p9",
+        "total_ms": 284.809176,
+        "dispatches": 16640,
+        "avg_dispatch_ms": 0.017115936,
+        "share_of_phase": 0.180073,
+        "ms_per_token": 2.225071687
+      },
+      {
+        "bucket": "other",
+        "total_ms": 209.341845,
+        "dispatches": 16000,
+        "avg_dispatch_ms": 0.013083865,
+        "share_of_phase": 0.132358,
+        "ms_per_token": 1.635483164
+      },
+      {
+        "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+        "total_ms": 193.929388,
+        "dispatches": 5120,
+        "avg_dispatch_ms": 0.037876834,
+        "share_of_phase": 0.122613,
+        "ms_per_token": 1.515073344
+      },
+      {
+        "bucket": "moe_q5_k_selected_t16_gemv_decode_p9",
+        "total_ms": 137.129127,
+        "dispatches": 4736,
+        "avg_dispatch_ms": 0.02895463,
+        "share_of_phase": 0.086701,
+        "ms_per_token": 1.071321305
+      },
+      {
+        "bucket": "dense_q6_k_t16_gemv_decode_p9",
+        "total_ms": 111.672915,
+        "dispatches": 128,
+        "avg_dispatch_ms": 0.872444648,
+        "share_of_phase": 0.070606,
+        "ms_per_token": 0.872444648
+      },
+      {
+        "bucket": "rmsnorm",
+        "total_ms": 98.188992,
+        "dispatches": 11648,
+        "avg_dispatch_ms": 0.008429687,
+        "share_of_phase": 0.062081,
+        "ms_per_token": 0.7671015
+      },
+      {
+        "bucket": "router",
+        "total_ms": 85.316394,
+        "dispatches": 5120,
+        "avg_dispatch_ms": 0.016663358,
+        "share_of_phase": 0.053942,
+        "ms_per_token": 0.666534328
+      },
+      {
+        "bucket": "gdn_decode",
+        "total_ms": 82.075171,
+        "dispatches": 3840,
+        "avg_dispatch_ms": 0.021373742,
+        "share_of_phase": 0.051893,
+        "ms_per_token": 0.641212273
+      },
+      {
+        "bucket": "moe_combine",
+        "total_ms": 20.552849,
+        "dispatches": 5120,
+        "avg_dispatch_ms": 0.004014228,
+        "share_of_phase": 0.012995,
+        "ms_per_token": 0.160569133
+      },
+      {
+        "bucket": "copy",
+        "total_ms": 20.47461,
+        "dispatches": 5249,
+        "avg_dispatch_ms": 0.003900669,
+        "share_of_phase": 0.012945,
+        "ms_per_token": 0.159957891
+      },
+      {
+        "bucket": "linear_attn_conv",
+        "total_ms": 16.394565,
+        "dispatches": 3840,
+        "avg_dispatch_ms": 0.004269418,
+        "share_of_phase": 0.010366,
+        "ms_per_token": 0.128082539
+      }
+    ]
+  },
+  "wave2_priority_from_r1": [
+    "P10.X2 still gates retained WMMA-prefill perf rows: full safe-mode correctness is blocked when effective_wmma_prefill=true.",
+    "P10.C6 remains a high-confidence prefill swing: full-attention prefill is 41.1 ms / 10 dispatches.",
+    "P10.C8 audit should verify no rows>1 up-gate/shared fallback remains; residual prefill T16 GEMV buckets are ~8.3 ms combined, not the old giant fallback.",
+    "P10.C7/C9 are launch/traffic cleanup swings: router is 15.3 ms, scheduler 1.7 ms, and copy/rmsnorm/combine/silu buckets are small but numerous.",
+    "P10.D6 is justified by ~667 launches/token and ~1.9 ms/token wall-vs-kernel residue; rocprof graph1 512/128 timeout itself is a graph/trace scaling warning.",
+    "P10.D7 should start with Q8T16 dense/shared, Q4T16 selected dual, Q5/Q6 selected-down, while noting full-attention decode is now also a top kernel bucket after P10.X1."
+  ]
+}

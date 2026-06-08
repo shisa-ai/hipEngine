@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "status": "rejected_perf_regression_reverted",
+  "performance_claim": false,
+  "task": "P9.D8/#28/#51",
+  "change": "Prototype shared-memory caching of the per-block Q8_0 T16 d scales inside the single, concatenated-dual, and split-output dual Q8T16 GEMV kernels to reduce redundant fp16 scale loads.",
+  "hardware": {
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
+    "backend": "hip_gfx1100"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk",
+    "measured_runs": 1
+  },
+  "environment": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_GEMV_DECODE": "1",
+    "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "correctness_gate": {
+    "full_p9_e2e_gate_run": false,
+    "reason_not_run": "Rejected after the targeted CPU-oracle fixture passed but the first 512/128 performance probe regressed substantially; the candidate was reverted before full KL/top-1 gating.",
+    "unit_fixture": "PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q --tb=short # 17 passed",
+    "finite_final_logits_in_perf_probe": true,
+    "candidate_reverted": true
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d8_q8_dcache_512x128_bench_1.json",
+    "baseline_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d7-q8t16-qkv-gate-pair.json",
+    "before": {
+      "prefill_tok_s_median": 500.4798262155052,
+      "decode_tok_s_median": 87.96093534844331,
+      "runs": 3
+    },
+    "candidate_after": {
+      "prefill_tok_s": 476.8525885860304,
+      "decode_tok_s": 81.25345696301653,
+      "runs": 1,
+      "peak_tracked_gib": 21.343075528740883,
+      "hip_used_peak_sampled_gib": 21.8046875
+    },
+    "delta": {
+      "decode_tok_s_abs": -6.70747838542678,
+      "decode_tok_s_pct": -7.624383231639923,
+      "prefill_tok_s_abs": -23.627237629474805,
+      "prefill_tok_s_pct": -4.720916920096022
+    },
+    "acceptance_result": "rejected and reverted: candidate decode 81.253 tok/s regressed below D7 87.961 tok/s"
+  },
+  "notes": [
+    "The shared-memory scale cache preserved synthetic CPU-oracle correctness but added synchronization/occupancy cost that outweighed reduced d-scale loads.",
+    "No runtime or kernel source changes were retained."
+  ]
+}

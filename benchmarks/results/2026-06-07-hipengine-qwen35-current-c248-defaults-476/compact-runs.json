@@ -1,0 +1,426 @@
+{
+  "iteration": 476,
+  "kind": "current_c2_c4_c8_default_generated_token_equality_matrix",
+  "created_at": "2026-06-07T10:51:58.964599+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "results": [
+    {
+      "batch_size": 2,
+      "top_level_status": "blocked",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": true,
+        "skipped": false,
+        "rows": 2,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137,
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "mismatch_count": 0,
+        "mismatch_summaries": []
+      },
+      "decode_execution": {
+        "native_caware_decode": true,
+        "throughput_claim_eligible": true,
+        "decode_rows": 2,
+        "full_attention_layers": [
+          {
+            "layer_index": 3,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 7,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 11,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 15,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 19,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 23,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 27,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 31,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 35,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          },
+          {
+            "layer_index": 39,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv_auto"
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_row_chunk_size": 0,
+        "batch_decode_full_attention_row_chunk_layers": "",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_output_path": "batch"
+      },
+      "raw_json_tmp": {
+        "path": "/tmp/hipengine-iter476-current-c248/c2.json",
+        "sha256": "e4de21805f3b0ffac85e36e1b6f179d44d81400f41e905004c5c915c1ade1b47",
+        "size_bytes": 137987
+      },
+      "raw_log_tmp": {
+        "path": "/tmp/hipengine-iter476-current-c248/c2.log",
+        "sha256": "e4de21805f3b0ffac85e36e1b6f179d44d81400f41e905004c5c915c1ade1b47",
+        "size_bytes": 137987
+      }
+    },
+    {
+      "batch_size": 4,
+      "top_level_status": "blocked",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": true,
+        "skipped": false,
+        "rows": 4,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137,
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 0,
+        "mismatch_summaries": []
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_rows": 4,
+        "full_attention_layers": [
+          {
+            "layer_index": 3,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 7,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 11,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 15,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 19,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 23,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 27,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 31,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 35,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 39,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "3,15",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_output_path": "batch_gemv"
+      },
+      "raw_json_tmp": {
+        "path": "/tmp/hipengine-iter476-current-c248/c4.json",
+        "sha256": "7c0ee9c3c7c7ee091445f31647f94a91c92f864bfb8a07f341caf368f8818e5f",
+        "size_bytes": 220372
+      },
+      "raw_log_tmp": {
+        "path": "/tmp/hipengine-iter476-current-c248/c4.log",
+        "sha256": "7c0ee9c3c7c7ee091445f31647f94a91c92f864bfb8a07f341caf368f8818e5f",
+        "size_bytes": 220372
+      }
+    },
+    {
+      "batch_size": 8,
+      "top_level_status": "blocked",
+      "decision_accepted": false,
+      "generated_token_equality": {
+        "passed": true,
+        "skipped": false,
+        "rows": 8,
+        "tokens_per_sequence": 137,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "min_equal_prefix_tokens": 137,
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "mismatch_count": 0,
+        "mismatch_summaries": []
+      },
+      "decode_execution": {
+        "native_caware_decode": false,
+        "throughput_claim_eligible": false,
+        "decode_rows": 8,
+        "full_attention_layers": [
+          {
+            "layer_index": 3,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 7,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 11,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 15,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 19,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 23,
+            "full_attention_decode_path": "native_batch_row_chunks",
+            "native_caware_decode": false,
+            "full_attention_row_chunk_size": 2,
+            "row_chunk_source": "env",
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 27,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 31,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 35,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          },
+          {
+            "layer_index": 39,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": true,
+            "full_attention_row_chunk_size": null,
+            "row_chunk_source": null,
+            "full_attention_output_decode_path": "batch_gemv"
+          }
+        ]
+      },
+      "workload_paths": {
+        "batch_decode_full_attention_row_chunk_size": 2,
+        "batch_decode_full_attention_row_chunk_layers": "3,7,11,15,19,23",
+        "batch_decode_full_attention_path": "native_batch",
+        "batch_decode_full_attention_output_path": "batch_gemv"
+      },
+      "raw_json_tmp": {
+        "path": "/tmp/hipengine-iter476-current-c248/c8.json",
+        "sha256": "9784b6371cc9392f29c081b7f19bde3f0576b5519478ad99eac2c22b2397b8a7",
+        "size_bytes": 396387
+      },
+      "raw_log_tmp": {
+        "path": "/tmp/hipengine-iter476-current-c248/c8.log",
+        "sha256": "9784b6371cc9392f29c081b7f19bde3f0576b5519478ad99eac2c22b2397b8a7",
+        "size_bytes": 396387
+      }
+    }
+  ],
+  "current_defaults_observed": {
+    "c2": {
+      "rowchunk_layers": "",
+      "native_caware_decode": true
+    },
+    "c4": {
+      "rowchunk_layers": "3,15",
+      "native_caware_decode": false
+    },
+    "c8": {
+      "rowchunk_layers": "3,7,11,15,19,23",
+      "native_caware_decode": false
+    }
+  },
+  "interpretation": {
+    "positive_result": "The current no-flag c2/c4/c8 512/128 generated-token equality matrix is green under the latest defaults: c2 full native, c4 rowchunk layers 3,15, and c8 rowchunk layers 3,7,11,15,19,23.",
+    "status_nuance": "Each retained-bench top-level status remains blocked because retained performance/profiler/baseline requirements are not all satisfied; the generated-token equality gates themselves pass.",
+    "frontier_update": "This refreshes the current c4/c8 equality gate after c4 narrowing. No further c4 layer drop should be made: iter475 rejected layer3-only removal and iter469 rejected layer15 removal.",
+    "next_target": "Move to c8/full-attention retained blockers or profiler/scaling prerequisites only after preserving this equality matrix; no throughput/scaling claim is made here."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: c2, c4, and c8 generated-token equality vs independent c1 all pass at 137 tokens per row under current defaults on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX; no performance claim."
+  },
+  "conclusion": "Current no-flag c2/c4/c8 generated-token equality is green after c4 default narrowing."
+}

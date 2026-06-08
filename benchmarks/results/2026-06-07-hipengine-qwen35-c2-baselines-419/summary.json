@@ -1,0 +1,388 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/compact-runs.json",
+      "sha256": "d6a9a29c6d82a1a7a9515b65cb0c3ae8244c857998d190ab73f2150af7eab533",
+      "size_bytes": 11105
+    },
+    "raw": {
+      "active_c2_verify": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+        "sha256": "8b1bbe5a618a35efa94c0cea93e4c928b23b1035570d218af0d2ad84e9475177",
+        "size_bytes": 137978
+      },
+      "active_c2_verify_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-native-c2-512-128.log",
+        "sha256": "8b1bbe5a618a35efa94c0cea93e4c928b23b1035570d218af0d2ad84e9475177",
+        "size_bytes": 137978
+      },
+      "c1_baseline_scaling": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "sha256": "b6b6d5cd9ec59b857ff75d175f186ba6d130f5874ba313ad3124d8b58bef04e9",
+        "size_bytes": 5164
+      },
+      "c2_correctness_summary": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-418/summary.json",
+        "sha256": "4ea621eeb7f884b8e65327001bbe6779856001db9acdbde48cb969fc22b505d6",
+        "size_bytes": 10517
+      },
+      "c4_correctness_summary": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-415/summary.json",
+        "sha256": "2b1fb0eb8b66cb4e8f7fddcc8db8d5db700234b611bcf6075562a26381e538f8",
+        "size_bytes": 9496
+      },
+      "c8_correctness_summary": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/summary.json",
+        "sha256": "4804fddba0479c39503970cbb96ead5b22ef2e4c48a70b0ec53261bca4c01fef",
+        "size_bytes": 15312
+      },
+      "guard_primitive_c2": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d",
+        "size_bytes": 1281
+      },
+      "guard_primitive_c8": {
+        "exists": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd",
+        "size_bytes": 1352
+      },
+      "raw_c1_baseline": {
+        "exists": true,
+        "path": "/tmp/hipengine-c2-baselines-iter419/c1-baseline-raw.json",
+        "sha256": "084cc9e91b4746fbc19e381db339a40ecd14d4b39b198bdf3c2dbfe5312f587f",
+        "size_bytes": 183422
+      },
+      "raw_c1_baseline_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-c2-baselines-iter419/c1-baseline.log",
+        "sha256": "084cc9e91b4746fbc19e381db339a40ecd14d4b39b198bdf3c2dbfe5312f587f",
+        "size_bytes": 183422
+      },
+      "raw_serial_bridge": {
+        "exists": true,
+        "path": "/tmp/hipengine-c2-baselines-iter419/c2-serial-bridge-raw.json",
+        "sha256": "2d628e0e8f9e9cea43d87c384baa3ea27512292e2de6772f43e0b717921c5507",
+        "size_bytes": 76455
+      },
+      "raw_serial_bridge_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-c2-baselines-iter419/c2-serial-bridge.log",
+        "sha256": "2d628e0e8f9e9cea43d87c384baa3ea27512292e2de6772f43e0b717921c5507",
+        "size_bytes": 76455
+      },
+      "retained_with_baselines": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/retained-c2-with-baselines.json",
+        "sha256": "9a947dc531a276eb8755c6438d0b5c7f566cd7ec2fc27c58e4770b471d654818",
+        "size_bytes": 139927
+      },
+      "retained_with_baselines_log": {
+        "exists": true,
+        "path": "/tmp/hipengine-c2-baselines-iter419/retained-c2-with-baselines.log",
+        "sha256": "9a947dc531a276eb8755c6438d0b5c7f566cd7ec2fc27c58e4770b471d654818",
+        "size_bytes": 139927
+      },
+      "serial_bridge_scaling": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c2-serial-bridge-scaling.json",
+        "sha256": "26d3d75b0d58d7cfe81bdf61d8f50e746d147a2dd57a1f504e6ee90ec9c206be",
+        "size_bytes": 70634
+      }
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/summary.json"
+    }
+  },
+  "baselines": {
+    "c1": {
+      "measurements": {
+        "decode_tok_s_aggregate": 133.90142644926902,
+        "decode_tok_s_per_request": 133.90142644926902,
+        "source_field": "throughput.warmed_decode_tok_s"
+      },
+      "raw_json": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "sha256": "b6b6d5cd9ec59b857ff75d175f186ba6d130f5874ba313ad3124d8b58bef04e9",
+        "size_bytes": 5164
+      },
+      "software": {
+        "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+        "hipengine_commit": "3e2562d3",
+        "hipengine_dirty": false,
+        "python": "3.12.9"
+      },
+      "status": "loaded",
+      "workload": {
+        "concurrency": 1,
+        "gen_tokens_aggregate": 128,
+        "gen_tokens_per_request": 128,
+        "kv_policy": {
+          "block_size": 256,
+          "int8_admission_gated": false,
+          "int8_explicit": false,
+          "policy_class": "FixedPagedKVPolicy",
+          "requested_scale_dtype": "fp16",
+          "requested_scale_granularity": "per_token_head",
+          "requested_storage": "auto",
+          "resolved_storage_dtype": "bf16",
+          "scale_metadata_format": {
+            "granularity": null,
+            "k_scale": null,
+            "present": false,
+            "scale_dtype": null,
+            "v_scale": null
+          },
+          "selection_reason": "default_bf16",
+          "spans_mode": "uniform",
+          "storage_dtype": "bf16"
+        },
+        "max_layers": 40,
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "prompt_lengths": [
+          512
+        ],
+        "prompt_tokens_aggregate": 512,
+        "prompt_tokens_per_request": 512,
+        "quant": "w4_paro",
+        "shape": "c=1 prompt=512 decode=128",
+        "warmup_decode_tokens": 8
+      }
+    },
+    "serial_bridge_c2": {
+      "decision": {
+        "accepted": false,
+        "reason": "batch_execution.throughput_claim_eligible=false: current c>N path is scheduler_serial_slot_bridge"
+      },
+      "measurements": {
+        "decode_seconds": 2.2707841268274933,
+        "decode_tok_s_aggregate": 112.73638782989775,
+        "decode_tok_s_per_request": 56.368193914948876
+      },
+      "raw_json": {
+        "exists": true,
+        "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c2-serial-bridge-scaling.json",
+        "sha256": "26d3d75b0d58d7cfe81bdf61d8f50e746d147a2dd57a1f504e6ee90ec9c206be",
+        "size_bytes": 70634
+      },
+      "software": {
+        "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+        "hipengine_commit": "3e2562d3",
+        "hipengine_dirty": false,
+        "python": "3.12.9",
+        "torch_rocm": {
+          "command": "python3 -c 'import torch; print(torch.__version__, torch.version.hip)'",
+          "output": "2.11.0+rocm7.13.0a20260423 7.13.26162",
+          "returncode": 0
+        }
+      },
+      "status": "blocked",
+      "workload": {
+        "concurrency": 2,
+        "gen_tokens_aggregate": 256,
+        "gen_tokens_per_request": 128,
+        "kv_policy": {
+          "block_size": 256,
+          "int8_admission_gated": false,
+          "int8_explicit": false,
+          "policy_class": "FixedPagedKVPolicy",
+          "requested_scale_dtype": "fp16",
+          "requested_scale_granularity": "per_token_head",
+          "requested_storage": "auto",
+          "resolved_storage_dtype": "bf16",
+          "scale_metadata_format": {
+            "granularity": null,
+            "k_scale": null,
+            "present": false,
+            "scale_dtype": null,
+            "v_scale": null
+          },
+          "selection_reason": "default_bf16",
+          "spans_mode": "uniform",
+          "storage_dtype": "bf16"
+        },
+        "kv_storage_dtype": "bf16",
+        "max_layers": 40,
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+        "native_caware_decode": false,
+        "native_compact_prefill": false,
+        "prompt_lengths": [
+          512,
+          512
+        ],
+        "prompt_tokens_aggregate": 1024,
+        "prompt_tokens_per_request": 512,
+        "quant": "w4_paro",
+        "scheduler_path": "scheduler_serial_slot_bridge",
+        "shape": "c=2 prompt=512 decode=128",
+        "warmup_decode_tokens": 8
+      }
+    }
+  },
+  "commands": {
+    "active_verify": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "c1_baseline": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-c2-baselines-iter419/c1-baseline-raw.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "retained_with_baselines": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --primitive-correctness-json benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-418/primitive-c2.json --c1-baseline-json benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json --serial-bridge-json benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c2-serial-bridge-scaling.json --json benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/retained-c2-with-baselines.json",
+    "serial_bridge": "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-c2-baselines-iter419/c2-serial-bridge-raw.json"
+  },
+  "conclusion": "Current-commit c2 retained run now has c1 and serial-bridge scaling references attached and scaling.complete=true, but native aggregate/per-request ratios are below both baselines (aggregate_vs_c1=0.833, aggregate_vs_serial_bridge=0.989). The next blocker for any retained performance row is profiler evidence plus an actual >1 scaling win; no rollup update is warranted.",
+  "created_at": "2026-06-07T03:27:05.538780+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 419,
+  "kind": "current_commit_c2_scaling_baselines_attached",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "PASS: required runtime scaling evidence advanced: refreshed current-commit c1 and c2 serial-bridge baseline artifacts on HIP_VISIBLE_DEVICES=1 / RX 7900 XTX and attached them to a correctness-green c2 retained run. Scaling.complete=true; ratios are <1.0 and profiler is absent, so no retained performance claim.",
+    "passed": true
+  },
+  "references": {
+    "c2_correctness": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-equality-418/summary.json",
+      "sha256": "4ea621eeb7f884b8e65327001bbe6779856001db9acdbde48cb969fc22b505d6",
+      "size_bytes": 10517
+    },
+    "c4_correctness": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c4-equality-415/summary.json",
+      "sha256": "2b1fb0eb8b66cb4e8f7fddcc8db8d5db700234b611bcf6075562a26381e538f8",
+      "size_bytes": 9496
+    },
+    "c8_correctness": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c8-equality-416/summary.json",
+      "sha256": "4804fddba0479c39503970cbb96ead5b22ef2e4c48a70b0ec53261bca4c01fef",
+      "size_bytes": 15312
+    }
+  },
+  "result": {
+    "active_c2_prefix_lengths": [
+      137,
+      137
+    ],
+    "active_c2_verify_metric": 137,
+    "c1_baseline_decode_tok_s": 133.90142644926902,
+    "generated_token_equality_passed": true,
+    "guard_primitive_c2_passed": true,
+    "guard_primitive_c8_passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "profiler_status": "not_captured",
+    "ratios": {
+      "aggregate_vs_c1": 0.8327073913080947,
+      "aggregate_vs_serial_bridge": 0.9890392060391479,
+      "per_request_vs_c1": 0.41635369565404734,
+      "per_request_vs_serial_bridge": 0.9890392060391479
+    },
+    "retained_correctness_passed": true,
+    "retained_native_decode_tok_s_aggregate": 111.50070751100353,
+    "retained_native_decode_tok_s_per_request": 55.75035375550176,
+    "retained_status": "blocked",
+    "scaling_complete": true,
+    "serial_bridge_decode_tok_s_aggregate": 112.73638782989775,
+    "serial_bridge_decode_tok_s_per_request": 56.368193914948876
+  },
+  "retained_with_baselines": {
+    "correctness": {
+      "finite_logits": true,
+      "passed": true
+    },
+    "decision": {
+      "accepted": false,
+      "reason": "profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim; scaling.ratios.aggregate_vs_serial_bridge must be > 1.0 for retained performance claim; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; profiler kernel names must include selected projection_dispatch candidate or variant; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits"
+    },
+    "generated_token_equality": {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "min_equal_prefix_tokens": 137,
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "rows": 2,
+      "tokens_per_sequence": 137
+    },
+    "profiler": {
+      "cpu_side_bottleneck_shares": {
+        "decode": 0.09193941701824752,
+        "load": 0.8866803390257989,
+        "other": 0.0,
+        "prefill": 0.014142850821539864,
+        "validation": 0.0,
+        "warmup_decode": 0.007237393134413705
+      },
+      "cpu_side_bottlenecks_seconds": {
+        "decode": 2.295949556864798,
+        "load": 22.142552101053298,
+        "other": 0.0,
+        "prefill": 0.35318118310533464,
+        "validation": 0.0,
+        "warmup_decode": 0.1807352069299668
+      },
+      "cpu_side_total_seconds": 24.972418047953397,
+      "notes": "E2E retained c>N row; profiler trace not captured in this iteration.",
+      "status": "not_captured"
+    },
+    "raw_json": {
+      "exists": true,
+      "path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/retained-c2-with-baselines.json",
+      "sha256": "9a947dc531a276eb8755c6438d0b5c7f566cd7ec2fc27c58e4770b471d654818",
+      "size_bytes": 139927
+    },
+    "scaling": {
+      "c1_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "decode_tok_s_aggregate": 133.90142644926902,
+        "decode_tok_s_per_request": 133.90142644926902,
+        "gen_tokens_per_request": 128,
+        "prompt_tokens_per_request": 512,
+        "reason": null,
+        "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c1-baseline-scaling.json",
+        "run_tag": "qwen35-paro-c1-native-baseline-iter419",
+        "status": "loaded",
+        "workload_concurrency": 1
+      },
+      "complete": true,
+      "native": {
+        "decode_tok_s_aggregate": 111.50070751100353,
+        "decode_tok_s_per_request": 55.75035375550176
+      },
+      "ratios": {
+        "aggregate_vs_c1": 0.8327073913080947,
+        "aggregate_vs_serial_bridge": 0.9890392060391479,
+        "per_request_vs_c1": 0.41635369565404734,
+        "per_request_vs_serial_bridge": 0.9890392060391479
+      },
+      "serial_bridge_baseline": {
+        "artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c2-serial-bridge-scaling.json",
+        "decode_tok_s_aggregate": 112.73638782989775,
+        "decode_tok_s_per_request": 56.368193914948876,
+        "gen_tokens_per_request": 128,
+        "prompt_tokens_per_request": 512,
+        "reason": null,
+        "reference_artifact_path": "benchmarks/results/2026-06-07-hipengine-qwen35-c2-baselines-419/c2-serial-bridge-scaling.json",
+        "run_tag": "qwen35-paro-c2-scheduler-serial-bridge",
+        "status": "blocked",
+        "workload_concurrency": 2
+      }
+    },
+    "status": "blocked"
+  }
+}

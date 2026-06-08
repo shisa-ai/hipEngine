@@ -1,0 +1,443 @@
+{
+  "active_verify": {
+    "command": "active multiloop c2 512/128 verify, no diagnostic flags",
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "metric": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ],
+    "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "raw_json_sha256": "e1ca78e1483e8dda911e65320a424e1fd14f4b7c4f6cc0a798787e57d2ff3d11",
+    "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+    "raw_log_sha256": "e1ca78e1483e8dda911e65320a424e1fd14f4b7c4f6cc0a798787e57d2ff3d11",
+    "status": "blocked"
+  },
+  "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-final-rmsnorm-temp-fence-329/summary.json",
+  "children": [
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-1.json",
+      "raw_json_sha256": "a86debc74e1d1e58da4364d9c0e044abedec7804f191e0bbde6f795053fb7d26",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-1.log",
+      "raw_log_sha256": "a86debc74e1d1e58da4364d9c0e044abedec7804f191e0bbde6f795053fb7d26",
+      "repeat": 1,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 139830876872704
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-2.json",
+      "raw_json_sha256": "9523f0226a5a053e8d73b501fd2dde8ad97d6b8dfd7d6c412b7b71a439817de8",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-2.log",
+      "raw_log_sha256": "9523f0226a5a053e8d73b501fd2dde8ad97d6b8dfd7d6c412b7b71a439817de8",
+      "repeat": 2,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140236478652416
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-3.json",
+      "raw_json_sha256": "0a1175ccc53281c2a885521627c196d1a36632ccf95d03d890ee8928f8cf3912",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-3.log",
+      "raw_log_sha256": "0a1175ccc53281c2a885521627c196d1a36632ccf95d03d890ee8928f8cf3912",
+      "repeat": 3,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140009319342080
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-4.json",
+      "raw_json_sha256": "d330e9aea0426f0a4de111ebd0ecf9a723b6de1023733385d49315a7b49d96d6",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-4.log",
+      "raw_log_sha256": "d330e9aea0426f0a4de111ebd0ecf9a723b6de1023733385d49315a7b49d96d6",
+      "repeat": 4,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 139639119585280
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-5.json",
+      "raw_json_sha256": "4fac3766580d0fe539d772399f7403ec88f04b3b58ccf8717a0aa6543a32343b",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-5.log",
+      "raw_log_sha256": "4fac3766580d0fe539d772399f7403ec88f04b3b58ccf8717a0aa6543a32343b",
+      "repeat": 5,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140072777064448
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-6.json",
+      "raw_json_sha256": "eeb1d241b19981e96db54dac79c2bbe98d4d188911d4377381fa09f6473aa56a",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-6.log",
+      "raw_log_sha256": "eeb1d241b19981e96db54dac79c2bbe98d4d188911d4377381fa09f6473aa56a",
+      "repeat": 6,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 140093004095488
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-7.json",
+      "raw_json_sha256": "04e44526a9de33a44037475784276512d8bed0af1465f0709586896b9f8b61f7",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-7.log",
+      "raw_log_sha256": "04e44526a9de33a44037475784276512d8bed0af1465f0709586896b9f8b61f7",
+      "repeat": 7,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 139770009133056
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    },
+    {
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_json": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-8.json",
+      "raw_json_sha256": "94e0c5288af16c094f0fa29d6fa9258d9d46406d91f228860f01a4a77a529e9f",
+      "raw_log": "/tmp/hipengine-iter329-c2-final-rmsnorm-temp-fence/c2-batch-norm-cast-final-rmsnorm-temp-fence-8.log",
+      "raw_log_sha256": "94e0c5288af16c094f0fa29d6fa9258d9d46406d91f228860f01a4a77a529e9f",
+      "repeat": 8,
+      "sampler": {
+        "argmax_mode": "batch",
+        "blockers": [
+          "batched LM-head final RMSNorm temp-buffer kernel fence enabled"
+        ],
+        "final_cast_path": "batch",
+        "final_norm_path": "batch",
+        "final_rmsnorm_temp_fence": {
+          "checked_rows": 272,
+          "checked_steps": 136,
+          "enabled": true,
+          "host_reads": 0,
+          "kind": "serial_final_rmsnorm_temp_kernel_only",
+          "last_step": {
+            "host_reads": 0,
+            "rows": 2,
+            "step_index": 135
+          },
+          "scratch_ptr": 139912672092160
+        },
+        "final_rmsnorm_temp_fence_enabled": true,
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": false
+      },
+      "status": "blocked"
+    }
+  ],
+  "command": "env -u HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model $MODEL --fixture $FIXTURE --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-norm-path batch --batch-sample-cast-path batch --batch-sample-final-rmsnorm-temp-fence --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --json <repeat-json>",
+  "date": "2026-06-05",
+  "diagnostic": {
+    "flags": [
+      "--batch-sample-mode batched_lm_head",
+      "--batch-sample-norm-path batch",
+      "--batch-sample-cast-path batch",
+      "--batch-sample-final-rmsnorm-temp-fence",
+      "--batch-sample-eq-ok",
+      "--batch-sample-eq-rows 2"
+    ],
+    "name": "batch_sample_final_rmsnorm_temp_fence",
+    "purpose": "Rerun serial per-row final RMSNorm kernels into a dedicated temp FP16 buffer as a kernel-only fence, without clobbering sampler norm scratch, cast, LM-head, argmax, host readback, or output comparison."
+  },
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d"
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd"
+      }
+    ]
+  },
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device_name": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 329,
+  "lane": "concurrency-e2e/native-c2-e2e",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "retained_claim": false,
+  "schema": 1,
+  "shape": {
+    "batch_size": 2,
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "warmup_decode_tokens": 8
+  },
+  "summary": {
+    "all_green": true,
+    "conclusion": "Serial final RMSNorm kernel into a dedicated temp buffer is sufficient for this 8-repeat c2 explicit batched-sampler matrix: all repeats passed at [137,137] with zero host reads and no cast/LM-head/argmax fence. Compared with iter327 same kernel into sampler norm scratch green and iter328 sync-only red, the stabilizer is the serial RMSNorm kernel launch/work side effect rather than clobbering sampler norm scratch or pure synchronization.",
+    "failed_repeats": [],
+    "min_equal_prefixes_by_repeat": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "passed_repeats": 8,
+    "total_repeats": 8
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "artifacts": {
+    "current-c2": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/current-c2-compact.json"
+    },
+    "current-c4": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/current-c4-compact.json"
+    },
+    "current-c8": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/current-c8-compact.json"
+    },
+    "hard-c4-current-default": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/hard-c4-current-default-compact.json"
+    },
+    "hard-c4-no-rowchunk-native": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/hard-c4-no-rowchunk-native-compact.json"
+    },
+    "hipcc_version": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "previous_c8_to_c2_stress": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c8-to-c2-stress-304/summary.json"
+    },
+    "previous_hard_c4_post_profiler_refresh": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-hard-c4-post-profiler-refresh-284/summary.json"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-hard-c4-current-default-305/summary.json"
+    }
+  },
+  "conclusion": "With the projection catalog selected automatically (no explicit projection artifact/env override), the hard rows4..7 c4 fixture remains generated-token green under the current correctness-first default: selected rowchunk2 full-attention layers [3,7,11,15] plus accepted c4 projection. The explicit no-rowchunk native c4 control remains red at [45,31,68,137], preserving the focused full-attention boundary signal. The required current c2/c4/c8 matrix also stays green at c2 [137,137], c4 [137]*4, and c8 [137]*8. This is correctness/runtime evidence only; c4/c8 remain diagnostic due to rowchunk full attention and no throughput/scaling claim is made.",
+  "created_at": "2026-06-04T21:54:48.210499+00:00",
+  "git_commit_before_commit": "7093f4dd830ec79acb4594ce5b1364f2610b7887",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 305,
+  "kind": "hard_c4_current_default_full_attention_boundary",
+  "performance_claim": false,
+  "result": {
+    "hard_tail_c4_current_default": {
+      "decode_blockers": [
+        "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+      ],
+      "passed": true,
+      "prefix_lengths": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+      "rowchunk_layers": [
+        3,
+        7,
+        11,
+        15
+      ]
+    },
+    "hard_tail_c4_no_rowchunk_native_control": {
+      "first_mismatch_indices": [
+        45,
+        31,
+        68,
+        null
+      ],
+      "native_caware_decode": true,
+      "passed": false,
+      "prefix_lengths": [
+        45,
+        31,
+        68,
+        137
+      ],
+      "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4"
+    },
+    "required_current_matrix": {
+      "c2": {
+        "decode_blockers": [],
+        "native_caware_decode": true,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+      },
+      "c4": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path on selected layers"
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c4",
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15
+        ]
+      },
+      "c8": {
+        "decode_blockers": [
+          "full-attention decode forced to native row-chunk diagnostic path"
+        ],
+        "native_caware_decode": false,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "projection_candidate": "gemv_awq_selected_dual_pack8_strided_c8",
+        "rowchunk_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ]
+      }
+    }
+  },
+  "schema": 1,
+  "source_tmp_dir": "/tmp/hipengine-iter305-hard-c4-current-default",
+  "status": "passed",
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "env_projection_dispatch_artifact_unset": true,
+    "expected_auto_projection_dispatch_artifact": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json",
+    "explicit_projection_dispatch_artifact": null,
+    "hard_tail_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4567_4x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "primary_fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

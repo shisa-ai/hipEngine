@@ -1,0 +1,398 @@
+{
+  "child_artifacts_not_committed": "/tmp/hipengine-iter282-c4-current-profiler",
+  "commands": {
+    "profiled_bench_json": "/tmp/hipengine-iter282-c4-current-profiler/profiled-c4.json",
+    "profiler": "HIP_VISIBLE_DEVICES=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-iter282-c4-current-profiler/rocprof -- python3 scripts/qwen35_batch_retained_bench.py --model ... --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --projection-dispatch-artifact benchmarks/results/2026-06-03-hipengine-qwen35-native-c248-projection-dispatch-catalog/summary.json --primitive-correctness-json benchmarks/results/2026-06-04-hipengine-qwen35-retained-c248-primitive-gpu-correctness-261/primitive-c4.json --json /tmp/hipengine-iter282-c4-current-profiler/profiled-c4.json",
+    "profiler_log": "/tmp/hipengine-iter282-c4-current-profiler/rocprof.log"
+  },
+  "created_utc": "2026-06-04T16:13:00Z",
+  "finding": "Current c4 no-flag rowchunk2 profiler refresh on GPU1/XTX stayed generated-token green at [137]*4 with grouped-compact MoE, accepted c-aware projection, row-aware batched_lm_head, native batch full-attention context and KV append kernels, and batched sampler argmax kernels present. This is runtime/profiler evidence only: c4 remains non-retained because full-attention rowchunk2 records native_caware_decode=false and the rowchunk diagnostic blocker.",
+  "hardware": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "device": "AMD Radeon RX 7900 XTX"
+  },
+  "iteration": 282,
+  "mode": "qwen35_current_c4_rowchunk2_profiler_evidence",
+  "performance_claim": false,
+  "profiled_bench": {
+    "batch_blockers": [
+      "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "decode_blockers": [
+      "full-attention decode forced to native row-chunk diagnostic path"
+    ],
+    "full_attention_context_decode_path": "native_batch",
+    "full_attention_decode_path": "native_batch_row_chunks",
+    "full_attention_row_chunk_size": 2,
+    "generated_token_equality_passed": true,
+    "min_equal_prefix_tokens": 137,
+    "moe_decode_path": "grouped_compact",
+    "moe_grouped_compact_layers": 40,
+    "moe_selected_c1_fallback_layers": 0,
+    "native_caware_decode": false,
+    "prefix_lengths": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "projection_dispatch": {
+      "blockers": [],
+      "path": "benchmark_accepted_caware_projection",
+      "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c4"
+    },
+    "sampler_execution": {
+      "argmax_mode": "batch",
+      "blockers": [],
+      "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+      "equality_rows": 4,
+      "mode": "batched_lm_head",
+      "native_row_aware_lm_head": true
+    },
+    "status": "blocked"
+  },
+  "profiler": {
+    "agent_dispatch_counts": {
+      "Agent 2": 781465
+    },
+    "expected_kernel_summaries": {
+      "batched_sampler_argmax": {
+        "calls": 1360,
+        "duration_ns": 5762767,
+        "fragment": "batch_argmax",
+        "kernels": [
+          {
+            "calls": 680,
+            "duration_ns": 3770272,
+            "kernel_name": "(anonymous namespace)::batch_argmax_stage1_kernel(float const*, float*, long*, long, long)"
+          },
+          {
+            "calls": 680,
+            "duration_ns": 1992495,
+            "kernel_name": "(anonymous namespace)::batch_argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+          }
+        ],
+        "present": true
+      },
+      "caware_projection": {
+        "calls": 28560,
+        "duration_ns": 605361532,
+        "fragment": "gemv_awq_selected_dual_pack8_strided",
+        "kernels": [
+          {
+            "calls": 28560,
+            "duration_ns": 605361532,
+            "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+          }
+        ],
+        "present": true
+      },
+      "grouped_moe_compact_wmma": {
+        "calls": 200,
+        "duration_ns": 241438238,
+        "fragment": "gemm_awq_selected_dual_pack8_wmma_compact",
+        "kernels": [
+          {
+            "calls": 200,
+            "duration_ns": 241438238,
+            "kernel_name": "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, lon..."
+          }
+        ],
+        "present": true
+      },
+      "grouped_moe_metadata": {
+        "calls": 21000,
+        "duration_ns": 59445156,
+        "fragment": "qwen35_moe_group_",
+        "kernels": [
+          {
+            "calls": 7000,
+            "duration_ns": 30245284,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)"
+          },
+          {
+            "calls": 7000,
+            "duration_ns": 18321285,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)"
+          },
+          {
+            "calls": 7000,
+            "duration_ns": 10878587,
+            "kernel_name": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)"
+          }
+        ],
+        "present": true
+      },
+      "linear_segment_state": {
+        "calls": 4080,
+        "duration_ns": 325450933,
+        "fragment": "qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp",
+        "kernels": [
+          {
+            "calls": 4080,
+            "duration_ns": 325450933,
+            "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, lon..."
+          }
+        ],
+        "present": true
+      },
+      "native_batch_full_attention_context": {
+        "calls": 8160,
+        "duration_ns": 933302201,
+        "fragment": "paged_full_attn_decode_context_tensor_batch",
+        "kernels": [
+          {
+            "calls": 8160,
+            "duration_ns": 933302201,
+            "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+          }
+        ],
+        "present": true
+      },
+      "native_batch_kv_append": {
+        "calls": 8160,
+        "duration_ns": 46777408,
+        "fragment": "qwen35_write_paged_kv_mixed_value_batch_position_tensor",
+        "kernels": [
+          {
+            "calls": 8160,
+            "duration_ns": 46777408,
+            "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
+          }
+        ],
+        "present": true
+      }
+    },
+    "raw_trace_not_retained_reason": "raw rocprof CSV is large and intentionally left under /tmp; compact aggregate evidence is retained here",
+    "raw_trace_rows": 781465,
+    "raw_trace_sha256": "5600611644687bc17e725dc0ab8febfa14ab26197b1151e77ba897d0f52e7274",
+    "raw_trace_size_bytes": 215405074,
+    "raw_trace_tmp_path": "/tmp/hipengine-iter282-c4-current-profiler/rocprof/epyc/967129_kernel_trace.csv",
+    "top_kernels_by_calls": [
+      {
+        "calls": 57670,
+        "duration_ns": 345897969,
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+      },
+      {
+        "calls": 57320,
+        "duration_ns": 324974529,
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)"
+      },
+      {
+        "calls": 55760,
+        "duration_ns": 650020821,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)"
+      },
+      {
+        "calls": 49310,
+        "duration_ns": 253257052,
+        "kernel_name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+      },
+      {
+        "calls": 43530,
+        "duration_ns": 110827246,
+        "kernel_name": "__amd_rocclr_copyBuffer"
+      },
+      {
+        "calls": 39440,
+        "duration_ns": 384194584,
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)"
+      },
+      {
+        "calls": 36720,
+        "duration_ns": 414040274,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)"
+      },
+      {
+        "calls": 29448,
+        "duration_ns": 94403711,
+        "kernel_name": "void (anonymous namespace)::paro_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, float, long, long)"
+      },
+      {
+        "calls": 28760,
+        "duration_ns": 110396769,
+        "kernel_name": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)"
+      },
+      {
+        "calls": 28760,
+        "duration_ns": 193540278,
+        "kernel_name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)"
+      },
+      {
+        "calls": 28560,
+        "duration_ns": 605361532,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+      },
+      {
+        "calls": 28560,
+        "duration_ns": 561235639,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+      },
+      {
+        "calls": 28370,
+        "duration_ns": 70907165,
+        "kernel_name": "__amd_rocclr_fillBufferAligned"
+      },
+      {
+        "calls": 24480,
+        "duration_ns": 114466422,
+        "kernel_name": "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)"
+      },
+      {
+        "calls": 21760,
+        "duration_ns": 66072312,
+        "kernel_name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>(_Float16 const*, float const*, _Float16 const*, float const*, _Float16 const*, _Float16*, long, long)"
+      },
+      {
+        "calls": 20400,
+        "duration_ns": 33818950,
+        "kernel_name": "(anonymous namespace)::f32_to_fp16_kernel(float const*, _Float16*, long)"
+      },
+      {
+        "calls": 16320,
+        "duration_ns": 59790295,
+        "kernel_name": "void (anonymous namespace)::dense_dual_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long)"
+      },
+      {
+        "calls": 16320,
+        "duration_ns": 57661332,
+        "kernel_name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>(_Float16 const*, float*, float const*, float*, long, long)"
+      },
+      {
+        "calls": 16320,
+        "duration_ns": 204871770,
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)"
+      },
+      {
+        "calls": 15160,
+        "duration_ns": 35460190,
+        "kernel_name": "(anonymous namespace)::fp16_to_f32_kernel(_Float16 const*, float*, long)"
+      }
+    ],
+    "top_kernels_by_duration_ns": [
+      {
+        "calls": 8160,
+        "duration_ns": 933302201,
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+      },
+      {
+        "calls": 55760,
+        "duration_ns": 650020821,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_kernel<_Float16, true, true>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)"
+      },
+      {
+        "calls": 688,
+        "duration_ns": 610809956,
+        "kernel_name": "(anonymous namespace)::w8a16_linear_kernel(unsigned short const*, signed char const*, float const*, float*, long, long)"
+      },
+      {
+        "calls": 28560,
+        "duration_ns": 605361532,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+      },
+      {
+        "calls": 28560,
+        "duration_ns": 561235639,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+      },
+      {
+        "calls": 36720,
+        "duration_ns": 414040274,
+        "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)"
+      },
+      {
+        "calls": 39440,
+        "duration_ns": 384194584,
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)"
+      },
+      {
+        "calls": 57670,
+        "duration_ns": 345897969,
+        "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+      },
+      {
+        "calls": 150,
+        "duration_ns": 335212633,
+        "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)"
+      },
+      {
+        "calls": 4080,
+        "duration_ns": 325450933,
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, lon..."
+      },
+      {
+        "calls": 57320,
+        "duration_ns": 324974529,
+        "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)"
+      },
+      {
+        "calls": 49310,
+        "duration_ns": 253257052,
+        "kernel_name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+      },
+      {
+        "calls": 200,
+        "duration_ns": 241438238,
+        "kernel_name": "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, lon..."
+      },
+      {
+        "calls": 16320,
+        "duration_ns": 204871770,
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)"
+      },
+      {
+        "calls": 28760,
+        "duration_ns": 193540278,
+        "kernel_name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)"
+      },
+      {
+        "calls": 400,
+        "duration_ns": 179388470,
+        "kernel_name": "void (anonymous namespace)::awq_fusedw4_prefill_dual_fp16_kernel<32, 32>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, int, int, int, int, int, int, int, int)"
+      },
+      {
+        "calls": 200,
+        "duration_ns": 132855097,
+        "kernel_name": "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+      },
+      {
+        "calls": 24480,
+        "duration_ns": 114466422,
+        "kernel_name": "void (anonymous namespace)::qwen35_router_logits_kernel<_Float16>(_Float16 const*, unsigned short const*, float*, long, long)"
+      },
+      {
+        "calls": 43530,
+        "duration_ns": 110827246,
+        "kernel_name": "__amd_rocclr_copyBuffer"
+      },
+      {
+        "calls": 28760,
+        "duration_ns": 110396769,
+        "kernel_name": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16 const*, _Float16*, _Float16*, float, long, long)"
+      }
+    ],
+    "unique_kernel_names": 61
+  },
+  "prompt_verifier": {
+    "evidence": "Pass: committed current c4 rowchunk2 profiler/runtime evidence with generated-token equality green and expected native batch attention/KV/sampler kernels present; no throughput/scaling claim.",
+    "passed": true
+  },
+  "retained_ready": false,
+  "schema": 1,
+  "software": {
+    "hipengine_commit": "619b107cc034286dad1824c115db00eb270fb548",
+    "hipengine_dirty": false
+  },
+  "status": "diagnostic_profiler_captured",
+  "workload": {
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "rows": 4,
+    "warmup_decode_tokens": 8
+  }
+}

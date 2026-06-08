@@ -1,0 +1,104 @@
+{
+  "aa_passed": true,
+  "append_batch_aa_key_mismatch": 0,
+  "append_batch_aa_value_mismatch": 0,
+  "append_key_mismatch": 0,
+  "append_value_mismatch": 0,
+  "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-long-context-primitive-parity-288/long-context-primitive-c8.json",
+  "attn_batch_aa_delta": {
+    "index": [
+      0,
+      0,
+      0
+    ],
+    "lhs": 0.009472835808992386,
+    "max_abs": 0.0,
+    "rhs": 0.009472835808992386
+  },
+  "attn_batch_aa_max_abs": 0.0,
+  "attn_batch_vs_c1_delta": {
+    "index": [
+      0,
+      0,
+      0
+    ],
+    "lhs": 0.009472835808992386,
+    "max_abs": 0.0,
+    "rhs": 0.009472835808992386
+  },
+  "attn_batch_vs_c1_max_abs": 0.0,
+  "attn_batch_vs_dense_c1_delta": {
+    "index": [
+      1,
+      0,
+      6
+    ],
+    "lhs": 0.022066639736294746,
+    "max_abs": 1.1175870895385742e-08,
+    "rhs": 0.02206662856042385
+  },
+  "attn_batch_vs_dense_c1_max_abs": 1.1175870895385742e-08,
+  "attn_batch_vs_numpy_delta": {
+    "index": [
+      2,
+      1,
+      4
+    ],
+    "lhs": 0.022520525380969048,
+    "max_abs": 9.313225746154785e-09,
+    "rhs": 0.0225205160677433
+  },
+  "attn_batch_vs_numpy_max_abs": 9.313225746154785e-09,
+  "attn_dense_c1_vs_numpy_delta": {
+    "index": [
+      5,
+      0,
+      3
+    ],
+    "lhs": -0.016520634293556213,
+    "max_abs": 1.30385160446167e-08,
+    "rhs": -0.016520647332072258
+  },
+  "attn_dense_c1_vs_numpy_max_abs": 1.30385160446167e-08,
+  "attn_paged_c1_vs_dense_c1_delta": {
+    "index": [
+      1,
+      0,
+      6
+    ],
+    "lhs": 0.022066639736294746,
+    "max_abs": 1.1175870895385742e-08,
+    "rhs": 0.02206662856042385
+  },
+  "attn_paged_c1_vs_dense_c1_max_abs": 1.1175870895385742e-08,
+  "block_size": 256,
+  "context_lens": [
+    512,
+    520,
+    536,
+    560,
+    584,
+    600,
+    620,
+    640
+  ],
+  "device": {
+    "current_device": 0,
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    },
+    "hipDeviceGetName_error": 0,
+    "hipGetDeviceCount_error": 0,
+    "hipGetDevice_error": 0,
+    "visible_device_count": 1
+  },
+  "head_dim": 8,
+  "max_context_len": 640,
+  "num_kv_heads": 1,
+  "num_q_heads": 4,
+  "passed": true,
+  "rows": 8,
+  "schema": 1,
+  "seed": 1234
+}

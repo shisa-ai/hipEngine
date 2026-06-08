@@ -1,0 +1,395 @@
+{
+  "schema": 1,
+  "date": "2026-05-23",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Retest latest HEAD with shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed after noticing prior spot checks used z-lab Qwen3.5 PARO.",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_total_gib": 23.984375
+  },
+  "current_head_commit": "9a0dd6d9e580",
+  "software": {
+    "python": "/home/lhl/miniforge3/envs/therock/bin/python 3.12.13",
+    "package_versions": {
+      "rocm": "7.13.0a20260423",
+      "rocm-sdk-core": "7.13.0a20260423",
+      "rocm-sdk-devel": "7.13.0a20260423",
+      "rocm-sdk-libraries-gfx110X-all": "7.13.0a20260423",
+      "torch": "2.11.0+rocm7.13.0a20260423",
+      "safetensors": "0.7.0",
+      "tokenizers": "0.23.1"
+    },
+    "rocm_sdk_root": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "hipcc_version_lines": [
+      "HIP version: 7.13.26162-1140233ffe",
+      "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)",
+      "Target: x86_64-unknown-linux-gnu",
+      "Thread model: posix"
+    ]
+  },
+  "models": {
+    "packed_main": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/176e57c1a5d823bd0f41605420d04e3441465bb4",
+    "packed_prior_snapshot": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+    "note": "The local Hugging Face ref main points to 176e57; older benchmark artifacts used snapshot 501ef. Both snapshots produced effectively identical timings here, so 501ef is used for deltas against older artifacts."
+  },
+  "command_template": "PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python scripts/qwen35_paro_bench.py --model $PACKED --prompt-length <512|4096> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens <1|4> --compiler-version-file /tmp/hipengine-rocm7130423-pure-packed-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json <tmp-json>",
+  "rows": [
+    {
+      "workload": "512/128",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "packed_qwen36_main_176e57_warmup1": {
+        "runs": [
+          {
+            "run": 1,
+            "prefill_tok_s": 1377.1310609617303,
+            "decode_tok_s": 100.66631545184742,
+            "tracked_peak_allocated_gib": 18.023081556893885,
+            "hip_used_peak_sampled_gib": 18.09021759033203,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.197263717651367
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.011716842651367
+              }
+            ]
+          },
+          {
+            "run": 2,
+            "prefill_tok_s": 1390.7394127683274,
+            "decode_tok_s": 101.61756789897998,
+            "tracked_peak_allocated_gib": 18.023081556893885,
+            "hip_used_peak_sampled_gib": 18.09021759033203,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.197263717651367
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.011716842651367
+              }
+            ]
+          }
+        ],
+        "median": {
+          "prefill_tok_s": 1383.9352368650289,
+          "decode_tok_s": 101.1419416754137,
+          "tracked_peak_allocated_gib": 18.023081556893885,
+          "hip_used_peak_sampled_gib": 18.09021759033203
+        }
+      },
+      "packed_qwen36_snapshot_501ef_warmup1": {
+        "runs": [
+          {
+            "run": 1,
+            "prefill_tok_s": 1385.0451331737345,
+            "decode_tok_s": 100.22760986191953,
+            "tracked_peak_allocated_gib": 18.023081556893885,
+            "hip_used_peak_sampled_gib": 18.09021759033203,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.197263717651367
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.011716842651367
+              }
+            ]
+          },
+          {
+            "run": 2,
+            "prefill_tok_s": 1395.7369466185346,
+            "decode_tok_s": 100.69027304685557,
+            "tracked_peak_allocated_gib": 18.023081556893885,
+            "hip_used_peak_sampled_gib": 18.09021759033203,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.197263717651367
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.011716842651367
+              }
+            ]
+          }
+        ],
+        "median": {
+          "prefill_tok_s": 1390.3910398961345,
+          "decode_tok_s": 100.45894145438754,
+          "tracked_peak_allocated_gib": 18.023081556893885,
+          "hip_used_peak_sampled_gib": 18.09021759033203
+        }
+      },
+      "packed_qwen36_snapshot_501ef_warmup4": {
+        "runs": [
+          {
+            "run": 1,
+            "prefill_tok_s": 1389.8801665748645,
+            "decode_tok_s": 99.99582876527184,
+            "tracked_peak_allocated_gib": 18.023083087988198,
+            "hip_used_peak_sampled_gib": 18.09021759033203,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.197263717651367
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.274564743041992
+              }
+            ]
+          },
+          {
+            "run": 2,
+            "prefill_tok_s": 1391.6981604146647,
+            "decode_tok_s": 100.30275446157692,
+            "tracked_peak_allocated_gib": 18.023083087988198,
+            "hip_used_peak_sampled_gib": 18.09021759033203,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.197263717651367
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.274564743041992
+              }
+            ]
+          }
+        ],
+        "median": {
+          "prefill_tok_s": 1390.7891634947646,
+          "decode_tok_s": 100.14929161342438,
+          "tracked_peak_allocated_gib": 18.023083087988198,
+          "hip_used_peak_sampled_gib": 18.09021759033203
+        }
+      },
+      "current_qwen35_unpacked_reference_pure_rocm7130423": {
+        "prefill_tok_s": 1307.4023665530276,
+        "decode_tok_s": 105.767435854264,
+        "tracked_peak_allocated_gib": 18.075381056405604
+      },
+      "rx7900xtx_20260521_qwen35_reference": {
+        "prefill_tok_s": 2101.1580298238678,
+        "decode_tok_s": 107.31386837993547,
+        "tracked_peak_allocated_gib": 18.175600168295205
+      },
+      "w7900_20260518_qwen36_packed_reference": {
+        "prefill_tok_s": 2500.5647538570497,
+        "decode_tok_s": 111.51631961530205,
+        "tracked_peak_allocated_gib": 18.123325088061392
+      },
+      "delta_pct_501_warm1_vs_current_qwen35_pure_rocm7130423": {
+        "prefill": 6.34760005536068,
+        "decode": -5.019025333270799,
+        "tracked_peak_gib": -0.05229949951171875
+      },
+      "delta_pct_501_warm1_vs_rx7900xtx_20260521_qwen35_reference": {
+        "prefill": -33.827393267859726,
+        "decode": -6.3877363001011656
+      },
+      "delta_pct_501_warm4_vs_w7900_20260518_qwen36_packed_reference": {
+        "prefill": -44.38099787859875,
+        "decode": -10.193152034689202
+      }
+    },
+    {
+      "workload": "4K/128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "packed_qwen36_main_176e57_warmup1": {
+        "runs": [
+          {
+            "run": 1,
+            "prefill_tok_s": 2514.544174833167,
+            "decode_tok_s": 101.3467147852867,
+            "tracked_peak_allocated_gib": 18.9017754169181,
+            "hip_used_peak_sampled_gib": 18.198974609375,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.61052703857422
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.646377563476562
+              }
+            ]
+          },
+          {
+            "run": 2,
+            "prefill_tok_s": 2535.513627387163,
+            "decode_tok_s": 101.40241078551043,
+            "tracked_peak_allocated_gib": 18.9017754169181,
+            "hip_used_peak_sampled_gib": 18.198974609375,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.61052703857422
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.646377563476562
+              }
+            ]
+          }
+        ],
+        "median": {
+          "prefill_tok_s": 2525.028901110165,
+          "decode_tok_s": 101.37456278539855,
+          "tracked_peak_allocated_gib": 18.9017754169181,
+          "hip_used_peak_sampled_gib": 18.198974609375
+        }
+      },
+      "packed_qwen36_snapshot_501ef_warmup1": {
+        "runs": [
+          {
+            "run": 1,
+            "prefill_tok_s": 2538.286831242875,
+            "decode_tok_s": 101.09668354949635,
+            "tracked_peak_allocated_gib": 18.9017754169181,
+            "hip_used_peak_sampled_gib": 18.198974609375,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.61052703857422
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.646377563476562
+              }
+            ]
+          },
+          {
+            "run": 2,
+            "prefill_tok_s": 2513.08986510625,
+            "decode_tok_s": 101.57225308949205,
+            "tracked_peak_allocated_gib": 18.9017754169181,
+            "hip_used_peak_sampled_gib": 18.198974609375,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.61052703857422
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.646377563476562
+              }
+            ]
+          }
+        ],
+        "median": {
+          "prefill_tok_s": 2525.6883481745626,
+          "decode_tok_s": 101.33446831949419,
+          "tracked_peak_allocated_gib": 18.9017754169181,
+          "hip_used_peak_sampled_gib": 18.198974609375
+        }
+      },
+      "packed_qwen36_snapshot_501ef_warmup4": {
+        "runs": [
+          {
+            "run": 1,
+            "prefill_tok_s": 2531.8926900303595,
+            "decode_tok_s": 101.07580036072747,
+            "tracked_peak_allocated_gib": 18.901777104474604,
+            "hip_used_peak_sampled_gib": 18.198974609375,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.61052703857422
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.572126388549805
+              }
+            ]
+          },
+          {
+            "run": 2,
+            "prefill_tok_s": 2515.9193244948583,
+            "decode_tok_s": 101.30466366278662,
+            "tracked_peak_allocated_gib": 18.901777104474604,
+            "hip_used_peak_sampled_gib": 18.198974609375,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.61052703857422
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.572126388549805
+              }
+            ]
+          }
+        ],
+        "median": {
+          "prefill_tok_s": 2523.906007262609,
+          "decode_tok_s": 101.19023201175705,
+          "tracked_peak_allocated_gib": 18.901777104474604,
+          "hip_used_peak_sampled_gib": 18.198974609375
+        }
+      },
+      "current_qwen35_unpacked_reference_pure_rocm7130423": {
+        "prefill_tok_s": 2374.156237400645,
+        "decode_tok_s": 105.90523334858231,
+        "tracked_peak_allocated_gib": 18.954074916429818
+      },
+      "rx7900xtx_20260521_qwen35_reference": {
+        "prefill_tok_s": 2710.86881040786,
+        "decode_tok_s": 106.63671890443203,
+        "tracked_peak_allocated_gib": 20.047108446247876
+      },
+      "w7900_20260518_qwen36_packed_reference": {
+        "prefill_tok_s": 2899.685123274641,
+        "decode_tok_s": 113.09393762934415,
+        "tracked_peak_allocated_gib": 19.454672389663756
+      },
+      "delta_pct_501_warm1_vs_current_qwen35_pure_rocm7130423": {
+        "prefill": 6.382566925748034,
+        "decode": -4.315901003724387,
+        "tracked_peak_gib": -0.05229949951171875
+      },
+      "delta_pct_501_warm1_vs_rx7900xtx_20260521_qwen35_reference": {
+        "prefill": -6.831037397395723,
+        "decode": -4.972255935302849
+      },
+      "delta_pct_501_warm4_vs_w7900_20260518_qwen36_packed_reference": {
+        "prefill": -12.959307650192764,
+        "decode": -10.525502840479827
+      }
+    }
+  ],
+  "conclusion": "Using the packed Qwen3.6 PARO model changes the picture for prefill relative to the current z-lab Qwen3.5 spot check: +6.35% at 512/128 and +6.38% at 4K/128, with about 52 MiB lower tracked peak, but decode is about 4-5% slower. It does not explain the larger drop versus the 2026-05-21 RX 7900 XTX Qwen3.5 diagnostic: packed Qwen3.6 is still -33.8% prefill at 512/128 and -6.8% at 4K/128 versus that run, with decode -6.4%/-5.0%. Against the 2026-05-18 W7900 packed Qwen3.6 reference, this RX 7900 XTX pure-ROCm-7.13 run is much slower at 512/128 prefill (-44.4%) and also lower at 4K/128 (-13.0% prefill, -10.5% decode), so model mismatch was a factor in the previous comparison but not the full explanation."
+}

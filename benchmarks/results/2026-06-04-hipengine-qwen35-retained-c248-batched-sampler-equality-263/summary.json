@@ -1,0 +1,289 @@
+{
+  "active_verify": {
+    "artifact_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+    "decode_blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "metric": 137,
+    "moe_decode_path": "grouped_compact",
+    "native_caware_decode": true,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "artifact_note": "Current GPU1/XTX c2/c4/c8 generated-token equality with explicit row-aware batched_lm_head sampler evidence; correctness-only, not retained throughput/scaling evidence.",
+  "commands": [
+    {
+      "artifact_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c2-p512-d128.json",
+      "batch_size": 2,
+      "command": "env HIP_VISIBLE_DEVICES=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c2-p512-d128.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2",
+      "duration_seconds": 51.783473573974334,
+      "generated_token_equality": {
+        "artifact_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c2-p512-d128.json",
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": true,
+          "post_attention_decode_path": "native_batch"
+        },
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "performance_claim": false,
+        "prefix_lengths": [
+          137,
+          137
+        ],
+        "retained_artifact_status": "blocked",
+        "retained_blockers": [
+          "projection dispatch: no c-aware projection candidate applies to this row count",
+          "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection; execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv; execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true; execution.batch_execution.projection_dispatch.blockers must be empty; execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv; execution.batch_execution.projection_dispatch.evidence is missing; projection_dispatch_candidates must include selected projection candidate; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits"
+        ],
+        "retained_ready": false,
+        "sampler_execution": {
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "equality_rows": 2,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head",
+          "rows": 2
+        },
+        "workload": {
+          "batch_decode_full_attention_layer_copy": "batch",
+          "batch_decode_full_attention_moe_path": "grouped_compact",
+          "batch_decode_full_attention_output_path": "batch",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_path": "batch_segments",
+          "batch_decode_post_attention_path": "batch",
+          "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json",
+          "batch_sample_eq_ok": true,
+          "batch_sample_eq_rows": 2,
+          "batch_sample_mode": "batched_lm_head",
+          "native_caware_decode": true
+        }
+      },
+      "log_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c2-p512-d128.log",
+      "repeat_index": 0,
+      "returncode": 1,
+      "status": "passed"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c4-p512-d128.json",
+      "batch_size": 4,
+      "command": "env HIP_VISIBLE_DEVICES=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c4-p512-d128.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json --batch-sample-eq-rows 4",
+      "duration_seconds": 56.7512281620875,
+      "generated_token_equality": {
+        "artifact_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c4-p512-d128.json",
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "performance_claim": false,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137
+        ],
+        "retained_artifact_status": "blocked",
+        "retained_blockers": [
+          "full-attention context forced to row-local dense diagnostic path with batch gate",
+          "projection dispatch: no c-aware projection candidate applies to this row count",
+          "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_context_decode_path must be native_batch or absent; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.layer_executions[39].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[39].full_attention_context_decode_path must be absent for native retained decode; execution.batch_execution.decode_execution.blockers must be empty; execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection; execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv; execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true; execution.batch_execution.projection_dispatch.blockers must be empty; execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv; execution.batch_execution.projection_dispatch.evidence is missing; projection_dispatch_candidates must include selected projection candidate; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits"
+        ],
+        "retained_ready": false,
+        "sampler_execution": {
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+          "equality_rows": 4,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head",
+          "rows": 4
+        },
+        "workload": {
+          "batch_decode_full_attention_layer_copy": "batch",
+          "batch_decode_full_attention_moe_path": "grouped_compact",
+          "batch_decode_full_attention_output_path": "batch",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_path": "batch_segments",
+          "batch_decode_post_attention_path": "batch",
+          "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+          "batch_sample_eq_ok": true,
+          "batch_sample_eq_rows": 4,
+          "batch_sample_mode": "batched_lm_head",
+          "native_caware_decode": false
+        }
+      },
+      "log_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c4-p512-d128.log",
+      "repeat_index": 0,
+      "returncode": 1,
+      "status": "passed"
+    },
+    {
+      "artifact_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c8-p512-d128.json",
+      "batch_size": 8,
+      "command": "env HIP_VISIBLE_DEVICES=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 8 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --json /tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c8-p512-d128.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json --batch-sample-eq-rows 8",
+      "duration_seconds": 65.38982181902975,
+      "generated_token_equality": {
+        "artifact_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c8-p512-d128.json",
+        "decode_execution": {
+          "full_attention_decode_path": "native_batch_row_chunks",
+          "full_attention_output_path": null,
+          "linear_attention_decode_path": null,
+          "linear_attention_output_path": "batch_gemv",
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "moe_decode_path": "grouped_compact",
+          "native_caware_decode": false,
+          "post_attention_decode_path": "native_batch"
+        },
+        "first_mismatch_indices": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "performance_claim": false,
+        "prefix_lengths": [
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137,
+          137
+        ],
+        "retained_artifact_status": "blocked",
+        "retained_blockers": [
+          "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+          "full-attention decode forced to native row-chunk diagnostic path",
+          "projection dispatch: no c-aware projection candidate applies to this row count",
+          "batch_execution.throughput_claim_eligible=false; artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; execution.batch_execution.blockers must be empty; execution.batch_execution.row_execution must not contain serial or fallback; execution.batch_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[3].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[7].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[7].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[11].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[11].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[15].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[15].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[19].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[19].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[23].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[23].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[27].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[27].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[31].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[31].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[35].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[35].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions[39].native_caware_decode must be true; execution.batch_execution.decode_execution.layer_executions[39].full_attention_decode_path must be native_batch; execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers; execution.batch_execution.decode_execution.blockers must be empty; execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection; execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv; execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true; execution.batch_execution.projection_dispatch.blockers must be empty; execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv; execution.batch_execution.projection_dispatch.evidence is missing; projection_dispatch_candidates must include selected projection candidate; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits"
+        ],
+        "retained_ready": false,
+        "sampler_execution": {
+          "blockers": [],
+          "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+          "equality_rows": 8,
+          "mode": "batched_lm_head",
+          "native_row_aware_lm_head": true,
+          "requested_mode": "batched_lm_head",
+          "rows": 8
+        },
+        "workload": {
+          "batch_decode_full_attention_layer_copy": "batch",
+          "batch_decode_full_attention_moe_path": "grouped_compact",
+          "batch_decode_full_attention_output_path": "batch",
+          "batch_decode_full_attention_path": "native_batch",
+          "batch_decode_linear_output_path": "batch_gemv",
+          "batch_decode_linear_path": "batch_segments",
+          "batch_decode_post_attention_path": "batch",
+          "batch_sample_eq_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+          "batch_sample_eq_ok": true,
+          "batch_sample_eq_rows": 8,
+          "batch_sample_mode": "batched_lm_head",
+          "native_caware_decode": false
+        }
+      },
+      "log_path": "/tmp/hipengine-iter263-c248-batched-sampler-equality/native-equality-c8-p512-d128.log",
+      "repeat_index": 0,
+      "returncode": 1,
+      "status": "passed"
+    }
+  ],
+  "created_at": "2026-06-04T11:54:26.180643+00:00",
+  "device": {
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "generated_equality_passed": true,
+  "guard": {
+    "command": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "passed": true,
+    "primitive_c2": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c2.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    },
+    "primitive_c8": {
+      "artifact_path": "/tmp/hipengine-e2e-primitive-c8.json",
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "passed": true
+    }
+  },
+  "iteration": 263,
+  "notes": "Correctness-only c>N generated-token equality matrix vs independent c=1. Retained artifacts may be blocked for performance claims when diagnostic per-row fallbacks are active.",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: current HIP_VISIBLE_DEVICES=1 c2/c4/c8 generated-token equality vs independent c1 passed with explicit row-aware batched_lm_head sampler evidence and no retained throughput/scaling claim.",
+    "passed": true
+  },
+  "retained_ready": false,
+  "schema": 1,
+  "status": "passed",
+  "workload": {
+    "batch_decode_full_attn_layer_copy": "default",
+    "batch_decode_full_attn_moe_path": "default",
+    "batch_decode_full_attn_output_path": "default",
+    "batch_decode_full_attn_path": "default",
+    "batch_decode_linear_moe_path": "default",
+    "batch_decode_linear_output_path": "default",
+    "batch_decode_linear_path": "default",
+    "batch_decode_linear_projection_path": "default",
+    "batch_decode_linear_state_path": "default",
+    "batch_decode_moe_path": "default",
+    "batch_decode_post_attn_path": "default",
+    "batch_sample_eq_artifact_template": "benchmarks/results/2026-06-02-hipengine-qwen35-c{c}-native-batch-sampler-equality.json",
+    "batch_sample_eq_ok": true,
+    "batch_sample_eq_rows": "{c}",
+    "batch_sample_mode": "batched_lm_head",
+    "batch_sizes": [
+      2,
+      4,
+      8
+    ],
+    "decode_tokens": 128,
+    "max_layers": 40,
+    "prompt_length": 512,
+    "repeat_runs": 1,
+    "warmup_decode_tokens": 8
+  }
+}

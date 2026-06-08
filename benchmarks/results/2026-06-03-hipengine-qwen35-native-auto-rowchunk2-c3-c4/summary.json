@@ -1,0 +1,429 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-auto-rowchunk2-c3-c4/summary.json",
+  "created_at": "2026-06-03T04:45:40.848450Z",
+  "status": "passed",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Correctness-first auto full-attention default now caps c=3/c=4/c=8 native full-attention row groups at 2 rows. Candidate validation shows derived rows4..6 c3, derived rows4..7 c4, original c4, and original c8 all pass generated-token equality [137] under auto without per-row full-attention fallback. This promotes the previously manual rowchunk2 diagnostic into the default correctness path for covered c>2 row counts; retained claims remain blocked because rowchunking is still marked native_caware_decode=false. Post-commit clean repeats at the committed hash also passed derived rows4..7 c4 and original c8 under auto rowchunk2.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "base_commit_before_change": "8cf39c9c79e434fe442796260bf65e2e2912bf6f",
+    "candidate_diff_sha256": "00befbc07b6ecef3cbcf475b438ebd480d597c02d9e79f74b38a08fca0bccdf1",
+    "case_artifacts_report_dirty": true,
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin"
+  },
+  "code_change": {
+    "files": [
+      "scripts/qwen35_batch_retained_bench.py",
+      "tests/test_generation_batch_scheduler.py"
+    ],
+    "description": "_resolved_batch_decode_full_attn_row_chunk_size(auto) returns 2 for batch_size in {3,4,8}; c2 remains full native with row chunk size 0. Unit test updated to assert auto c3/c4/c8 rowchunk2 env."
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "base_fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "derived_c3_rows456_fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows456_3x512_prompt_ids.json",
+    "derived_c4_rows4567_fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4567_4x512_prompt_ids.json",
+    "derived_fixture_recipe": "Derived fixtures copy original 512-token prompt_id slices; no token data retained in repo.",
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "kv_storage_dtype": "bf16"
+  },
+  "cases": [
+    {
+      "name": "c3_rows456_auto",
+      "logical_source_rows": [
+        4,
+        5,
+        6
+      ],
+      "tmp_artifact": "/tmp/hipengine-e2e-native-auto-rowchunk-c3_rows456_auto-iter132.json",
+      "tmp_artifact_sha256": "65a60bbb9d0359b87083e6a1aa8093e703259e535f29b73b54ef4139a51e66c8",
+      "tmp_artifact_size_bytes": 193833,
+      "software_commit": "8cf39c9c79e434fe442796260bf65e2e2912bf6f",
+      "software_dirty": true,
+      "status": "blocked",
+      "performance_claim": false,
+      "batch_size": null,
+      "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows456_3x512_prompt_ids.json",
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 124.62956887166723,
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact",
+        "native_caware_decode": false
+      },
+      "sampler_execution": {
+        "rows": 3,
+        "requested_mode": "serial_lm_head",
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "c2_equality_green": false,
+        "equality_artifact": null,
+        "equality_rows": null,
+        "blockers": []
+      }
+    },
+    {
+      "name": "c4_rows4567_auto",
+      "logical_source_rows": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "tmp_artifact": "/tmp/hipengine-e2e-native-auto-rowchunk-c4_rows4567_auto-iter132.json",
+      "tmp_artifact_sha256": "425fc5e39c9c36cbba47c420d8870ed202eaf5c9632ae772f0e9ba18ef1f9123",
+      "tmp_artifact_size_bytes": 237855,
+      "software_commit": "8cf39c9c79e434fe442796260bf65e2e2912bf6f",
+      "software_dirty": true,
+      "status": "blocked",
+      "performance_claim": false,
+      "batch_size": null,
+      "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4567_4x512_prompt_ids.json",
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 151.723206409286,
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "sampler_execution": {
+        "rows": 4,
+        "requested_mode": "batched_lm_head",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "equality_rows": 4,
+        "blockers": []
+      }
+    },
+    {
+      "name": "c4_original_auto",
+      "logical_source_rows": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "tmp_artifact": "/tmp/hipengine-e2e-native-auto-rowchunk-c4_original_auto-iter132.json",
+      "tmp_artifact_sha256": "fa78304e009c8feac33a3496132a4230b0fb047686cb309aa97ec1aa865dc98c",
+      "tmp_artifact_size_bytes": 237130,
+      "software_commit": "8cf39c9c79e434fe442796260bf65e2e2912bf6f",
+      "software_dirty": true,
+      "status": "blocked",
+      "performance_claim": false,
+      "batch_size": null,
+      "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 157.59979346601364,
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "sampler_execution": {
+        "rows": 4,
+        "requested_mode": "batched_lm_head",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c4-native-batch-sampler-equality.json",
+        "equality_rows": 4,
+        "blockers": []
+      }
+    },
+    {
+      "name": "c8_original_auto",
+      "logical_source_rows": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "tmp_artifact": "/tmp/hipengine-e2e-native-auto-rowchunk-c8_original_auto-iter132.json",
+      "tmp_artifact_sha256": "4b1041ccfd3d61be1750cad8e17853cea84b916e9ec66d787e477abfb19f89f4",
+      "tmp_artifact_size_bytes": 413435,
+      "software_commit": "8cf39c9c79e434fe442796260bf65e2e2912bf6f",
+      "software_dirty": true,
+      "status": "blocked",
+      "performance_claim": false,
+      "batch_size": null,
+      "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "first_mismatch_indices": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "decode_tok_s_aggregate": 183.61515695099422,
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+        "full-attention decode forced to native row-chunk diagnostic path",
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "selected_c1_batch",
+        "native_caware_decode": false
+      },
+      "sampler_execution": {
+        "rows": 8,
+        "requested_mode": "batched_lm_head",
+        "mode": "batched_lm_head",
+        "native_row_aware_lm_head": true,
+        "c2_equality_green": true,
+        "equality_artifact": "benchmarks/results/2026-06-02-hipengine-qwen35-c8-native-batch-sampler-equality.json",
+        "equality_rows": 8,
+        "blockers": []
+      }
+    }
+  ],
+  "measurements": {
+    "c3_rows456_auto_prefixes": [
+      137,
+      137,
+      137
+    ],
+    "c4_rows4567_auto_prefixes": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "c4_original_auto_prefixes": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "c8_original_auto_prefixes": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "all_cases_min_equal_prefix_tokens": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "all_cases_green": true,
+    "all_cases_rowchunk2": true,
+    "postcommit_c4_rows4567_auto_prefixes": [
+      137,
+      137,
+      137,
+      137
+    ],
+    "postcommit_c8_original_auto_prefixes": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ]
+  },
+  "verdicts": {
+    "c3_rows456_auto_green": true,
+    "c4_rows4567_auto_green": true,
+    "c4_original_auto_green": true,
+    "c8_original_auto_green": true,
+    "auto_uses_rowchunk2_for_all_cases": true,
+    "retained_ready": false,
+    "postcommit_c4_rows4567_auto_green_clean": true,
+    "postcommit_c8_original_auto_green_clean": true
+  },
+  "retained_claim_blockers": [
+    "rowchunk2 path is still a diagnostic fallback and reports native_caware_decode=false",
+    "full native grouping >=3 remains red from prior artifacts",
+    "no retained c>N throughput/scaling claim is made"
+  ],
+  "commands": {
+    "unit_test": "HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_full_attention_diagnostic_env -q",
+    "gpu_cases": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture <base-or-derived> --prompt-length 512 --batch-size <3|4|8> --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-auto-rowchunk-<case>-iter132.json"
+  },
+  "prior_related_artifacts": [
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-rowchunk-size-sweep/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-full-attn-row-permutation/summary.json"
+  ],
+  "postcommit_clean_validation": [
+    {
+      "name": "postcommit_c4_rows4567_auto",
+      "logical_source_rows": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "tmp_artifact": "/tmp/hipengine-e2e-native-auto-rowchunk-c4_rows4567-postcommit-iter132.json",
+      "tmp_artifact_sha256": "522b0ad673c58f30d0c3ad9519071b005cb36dc60d61a5373c0d44222f8081df",
+      "tmp_artifact_size_bytes": 237901,
+      "software_commit": "c37acb57dcc20627d67c33f31703effcc1b63f4c",
+      "software_dirty": false,
+      "status": "blocked",
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137
+      ],
+      "decode_tok_s_aggregate": 154.44173617475468,
+      "native_caware_decode": false,
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "native_caware_decode": false
+      }
+    },
+    {
+      "name": "postcommit_c8_original_auto",
+      "logical_source_rows": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "tmp_artifact": "/tmp/hipengine-e2e-native-auto-rowchunk-c8_original-postcommit-iter132.json",
+      "tmp_artifact_sha256": "afbfd54876f0c92d9786bf859556a08729ef1aa9323037709e23bcc7ae0c47a6",
+      "tmp_artifact_size_bytes": 413471,
+      "software_commit": "c37acb57dcc20627d67c33f31703effcc1b63f4c",
+      "software_dirty": false,
+      "status": "blocked",
+      "generated_token_equality_passed": true,
+      "min_equal_prefix_tokens": 137,
+      "prefixes": [
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137,
+        137
+      ],
+      "decode_tok_s_aggregate": 183.0841051601486,
+      "native_caware_decode": false,
+      "decode_paths": {
+        "full_attention_decode_path": "native_batch_row_chunks",
+        "full_attention_row_chunk_size": 2,
+        "native_caware_decode": false
+      }
+    }
+  ]
+}

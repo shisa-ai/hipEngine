@@ -1,0 +1,74 @@
+{
+  "schema": "p9_c17_final_q4_redesign_gate_v1",
+  "date": "2026-05-20",
+  "task": "#48 P9.C17: Wire winning Q4 redesign and final #27 benchmark gate",
+  "status": "blocked_no_q4_redesign_to_wire",
+  "performance_claim": false,
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "git": {
+    "commit": "0d4536854855e5de7f447d4faf869508cc243839",
+    "status": "## gguf-bulk-prefill\n?? uv.lock"
+  },
+  "decision": {
+    "winning_q4_redesign_exists": false,
+    "runtime_wiring_performed": false,
+    "reason": "P9.C15 rejected the compact32 Q4T16 selected-dual WMMA consumer and P9.C16 rejected compact tile-list/no-padding and wider-column selected-MoE alternatives. There is no in-repo Q4 redesign that satisfies the continuation target, so wiring a runtime path would only add unaccepted code.",
+    "task_27_action": "leave #27 open/blocked; do not mark completed because the <=110 ms combined bucket acceptance target is still missed"
+  },
+  "carried_forward_final_gate": {
+    "source_artifact": "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json",
+    "correctness_passed": true,
+    "correctness_evidence": "Adjacent Q8_0 dual/single, Q4_K selected, Q5_K/Q6_K selected, dispatch/routing, and replay helper bundle passed (143 tests); 512/128 graph bench final logits were finite with deterministic final token 220.",
+    "combined_target_bucket_ms": 140.11049,
+    "target_bucket_ms": 110.0,
+    "gap_ms": 30.11049,
+    "target_bucket_breakdown_ms": {
+      "moe_q4_k_selected_dual_wmma_prefill": 58.126335,
+      "moe_q5_k_selected_wmma_prefill": 27.043052,
+      "moe_q6_k_selected_wmma_prefill": 2.655901,
+      "dense_q8_0_wmma_prefill": 52.285202
+    },
+    "wallclock_512_0_prefill_tok_s_median": 1661.7875246084307,
+    "wallclock_512_128_prefill_tok_s_median": 1677.560587933919,
+    "wallclock_512_128_decode_tok_s_median": 62.556790508536736,
+    "tracked_peak_gib": 20.886044278740883,
+    "hip_sampled_peak_gib": 21.353515625
+  },
+  "q4_redesign_evidence": [
+    {
+      "source_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json",
+      "candidate": "compact32 Q4T16 selected-dual WMMA consumer",
+      "result": "rejected",
+      "evidence": "all-layer Q4 replay best 59.395 ms vs raw 62.199 ms (-4.5%); selected-MoE total 92.478 ms vs 93.138 ms (-0.7%), far above the <=35-40 ms Q4 continuation target"
+    },
+    {
+      "source_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json",
+      "candidate": "compact tile-list / no-padding selected-MoE ABI",
+      "result": "rejected",
+      "evidence": "optimistic model lowers Q4 only to 54.775 ms because padding is 13.45% and residual tails are 5.40% of compact rows"
+    },
+    {
+      "source_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json",
+      "candidate": "wider-column raw selected WMMA proxy",
+      "result": "rejected",
+      "evidence": "64x16 measured 61.868 ms (-0.5% vs raw); 64x32 regressed to 91.831 ms"
+    }
+  ],
+  "validation": {
+    "kind": "docs/artifact decision; no code wired",
+    "commands": [
+      "python3 -m json.tool benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json"
+    ],
+    "notes": "No correctness or throughput benchmark was rerun because #48 selected no runtime implementation. The formal carried-forward #27 gate is the retained P9.C11 blocked artifact, with P9.C15/P9.C16 providing the no-wire evidence."
+  },
+  "next_actions": [
+    "Keep #27 open/blocked rather than completed.",
+    "Move any further Q4 selected-MoE redesign work to parent kernel R&D or a new design task with evidence before touching hipENGINE runtime dispatch.",
+    "Continue hipENGINE P9 execution on the active #51 decode-repack and #28 small-op blockers."
+  ]
+}

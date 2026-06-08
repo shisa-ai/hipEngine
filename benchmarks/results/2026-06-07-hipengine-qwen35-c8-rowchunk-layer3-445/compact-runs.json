@@ -1,0 +1,67 @@
+{
+  "iteration": 445,
+  "kind": "c8_minimal_layer3_rowchunk_green",
+  "created_at": "2026-06-07T07:52:28.179740+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "result": {
+    "status": "eq_ok",
+    "hidden_passed": true,
+    "token_passed": true,
+    "failure_modes": [],
+    "linear_stage_passed": {
+      "attn_input": true,
+      "qkv": true,
+      "z": true,
+      "conv_out": true,
+      "recurrent_out": true,
+      "out_proj": true,
+      "residual": true,
+      "mlp_input": true,
+      "output": true
+    },
+    "full_attention_stage_passed": {
+      "input": true,
+      "attn_input_pre_qkv": true,
+      "attn_input_after_rotate": true,
+      "attn_input_after_project": true,
+      "q_proj_key_after_project": true,
+      "value_after_project": true,
+      "query_raw_after_split": true,
+      "key_raw_after_cast": true,
+      "gate_after_split": true,
+      "query_after_prepare": true,
+      "key_after_prepare": true,
+      "attn_input_after_prepare": true,
+      "attn_input": true,
+      "gate": true,
+      "query": true,
+      "attn_context": true,
+      "gated_attn": true,
+      "o_proj": true,
+      "residual": true,
+      "mlp_input": true,
+      "output": true
+    },
+    "linear_drift_stage_count": 0,
+    "full_attention_failed_stage_count": 0,
+    "first_linear_mismatch": null,
+    "first_full_attention_failure": null,
+    "workload_paths": {
+      "batch_decode_full_attention_row_chunk_size": 2,
+      "batch_decode_full_attention_row_chunk_layers": "3",
+      "full_attention_decode_path": "native_batch_row_chunks",
+      "batch_decode_full_attention_output_path": "batch_gemv"
+    }
+  },
+  "interpretation": {
+    "positive_result": "For the minimal c8 L8 decode0 hidden-bisect, rowchunk2 on layer3 alone makes the hidden and token oracle green. All captured layer4 linear stages and full-attention stages pass; drift/failure counts are 0/0.",
+    "localized_frontier": "This confirms the iter443/444 frontier is local to the layer3 full-attention producer for the L8 window: eliminating layer3 no-rowchunk output drift prevents layer4 RMSNorm amplification, without rowchunking layer7.",
+    "next_target": "Compare fullnative vs rowchunk2 inside layer3 context computation/order, or port rowchunk-equivalent context math into the fullnative layer3 path; later-layer rowchunk requirements remain a full L40 concern."
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "PASS: focused hidden/full-attention parity blocker green; layer3-only rowchunk2 makes minimal c8 L8 hidden-bisect eq_ok with all trace stages passing. No performance claim."
+  },
+  "conclusion": "Layer3-only rowchunk2 closes the minimal c8 layer4 RMSNorm frontier; the immediate no-rowchunk fix target is layer3 full-attention context/output parity."
+}

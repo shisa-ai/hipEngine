@@ -1,0 +1,363 @@
+{
+  "artifacts": {
+    "active_verify_final": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/diagnostics/active_verify_final.json",
+      "sha256": "a53bcbb19133c85a58ccf1d3afd6cb62aec8cb3de18480bd10062af35a18cd57",
+      "size_bytes": 1154
+    },
+    "compiler_version": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    },
+    "primitive_c4_realshape_dense": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/diagnostics/primitive_c4_realshape_dense.json",
+      "sha256": "eef0f8bb4896cde4493f9bffc8b057f17fd3df5816c905d5f26ed4d617eb53be",
+      "size_bytes": 2431
+    },
+    "primitive_c8_realshape_dense": {
+      "path": "benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/diagnostics/primitive_c8_realshape_dense.json",
+      "sha256": "515c6aad75f21baa6304da940c4288aab4950329a6c6470c2afd9cc48863bc26",
+      "size_bytes": 2476
+    }
+  },
+  "baseline_artifact": {
+    "path": "benchmarks/results/2026-06-04-hipengine-qwen35-native-c4-dense-vs-paged-context-fix242/summary.json",
+    "sha256": "4f9555ba30c34dfd872a8b3307486dbfe2c30921518ccc82a86d3c629604f04f"
+  },
+  "change": {
+    "description": "Added max-delta index/value fields for batch-vs-c1, batch-vs-NumPy, batch-repeat, and dense-c1 comparisons so real-shape primitive artifacts identify where any paged/dense context drift occurs.",
+    "files": [
+      "scripts/qwen35_batch_correctness.py"
+    ]
+  },
+  "conclusion": "Real-shape primitive context parity is green for both c4 and c8: batch paged context exactly matches independent paged c1 (max_abs 0.0), and batch/dense-c1 drift is only ~2e-08. This rules out a generic random-input real-shape primitive mismatch in the paged context kernels and points the E2E c4 red paged-context path toward model-value sensitivity, upstream runtime state, or generated-token amplification rather than a broad primitive shape bug. Active c2 verify remains 137. No throughput claim is made.",
+  "created_at": "2026-06-04T06:36:21Z",
+  "git_commit_before_result_commit": "ec9ae8f5063fc9fb4360ae8f360ec1f470dea224",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 243,
+  "kind": "primitive_realshape_full_attention_context_parity",
+  "observations": {
+    "active_verify_final_prefixes": [
+      137,
+      137
+    ],
+    "primitive_c4_batch_vs_c1_max_abs": 0.0,
+    "primitive_c4_batch_vs_dense_c1_max_abs": 1.862645149230957e-08,
+    "primitive_c4_paged_c1_vs_dense_c1_max_abs": 1.862645149230957e-08,
+    "primitive_c4_passed": true,
+    "primitive_c8_batch_vs_c1_max_abs": 0.0,
+    "primitive_c8_batch_vs_dense_c1_max_abs": 2.2351741790771484e-08,
+    "primitive_c8_paged_c1_vs_dense_c1_max_abs": 2.2351741790771484e-08,
+    "primitive_c8_passed": true
+  },
+  "performance_claim": false,
+  "remaining_blockers": [
+    "E2E c4 native and row-local paged context-only remain red from iter242 [137,137,137,118] despite random real-shape primitive parity being green",
+    "Need next compare actual model-layer context tensors/logits or capture model-value primitive inputs from the failing decode window",
+    "retained/performance gates still require native full-attention equality plus profiler/scaling/baseline evidence before throughput claims"
+  ],
+  "retained_ready": false,
+  "runs": [
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/diagnostics/primitive_c4_realshape_dense.json",
+      "artifact_sha256": "eef0f8bb4896cde4493f9bffc8b057f17fd3df5816c905d5f26ed4d617eb53be",
+      "artifact_size_bytes": 2431,
+      "attn_batch_aa_delta": {
+        "index": [
+          0,
+          0,
+          0
+        ],
+        "lhs": -0.010590512305498123,
+        "max_abs": 0.0,
+        "rhs": -0.010590512305498123
+      },
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_delta": {
+        "index": [
+          0,
+          0,
+          0
+        ],
+        "lhs": -0.010590512305498123,
+        "max_abs": 0.0,
+        "rhs": -0.010590512305498123
+      },
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_dense_c1_delta": {
+        "index": [
+          3,
+          9,
+          234
+        ],
+        "lhs": -0.023633984848856926,
+        "max_abs": 1.862645149230957e-08,
+        "rhs": -0.02363400347530842
+      },
+      "attn_batch_vs_dense_c1_max_abs": 1.862645149230957e-08,
+      "attn_batch_vs_numpy_delta": {
+        "index": [
+          1,
+          3,
+          234
+        ],
+        "lhs": 0.02421853505074978,
+        "max_abs": 1.862645149230957e-08,
+        "rhs": 0.024218516424298286
+      },
+      "attn_batch_vs_numpy_max_abs": 1.862645149230957e-08,
+      "attn_dense_c1_vs_numpy_delta": {
+        "index": [
+          0,
+          2,
+          75
+        ],
+        "lhs": 0.027775820344686508,
+        "max_abs": 2.0489096641540527e-08,
+        "rhs": 0.027775799855589867
+      },
+      "attn_dense_c1_vs_numpy_max_abs": 2.0489096641540527e-08,
+      "attn_paged_c1_vs_dense_c1_delta": {
+        "index": [
+          3,
+          9,
+          234
+        ],
+        "lhs": -0.023633984848856926,
+        "max_abs": 1.862645149230957e-08,
+        "rhs": -0.02363400347530842
+      },
+      "attn_paged_c1_vs_dense_c1_max_abs": 1.862645149230957e-08,
+      "block_size": 256,
+      "context_lens": [
+        512,
+        513,
+        514,
+        515
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 256,
+      "label": "primitive_c4_realshape_dense",
+      "max_context_len": 640,
+      "num_kv_heads": 2,
+      "num_q_heads": 16,
+      "passed": true,
+      "phase": "primitive",
+      "raw_removed_after_compaction": true,
+      "raw_sha256": "333881b545b2840f4af631602603588edbbc59fa3b5fc8dab0250531f59e7d8e",
+      "raw_size_bytes": 2153,
+      "raw_source_path": "/tmp/hipengine-iter243-primitive-c4-realshape-dense.json",
+      "repeat": 1,
+      "rows": 4,
+      "schema": 1,
+      "seed": 1234,
+      "variant": "c4_realshape_context_parity"
+    },
+    {
+      "aa_passed": true,
+      "append_batch_aa_key_mismatch": 0,
+      "append_batch_aa_value_mismatch": 0,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/diagnostics/primitive_c8_realshape_dense.json",
+      "artifact_sha256": "515c6aad75f21baa6304da940c4288aab4950329a6c6470c2afd9cc48863bc26",
+      "artifact_size_bytes": 2476,
+      "attn_batch_aa_delta": {
+        "index": [
+          0,
+          0,
+          0
+        ],
+        "lhs": -0.006373223848640919,
+        "max_abs": 0.0,
+        "rhs": -0.006373223848640919
+      },
+      "attn_batch_aa_max_abs": 0.0,
+      "attn_batch_vs_c1_delta": {
+        "index": [
+          0,
+          0,
+          0
+        ],
+        "lhs": -0.006373223848640919,
+        "max_abs": 0.0,
+        "rhs": -0.006373223848640919
+      },
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_dense_c1_delta": {
+        "index": [
+          2,
+          7,
+          103
+        ],
+        "lhs": -0.03945913165807724,
+        "max_abs": 2.2351741790771484e-08,
+        "rhs": -0.03945915400981903
+      },
+      "attn_batch_vs_dense_c1_max_abs": 2.2351741790771484e-08,
+      "attn_batch_vs_numpy_delta": {
+        "index": [
+          2,
+          10,
+          70
+        ],
+        "lhs": -0.026790441945195198,
+        "max_abs": 2.2351741790771484e-08,
+        "rhs": -0.026790419593453407
+      },
+      "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+      "attn_dense_c1_vs_numpy_delta": {
+        "index": [
+          1,
+          11,
+          171
+        ],
+        "lhs": -0.022391846403479576,
+        "max_abs": 1.862645149230957e-08,
+        "rhs": -0.022391827777028084
+      },
+      "attn_dense_c1_vs_numpy_max_abs": 1.862645149230957e-08,
+      "attn_paged_c1_vs_dense_c1_delta": {
+        "index": [
+          2,
+          7,
+          103
+        ],
+        "lhs": -0.03945913165807724,
+        "max_abs": 2.2351741790771484e-08,
+        "rhs": -0.03945915400981903
+      },
+      "attn_paged_c1_vs_dense_c1_max_abs": 2.2351741790771484e-08,
+      "block_size": 256,
+      "context_lens": [
+        512,
+        513,
+        514,
+        515,
+        516,
+        517,
+        518,
+        519
+      ],
+      "device": {
+        "current_device": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+        "env": {
+          "HIP_VISIBLE_DEVICES": "1"
+        },
+        "hipDeviceGetName_error": 0,
+        "hipGetDeviceCount_error": 0,
+        "hipGetDevice_error": 0,
+        "visible_device_count": 1
+      },
+      "head_dim": 256,
+      "label": "primitive_c8_realshape_dense",
+      "max_context_len": 640,
+      "num_kv_heads": 2,
+      "num_q_heads": 16,
+      "passed": true,
+      "phase": "primitive",
+      "raw_removed_after_compaction": true,
+      "raw_sha256": "613a1cd82fe5d7084b1989d5845ab91db5ef6921245a3feb20bb3a75076f5a13",
+      "raw_size_bytes": 2198,
+      "raw_source_path": "/tmp/hipengine-iter243-primitive-c8-realshape-dense.json",
+      "repeat": 1,
+      "rows": 8,
+      "schema": 1,
+      "seed": 1234,
+      "variant": "c8_realshape_context_parity"
+    },
+    {
+      "artifact_path": "benchmarks/results/2026-06-04-hipengine-qwen35-primitive-realshape-context-parity-fix243/diagnostics/active_verify_final.json",
+      "artifact_sha256": "a53bcbb19133c85a58ccf1d3afd6cb62aec8cb3de18480bd10062af35a18cd57",
+      "artifact_size_bytes": 1154,
+      "batch_blockers": [
+        "projection dispatch: no c-aware projection candidate applies to this row count"
+      ],
+      "decode_blockers": [],
+      "first_mismatch_indices": [
+        null,
+        null
+      ],
+      "full_attention_context_decode_path": "native_batch",
+      "full_attention_decode_path": "native_batch",
+      "generated_token_equality_passed": true,
+      "label": "active_verify_final",
+      "linear_attention_output_path": "batch_gemv",
+      "min_equal_prefix_tokens": 137,
+      "mismatch_count": 0,
+      "mismatch_summaries": [],
+      "moe_decode_path": "selected_c1_batch",
+      "native_caware_decode": true,
+      "phase": "post",
+      "prefix_lengths": [
+        137,
+        137
+      ],
+      "raw_removed_after_compaction": true,
+      "raw_sha256": "b10fc39193e74d44d094ecac8fecb71ba2db2895c14692dbd0723d88f3e7eba8",
+      "raw_size_bytes": 139269,
+      "raw_source_path": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "repeat": 1,
+      "status": "blocked",
+      "variant": "active_verify",
+      "workload_batch_decode_attention_context_path": "batch",
+      "workload_batch_decode_full_attention_path": "native_batch",
+      "workload_batch_decode_moe_path": "selected_c1",
+      "workload_batch_sample_mode": "serial_lm_head"
+    }
+  ],
+  "schema_version": 1,
+  "workload": {
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "include_dense_c1": true,
+    "primitive_shapes": [
+      {
+        "context_lens": [
+          512,
+          513,
+          514,
+          515
+        ],
+        "head_dim": 256,
+        "max_context_len": 640,
+        "num_kv_heads": 2,
+        "num_q_heads": 16,
+        "rows": 4
+      },
+      {
+        "context_lens": [
+          512,
+          513,
+          514,
+          515,
+          516,
+          517,
+          518,
+          519
+        ],
+        "head_dim": 256,
+        "max_context_len": 640,
+        "num_kv_heads": 2,
+        "num_q_heads": 16,
+        "rows": 8
+      }
+    ]
+  }
+}

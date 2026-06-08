@@ -1,0 +1,176 @@
+{
+  "schema": "hipengine_p10_x1_correctness_artifact_v1",
+  "date": "2026-05-21",
+  "status": "p10_x1_fixed_but_wave1_wmma_prefill_blocked",
+  "performance_claim": false,
+  "commit_under_test": "working-tree pre-commit based on c9a2a95; see git commit containing this artifact for final SHA",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 (W7900 rerun unverified)",
+  "fix_summary": [
+    "Restored decode-repack semantic parity: T16 layout no longer changes linear-attention ssm_out from BF16-input to F32-input GEMV, nor switches full-attention decode to alternate fused graph solely because decode-repack is enabled.",
+    "Changed Q8T16 dual split GEMV launch from 64 to 128 threads so fused linear-attention attn_qkv+attn_gate matches the single-output Q8T16 kernels bit-for-bit on the Qwen3.6 8192+4096 shape."
+  ],
+  "p10_x1_green_checks": {
+    "public_smoke_repack_only": {
+      "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=0 HIPENGINE_GGUF_GEMV_DECODE=0 python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 1 --skip-tokenize-check --json /tmp/p10_x1_final_t16_smoke.json",
+      "passed": true,
+      "outputs": [
+        "izio."
+      ],
+      "argmax_token_id": 43482,
+      "expected_first_token_id": 43482,
+      "output_ids": [
+        43482,
+        13
+      ]
+    },
+    "p9_probe_repack_only_decode1": {
+      "command": "python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture /tmp/p10_x1_iso_t16_no_wmma_no_gemv.json --decode-tokens 1 --repeats 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_x1_final_iso_t16_no_wmma_no_gemv_out.json",
+      "passed": true,
+      "correctness": {
+        "worst_kl_mean": 0.0,
+        "worst_kl_max": 0.0,
+        "worst_top1_agreement": 1.0,
+        "candidate_deterministic_tail": true,
+        "candidate_deterministic_full_sequence": true,
+        "errors": []
+      },
+      "row_drift_summary": {
+        "rows": 2,
+        "top1_match_count": 2,
+        "top1_mismatch_count": 0,
+        "first_top1_mismatch": null,
+        "max_abs_logit_delta": 0.0
+      }
+    },
+    "p9_probe_repack_plus_gemv_decode_decode1": {
+      "command": "python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture /tmp/p10_x1_iso_t16_no_wmma_gemv.json --decode-tokens 1 --repeats 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_x1_final_iso_t16_no_wmma_gemv_out.json",
+      "passed": true,
+      "correctness": {
+        "worst_kl_mean": 0.0,
+        "worst_kl_max": 0.0,
+        "worst_top1_agreement": 1.0,
+        "candidate_deterministic_tail": true,
+        "candidate_deterministic_full_sequence": true,
+        "errors": []
+      },
+      "row_drift_summary": {
+        "rows": 2,
+        "top1_match_count": 2,
+        "top1_mismatch_count": 0,
+        "first_top1_mismatch": null,
+        "max_abs_logit_delta": 0.0
+      }
+    }
+  },
+  "remaining_blocker": {
+    "id": "P10.X2",
+    "name": "bulk WMMA prefill model correctness with effective WMMA prefill=true",
+    "formal_safe_mode_gate": {
+      "command": "python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_x1_p9_e2e_gate.json",
+      "passed": false,
+      "correctness": {
+        "worst_kl_mean": 4.57762594437766,
+        "worst_kl_max": 14.482195439994273,
+        "worst_top1_agreement": 0.12403100775193798,
+        "candidate_deterministic_tail": true,
+        "candidate_deterministic_full_sequence": true,
+        "errors": [
+          "candidate repeat 0 drift exceeds threshold: kl_mean=4.57763 <= 0.05, top1=0.124031 >= 0.9, first_top1_mismatch={'row': 0, 'reference_argmax': 128449, 'candidate_argmax': 59639}",
+          "candidate repeat 1 drift exceeds threshold: kl_mean=4.57763 <= 0.05, top1=0.124031 >= 0.9, first_top1_mismatch={'row': 0, 'reference_argmax': 128449, 'candidate_argmax': 59639}",
+          "candidate repeat 2 drift exceeds threshold: kl_mean=4.57763 <= 0.05, top1=0.124031 >= 0.9, first_top1_mismatch={'row': 0, 'reference_argmax': 128449, 'candidate_argmax': 59639}"
+        ]
+      },
+      "first_repeat_row_drift_summary": {
+        "rows": 129,
+        "top1_match_count": 16,
+        "top1_mismatch_count": 113,
+        "first_top1_mismatch": {
+          "row": 0,
+          "reference_argmax": 128449,
+          "candidate_argmax": 59639
+        },
+        "max_abs_logit_delta": 45.909481048583984
+      },
+      "candidate_fastpath_safety_repeats": [
+        {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        }
+      ]
+    },
+    "isolation": {
+      "wmma_only_decode1": {
+        "passed": false,
+        "correctness": {
+          "worst_kl_mean": 1.4285274491909818,
+          "worst_kl_max": 2.2774130518458366,
+          "worst_top1_agreement": 0.0,
+          "errors": [
+            "candidate repeat 0 drift exceeds threshold: kl_mean=1.42853 <= 0.05, top1=0 >= 0.9, first_top1_mismatch={'row': 0, 'reference_argmax': 128449, 'candidate_argmax': 59639}"
+          ]
+        },
+        "row_drift_summary": {
+          "rows": 2,
+          "top1_match_count": 0,
+          "top1_mismatch_count": 2,
+          "first_top1_mismatch": {
+            "row": 0,
+            "reference_argmax": 128449,
+            "candidate_argmax": 59639
+          },
+          "max_abs_logit_delta": 12.237628936767578
+        }
+      },
+      "diagnostic_disable_dense_q8t16_and_compact_moe_wmma_decode1": {
+        "passed": true,
+        "correctness": {
+          "worst_kl_mean": 0.0,
+          "worst_kl_max": 0.0,
+          "worst_top1_agreement": 1.0,
+          "errors": []
+        },
+        "note": "Diagnostic-only local edits (not committed) disabled dense Q8T16 WMMA prefill and compact MoE WMMA prefill; the same fixture then matched reference exactly, proving the remaining full-gate failure is bulk WMMA prefill, not T16 decode-repack or GEMV decode."
+      }
+    }
+  },
+  "raw_json_sources": {
+    "smoke": "/tmp/p10_x1_final_t16_smoke.json",
+    "iso_no_wmma_no_gemv": "/tmp/p10_x1_final_iso_t16_no_wmma_no_gemv_out.json",
+    "iso_no_wmma_gemv": "/tmp/p10_x1_final_iso_t16_no_wmma_gemv_out.json",
+    "safe_full": "/tmp/p10_x1_p9_e2e_gate.json",
+    "iso_wmma_no_gemv": "/tmp/p10_x1_iso_t16_wmma_no_gemv_out.json",
+    "iso_wmma_no_compact_no_q8dense": "/tmp/p10_x1_iso_wmma_no_compact_no_q8dense_out.json"
+  }
+}

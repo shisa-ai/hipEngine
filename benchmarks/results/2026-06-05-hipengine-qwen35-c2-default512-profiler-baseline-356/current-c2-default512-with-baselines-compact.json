@@ -1,0 +1,89 @@
+{
+  "batch_execution": {
+    "blockers": [],
+    "native_caware_decode": true
+  },
+  "decision_reason": "artifact_path must be a repo-relative path under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; scaling.ratios.aggregate_vs_c1 must be > 1.0 for retained performance claim; profiler artifact must include command or profiler_command; profiler command must start with rocprofv3; profiler command device env prefix must match retained command; profiler command --profiler-json must match profiler.artifact_path; profiler command --json must match retained artifact path; profiler command --c1-baseline-json must match retained reference artifact; profiler command --serial-bridge-json must match retained reference artifact; profiler command --primitive-correctness-json must match retained reference artifact; profiler command --batch-sample-mode must match retained sampler mode; profiler command must include --batch-sample-eq-ok; profiler command --batch-sample-eq-artifact must match retained sampler equality artifact; profiler command --batch-sample-eq-rows must match retained sampler equality rows",
+  "decode_execution": {
+    "blockers": [],
+    "full_attention_decode_path": "native_batch",
+    "full_attention_row_chunk_size": null,
+    "full_attention_row_chunked_layers": null
+  },
+  "generated_token_equality": {
+    "first_mismatch_indices": [
+      null,
+      null
+    ],
+    "min_equal_prefix_tokens": 137,
+    "passed": true,
+    "prefix_lengths": [
+      137,
+      137
+    ]
+  },
+  "label": "c2_default512_with_baselines_profiler",
+  "performance_claim": false,
+  "profiler": {
+    "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-default512-profiler-baseline-356/profiler-c2-default512-retained.json",
+    "expected_kernels_present": true,
+    "kernel_duration_categories_ns": {
+      "attention": 510660494,
+      "graph_replay": 0,
+      "moe": 45622889,
+      "other": 14706693,
+      "projection": 641174066,
+      "sampling": 3341514
+    },
+    "status": "captured",
+    "total_kernel_duration_ns": 1215505656,
+    "trace_dir": "/tmp/hipengine-iter356-c2-default512-profiler/raw",
+    "trace_files": [
+      "/tmp/hipengine-iter356-c2-default512-profiler/raw/c2-default512_kernel_trace.csv"
+    ]
+  },
+  "projection_dispatch": {
+    "blockers": [],
+    "path": "benchmark_accepted_caware_projection",
+    "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+  },
+  "raw_json": "/tmp/hipengine-iter356-c2-default512-baseline/c2-default512-with-baselines-profiler.json",
+  "raw_json_sha256": "e2ab64b76532653e79160d37c4371326d472fc25a70c19af3c2e3e00d161d515",
+  "raw_json_size_bytes": 153480,
+  "raw_log": "/tmp/hipengine-iter356-c2-default512-baseline/c2-default512-with-baselines-profiler.log",
+  "raw_log_sha256": "e2ab64b76532653e79160d37c4371326d472fc25a70c19af3c2e3e00d161d515",
+  "raw_log_size_bytes": 153480,
+  "sampler_execution": {
+    "blockers": [],
+    "mode": "batched_lm_head",
+    "native_row_aware_lm_head": true,
+    "stabilize_cast_elems": 512,
+    "stabilize_cast_elems_enabled": true
+  },
+  "scaling": {
+    "c1_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c1-baseline-scaling.json",
+      "decode_tok_s_aggregate": 134.35835066115024,
+      "decode_tok_s_per_request": 134.35835066115024,
+      "status": "loaded"
+    },
+    "complete": true,
+    "native": {
+      "decode_tok_s_aggregate": 112.61744792658297,
+      "decode_tok_s_per_request": 56.308723963291484
+    },
+    "ratios": {
+      "aggregate_vs_c1": 0.8381871865233185,
+      "aggregate_vs_serial_bridge": 1.0690492462266956,
+      "per_request_vs_c1": 0.41909359326165924,
+      "per_request_vs_serial_bridge": 1.0690492462266956
+    },
+    "serial_bridge_baseline": {
+      "artifact_path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-c1-serial-baseline-refresh-285/c2-serial-bridge-scaling.json",
+      "decode_tok_s_aggregate": 105.3435548681001,
+      "decode_tok_s_per_request": 52.67177743405005,
+      "status": "blocked"
+    }
+  },
+  "status": "blocked"
+}

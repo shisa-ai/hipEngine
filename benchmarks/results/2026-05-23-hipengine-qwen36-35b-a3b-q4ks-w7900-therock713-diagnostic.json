@@ -1,0 +1,136 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "label": "qwen36_35b_a3b_gguf_q4ks_w7900_therock_713_comparison",
+  "date": "2026-05-23",
+  "git_commit_under_test": "a1aaef0",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "host": "epyc"
+  },
+  "therock_environment": {
+    "rocm_sdk_root": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "rocm_sdk_bin": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "compiler_version_text": "HIP version: 7.13.26162-1140233ffe\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "library_resolution_check": "ctypes.CDLL(\"libamdhip64.so\") maps to /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamdhip64.so when env is run with ROOT/bin first and ROOT/lib first.",
+    "why_rocm_sdk_test_failed": "Current interactive shell has /opt/rocm/bin before the conda env in PATH and /opt/rocm/lib first in LD_LIBRARY_PATH. Therefore rocm_sdk path --root reports the TheRock devel root, but hipconfig --rocmpath resolves /opt/rocm. Use a clean env or conda activation env vars that prepend rocm-sdk path --bin and root/lib."
+  },
+  "commands": {
+    "env_shape": "env -i PATH=\"$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin\" LD_LIBRARY_PATH=\"$ROOT/lib:$CONDA_PREFIX/lib/python3.12/site-packages/_rocm_sdk_core/lib:$CONDA_PREFIX/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib\" HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" HIP_INCLUDE_PATH=\"$ROOT/include\" HSA_OVERRIDE_GFX_VERSION=11.0.0 PYTHONPATH=. ... bash --noprofile --norc -c ...",
+    "benchmark": "python scripts/qwen35_gguf_bench.py --persistent-session --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs {1|2} --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json <path>"
+  },
+  "results": {
+    "system_rocm_7_2_3_w7900_persistent_4k128": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-rerun-clear-gpu.json",
+      "compiler": "HIP version: 7.2.53211-364a905",
+      "prefill_tok_s_median": 1733.900737042995,
+      "decode_tok_s_median": 101.04969459698923,
+      "tracked_peak_gib": 21.334858000278473,
+      "final_token_ids": [
+        85,
+        85,
+        85
+      ],
+      "warmup_preview": [
+        27,
+        50557,
+        85
+      ],
+      "warmup_final_token_id": 85
+    },
+    "therock_7_13_w7900_persistent_4k128_1warmup": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-therock713-3run.json",
+      "compiler": "HIP version: 7.13.26162-1140233ffe",
+      "prefill_tok_s_samples": [
+        2587.7728565214825,
+        2576.0089246516604,
+        2583.2416267351377
+      ],
+      "prefill_tok_s_median": 2583.2416267351377,
+      "decode_tok_s_samples": [
+        100.69838150890732,
+        100.89592499225888,
+        100.74651617806822
+      ],
+      "decode_tok_s_median": 100.74651617806822,
+      "tracked_peak_gib": 21.334858000278473,
+      "hip_used_peak_gib_note": "TheRock hipMemGetInfo reports invalid low/negative process values on this mixed kernel/userspace setup; use tracked_peak_gib for memory comparison.",
+      "final_token_ids_measured": [
+        85,
+        85,
+        85
+      ],
+      "warmup_preview": [
+        318,
+        49633,
+        318
+      ],
+      "warmup_final_token_id": 318
+    },
+    "therock_7_13_w7900_persistent_4k128_2warmup": {
+      "raw_json": "/tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-therock713-2warm-3run.json",
+      "compiler": "HIP version: 7.13.26162-1140233ffe",
+      "prefill_tok_s_samples": [
+        2583.8231253562412,
+        2580.4836437066983,
+        2573.5692985121323
+      ],
+      "prefill_tok_s_median": 2580.4836437066983,
+      "decode_tok_s_samples": [
+        101.20225559903356,
+        101.17369629069009,
+        101.03269112683464
+      ],
+      "decode_tok_s_median": 101.17369629069009,
+      "tracked_peak_gib": 21.334858000278473,
+      "final_token_ids_measured": [
+        85,
+        85,
+        85
+      ],
+      "warmup_previews": [
+        [
+          318,
+          591,
+          220
+        ],
+        [
+          27,
+          50557,
+          85
+        ]
+      ],
+      "warmup_final_token_ids": [
+        220,
+        85
+      ]
+    },
+    "rx7900xtx_final_gate_4k128_reference": {
+      "source": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json",
+      "prefill_tok_s_median": 2722.5078930411396,
+      "decode_tok_s_median": 100.25740752656847,
+      "tracked_peak_gib": 21.415610380470753,
+      "final_token_ids": [
+        85,
+        85,
+        85
+      ]
+    }
+  },
+  "comparisons": {
+    "therock_2warm_vs_system_7_2_prefill_delta_pct": 48.825338646978786,
+    "therock_2warm_vs_system_7_2_decode_delta_pct": 0.12271357592460899,
+    "therock_2warm_vs_rx_final_gate_prefill_delta_pct": -5.2166698835827825,
+    "therock_2warm_vs_rx_final_gate_decode_delta_pct": 0.9139362234943074
+  },
+  "findings": [
+    "The previous W7900 benchmarks were not using TheRock 7.13 despite the packages being installed; hipcc and libamdhip64 resolved to /opt/rocm 7.2.3 because PATH and LD_LIBRARY_PATH put /opt/rocm first.",
+    "With a clean TheRock 7.13 environment, W7900 4K Q4_K_S prefill improves from 1733.9 tok/s to 2580.5 tok/s (+48.8%) while decode stays essentially unchanged (~101 tok/s).",
+    "The TheRock W7900 prefill result is now within ~5.2% of the RX 7900 XTX final-gate prefill result (2580.5 vs 2722.5 tok/s), so the earlier W7900/RX prefill gap was primarily a ROCm 7.2.3 compiler/runtime issue.",
+    "Caveat: The first TheRock warmup iteration after session load produced a wrong sampled/final token in repeated runs (e.g. preview [318,...] final 318 or 220), while the second warmup and all measured runs were stable and matched expected final token 85. Treat 7.13 evidence as diagnostic until the first-iteration correctness anomaly is understood or a mandatory warmup is added for serving.",
+    "TheRock hipMemGetInfo reports invalid low/negative used memory on this mixed kernel/userspace setup; hipEngine tracked memory remains correct and unchanged."
+  ]
+}

@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "date": "2026-05-18",
+  "status": "diagnostic_retained_followup_remaining",
+  "performance_claim": false,
+  "task": "Reduce INT8 KV prefill high-water by releasing decode and phase scratch",
+  "decision": "keep_scratch_release_oracle_streaming_remaining",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "source_commit_before_artifact": "308ec5d",
+  "hipcc_version_file": "/tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt",
+  "hipcc_version_first_line": "HIP version: 7.2.53211-d40244d",
+  "change": {
+    "summary": "Free token-1 decode scratch before bulk prefill, clear rotate-fuse readiness for freed workspaces, and release linear-prefill workspace before entering full-attention prefill. This reduces overlap with the temporary BF16 INT8-prefill oracle without changing retained KV format.",
+    "code_paths": [
+      "hipengine/runtime/qwen35_paro_runner.py::_release_decode_scratch_for_prefill",
+      "hipengine/runtime/qwen35_paro_runner.py::_run_native_prefill_layers",
+      "hipengine/runtime/qwen35_paro_runner.py::_release_prefill_workspace"
+    ],
+    "still_uses_int8_prefill_oracle": true,
+    "remaining_followup": "A true streaming/native INT8-compatible prefill attention path is still required to remove the BF16 oracle workspace itself and bring 256K tracked high-water under 24GiB."
+  },
+  "workload_common": {
+    "token_id": 9707,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "max_layers": 40,
+    "attn_aotriton_min_tokens": 512,
+    "prefill_chunk_sizes": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024
+    },
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "kv_policy": {
+      "policy_class": "FixedPagedKVPolicy",
+      "spans_mode": "uniform",
+      "block_size": 256,
+      "requested_storage": "int8_per_token_head",
+      "resolved_storage_dtype": "int8_per_token_head",
+      "storage_dtype": "int8_per_token_head",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "scale_metadata_format": {
+        "present": true,
+        "scale_dtype": "fp16",
+        "granularity": "per_token_head",
+        "k_scale": "per_token_head",
+        "v_scale": "per_token_head"
+      },
+      "int8_explicit": true,
+      "int8_admission_gated": false,
+      "selection_reason": "explicit_int8"
+    }
+  },
+  "commands": {
+    "accuracy": "python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --seed 1234 --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task19-decode-scratch-release/int8_accuracy.json",
+    "e2e": "python3 scripts/qwen35_kv_e2e_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-task19-decode-scratch-release/e2e-transition-release.json",
+    "bench_128k": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage int8_per_token_head --json /tmp/hipengine-task19-decode-scratch-release/qwen35-paro-128k128-int8-scratch-phase-release-rerun.json",
+    "bench_256k": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 262144 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage int8_per_token_head --json /tmp/hipengine-task19-decode-scratch-release/qwen35-paro-256k128-int8-scratch-phase-release-rerun.json"
+  },
+  "raw_files": {
+    "run_root": "/tmp/hipengine-task19-decode-scratch-release",
+    "accuracy_json": "/tmp/hipengine-task19-decode-scratch-release/int8_accuracy.json",
+    "e2e_json": "/tmp/hipengine-task19-decode-scratch-release/e2e-transition-release.json",
+    "bench_128k_json": "/tmp/hipengine-task19-decode-scratch-release/qwen35-paro-128k128-int8-scratch-phase-release-rerun.json",
+    "bench_256k_json": "/tmp/hipengine-task19-decode-scratch-release/qwen35-paro-256k128-int8-scratch-phase-release-rerun.json"
+  },
+  "correctness": {
+    "targeted_pytest": {
+      "passed": true,
+      "command": "python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py -q",
+      "tests": 36
+    },
+    "layer_accuracy_hip": {
+      "status": "accepted",
+      "passed": true,
+      "thresholds": {
+        "max_abs_attn": 0.005,
+        "kl_mean_max": 0.05,
+        "top1_agreement_min": 0.9
+      }
+    },
+    "e2e_fixture_gate": {
+      "status": "accepted",
+      "passed": true,
+      "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+      "max_kl": 0.015328251530778358,
+      "mean_kl": 0.001639289025262575,
+      "top1_agreement": 1.0,
+      "generated_match": true,
+      "expected_match": true
+    }
+  },
+  "baseline_previous_int8": {
+    "128K/128": {
+      "prefill_tok_s": 1011.0640439636841,
+      "warmed_decode_tok_s": 61.2745382533185,
+      "tracked_peak_allocated_gib": 24.545076542533934,
+      "sampled_hip_vram_peak_gib": 21.169677734375
+    },
+    "256K/128_single_buffer": {
+      "prefill_tok_s": 626.1268810538237,
+      "warmed_decode_tok_s": 40.8562322441496,
+      "tracked_peak_allocated_gib": 24.698736363090575,
+      "sampled_hip_vram_peak_gib": 22.325927734375
+    }
+  },
+  "results": {
+    "128K/128": {
+      "label": "128K/128",
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "prefill_tok_s": 1011.439889777608,
+      "warmed_decode_tok_s": 61.19615036860865,
+      "prefill_seconds": 129.58951028599404,
+      "decode_seconds": 2.0916348369792104,
+      "tracked_peak_allocated_gib": 21.52528138551861,
+      "sampled_hip_vram_peak_gib": 20.163818359375,
+      "after_load_tracked_gib": 19.559495062567294,
+      "after_prefill_tracked_gib": 19.874436506070197,
+      "after_decode_tracked_gib": 19.874436506070197,
+      "after_load_hip_used_gib": 19.8046875,
+      "after_prefill_hip_used_gib": 20.157958984375,
+      "after_decode_hip_used_gib": 20.163818359375,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 131072,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp16",
+        "kv_scale_granularity": "per_token_head",
+        "int8_prefill_oracle": true,
+        "decode_scratch_released_for_prefill": true
+      },
+      "retained_kv_total_bytes": 1355304960,
+      "retained_kv_payload_bytes": 1344798720,
+      "retained_kv_scale_bytes": 10506240,
+      "no_shadow_passed": true,
+      "persistent_bf16_shadow_exists": false,
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ],
+      "delta_vs_previous_int8": {
+        "prefill_tok_s_delta_pct": 0.037173294428560766,
+        "warmed_decode_tok_s_delta_pct": -0.1279289684497975,
+        "tracked_peak_delta_gib": -3.0197951570153236,
+        "sampled_hip_peak_delta_gib": -1.005859375
+      }
+    },
+    "256K/128": {
+      "label": "256K/128",
+      "prompt_length": 262144,
+      "decode_tokens": 128,
+      "prefill_tok_s": 620.9280404395579,
+      "warmed_decode_tok_s": 40.814587681903326,
+      "prefill_seconds": 422.18096611392684,
+      "decode_seconds": 3.1361336049158126,
+      "tracked_peak_allocated_gib": 24.351220563985407,
+      "sampled_hip_vram_peak_gib": 22.323974609375,
+      "after_load_tracked_gib": 21.71416959259659,
+      "after_prefill_tracked_gib": 22.029111036099494,
+      "after_decode_tracked_gib": 22.029111036099494,
+      "after_load_hip_used_gib": 21.966796875,
+      "after_prefill_hip_used_gib": 22.318115234375,
+      "after_decode_hip_used_gib": 22.323974609375,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 262144,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "kv_storage_dtype": "int8_per_token_head",
+        "kv_scale_dtype": "fp16",
+        "kv_scale_granularity": "per_token_head",
+        "int8_prefill_oracle": true,
+        "decode_scratch_released_for_prefill": true
+      },
+      "retained_kv_total_bytes": 2707968000,
+      "retained_kv_payload_bytes": 2686976000,
+      "retained_kv_scale_bytes": 20992000,
+      "no_shadow_passed": true,
+      "persistent_bf16_shadow_exists": false,
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ],
+      "delta_vs_single_buffer": {
+        "prefill_tok_s_delta_pct": -0.8303174279174375,
+        "warmed_decode_tok_s_delta_pct": -0.10192952203085248,
+        "tracked_peak_delta_gib": -0.3475157991051674,
+        "sampled_hip_peak_delta_gib": -0.001953125
+      },
+      "capacity_target": {
+        "sampled_peak_passed_24gib": true,
+        "tracked_peak_passed_24gib": false,
+        "tracked_over_target_gib": 0.35122056398540735
+      }
+    }
+  },
+  "notes": [
+    "Diagnostic resident-runner rows only; not public LLM.generate throughput claims.",
+    "The rerun requested after possible GPU contention is the retained 128K row in this artifact; rocm-smi was idle before the rerun.",
+    "The optimization lowers tracked allocator high-water substantially at 128K and modestly at 256K, but task #19 remains a follow-up until the BF16 oracle workspace itself is streamed or removed."
+  ]
+}

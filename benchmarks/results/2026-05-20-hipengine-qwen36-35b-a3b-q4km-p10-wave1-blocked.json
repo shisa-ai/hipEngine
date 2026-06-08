@@ -1,0 +1,121 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "diagnostic_not_retained",
+  "performance_claim": false,
+  "label": "p10_wave1_blocked_on_t16_correctness_regression",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "task_ids": ["P10.B1", "P10.B2", "P10.B3", "P10.B4", "P10.X1"],
+  "commits": [
+    "731241a feat(P10.B1): wire Q4T16 selected dual WMMA prefill into compact MoE dispatch",
+    "bb0c933 feat(P10.B2,P10.B3): Q5_K T16 + Q6_K T16 selected WMMA prefill kernels",
+    "ed14ed5 feat(P10.B4): Q8_0 T16 dense WMMA prefill kernel + dispatch wire"
+  ],
+  "kernel_correctness": {
+    "method": "vs kernels/cpu_reference (gguf_quant_gemv)",
+    "fixtures": {
+      "tests/test_gguf_k_t16_selected_wmma_prefill.py": "22 passed (Q5T16 + Q6T16 selected WMMA prefill, BF16/FP16, multiple shapes)",
+      "tests/test_gguf_q8_0_t16_wmma_prefill.py": "75 passed (Q8T16 dense WMMA prefill, BF16/FP16/F32 x BF16/FP16/F32 x rows {4,16,17,32,33,48,64} x shapes (64-512, 16-128) x all 6 allowed tile shapes)",
+      "tests/test_qwen35_gguf_compact_moe_wmma_resolver.py": "7 passed (compact MoE dispatch resolver routes to T16 quant keys correctly)"
+    },
+    "status": "accepted"
+  },
+  "e2e_correctness": {
+    "method": "P9.E2 KL/top-1 gate plus public LLM.generate smoke",
+    "p9_e2_status": "rejected",
+    "p9_e2_worst_kl_mean": 5.611,
+    "p9_e2_worst_top1_agreement": 0.04,
+    "smoke_status": "rejected",
+    "smoke_first_token_argmax": 263,
+    "smoke_expected_first_token_argmax": 43482,
+    "smoke_generated_text": "oneka.  2SY OOOO, 0  0 11007\u9762...,i\u7684\u674e1. rame multi",
+    "smoke_expected_text": "izio.",
+    "bisect_evidence": {
+      "pristine_no_fastpath": {"argmax": 43482, "text": "izio..\u5413\u5f97", "status": "correct"},
+      "raw_plus_wmma_prefill": {"argmax": 43482, "text": "izio..\u5413\u5f97", "status": "correct"},
+      "decode_repack_only": {"argmax": 263, "text": "oneka. ", "status": "broken"},
+      "decode_repack_plus_gemv_decode": {"argmax": 263, "text": "oneka.  2SY OOOO, 0  0", "status": "broken"},
+      "decode_repack_plus_wmma_plus_gemv_decode": {"argmax": 263, "text": "oneka.  2SY OOOO, 0  0 11007\u9762...,i\u7684\u674e1. rame multi", "status": "broken"},
+      "p9_g1_retained_commit_7ffb4e9_with_decode_repack": {"argmax": 263, "text": "oneka. ", "status": "broken_pre_p10"}
+    },
+    "conclusion": "T16 decode-repack path itself is broken at the model level; the issue predates P10 work. P9.G1 retained commit 7ffb4e9 also produces incoherent text when DECODE_REPACK=1 is set. The P9.E2 gate historically passed because the pre-prior-agent safety gate blanket-disabled WMMA prefill / GEMV decode for qwen35moe, so candidate effective_use_wmma=false / effective_use_gemv=false even with --use-wmma-prefill / --use-gemv-decode requested; both reference and candidate ran the pristine row-GEMV path. The 506 tok/s number was kernel-throughput-correct but model-output-broken."
+  },
+  "workload": {
+    "prefill_only": "512/0",
+    "decode": "512/128",
+    "warmup_decode_tokens": 1,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk",
+    "force_bulk_prefill": true,
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "env": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+    }
+  },
+  "prefill_512x0_benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "prefill_tok_s_samples": [1909.05, 1910.63, 1885.06],
+    "prefill_tok_s_median": 1909.05,
+    "tracked_peak_allocated_gib_median": 21.343,
+    "effective_use_wmma_prefill_all": [true, true, true, true],
+    "effective_use_gemv_decode_all": [true, true, true, true]
+  },
+  "prefill_512x128_benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "prefill_tok_s_samples": [1908.99, 1865.03, 1895.99],
+    "prefill_tok_s_median": 1895.99,
+    "decode_tok_s_samples": [98.20, 98.29, 98.24],
+    "decode_tok_s_median": 98.24
+  },
+  "rocprof_512x0": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace -o p10b1234_512_0 --output-format csv -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "total_kernel_ms": 261.78,
+    "total_dispatches": 2306,
+    "ms_per_token": 0.5113,
+    "theoretical_tok_s": 1955.8,
+    "buckets": {
+      "q4t16_selected_dual_wmma_prefill_compact32": {"total_ms": 37.17, "dispatches": 40},
+      "q8t16_dense_wmma_prefill_TM16_TN32": {"total_ms": 30.58, "dispatches": 170},
+      "q5t16_selected_wmma_prefill_compact": {"total_ms": 25.97, "dispatches": 37},
+      "q8t16_dense_wmma_prefill_TM64_TN32": {"total_ms": 25.91, "dispatches": 40},
+      "q8t16_dense_wmma_prefill_TM32_TN32": {"total_ms": 2.83, "dispatches": 40},
+      "q6t16_selected_wmma_prefill_compact": {"total_ms": 2.27, "dispatches": 3},
+      "gdn_prefill_recurrent_segments_k2": {"total_ms": 50.52, "dispatches": 30, "note": "already optimized in P9.A1"},
+      "full_attention_prefill": {"total_ms": 41.00, "dispatches": 10, "note": "already optimized"},
+      "router": {"total_ms": 15.35, "dispatches": 160},
+      "rocclr_copy_fill": {"total_ms": 2.83, "dispatches": 533},
+      "remaining_selected_t16_gemv_decode_sliver": {"total_ms": 2.6, "dispatches": 80, "note": "residual decode-shape calls at prefill rows; small and bounded"}
+    }
+  },
+  "comparison_table": {
+    "hipengine_p10_wave1": {"prefill_512_0": 1900, "decode_512_128": 98, "memory_gib": 21.3, "correctness": "kernel_correct_model_broken_pending_P10.X1"},
+    "hipengine_pre_p10_p9_g1": {"prefill_512_0": 506, "decode_512_128": 98, "memory_gib": 21.3, "correctness": "kernel_correct_model_broken (same pre-P10 T16 issue, but hidden by safety gate disabling effective fastpaths)"},
+    "llama_cpp_hip": {"prefill_512_128": 2436, "decode_512_128": 85, "correctness": "reference"},
+    "llama_cpp_vulkan": {"prefill_512_128": 1817, "decode_512_128": 128, "correctness": "reference"},
+    "paro_w4a16": {"prefill_512_128": 2696, "decode_512_128": 116, "correctness": "reference"}
+  },
+  "acceptance": {
+    "p10_target_prefill_tok_s": 2500,
+    "p10_target_decode_tok_s": 120,
+    "prefill_target_met": false,
+    "decode_target_met": false,
+    "wave1_kernel_throughput_target_prefill_tok_s": 1500,
+    "wave1_kernel_throughput_target_met": true,
+    "blocking_issue": "P10.X1 pre-P10 T16 decode-repack model correctness regression",
+    "blocking_reason": "Cannot promote a benchmark row that produces incoherent text on the smallest LLM.generate fixture, even though the kernels are throughput-correct."
+  },
+  "decision": "Record as diagnostic-only. Do NOT promote to benchmarks/README.md or benchmarks/CHANGELOG.md until P10.X1 lands. Wave 1 kernel work is sound; the upstream T16 decode-repack path needs a separate correctness fix. See docs/GGUF.md P10.X1 section and WORKLOG.md entry 2026-05-20 for the bisection trace and proposed next steps.",
+  "notes": [
+    "Bench script is shape-driven and checks finite logits, not text coherence. Both pre-P10 (506/98) and post-Wave-1 (1900/98) measurements are kernel-throughput-correct.",
+    "All P10 Wave 1 kernels pass kernel-level CPU-oracle correctness (rtol=2e-2, atol=5e-1) per AGENTS.md gate.",
+    "Target hardware is W7900 per docs/PLAN.md; this row was measured on the local RX 7900 XTX / gfx1100 24 GiB card. W7900 rerun is part of the formal acceptance once P10.X1 lands."
+  ]
+}

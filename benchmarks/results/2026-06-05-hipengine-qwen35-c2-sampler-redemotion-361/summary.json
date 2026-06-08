@@ -1,0 +1,171 @@
+{
+  "artifacts": {
+    "compact_runs": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-redemotion-361/compact-runs.json",
+      "sha256": "137239a17388edd26b86b4c30494bc0bb423d02c54a39a9d8ebbbb15f143cf61",
+      "size_bytes": 58273
+    },
+    "raw_tmp_dir": {
+      "committed": false,
+      "path": "/tmp/hipengine-iter361-c2-stabilize1024"
+    },
+    "summary": {
+      "path": "benchmarks/results/2026-06-05-hipengine-qwen35-c2-sampler-redemotion-361/summary.json"
+    }
+  },
+  "change": {
+    "c4_c8_sampler_defaults": "unchanged batched_lm_head evidence defaults",
+    "description": "Remove c2 from the no-flag batched_lm_head sampler-evidence defaults, returning c2 to serial_lm_head while leaving c4/c8 batched defaults intact. The rejected intermediate 1024-element c2 stabilizer was not kept.",
+    "file": "scripts/qwen35_batch_retained_bench.py",
+    "new_c2_default_sampler": "serial_lm_head",
+    "previous_attempt": "c2 default batched_lm_head with stabilize_cast_elems=1024"
+  },
+  "commands": {
+    "active_verify": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-e2e-native-c2-512-128.json",
+    "default1024_before_demotion": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --json /tmp/hipengine-iter361-c2-stabilize1024/postchange-default1024-<n>.json after temporary default1024 edit",
+    "forced1024": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --batch-sample-mode batched_lm_head --batch-sample-eq-ok --batch-sample-eq-artifact benchmarks/results/2026-06-02-hipengine-qwen35-c2-native-batch-sampler-equality.json --batch-sample-eq-rows 2 --batch-sample-stabilize-cast-elems 1024 --json /tmp/hipengine-iter361-c2-stabilize1024/forced1024-<n>.json",
+    "guard": "HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json",
+    "post_demotion_serial": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --json /tmp/hipengine-iter361-c2-stabilize1024/postdemote-default-serial-<n>.json after removing c2 from sampler evidence defaults"
+  },
+  "conclusion": "C2 batched_lm_head remains intermittent even with a wider 1024-element post-sampler stabilizer: four forced 1024 runs and four temporary no-flag default1024 runs were green, but the required active verify immediately afterward reproduced the token-104 flake at [137,104]. Removing c2 from the no-flag sampler-evidence defaults returns c2 to serial_lm_head; six immediate no-flag serial repeats plus the final active verify were green at [137,137], with native_caware_decode=true and no decode blockers. This is correctness-first stability evidence only and makes no retained throughput/scaling claim.",
+  "created_at": "2026-06-05T13:02:06.068887+00:00",
+  "git_commit_before_commit": "6e0cede93f64e7e9f22e6b135163770eed1cba0a",
+  "guard": {
+    "passed": true,
+    "primitive_correctness": [
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c2.json",
+        "rows": 2,
+        "sha256": "e7032d01d8163b12d84efb7ead22430225e1d1ed4059ad61537991a91021150d"
+      },
+      {
+        "aa_passed": true,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "device": {
+          "current_device": 0,
+          "device_name": "AMD Radeon RX 7900 XTX",
+          "env": {
+            "HIP_VISIBLE_DEVICES": "1"
+          },
+          "hipDeviceGetName_error": 0,
+          "hipGetDeviceCount_error": 0,
+          "hipGetDevice_error": 0,
+          "visible_device_count": 1
+        },
+        "passed": true,
+        "path": "/tmp/hipengine-e2e-primitive-c8.json",
+        "rows": 8,
+        "sha256": "104e86e586b05f434d7b8676166bbb7a974eca4c24382a56060c1dd11de229dd"
+      }
+    ]
+  },
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "iteration": 361,
+  "kind": "c2_sampler_default_redemotion_after_1024_rejection",
+  "performance_claim": false,
+  "prompt_verifier": {
+    "evidence": "Pass: the iteration restores the required c2 generated-token equality gate after rejecting a focused 1024 stabilizer attempt, and records c2 [137,137] final active equality with native decode still c-aware/no decode blockers on GPU1/XTX. No retained throughput/scaling claim.",
+    "passed": true
+  },
+  "results": {
+    "active_default1024_failure_prefixes": [
+      137,
+      104
+    ],
+    "active_verify_final": {
+      "batch_execution": {
+        "blockers": [],
+        "native_caware_decode": true
+      },
+      "decision_reason": "artifact_path must be a repo-relative path under benchmarks/results; primitive_correctness_json must be provided under benchmarks/results; c1_baseline_json must be provided under benchmarks/results; serial_bridge_json must be provided under benchmarks/results; profiler_json must be provided under benchmarks/results; compiler_version_file must be a repo-relative path under benchmarks/results; primitive c>N correctness gate did not pass: no primitive correctness artifact path provided; scaling comparison vs c=1 and serial bridge baselines is incomplete; profiler trace was not captured with expected kernels present; profiler.artifact_path must be under benchmarks/results; profiler.source_artifact_path must be a non-empty string; profiler.output_format must be csv; profiler.trace_dir must be a non-empty string; profiler.trace_files must be a non-empty string list; profiler.synthesized_fields must be a string list; profiler.status must be captured; profiler.expected_kernels_present must be true; profiler.trace_kernel_names must be a non-empty string list; profiler.expected_kernel_names must be a non-empty string list; profiler.kernel_durations_ns must be a non-empty object; profiler kernel names must include selected projection_dispatch candidate or variant; execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true; execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head; execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true; execution.batch_execution.decode_execution.sampler_execution.equality_rows must be an int; execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations; execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits",
+      "decode_execution": {
+        "blockers": [],
+        "full_attention_decode_path": "native_batch",
+        "full_attention_row_chunk_size": null,
+        "full_attention_row_chunked_layers": null
+      },
+      "generated_token_equality": {
+        "first_mismatch_indices": [
+          null,
+          null
+        ],
+        "min_equal_prefix_tokens": 137,
+        "passed": true,
+        "prefix_lengths": [
+          137,
+          137
+        ]
+      },
+      "label": "active_c2_verify_final_serial",
+      "performance_claim": false,
+      "projection_dispatch": {
+        "blockers": [],
+        "path": "benchmark_accepted_caware_projection",
+        "selected_candidate": "gemv_awq_selected_dual_pack8_strided_c2"
+      },
+      "raw_json": "/tmp/hipengine-e2e-native-c2-512-128.json",
+      "raw_json_sha256": "3b67741ba269a9638bc310a5a951e739c625885066538cbebf794862ba190bad",
+      "raw_json_size_bytes": 138414,
+      "raw_log": "/tmp/hipengine-e2e-native-c2-512-128.log",
+      "raw_log_sha256": "3b67741ba269a9638bc310a5a951e739c625885066538cbebf794862ba190bad",
+      "raw_log_size_bytes": 138414,
+      "repeat": null,
+      "sampler_execution": {
+        "argmax_mode": "serial_per_row",
+        "blockers": [],
+        "final_cast_path": "serial_per_row",
+        "final_norm_path": "serial_per_row",
+        "mode": "serial_lm_head",
+        "native_row_aware_lm_head": false,
+        "requested_mode": "serial_lm_head",
+        "stabilize_cast_elems": 0
+      },
+      "scaling": {
+        "complete": false,
+        "native": {
+          "decode_tok_s_aggregate": 114.8691377635823,
+          "decode_tok_s_per_request": 57.43456888179115
+        },
+        "ratios": {
+          "aggregate_vs_c1": null,
+          "aggregate_vs_serial_bridge": null,
+          "per_request_vs_c1": null,
+          "per_request_vs_serial_bridge": null
+        }
+      },
+      "status": "blocked"
+    },
+    "default1024_pre_active_green_count": 4,
+    "default1024_pre_active_total": 4,
+    "forced1024_green_count": 4,
+    "forced1024_total": 4,
+    "post_demote_serial_green_count": 6,
+    "post_demote_serial_total": 6
+  },
+  "schema": 1,
+  "workload": {
+    "batch_size": 2,
+    "compiler_version_file": "/tmp/hipengine-retained/hipcc-version.txt",
+    "decode_tokens": 128,
+    "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+    "max_layers": 40,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "prompt_length": 512,
+    "require_cached_build": true,
+    "warmup_decode_tokens": 8
+  }
+}

@@ -1,0 +1,569 @@
+{
+  "artifacts": {
+    "hipcc-version.txt": {
+      "path": "benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-window/hipcc-version.txt",
+      "sha256": "52d9eaea3975bf859da6f187359cf82b568d375075665281a6334ddf6f70da2b",
+      "size_bytes": 206
+    }
+  },
+  "conclusion": "c4 rowchunk2 is token/hidden green in the retained-compatible native-c1 trace window around the rowchunk3 first token mismatch, while rowchunk3 is token/hidden red. Rowchunk3 first token mismatch is row0 at generated sequence index 82; traced full-attention failures at decode step 80 already include layer7 attn_input_pre_qkv over tolerance and later layer15 input/output failures for rows0..2. This pins the grouped>=3 issue to the full-attention trajectory before the token flip, while rowchunk2 remains the correctness-first path.",
+  "created_utc": "2026-06-03T11:07:17Z",
+  "git_commit": "1c055e5106e5af5644ab5002ac9686cc5bb582e6",
+  "hardware": {
+    "device": "GPU1",
+    "gpu": "RX 7900 XTX",
+    "hip_visible_devices": "1"
+  },
+  "kind": "hidden_trace_c4_rowchunk2_vs_rowchunk3_window",
+  "measurements": {
+    "rowchunk2": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 84 --warmup-decode-tokens 8 --c1-decode-path native_batch --max-layers 40 --layer-limits 40 --max-sequence-length 1024 --hidden-atol 0.004 --state-atol 0.004 --trace-decode-start 80 --trace-decode-end 83 --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 2 --batch-decode-full-attn-output-path batch_gemv --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-window/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-window/c4-rowchunk2-trace80-83.json",
+      "correctness_passed": true,
+      "decode_full_attention_stage_failure_summary": {
+        "attn_input": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "attn_input_after_prepare": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "attn_input_after_project": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "attn_input_after_rotate": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "attn_input_pre_qkv": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "gate": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "gate_after_split": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "gated_attn": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "input": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "mlp_input": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "o_proj": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "output": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "q_proj_key_after_project": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "residual": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        },
+        "value_after_project": {
+          "failure_row_count": 0,
+          "failure_rows": [],
+          "first_failure": null,
+          "passed": true
+        }
+      },
+      "failure_modes": [],
+      "first_hidden_bit_drift": null,
+      "first_hidden_mismatch": null,
+      "first_token_mismatch": null,
+      "first_tolerance_hidden_mismatch": null,
+      "hidden_passed": true,
+      "raw_output_sha256": "5b7fc29c15a89af67df3d3ba4fb36661202a6d638a5c47a6e9f946b7afa882e7",
+      "raw_output_size_bytes": 12563519,
+      "row_failure_summary": {
+        "hidden_failure_row_count": 0,
+        "hidden_failure_rows": [],
+        "layer_limits": [
+          {
+            "failure_modes": [],
+            "hidden_failure_row_count": 0,
+            "hidden_failure_rows": [],
+            "layer_limit": 40,
+            "strict_hidden_bit_drift_row_count": 0,
+            "strict_hidden_bit_drift_rows": [],
+            "token_failure_row_count": 0,
+            "token_failure_rows": []
+          }
+        ],
+        "strict_hidden_bit_drift_row_count": 0,
+        "strict_hidden_bit_drift_rows": [],
+        "token_failure_row_count": 0,
+        "token_failure_rows": []
+      },
+      "status": "eq_ok",
+      "token_mismatches": [],
+      "token_passed": true
+    },
+    "rowchunk3": {
+      "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 4 --decode-tokens 84 --warmup-decode-tokens 8 --c1-decode-path native_batch --max-layers 40 --layer-limits 40 --max-sequence-length 1024 --hidden-atol 0.004 --state-atol 0.004 --trace-decode-start 80 --trace-decode-end 83 --batch-decode-moe-path grouped_compact --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 3 --batch-decode-full-attn-output-path batch_gemv --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-window/hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-03-hipengine-qwen35-hidden-c4-rowchunk-window/c4-rowchunk3-trace80-83.json",
+      "correctness_passed": false,
+      "decode_full_attention_stage_failure_summary": {
+        "attn_input": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 1,
+            "generated_index": 81,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "attn_input"
+          },
+          "passed": false
+        },
+        "attn_input_after_prepare": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 1,
+            "generated_index": 81,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "attn_input_after_prepare"
+          },
+          "passed": false
+        },
+        "attn_input_after_project": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 1,
+            "generated_index": 81,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "attn_input_after_project"
+          },
+          "passed": false
+        },
+        "attn_input_after_rotate": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 1,
+            "generated_index": 81,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "attn_input_after_rotate"
+          },
+          "passed": false
+        },
+        "attn_input_pre_qkv": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 1,
+            "generated_index": 81,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "attn_input_pre_qkv"
+          },
+          "passed": false
+        },
+        "gate": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 49,
+            "generated_index": 81,
+            "layer_index": 11,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "gate"
+          },
+          "passed": false
+        },
+        "gate_after_split": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 49,
+            "generated_index": 81,
+            "layer_index": 11,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "gate_after_split"
+          },
+          "passed": false
+        },
+        "gated_attn": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 253,
+            "generated_index": 81,
+            "layer_index": 15,
+            "max_abs": 0.01654052734375,
+            "row": 0,
+            "stage": "gated_attn"
+          },
+          "passed": false
+        },
+        "input": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 579,
+            "generated_index": 81,
+            "layer_index": 15,
+            "max_abs": 0.0126953125,
+            "row": 0,
+            "stage": "input"
+          },
+          "passed": false
+        },
+        "mlp_input": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 1,
+            "generated_index": 81,
+            "layer_index": 7,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "mlp_input"
+          },
+          "passed": false
+        },
+        "o_proj": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 79,
+            "generated_index": 81,
+            "layer_index": 15,
+            "max_abs": 0.0079193115234375,
+            "row": 0,
+            "stage": "o_proj"
+          },
+          "passed": false
+        },
+        "output": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 958,
+            "generated_index": 81,
+            "layer_index": 15,
+            "max_abs": 0.02600860595703125,
+            "row": 0,
+            "stage": "output"
+          },
+          "passed": false
+        },
+        "q_proj_key_after_project": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 106,
+            "generated_index": 81,
+            "layer_index": 11,
+            "max_abs": 0.0078125,
+            "row": 0,
+            "stage": "q_proj_key_after_project"
+          },
+          "passed": false
+        },
+        "residual": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 645,
+            "generated_index": 81,
+            "layer_index": 15,
+            "max_abs": 0.014984130859375,
+            "row": 0,
+            "stage": "residual"
+          },
+          "passed": false
+        },
+        "value_after_project": {
+          "failure_row_count": 3,
+          "failure_rows": [
+            0,
+            1,
+            2
+          ],
+          "first_failure": {
+            "decode_step": 80,
+            "elements_over_atol": 3,
+            "generated_index": 81,
+            "layer_index": 11,
+            "max_abs": 0.005859375,
+            "row": 0,
+            "stage": "value_after_project"
+          },
+          "passed": false
+        }
+      },
+      "failure_modes": [
+        "hidden",
+        "token"
+      ],
+      "first_hidden_bit_drift": {
+        "decode_step": 0,
+        "elements_over_atol": 0,
+        "generated_index": 1,
+        "layer_limit": 40,
+        "max_abs": 0.001953125,
+        "max_abs_flat_index": 824,
+        "row": 0
+      },
+      "first_hidden_mismatch": {
+        "decode_step": 2,
+        "elements_over_atol": 1647,
+        "generated_index": 3,
+        "layer_limit": 40,
+        "max_abs": 0.06787109375,
+        "max_abs_flat_index": 1261,
+        "row": 0
+      },
+      "first_token_mismatch": {
+        "layer_limit": 40,
+        "row": 0
+      },
+      "first_tolerance_hidden_mismatch": {
+        "decode_step": 2,
+        "elements_over_atol": 1647,
+        "generated_index": 3,
+        "layer_limit": 40,
+        "max_abs": 0.06787109375,
+        "max_abs_flat_index": 1261,
+        "row": 0
+      },
+      "hidden_passed": false,
+      "raw_output_sha256": "f737c98f219168330d09c9a4910b309e6145aa835c1cc37c00976c329b18fb98",
+      "raw_output_size_bytes": 39458453,
+      "row_failure_summary": {
+        "hidden_failure_row_count": 3,
+        "hidden_failure_rows": [
+          0,
+          1,
+          2
+        ],
+        "layer_limits": [
+          {
+            "failure_modes": [
+              "hidden",
+              "token"
+            ],
+            "hidden_failure_row_count": 3,
+            "hidden_failure_rows": [
+              0,
+              1,
+              2
+            ],
+            "layer_limit": 40,
+            "strict_hidden_bit_drift_row_count": 3,
+            "strict_hidden_bit_drift_rows": [
+              0,
+              1,
+              2
+            ],
+            "token_failure_row_count": 1,
+            "token_failure_rows": [
+              0
+            ]
+          }
+        ],
+        "strict_hidden_bit_drift_row_count": 3,
+        "strict_hidden_bit_drift_rows": [
+          0,
+          1,
+          2
+        ],
+        "token_failure_row_count": 1,
+        "token_failure_rows": [
+          0
+        ]
+      },
+      "status": "mismatch_found",
+      "token_mismatches": [
+        {
+          "batch_window": [
+            60,
+            48306,
+            32907,
+            27502,
+            27502,
+            9640,
+            2713,
+            220,
+            15,
+            13
+          ],
+          "c1_window": [
+            60,
+            48306,
+            32907,
+            27502,
+            8204,
+            1228,
+            9640,
+            2713,
+            220,
+            15
+          ],
+          "first_index": 82,
+          "row": 0
+        }
+      ],
+      "token_passed": false
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "notes": [
+    "Raw hidden-bisect JSONs were intentionally not retained in git because they are 12 MiB and 38 MiB; this compact artifact preserves commands, hashes, and the relevant mismatch/stage excerpts."
+  ],
+  "performance_claim": false,
+  "retained_ready": false,
+  "schema_version": 1,
+  "status": "diagnostic_recorded",
+  "workload": {
+    "batch_decode_full_attention_moe_path": "grouped_compact",
+    "batch_decode_full_attention_output_path": "batch_gemv",
+    "batch_decode_full_attention_path": "native_batch",
+    "batch_decode_linear_output_path": "batch_gemv",
+    "batch_decode_linear_projection_path": "batch",
+    "batch_decode_linear_state_path": "batch_segments",
+    "batch_decode_moe_path": "grouped_compact",
+    "batch_decode_post_attention_path": "batch",
+    "batch_size": 4,
+    "c1_decode_path": "native_batch",
+    "decode_tokens": 84,
+    "hidden_atol": 0.004,
+    "layer_limits": [
+      40
+    ],
+    "max_layers": 40,
+    "prompt_length": 512,
+    "state_atol": 0.004,
+    "trace_decode_window": [
+      80,
+      83
+    ],
+    "warmup_decode_tokens": 8
+  }
+}

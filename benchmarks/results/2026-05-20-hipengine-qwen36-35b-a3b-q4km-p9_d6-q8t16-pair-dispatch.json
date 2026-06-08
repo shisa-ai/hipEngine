@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "status": "accepted_small_op_optimization_target_still_blocked",
+  "performance_claim": true,
+  "task": "P9.D6/#28",
+  "change": "Add a split-output Q8T16 dual GEMV decode kernel and route same-input K/V plus SSM alpha/beta projection pairs through launch_gguf_linear_pair, reducing Q8T16 decode launches without changing output layout.",
+  "hardware": {
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
+    "backend": "hip_gfx1100"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_GEMV_DECODE": "1",
+    "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "correctness_gate": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/p9_d6_q8t16_pair_e2e.json",
+    "status": "accepted",
+    "kl_mean_worst": 0.0,
+    "kl_max_worst": 0.0,
+    "top1_agreement_worst": 1.0,
+    "candidate_deterministic_tail": true,
+    "finite_final_logits": true
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d6_q8t16_pair_512x128_bench.json",
+    "baseline_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d4-q4t16-silu-decode.json",
+    "before": {
+      "prefill_tok_s_median": 501.10658623917107,
+      "decode_tok_s_median": 86.02542617916099,
+      "decode_tok_s_samples": [85.98736579199762, 86.02542617916099, 86.04143102193092],
+      "peak_tracked_gib_median": 21.343075528740883
+    },
+    "after": {
+      "prefill_tok_s_median": 501.38371965507787,
+      "prefill_tok_s_samples": [502.39509058714503, 498.8207147666743, 501.38371965507787],
+      "decode_tok_s_median": 86.5015274045698,
+      "decode_tok_s_samples": [86.53372811171408, 86.45621249882953, 86.5015274045698],
+      "peak_tracked_gib_median": 21.343075528740883,
+      "hip_used_peak_sampled_gib_median": 21.806640625
+    },
+    "delta": {
+      "decode_tok_s_abs": 0.4761012254088145,
+      "decode_tok_s_pct": 0.5534423171920168,
+      "prefill_tok_s_abs": 0.2771334159068007,
+      "prefill_tok_s_pct": 0.05530328405679756
+    },
+    "acceptance_target": {
+      "decode_tok_s_median_min": 95.0
+    },
+    "acceptance_result": "target still blocked: 86.502 tok/s < 95 tok/s"
+  },
+  "kernel_trace_smoke": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/p9_d6_q8t16_dual_split_unit_rocprof_csv -f csv -- python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q -k 'dual_split_bf16_bf16_matches_cpu_oracle and 2048' --tb=short",
+    "csv": "/tmp/p9_d6_q8t16_dual_split_unit_rocprof_csv/rocm/2140230_kernel_trace.csv",
+    "kernel": "q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short>",
+    "duration_ns_observed": 13999,
+    "vgpr_count": 56,
+    "sgpr_count": 128
+  },
+  "tests": [
+    "PYTHONPATH=. python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py hipengine/runtime/gguf_linear.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py",
+    "PYTHONPATH=. python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_gguf_q8_0_t16_gemv_decode.py -q --tb=short # 53 passed",
+    "PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py -q --tb=short # 9 passed"
+  ],
+  "notes": [
+    "The split-output dual kernel preserves the existing separate scratch buffers, unlike the shared-expert concat path.",
+    "Routing currently targets equal-size K/V and SSM alpha/beta pairs; the wrapper accepts unequal output sizes for future same-input pairs.",
+    "Small positive dispatch reduction; #51/#52/#26 remain open because median decode is still below 95 tok/s."
+  ]
+}

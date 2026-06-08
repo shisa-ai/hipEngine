@@ -358,6 +358,39 @@ __global__ void qwen35_router_select_sigmoid_shared_kernel(
 }
 
 template <typename scalar_t>
+__device__ inline void qwen35_router_reduce_row(
+    const scalar_t* __restrict__ hidden,
+    const uint16_t* __restrict__ weight_row,
+    float* __restrict__ shared_scratch,
+    int64_t hidden_size) {
+  const int tid = threadIdx.x;
+  float acc = 0.0f;
+  const int64_t vec_stride = blockDim.x * 8;
+  for (int64_t k = tid * 8; k + 7 < hidden_size; k += vec_stride) {
+    acc += scalar_to_float_qwen35(hidden[k + 0]) * bf16_bits_to_float(weight_row[k + 0]);
+    acc += scalar_to_float_qwen35(hidden[k + 1]) * bf16_bits_to_float(weight_row[k + 1]);
+    acc += scalar_to_float_qwen35(hidden[k + 2]) * bf16_bits_to_float(weight_row[k + 2]);
+    acc += scalar_to_float_qwen35(hidden[k + 3]) * bf16_bits_to_float(weight_row[k + 3]);
+    acc += scalar_to_float_qwen35(hidden[k + 4]) * bf16_bits_to_float(weight_row[k + 4]);
+    acc += scalar_to_float_qwen35(hidden[k + 5]) * bf16_bits_to_float(weight_row[k + 5]);
+    acc += scalar_to_float_qwen35(hidden[k + 6]) * bf16_bits_to_float(weight_row[k + 6]);
+    acc += scalar_to_float_qwen35(hidden[k + 7]) * bf16_bits_to_float(weight_row[k + 7]);
+  }
+  for (int64_t k = (hidden_size & ~7) + tid; k < hidden_size; k += blockDim.x) {
+    acc += scalar_to_float_qwen35(hidden[k]) * bf16_bits_to_float(weight_row[k]);
+  }
+  shared_scratch[tid] = acc;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      shared_scratch[tid] += shared_scratch[tid + stride];
+    }
+    __syncthreads();
+  }
+}
+
+template <typename scalar_t>
 __global__ void qwen35_router_topk_shared_coop_out_kernel(
     const scalar_t* __restrict__ hidden,
     const uint16_t* __restrict__ combined_weight,
@@ -374,33 +407,53 @@ __global__ void qwen35_router_topk_shared_coop_out_kernel(
   const int64_t row = blockIdx.x;
   const int64_t token = 0;
   const int tid = threadIdx.x;
+  const uint16_t* weight_row = combined_weight + row * hidden_size;
+  qwen35_router_reduce_row(hidden, weight_row, shared_scratch, hidden_size);
 
-  float acc = 0.0f;
-  const int64_t weight_row = row * hidden_size;
-  const int64_t vec_stride = blockDim.x * 8;
-  for (int64_t k = tid * 8; k + 7 < hidden_size; k += vec_stride) {
-    const int64_t w_off = weight_row + k;
-    acc += scalar_to_float_qwen35(hidden[k + 0]) * bf16_bits_to_float(combined_weight[w_off + 0]);
-    acc += scalar_to_float_qwen35(hidden[k + 1]) * bf16_bits_to_float(combined_weight[w_off + 1]);
-    acc += scalar_to_float_qwen35(hidden[k + 2]) * bf16_bits_to_float(combined_weight[w_off + 2]);
-    acc += scalar_to_float_qwen35(hidden[k + 3]) * bf16_bits_to_float(combined_weight[w_off + 3]);
-    acc += scalar_to_float_qwen35(hidden[k + 4]) * bf16_bits_to_float(combined_weight[w_off + 4]);
-    acc += scalar_to_float_qwen35(hidden[k + 5]) * bf16_bits_to_float(combined_weight[w_off + 5]);
-    acc += scalar_to_float_qwen35(hidden[k + 6]) * bf16_bits_to_float(combined_weight[w_off + 6]);
-    acc += scalar_to_float_qwen35(hidden[k + 7]) * bf16_bits_to_float(combined_weight[w_off + 7]);
+  if (tid == 0) {
+    logits[row] = shared_scratch[0];
+    __threadfence();
+    int32_t* counter = reinterpret_cast<int32_t*>(selected);
+    const int prior = atomicAdd(counter, 1);
+    is_last_block = (prior + 1 == static_cast<int>(num_rows)) ? 1 : 0;
   }
-  for (int64_t k = (hidden_size & ~7) + tid; k < hidden_size; k += blockDim.x) {
-    acc += scalar_to_float_qwen35(hidden[k]) * bf16_bits_to_float(combined_weight[weight_row + k]);
-  }
-  shared_scratch[tid] = acc;
   __syncthreads();
 
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (tid < stride) {
-      shared_scratch[tid] += shared_scratch[tid + stride];
-    }
-    __syncthreads();
+  if (is_last_block == 0) {
+    return;
   }
+
+  qwen35_router_select_from_logits(
+      logits,
+      selected,
+      routing,
+      shared_scratch,
+      token,
+      num_rows,
+      num_experts,
+      top_k);
+}
+
+template <typename scalar_t>
+__global__ void qwen35_router_topk_split_shared_coop_out_kernel(
+    const scalar_t* __restrict__ hidden,
+    const uint16_t* __restrict__ expert_weight,
+    const uint16_t* __restrict__ shared_weight,
+    float* __restrict__ logits,
+    int64_t* __restrict__ selected,
+    float* __restrict__ routing,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k) {
+  extern __shared__ float shared_scratch[];
+  __shared__ int is_last_block;
+
+  const int64_t row = blockIdx.x;
+  const int64_t num_rows = num_experts + 1;
+  const int64_t token = 0;
+  const int tid = threadIdx.x;
+  const uint16_t* weight_row = (row < num_experts) ? (expert_weight + row * hidden_size) : shared_weight;
+  qwen35_router_reduce_row(hidden, weight_row, shared_scratch, hidden_size);
 
   if (tid == 0) {
     logits[row] = shared_scratch[0];
@@ -584,6 +637,86 @@ extern "C" int hipengine_qwen35_router_topk_shared_coop_out_fp16(
       routing,
       hidden_size,
       num_rows,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_topk_split_shared_coop_out_bf16(
+    const uint16_t* hidden,
+    const uint16_t* expert_weight,
+    const uint16_t* shared_weight,
+    float* logits,
+    int64_t* selected,
+    float* routing,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens != 1 || hidden_size <= 0 || num_experts <= 0 || top_k <= 0 || top_k > 16 ||
+      top_k > num_experts || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipError_t memset_err = hipMemsetAsync(selected, 0, sizeof(int32_t), stream);
+  if (memset_err != hipSuccess) {
+    return static_cast<int>(memset_err);
+  }
+  const int64_t shared_floats = (threads > num_experts) ? threads : num_experts;
+  hipLaunchKernelGGL(
+      (qwen35_router_topk_split_shared_coop_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(num_experts + 1)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(shared_floats) * sizeof(float),
+      stream,
+      hidden,
+      expert_weight,
+      shared_weight,
+      logits,
+      selected,
+      routing,
+      hidden_size,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_topk_split_shared_coop_out_fp16(
+    const half_t* hidden,
+    const uint16_t* expert_weight,
+    const uint16_t* shared_weight,
+    float* logits,
+    int64_t* selected,
+    float* routing,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens != 1 || hidden_size <= 0 || num_experts <= 0 || top_k <= 0 || top_k > 16 ||
+      top_k > num_experts || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipError_t memset_err = hipMemsetAsync(selected, 0, sizeof(int32_t), stream);
+  if (memset_err != hipSuccess) {
+    return static_cast<int>(memset_err);
+  }
+  const int64_t shared_floats = (threads > num_experts) ? threads : num_experts;
+  hipLaunchKernelGGL(
+      (qwen35_router_topk_split_shared_coop_out_kernel<half_t>),
+      dim3(static_cast<unsigned int>(num_experts + 1)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(shared_floats) * sizeof(float),
+      stream,
+      hidden,
+      expert_weight,
+      shared_weight,
+      logits,
+      selected,
+      routing,
+      hidden_size,
       num_experts,
       top_k);
   return static_cast<int>(hipGetLastError());

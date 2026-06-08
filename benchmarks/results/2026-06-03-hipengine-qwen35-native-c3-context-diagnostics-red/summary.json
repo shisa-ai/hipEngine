@@ -1,0 +1,5016 @@
+{
+  "schema": 1,
+  "artifact_path": "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-context-diagnostics-red/summary.json",
+  "created_at": "2026-06-03T07:44:10.184210Z",
+  "status": "c3_context_diagnostics_red_unchanged",
+  "performance_claim": false,
+  "retained_ready": false,
+  "summary": "Rows4/5/6 c3 context diagnostics do not fix native grouping>=3. Forcing full-attention context through compact-cache copies and through a temporary output buffer both keep the retained 512/128 generated-token prefixes at [45,11,137], matching native full. Paired L40 decode-step-0 traces also keep the first full-attention stage failure at layer 7 attn_input_pre_qkv with max_abs 0.015625. Therefore context-cache copying and context output-buffer aliasing are eliminated as the current c3 fix; the remaining target stays upstream of context at hidden/pre-QKV grouped full-attention setup.",
+  "hardware": {
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "env": {
+      "HIP_VISIBLE_DEVICES": "1"
+    }
+  },
+  "software": {
+    "hipengine_commit": "a09715a47af2467c88f8c01fb6ce5dfc93c5727a",
+    "hipengine_dirty": false
+  },
+  "workload": {
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "fixture_path": "/tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json",
+    "logical_rows": [
+      4,
+      5,
+      6
+    ],
+    "batch_size": 3,
+    "prompt_length": 512,
+    "retained_decode_tokens": 128,
+    "retained_warmup_decode_tokens": 8,
+    "trace_max_layers": 40,
+    "trace_decode_tokens": 1,
+    "trace_decode_window": [
+      0,
+      1
+    ],
+    "diagnostic_context_paths": [
+      "batch_compact_cache",
+      "batch_temp_output"
+    ]
+  },
+  "retained_runs": [
+    {
+      "mode": "compact_cache",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c3-rows456-compact_cache-iter144.json",
+      "tmp_artifact_sha256": "4891ccd668873707070dedde173b845024f5d14c67bac05f5327c7b0f8394cf0",
+      "tmp_artifact_size_bytes": 190334,
+      "tmp_log": "/tmp/hipengine-e2e-native-c3-rows456-compact_cache-iter144.log",
+      "tmp_log_sha256": "4891ccd668873707070dedde173b845024f5d14c67bac05f5327c7b0f8394cf0",
+      "tmp_log_size_bytes": 190334,
+      "status": "rejected_correctness",
+      "software_commit": "a09715a47af2467c88f8c01fb6ce5dfc93c5727a",
+      "software_dirty": false,
+      "generated_token_equality_passed": false,
+      "prefixes": [
+        45,
+        11,
+        137
+      ],
+      "min_equal_prefix_tokens": 11,
+      "first_mismatch_indices": [
+        45,
+        11,
+        null
+      ],
+      "mismatch_summaries": [
+        {
+          "row": 0,
+          "first_mismatch_index": 45,
+          "batch_token_at_mismatch": 220,
+          "c1_token_at_mismatch": 264,
+          "batch_window": [
+            471,
+            561,
+            1156,
+            682,
+            3766,
+            220,
+            16,
+            17,
+            18922,
+            318,
+            269
+          ],
+          "c1_window": [
+            471,
+            561,
+            1156,
+            682,
+            3766,
+            264,
+            3878,
+            314,
+            18922,
+            2600,
+            76168
+          ],
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "row": 0,
+              "equal_prefix_tokens": 45
+            },
+            {
+              "row": 1,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 2,
+              "equal_prefix_tokens": 0
+            }
+          ]
+        },
+        {
+          "row": 1,
+          "first_mismatch_index": 11,
+          "batch_token_at_mismatch": 81726,
+          "c1_token_at_mismatch": 61369,
+          "batch_window": [
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            81726,
+            35464,
+            11,
+            321,
+            81347,
+            13
+          ],
+          "c1_window": [
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            61369,
+            11,
+            4779,
+            32288,
+            11,
+            321
+          ],
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "row": 1,
+              "equal_prefix_tokens": 11
+            },
+            {
+              "row": 0,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 2,
+              "equal_prefix_tokens": 0
+            }
+          ]
+        }
+      ],
+      "decode_tok_s_aggregate": 132.30580287209625,
+      "decode_paths": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact"
+      }
+    },
+    {
+      "mode": "temp_output",
+      "tmp_artifact": "/tmp/hipengine-e2e-native-c3-rows456-temp_output-iter144.json",
+      "tmp_artifact_sha256": "fdda3c0b752ef475d07fb7406d8d6c5750a57501fab1445f491e72c8f5e98a18",
+      "tmp_artifact_size_bytes": 190286,
+      "tmp_log": "/tmp/hipengine-e2e-native-c3-rows456-temp_output-iter144.log",
+      "tmp_log_sha256": "fdda3c0b752ef475d07fb7406d8d6c5750a57501fab1445f491e72c8f5e98a18",
+      "tmp_log_size_bytes": 190286,
+      "status": "rejected_correctness",
+      "software_commit": "a09715a47af2467c88f8c01fb6ce5dfc93c5727a",
+      "software_dirty": false,
+      "generated_token_equality_passed": false,
+      "prefixes": [
+        45,
+        11,
+        137
+      ],
+      "min_equal_prefix_tokens": 11,
+      "first_mismatch_indices": [
+        45,
+        11,
+        null
+      ],
+      "mismatch_summaries": [
+        {
+          "row": 0,
+          "first_mismatch_index": 45,
+          "batch_token_at_mismatch": 220,
+          "c1_token_at_mismatch": 264,
+          "batch_window": [
+            471,
+            561,
+            1156,
+            682,
+            3766,
+            220,
+            16,
+            17,
+            18922,
+            318,
+            269
+          ],
+          "c1_window": [
+            471,
+            561,
+            1156,
+            682,
+            3766,
+            264,
+            3878,
+            314,
+            18922,
+            2600,
+            76168
+          ],
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "row": 0,
+              "equal_prefix_tokens": 45
+            },
+            {
+              "row": 1,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 2,
+              "equal_prefix_tokens": 0
+            }
+          ]
+        },
+        {
+          "row": 1,
+          "first_mismatch_index": 11,
+          "batch_token_at_mismatch": 81726,
+          "c1_token_at_mismatch": 61369,
+          "batch_window": [
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            81726,
+            35464,
+            11,
+            321,
+            81347,
+            13
+          ],
+          "c1_window": [
+            10597,
+            58655,
+            883,
+            68022,
+            11,
+            61369,
+            11,
+            4779,
+            32288,
+            11,
+            321
+          ],
+          "batch_matches_c1_rows": [],
+          "batch_matches_other_batch_rows": [],
+          "batch_prefixes_by_c1_row": [
+            {
+              "row": 1,
+              "equal_prefix_tokens": 11
+            },
+            {
+              "row": 0,
+              "equal_prefix_tokens": 0
+            },
+            {
+              "row": 2,
+              "equal_prefix_tokens": 0
+            }
+          ]
+        }
+      ],
+      "decode_tok_s_aggregate": 134.8199860648863,
+      "decode_paths": {
+        "native_caware_decode": false,
+        "full_attention_decode_path": "native_batch",
+        "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+        "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "moe_decode_path": "grouped_compact"
+      }
+    }
+  ],
+  "l40_step0_traces": [
+    {
+      "mode": "compact_cache",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-compact_cache-step0-iter144.json",
+      "tmp_artifact_sha256": "dd64a99a7b27334018562f12be0e46c365697916bf75833c6b963a192d17e762",
+      "tmp_artifact_size_bytes": 12386658,
+      "tmp_log": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-compact_cache-step0-iter144.log",
+      "tmp_log_sha256": "dd64a99a7b27334018562f12be0e46c365697916bf75833c6b963a192d17e762",
+      "tmp_log_size_bytes": 12386658,
+      "status": "mismatch_found",
+      "token_passed": true,
+      "hidden_passed": false,
+      "first_hidden_mismatch": {
+        "layer_limit": 40,
+        "decode_step": 0,
+        "generated_index": 1,
+        "row": 0,
+        "max_abs": 0.00390625,
+        "max_abs_flat_index": 1269,
+        "max_abs_index": [
+          0,
+          1269
+        ],
+        "batch_value_at_max_abs": 2.78515625,
+        "c1_value_at_max_abs": 2.7890625,
+        "signed_diff_at_max_abs": -0.00390625,
+        "elements_over_atol": 17,
+        "bit_mismatch": 1718,
+        "passed_under_atol": false,
+        "top_abs_diffs": [
+          {
+            "flat_index": 1269,
+            "index": [
+              0,
+              1269
+            ],
+            "abs_diff": 0.00390625,
+            "signed_diff": -0.00390625,
+            "batch_value": 2.78515625,
+            "c1_value": 2.7890625,
+            "batch_bits": 16786,
+            "c1_bits": 16788
+          },
+          {
+            "flat_index": 1735,
+            "index": [
+              0,
+              1735
+            ],
+            "abs_diff": 0.00390625,
+            "signed_diff": 0.00390625,
+            "batch_value": 4.5546875,
+            "c1_value": 4.55078125,
+            "batch_bits": 17550,
+            "c1_bits": 17549
+          },
+          {
+            "flat_index": 1452,
+            "index": [
+              0,
+              1452
+            ],
+            "abs_diff": 0.001953125,
+            "signed_diff": -0.001953125,
+            "batch_value": -1.1083984375,
+            "c1_value": -1.1064453125,
+            "batch_bits": 48239,
+            "c1_bits": 48237
+          },
+          {
+            "flat_index": 194,
+            "index": [
+              0,
+              194
+            ],
+            "abs_diff": 0.00146484375,
+            "signed_diff": 0.00146484375,
+            "batch_value": 0.89599609375,
+            "c1_value": 0.89453125,
+            "batch_bits": 15147,
+            "c1_bits": 15144
+          },
+          {
+            "flat_index": 1078,
+            "index": [
+              0,
+              1078
+            ],
+            "abs_diff": 0.00146484375,
+            "signed_diff": 0.00146484375,
+            "batch_value": -0.63916015625,
+            "c1_value": -0.640625,
+            "batch_bits": 47389,
+            "c1_bits": 47392
+          },
+          {
+            "flat_index": 2043,
+            "index": [
+              0,
+              2043
+            ],
+            "abs_diff": 0.00146484375,
+            "signed_diff": 0.00146484375,
+            "batch_value": 0.40087890625,
+            "c1_value": 0.3994140625,
+            "batch_bits": 13930,
+            "c1_bits": 13924
+          },
+          {
+            "flat_index": 207,
+            "index": [
+              0,
+              207
+            ],
+            "abs_diff": 0.001220703125,
+            "signed_diff": 0.001220703125,
+            "batch_value": 0.33056640625,
+            "c1_value": 0.329345703125,
+            "batch_bits": 13642,
+            "c1_bits": 13637
+          },
+          {
+            "flat_index": 307,
+            "index": [
+              0,
+              307
+            ],
+            "abs_diff": 0.001220703125,
+            "signed_diff": -0.001220703125,
+            "batch_value": -0.318115234375,
+            "c1_value": -0.31689453125,
+            "batch_bits": 46359,
+            "c1_bits": 46354
+          }
+        ],
+        "hidden_atol": 0.001,
+        "last_layer_index": 39,
+        "last_layer_type": "full_attention",
+        "batch_decode_execution": {
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "max_full_attention_context": 513,
+          "native_full_attention_layers": 10,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_input_decode_path": "native_batch",
+          "full_attention_qkv_decode_path": "native_batch",
+          "full_attention_scratch_decode_path": "native_batch",
+          "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+          "full_attention_kv_append_decode_path": "native_batch",
+          "post_attention_decode_path": "native_batch",
+          "native_caware_decode": false,
+          "linear_attention_segment_metadata": {
+            "cu_seqlens": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "state_indices": [
+              0,
+              1,
+              2
+            ]
+          },
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "linear_attention_output_path": "batch_gemv",
+          "moe_decode_path": "grouped_compact",
+          "moe_decode_rows": 3,
+          "moe_grouped_compact_layers": 40,
+          "moe_selected_c1_fallback_layers": 0,
+          "layer_executions": [
+            {
+              "layer_index": 0,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 1,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 2,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 3,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 3,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 4,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 5,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 6,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 7,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 7,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 8,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 9,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 10,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 11,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 11,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 12,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 13,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 14,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 15,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 15,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 16,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 17,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 18,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 19,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 19,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 20,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 21,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 22,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 23,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 23,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 24,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 25,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 26,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 27,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 27,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 28,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 29,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 30,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 31,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 31,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 32,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 33,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 34,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 35,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 35,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 36,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 37,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 38,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 39,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_compact_cache_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 39,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            }
+          ],
+          "blockers": [
+            "full-attention context forced through compact-cache batch diagnostic path"
+          ]
+        }
+      },
+      "first_token_mismatch": null,
+      "decode_full_attention_first_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "max_abs": 0.015625,
+        "max_abs_flat_index": 1538,
+        "max_abs_index": [
+          0,
+          1538
+        ],
+        "elements_over_atol": 55
+      },
+      "decode_full_attention_failed_stages": [
+        "input",
+        "attn_input_pre_qkv",
+        "attn_input_after_rotate",
+        "attn_input_after_project",
+        "q_proj_key_after_project",
+        "value_after_project",
+        "query_raw_after_split",
+        "key_raw_after_cast",
+        "gate_after_split",
+        "query_after_prepare",
+        "key_after_prepare",
+        "attn_input_after_prepare",
+        "attn_input",
+        "gate",
+        "query",
+        "attn_context",
+        "gated_attn",
+        "o_proj",
+        "residual",
+        "mlp_input",
+        "output"
+      ],
+      "decode_full_attention_first_failure": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.015625,
+        "max_abs_flat_index": 1538,
+        "max_abs_index": [
+          0,
+          1538
+        ],
+        "elements_over_atol": 55
+      },
+      "decode_full_context_oracle_first_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "row": 0,
+        "comparison": "batch_numpy_vs_c1_numpy",
+        "max_abs": 0.015212059020996094,
+        "max_abs_flat_index": 2488,
+        "max_abs_index": [
+          0,
+          2488
+        ],
+        "elements_over_atol": 3038
+      },
+      "linear_state_first_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 4,
+        "state": "conv",
+        "row": 0,
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 13283,
+        "max_abs_index": [
+          3320,
+          3
+        ],
+        "elements_over_atol": 3618
+      },
+      "pre_qkv_failed": true,
+      "context_path": "batch_compact_cache_diagnostic"
+    },
+    {
+      "mode": "temp_output",
+      "tmp_artifact": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-temp_output-step0-iter144.json",
+      "tmp_artifact_sha256": "d437ff00818ecd278f94622519ac2e633c3e8ab90d8dd0a4935ffb1f5b5c21c9",
+      "tmp_artifact_size_bytes": 12386442,
+      "tmp_log": "/tmp/hipengine-hidden-bisect-L40-c3-rows456-temp_output-step0-iter144.log",
+      "tmp_log_sha256": "d437ff00818ecd278f94622519ac2e633c3e8ab90d8dd0a4935ffb1f5b5c21c9",
+      "tmp_log_size_bytes": 12386442,
+      "status": "mismatch_found",
+      "token_passed": true,
+      "hidden_passed": false,
+      "first_hidden_mismatch": {
+        "layer_limit": 40,
+        "decode_step": 0,
+        "generated_index": 1,
+        "row": 0,
+        "max_abs": 0.00390625,
+        "max_abs_flat_index": 1269,
+        "max_abs_index": [
+          0,
+          1269
+        ],
+        "batch_value_at_max_abs": 2.78515625,
+        "c1_value_at_max_abs": 2.7890625,
+        "signed_diff_at_max_abs": -0.00390625,
+        "elements_over_atol": 17,
+        "bit_mismatch": 1718,
+        "passed_under_atol": false,
+        "top_abs_diffs": [
+          {
+            "flat_index": 1269,
+            "index": [
+              0,
+              1269
+            ],
+            "abs_diff": 0.00390625,
+            "signed_diff": -0.00390625,
+            "batch_value": 2.78515625,
+            "c1_value": 2.7890625,
+            "batch_bits": 16786,
+            "c1_bits": 16788
+          },
+          {
+            "flat_index": 1735,
+            "index": [
+              0,
+              1735
+            ],
+            "abs_diff": 0.00390625,
+            "signed_diff": 0.00390625,
+            "batch_value": 4.5546875,
+            "c1_value": 4.55078125,
+            "batch_bits": 17550,
+            "c1_bits": 17549
+          },
+          {
+            "flat_index": 1452,
+            "index": [
+              0,
+              1452
+            ],
+            "abs_diff": 0.001953125,
+            "signed_diff": -0.001953125,
+            "batch_value": -1.1083984375,
+            "c1_value": -1.1064453125,
+            "batch_bits": 48239,
+            "c1_bits": 48237
+          },
+          {
+            "flat_index": 194,
+            "index": [
+              0,
+              194
+            ],
+            "abs_diff": 0.00146484375,
+            "signed_diff": 0.00146484375,
+            "batch_value": 0.89599609375,
+            "c1_value": 0.89453125,
+            "batch_bits": 15147,
+            "c1_bits": 15144
+          },
+          {
+            "flat_index": 1078,
+            "index": [
+              0,
+              1078
+            ],
+            "abs_diff": 0.00146484375,
+            "signed_diff": 0.00146484375,
+            "batch_value": -0.63916015625,
+            "c1_value": -0.640625,
+            "batch_bits": 47389,
+            "c1_bits": 47392
+          },
+          {
+            "flat_index": 2043,
+            "index": [
+              0,
+              2043
+            ],
+            "abs_diff": 0.00146484375,
+            "signed_diff": 0.00146484375,
+            "batch_value": 0.40087890625,
+            "c1_value": 0.3994140625,
+            "batch_bits": 13930,
+            "c1_bits": 13924
+          },
+          {
+            "flat_index": 207,
+            "index": [
+              0,
+              207
+            ],
+            "abs_diff": 0.001220703125,
+            "signed_diff": 0.001220703125,
+            "batch_value": 0.33056640625,
+            "c1_value": 0.329345703125,
+            "batch_bits": 13642,
+            "c1_bits": 13637
+          },
+          {
+            "flat_index": 307,
+            "index": [
+              0,
+              307
+            ],
+            "abs_diff": 0.001220703125,
+            "signed_diff": -0.001220703125,
+            "batch_value": -0.318115234375,
+            "c1_value": -0.31689453125,
+            "batch_bits": 46359,
+            "c1_bits": 46354
+          }
+        ],
+        "hidden_atol": 0.001,
+        "last_layer_index": 39,
+        "last_layer_type": "full_attention",
+        "batch_decode_execution": {
+          "rows": 3,
+          "slots": [
+            0,
+            1,
+            2
+          ],
+          "max_full_attention_context": 513,
+          "native_full_attention_layers": 10,
+          "full_attention_decode_path": "native_batch",
+          "full_attention_input_decode_path": "native_batch",
+          "full_attention_qkv_decode_path": "native_batch",
+          "full_attention_scratch_decode_path": "native_batch",
+          "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+          "full_attention_kv_append_decode_path": "native_batch",
+          "post_attention_decode_path": "native_batch",
+          "native_caware_decode": false,
+          "linear_attention_segment_metadata": {
+            "cu_seqlens": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "state_indices": [
+              0,
+              1,
+              2
+            ]
+          },
+          "linear_attention_projection_path": "native_batch",
+          "linear_attention_state_path": "native_segments",
+          "linear_attention_output_path": "batch_gemv",
+          "moe_decode_path": "grouped_compact",
+          "moe_decode_rows": 3,
+          "moe_grouped_compact_layers": 40,
+          "moe_selected_c1_fallback_layers": 0,
+          "layer_executions": [
+            {
+              "layer_index": 0,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 1,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 2,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 3,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 3,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 4,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 5,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 6,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 7,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 7,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 8,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 9,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 10,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 11,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 11,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 12,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 13,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 14,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 15,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 15,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 16,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 17,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 18,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 19,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 19,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 20,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 21,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 22,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 23,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 23,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 24,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 25,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 26,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 27,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 27,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 28,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 29,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 30,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 31,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 31,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 32,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 33,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 34,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 35,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 35,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            },
+            {
+              "layer_index": 36,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 37,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 38,
+              "layer_type": "linear_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "linear_attention_decode_path": "native_batch_segments",
+              "linear_attention_segment_metadata": {
+                "cu_seqlens": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "state_indices": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              "linear_attention_row_state_map": [
+                {
+                  "row": 0,
+                  "slot": 0,
+                  "state_index": 0
+                },
+                {
+                  "row": 1,
+                  "slot": 1,
+                  "state_index": 1
+                },
+                {
+                  "row": 2,
+                  "slot": 2,
+                  "state_index": 2
+                }
+              ],
+              "full_attention_decode_path": "not_applicable",
+              "native_caware_decode": true,
+              "linear_attention_projection_path": "native_batch",
+              "linear_attention_state_path": "native_segments",
+              "linear_attention_output_path": "batch_gemv",
+              "moe_decode_path": "grouped_compact"
+            },
+            {
+              "layer_index": 39,
+              "layer_type": "full_attention",
+              "rows": 3,
+              "slots": [
+                0,
+                1,
+                2
+              ],
+              "max_context": 513,
+              "full_attention_decode_path": "native_batch",
+              "native_caware_decode": false,
+              "moe_decode_path": "grouped_compact",
+              "attn_context_trace_source": "attention_scratch.query_raw",
+              "full_attention_context_decode_path": "batch_temp_output_diagnostic",
+              "full_attention_output_decode_path": "batch_gemv",
+              "full_attention_segment_metadata": {
+                "layer_index": 39,
+                "rows": 3,
+                "slots": [
+                  0,
+                  1,
+                  2
+                ],
+                "positions": [
+                  512,
+                  512,
+                  512
+                ],
+                "append_live_counts": [
+                  512,
+                  512,
+                  512
+                ],
+                "decode_live_counts": [
+                  513,
+                  513,
+                  513
+                ],
+                "append_max_live_count": 512,
+                "decode_max_live_count": 513,
+                "block_size": 256,
+                "block_table_len_per_row": 4,
+                "block_table_rows": [
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                ],
+                "storage_dtype": "bf16"
+              }
+            }
+          ],
+          "blockers": [
+            "full-attention context forced through temp-output batch diagnostic path"
+          ]
+        }
+      },
+      "first_token_mismatch": null,
+      "decode_full_attention_first_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "max_abs": 0.015625,
+        "max_abs_flat_index": 1538,
+        "max_abs_index": [
+          0,
+          1538
+        ],
+        "elements_over_atol": 55
+      },
+      "decode_full_attention_failed_stages": [
+        "input",
+        "attn_input_pre_qkv",
+        "attn_input_after_rotate",
+        "attn_input_after_project",
+        "q_proj_key_after_project",
+        "value_after_project",
+        "query_raw_after_split",
+        "key_raw_after_cast",
+        "gate_after_split",
+        "query_after_prepare",
+        "key_after_prepare",
+        "attn_input_after_prepare",
+        "attn_input",
+        "gate",
+        "query",
+        "attn_context",
+        "gated_attn",
+        "o_proj",
+        "residual",
+        "mlp_input",
+        "output"
+      ],
+      "decode_full_attention_first_failure": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "stage": "attn_input_pre_qkv",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 0.015625,
+        "max_abs_flat_index": 1538,
+        "max_abs_index": [
+          0,
+          1538
+        ],
+        "elements_over_atol": 55
+      },
+      "decode_full_context_oracle_first_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 7,
+        "row": 0,
+        "comparison": "batch_numpy_vs_c1_numpy",
+        "max_abs": 0.015212059020996094,
+        "max_abs_flat_index": 2488,
+        "max_abs_index": [
+          0,
+          2488
+        ],
+        "elements_over_atol": 3038
+      },
+      "linear_state_first_mismatch": {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 4,
+        "state": "conv",
+        "row": 0,
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 13283,
+        "max_abs_index": [
+          3320,
+          3
+        ],
+        "elements_over_atol": 3618
+      },
+      "pre_qkv_failed": true,
+      "context_path": "batch_temp_output_diagnostic"
+    }
+  ],
+  "measurements": {
+    "compact_cache_c3_512x128_min_equal_prefix_tokens": [
+      11
+    ],
+    "temp_output_c3_512x128_min_equal_prefix_tokens": [
+      11
+    ],
+    "active_native_c2_512x128_min_equal_prefix_tokens": []
+  },
+  "verdicts": {
+    "compact_cache_retained_red_same_prefixes": true,
+    "temp_output_retained_red_same_prefixes": true,
+    "compact_cache_trace_first_full_failure_still_pre_qkv": true,
+    "temp_output_trace_first_full_failure_still_pre_qkv": true,
+    "both_traces_token_green_step0": true,
+    "context_cache_copying_not_the_grouping_fix": true,
+    "context_temp_output_aliasing_not_the_grouping_fix": true,
+    "retained_ready": false
+  },
+  "commands": {
+    "retained_compact_cache": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-attn-context-path batch_compact_cache --json /tmp/hipengine-e2e-native-c3-rows456-compact_cache-iter144.json",
+    "retained_temp_output": "same with --batch-decode-attn-context-path batch_temp_output --json /tmp/hipengine-e2e-native-c3-rows456-temp_output-iter144.json",
+    "trace_compact_cache": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_rows4_5_6_3x512_prompt_ids.json --prompt-length 512 --batch-size 3 --decode-tokens 1 --max-layers 40 --layer-limits 40 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 1 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --batch-decode-full-attn-path native_batch --batch-decode-attn-context-path batch_compact_cache --json /tmp/hipengine-hidden-bisect-L40-c3-rows456-compact_cache-step0-iter144.json",
+    "trace_temp_output": "same with --batch-decode-attn-context-path batch_temp_output --json /tmp/hipengine-hidden-bisect-L40-c3-rows456-temp_output-step0-iter144.json"
+  },
+  "prior_related_artifacts": [
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-rowchunk-boundary-contrast/summary.json",
+    "benchmarks/results/2026-06-03-hipengine-qwen35-native-c3-block-table-audit/summary.json"
+  ],
+  "retained_claim_blockers": [
+    "native c3 full-attention grouping remains generated-token red under both context diagnostics",
+    "both diagnostics force non-retained context paths and native_caware_decode=false",
+    "no retained c>N throughput/scaling claim is made"
+  ]
+}

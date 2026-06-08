@@ -1,0 +1,334 @@
+{
+  "schema": 2,
+  "status": "blocked_target_not_met",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T08:55:19.267139+00:00",
+  "run_tag": "hipengine-qwen36-q4km-p9_c11-hot-expert-final-blocked",
+  "task": "#42 P9.C11 final hot-expert artifact for umbrella #27 P9.C1",
+  "summary": "P9.C hot-expert/raw-GGUF-K redesign path is exhausted for the attempted shallow variants. Correctness passes, but the combined Q4 selected dual + Q5/Q6 selected down + Q8_0 WMMA bucket remains 140.110 ms at 512/0, above the <=110 ms target. Umbrella task #27 must remain open/blocked; next bottleneck is Q4 selected dual and likely requires a deeper expert-weight repack/layout or different selected-MoE kernel design.",
+  "hardware": "AMD Radeon RX 7900 XTX / gfx1100 local (default project hardware W7900 not re-run)",
+  "software": {
+    "commit_at_final_artifact": "2775f5c96b5354a2ec580c435cea5a64d032a022",
+    "git_status_at_final_artifact": "## gguf-bulk-prefill\n?? uv.lock",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "commands": {
+    "bench_512_0": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c10/bench-512-0.json",
+    "bench_512_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c10/bench-512-128.json",
+    "rocprof_512_0": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p9_c10/rocprof-512-0-current -- python3 scripts/qwen35_gguf_bench.py [...] --prompt-length 512 --decode-tokens 0 --measured-runs 1 --use-wmma-prefill",
+    "rocprof_summary": "uv run python scripts/qwen35_gguf_rocprof_summary.py --csv <kernel_trace.csv> --tokens-prefill 512 --top 20 --json /tmp/p9_c10/rocprof-512-0-summary.json --quiet",
+    "correctness_bundle": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_moe_replay.py -q --tb=short"
+  },
+  "correctness": {
+    "passed": true,
+    "evidence": "Adjacent Q8_0 dual/single, Q4_K selected, Q5_K/Q6_K selected, dispatch/routing, and replay helper bundle passed; collected counts total 143 tests (14 + 26 + 15 + 69 + 12 + 4 + 3). 512/128 E2E bench produced finite final logits and deterministic token ids [220, 220, 220]."
+  },
+  "measurements": {
+    "wallclock": {
+      "bench_512_0_json": "/tmp/p9_c10/bench-512-0.json",
+      "bench_512_0_summary": {
+        "prefill_tok_s": {
+          "samples": [
+            1478.579999199622,
+            1674.2048667168142,
+            1661.7875246084307
+          ],
+          "median": 1661.7875246084307,
+          "p95": 1661.7875246084307,
+          "min": 1478.579999199622,
+          "max": 1674.2048667168142,
+          "stdev": 109.53559280174248,
+          "stdev_pct_of_median": 6.591431887632717
+        },
+        "decode_tok_s": {
+          "samples": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "stdev": 0.0,
+          "stdev_pct_of_median": null
+        },
+        "prefill_seconds": {
+          "samples": [
+            0.34627818601438776,
+            0.30581681500189006,
+            0.3081019639503211
+          ],
+          "median": 0.3081019639503211,
+          "p95": 0.3081019639503211,
+          "min": 0.30581681500189006,
+          "max": 0.34627818601438776,
+          "stdev": 0.022729453656040052,
+          "stdev_pct_of_median": 7.377250493510321
+        },
+        "decode_seconds": {
+          "samples": [
+            1.9560102373361588e-06,
+            1.8859864212572575e-06,
+            2.3050233721733093e-06
+          ],
+          "median": 1.9560102373361588e-06,
+          "p95": 1.9560102373361588e-06,
+          "min": 1.8859864212572575e-06,
+          "max": 2.3050233721733093e-06,
+          "stdev": 2.2446435104492967e-07,
+          "stdev_pct_of_median": 11.475622507509064
+        },
+        "graph_capture_seconds": {
+          "samples": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "p95": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "stdev": 0.0,
+          "stdev_pct_of_median": null
+        },
+        "tracked_peak_allocated_gib": {
+          "samples": [
+            20.886043317615986,
+            20.886043317615986,
+            20.886043317615986
+          ],
+          "median": 20.886043317615986,
+          "p95": 20.886043317615986,
+          "min": 20.886043317615986,
+          "max": 20.886043317615986,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "tracked_current_allocated_gib_before_close": {
+          "samples": [
+            20.886043317615986,
+            20.886043317615986,
+            20.886043317615986
+          ],
+          "median": 20.886043317615986,
+          "p95": 20.886043317615986,
+          "min": 20.886043317615986,
+          "max": 20.886043317615986,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "owned_session_peak_gib": {
+          "samples": [
+            20.886043317615986,
+            20.886043317615986,
+            20.886043317615986
+          ],
+          "median": 20.886043317615986,
+          "p95": 20.886043317615986,
+          "min": 20.886043317615986,
+          "max": 20.886043317615986,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "samples": [
+            21.34765625,
+            21.34765625,
+            21.34765625
+          ],
+          "median": 21.34765625,
+          "p95": 21.34765625,
+          "min": 21.34765625,
+          "max": 21.34765625,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "finite_final_logits_all": false,
+        "final_token_ids": [
+          null,
+          null,
+          null
+        ]
+      },
+      "bench_512_128_json": "/tmp/p9_c10/bench-512-128.json",
+      "bench_512_128_summary": {
+        "prefill_tok_s": {
+          "samples": [
+            1476.6557140493394,
+            1677.560587933919,
+            1696.349098052922
+          ],
+          "median": 1677.560587933919,
+          "p95": 1677.560587933919,
+          "min": 1476.6557140493394,
+          "max": 1696.349098052922,
+          "stdev": 121.77914397110882,
+          "stdev_pct_of_median": 7.259299297266624
+        },
+        "decode_tok_s": {
+          "samples": [
+            62.55252457189848,
+            62.556790508536736,
+            62.57382177188101
+          ],
+          "median": 62.556790508536736,
+          "p95": 62.556790508536736,
+          "min": 62.55252457189848,
+          "max": 62.57382177188101,
+          "stdev": 0.011268191762651345,
+          "stdev_pct_of_median": 0.01801273957798977
+        },
+        "prefill_seconds": {
+          "samples": [
+            0.3467294340371154,
+            0.3052050719852559,
+            0.30182466603582725
+          ],
+          "median": 0.3052050719852559,
+          "p95": 0.3052050719852559,
+          "min": 0.30182466603582725,
+          "max": 0.3467294340371154,
+          "stdev": 0.025007125576011185,
+          "stdev_pct_of_median": 8.193548492935678
+        },
+        "decode_seconds": {
+          "samples": [
+            2.0462803200352937,
+            2.0461407779948786,
+            2.0455838619964197
+          ],
+          "median": 2.0461407779948786,
+          "p95": 2.0461407779948786,
+          "min": 2.0455838619964197,
+          "max": 2.0462803200352937,
+          "stdev": 0.00036848365189761593,
+          "stdev_pct_of_median": 0.018008714544984167
+        },
+        "graph_capture_seconds": {
+          "samples": [
+            0.14903827098896727,
+            0.14775996003299952,
+            0.1467464870074764
+          ],
+          "median": 0.14775996003299952,
+          "p95": 0.14775996003299952,
+          "min": 0.1467464870074764,
+          "max": 0.14903827098896727,
+          "stdev": 0.001148439542119972,
+          "stdev_pct_of_median": 0.7772332517303664
+        },
+        "tracked_peak_allocated_gib": {
+          "samples": [
+            20.886044278740883,
+            20.886044278740883,
+            20.886044278740883
+          ],
+          "median": 20.886044278740883,
+          "p95": 20.886044278740883,
+          "min": 20.886044278740883,
+          "max": 20.886044278740883,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "tracked_current_allocated_gib_before_close": {
+          "samples": [
+            20.886043317615986,
+            20.886043317615986,
+            20.886043317615986
+          ],
+          "median": 20.886043317615986,
+          "p95": 20.886043317615986,
+          "min": 20.886043317615986,
+          "max": 20.886043317615986,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "owned_session_peak_gib": {
+          "samples": [
+            20.886043317615986,
+            20.886043317615986,
+            20.886043317615986
+          ],
+          "median": 20.886043317615986,
+          "p95": 20.886043317615986,
+          "min": 20.886043317615986,
+          "max": 20.886043317615986,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "samples": [
+            21.3515625,
+            21.353515625,
+            21.35546875
+          ],
+          "median": 21.353515625,
+          "p95": 21.353515625,
+          "min": 21.3515625,
+          "max": 21.35546875,
+          "stdev": 0.001953125,
+          "stdev_pct_of_median": 0.00914662032379036
+        },
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ]
+      }
+    },
+    "rocprof_512_0": {
+      "summary_json": "/tmp/p9_c10/rocprof-512-0-summary.json",
+      "total_kernel_ms": 265.321253,
+      "target_bucket_ms": {
+        "moe_q4_k_selected_dual_wmma_prefill": 58.126335,
+        "moe_q5_k_selected_wmma_prefill": 27.043052,
+        "moe_q6_k_selected_wmma_prefill": 2.655901,
+        "dense_q8_0_wmma_prefill": 52.285202
+      },
+      "target_bucket_dispatches": {
+        "moe_q4_k_selected_dual_wmma_prefill": 40,
+        "moe_q5_k_selected_wmma_prefill": 37,
+        "moe_q6_k_selected_wmma_prefill": 3,
+        "dense_q8_0_wmma_prefill": 210
+      },
+      "combined_target_bucket_ms": 140.11049,
+      "target_ms": 110.0,
+      "gap_ms": 30.11049,
+      "gap_pct_of_target": 27.37317272727273
+    }
+  },
+  "prototype_decisions": {
+    "p9_c4_q4_hot_fulltile": "rejected: correct but Q4 replay 65-66 ms vs retained 59.9 ms; fallback cost erased hot full-tile gain",
+    "p9_c5_q4_sidemeta": "rejected: correct but first real layer 2.339 ms vs retained 1.678 ms and ~536 MiB gate+up side metadata per layer",
+    "p9_c6_q4_dispatcher": "not wired: no Q4 hot path improved baseline",
+    "p9_c7_q5_decode_hoist": "rejected: correct but Q5 replay 34.086 ms vs retained 26.999 ms",
+    "p9_c8_q6": "retained legacy 16x16: Q6 tile sweep kept 2.839 ms best",
+    "p9_c9_tail_no_padding": "not retained: residual rows 5.4%; measured Q4 tail fallback 17.47 ms exceeds likely gain"
+  },
+  "acceptance": {
+    "target_bucket_ms": 110.0,
+    "actual_bucket_ms": 140.11049,
+    "passed": false,
+    "gap_ms": 30.11049,
+    "task_27_action": "leave open/blocked, do not mark completed",
+    "task_42_action": "complete final artifact/blocked handoff only"
+  },
+  "next_bottleneck": {
+    "next_single_bottleneck": "moe_q4_k_selected_dual_wmma_prefill",
+    "next_single_bottleneck_ms": 58.126335,
+    "rationale": "Q4 selected dual remains the largest target bucket (58.13 ms), followed by dense Q8_0 WMMA (52.29 ms). Q4 also dominates selected-MoE and must drop by roughly the whole 30 ms target gap if Q8 stays fixed, but shallow hot/tail/scale-sidecar prototypes all regressed. The next viable direction is a deeper Q4 expert-weight repack/layout or an entirely different selected-MoE kernel design that avoids raw GGUF-K repeated decode without adding a large side stream.",
+    "required_savings_ms": 30.11049,
+    "if_only_q4_improves_required_q4_ms": 28.015845,
+    "if_only_q8_improves_required_q8_ms": 22.174712
+  },
+  "referenced_artifacts": [
+    "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c4-q4-hot-fulltile-v1-rejected.json",
+    "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c5-q4-sidemeta-v1-rejected.json",
+    "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c7-q5-opt-v1-rejected.json",
+    "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c8-q6-retain-legacy.json",
+    "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c9-tail-no-padding-not-retained.json",
+    "benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c10-combined-gap-analysis.json"
+  ]
+}

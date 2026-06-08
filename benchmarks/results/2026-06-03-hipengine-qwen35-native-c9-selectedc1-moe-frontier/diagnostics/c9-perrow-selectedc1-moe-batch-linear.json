@@ -1,0 +1,63 @@
+{
+  "batch_blockers": [
+    "native c>N decode currently supports compact physical-slot-ordered rows; full-attention batch context is native only for BF16 KV and context < 1024",
+    "full-attention decode used a per-row fallback, so this is not native c-aware decode",
+    "projection dispatch: no c-aware projection candidate applies to this row count"
+  ],
+  "correctness_passed": false,
+  "decision_accepted": false,
+  "decode_blockers": [
+    "full-attention decode used a per-row fallback"
+  ],
+  "first_full_attention_chunks": [],
+  "first_mismatch_indices": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "full_attention_context_decode_path": "native_batch",
+  "full_attention_decode_path": "per_row_context_fallback",
+  "full_attention_output_layer_paths": [],
+  "full_attention_row_chunk_size": null,
+  "full_attention_row_chunk_source": null,
+  "full_attention_segment_output_paths": [],
+  "generated_token_equality_passed": true,
+  "linear_attention_output_path": "batch_gemv",
+  "linear_attention_projection_path": "native_batch",
+  "log_path": "/tmp/hipengine-iter216-c9-perrow_selectedc1_moe.log",
+  "min_equal_prefix_tokens": 137,
+  "moe_decode_path": "selected_c1_forced_with_per_row_full_attention_fallback",
+  "moe_grouped_compact_layers": 0,
+  "moe_selected_c1_fallback_layers": 10,
+  "native_caware_decode": false,
+  "prefix_lengths": [
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137,
+    137
+  ],
+  "raw_removed_after_compaction": true,
+  "raw_sha256": "5bf93b7da1801aa8cf61015c421786a0d8c82aa41ef81a50633f5214499b5002",
+  "raw_size_bytes": 393874,
+  "raw_source_path": "/tmp/hipengine-iter216-c9-perrow_selectedc1_moe.json",
+  "rows": 9,
+  "status": "blocked",
+  "variant": "perrow-selectedc1-moe-batch-linear",
+  "workload_batch_decode_full_attention_output_path": "batch",
+  "workload_batch_decode_full_attention_path": "per_row",
+  "workload_batch_decode_full_attention_row_chunk_size": 0,
+  "workload_batch_decode_linear_output_path": "batch_gemv",
+  "workload_batch_decode_linear_projection_path": "batch",
+  "workload_batch_decode_moe_path": "selected_c1"
+}

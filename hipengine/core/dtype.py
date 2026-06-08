@@ -13,6 +13,7 @@ class DType(str, Enum):
     INT32 = "int32"
     INT16 = "int16"
     INT8 = "int8"
+    INT8_PER_TOKEN_HEAD = "int8_per_token_head"
     BOOL = "bool"
     INT4_PARO = "int4_paro"
 
@@ -39,6 +40,7 @@ _DTYPE_ITEMSIZE = {
     DType.INT32: 4,
     DType.INT16: 2,
     DType.INT8: 1,
+    DType.INT8_PER_TOKEN_HEAD: 1,
     DType.BOOL: 1,
 }
 
