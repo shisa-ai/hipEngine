@@ -1,0 +1,31 @@
+{
+  "iteration": "C3.0c-output-tiled-gemv",
+  "kind": "output_column_tiled_cN_decode_gemv",
+  "created_at": "2026-06-08T02:30:00+00:00",
+  "host": "AMD Radeon RX 7900 XTX (gfx1100/RDNA3) via HIP_VISIBLE_DEVICES=1",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 (PARO W4A16 AWQ pack8)",
+  "performance_claim": false,
+  "retained_ready": false,
+  "change": "Output-column-tiled c>1 decode AWQ pack8 GEMV (single + dual, strided + transposed layouts, templated C in {2,4,8}, bf16/fp16). One block per output pack loads each weight pack once into acc[C][8] registers and accumulates all C active columns, so weight bytes/token stop scaling with C. Per-output accumulation order identical to the per-row kernel -> byte-exact. Wired the transposed variants into the c>1 decode hot sites (full-attn QKV/Z force_gemv, shared-expert down/gate+up use_batch_gemv, linear-attn KV/QK), gated tokens in {2,4,8}, env kill-switch HIPENGINE_DISABLE_PACK8_OUTPUT_TILED.",
+  "correctness": {
+    "kernel_bit_exact_gate": "tests/test_paro_awq_output_tiled_gemv.py 192/192 PASS (single+dual x strided+transposed x rows {2,4,8} x shapes x threads {64,128} x {bf16,fp16}), byte-identical to gemv_awq_pack8_{strided,transposed} and gemv_awq_dual_pack8_{strided,transposed}",
+    "e2e_generated_tokens_byte_identical_on_vs_off": true,
+    "exercised_probe_c2": "gemv_awq_pack8_output_tiled_transposed_fp16 = 1000 calls/step (per-row pack8_transposed 1800->800); gemv_awq_dual_pack8_output_tiled_transposed_fp16 = 400 calls/step (per-row dual 2200->1800; rotate-fused/some linear-attn dual paths use other kernels, not yet covered)"
+  },
+  "decode_tok_s_aggregate_warmed_median_3runs": {
+    "note": "Per-c-feasible prompt (prompt*c == 512-token fixture); decode 128, warmup 8. ON = output-tiled active, OFF = HIPENGINE_DISABLE_PACK8_OUTPUT_TILED=1 (per-row). Different context per c, so compare ON-vs-OFF within each c, not across c.",
+    "c2": {"prompt": 256, "off": 129.13, "on": 130.53, "delta_pct": 1.08},
+    "c4": {"prompt": 128, "off": 178.74, "on": 175.95, "delta_pct": -1.56},
+    "c8": {"prompt": 64, "off": 203.38, "on": 203.04, "delta_pct": -0.17}
+  },
+  "conclusion": "NULL throughput result (all deltas within +-1.6%, i.e. run-to-run noise). Output-tiling cuts weight BANDWIDTH but not DISPATCH COUNT (per-row and output-tiled are both a single kernel launch per projection), and c>1 decode at these small contexts is DISPATCH-bound (iter484: 9362 dispatches/step at c8), not bandwidth-bound. So the bandwidth win does not move end-to-end decode throughput here. The kernel is correct and a real bandwidth reduction; its payoff requires (a) removing the dispatch bottleneck (C3.0b graph replay + fusion) so the regime becomes bandwidth-bound, and/or (b) longer contexts where per-kernel work dominates per-dispatch overhead. NO retained scoreboard row.",
+  "commands": {
+    "kernel_gate": "HIP_VISIBLE_DEVICES=1 python3 -m pytest -q tests/test_paro_awq_output_tiled_gemv.py",
+    "perf_sweep": "for c in 2 4 8 (prompt=512/c): [HIPENGINE_DISABLE_PACK8_OUTPUT_TILED=1] HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --prompt-length <512/c> --batch-size <c> --decode-tokens 128 --warmup-decode-tokens 8 --json <out>; read measurements.decode_tok_s_aggregate; median of 3 reps"
+  },
+  "follow_up": [
+    "Reduce dispatch count (C3.0b graph replay for c>1 device-resident decode step + kernel fusion) -- the actual throughput lever in this regime.",
+    "Re-measure output-tiled benefit at longer contexts (agentic focus cases) once a >=2048-token fixture / multi-prompt path is available; full c-sweep later.",
+    "Extend output-tiling to the rotate-staged dual and the selected (MoE) transposed kernels for completeness."
+  ]
+}

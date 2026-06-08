@@ -3600,25 +3600,28 @@ levers" above and
       decode tok/s up. Evidence:
       `benchmarks/results/2026-06-07-hipengine-qwen35-decode-host-trim-485/`
       (c8 192->230 tok/s +19.9%, c4 +15.9%, c2 +14.7%, c1 unaffected).
-- [ ] **C3.0b Wire c-aware (c>1) decode graph replay.** *(Deferred — revisit
-      AFTER C3.0c.)* Make the native batch decode step device-resident (device
+- [ ] **C3.0b Wire c-aware (c>1) decode graph replay. >>> NOW THE TOP
+      CONCURRENCY PRIORITY (C3.0c landed but is bandwidth-only; this is the
+      dispatch-count lever the c>1 regime is actually bound by).** Make the
+      native batch decode step device-resident (device
       token feedback via `batch_lm_out_index`, on-device position/context
       advance, persistent device block tables/spans), then capture/replay like
       the c=1 `capture_decode_graph` path. Acceptance:
       `graph_bucket_stats.replay_kernel_hits>0`, generated tokens unchanged
       (byte-identical / teacher-forced KL/top-1 green), decode tok/s up.
-      Sequencing: C3.0c (output-tiled GEMM) changes the c>1 decode kernel set
-      and dispatch structure, so capturing/validating a decode graph now would
-      be redone after C3.0c. Do C3.0c first, then capture the post-GEMM kernel
-      stream once. Scoped 2026-06-07 (pieces A device-token-fed batch
+      Sequencing: C3.0c (output-tiled GEMM) is now DONE (kernels landed,
+      kill-switch-gated), so the c>1 decode kernel set is settled — capture the
+      decode graph against the current stream. Scoped 2026-06-07 (pieces A device-token-fed batch
       embedding, B batch sampler device argmax write, C on-device batch
       position/context advance, D span capacity baked for the replay span,
       E `_step_batch_from_device_tokens` + `capture_batch_decode_graph`).
       Measured headroom is bounded: c=1 is only ~37% GPU-utilized *with* graph
       replay on (clean c=1 delta +21.6% at 512 ctx), so this removes host-side
       per-dispatch latency, not the per-dispatch device overhead C3.0c targets.
-- [ ] **C3.0c Output-column-tiled c>1 GEMM kernel family — BIG LIFT, the next
-      structural thing.** Replace the c>1 GEMV-per-column projection/MoE path
+- [~] **C3.0c Output-column-tiled c>1 GEMM kernel family — DONE for the dense
+      pack8 projections (single+dual), but a NULL end-to-end throughput result
+      (the regime is dispatch-bound, not bandwidth-bound — see Result below).**
+      Replace the c>1 GEMV-per-column projection/MoE path
       with an output-column-tiled GEMM that loads each weight tile once and
       reuses it across all `c` columns (caching the quantized activation once),
       plus per-expert token batching for the MoE GEMMs. This both cuts decode
@@ -3675,10 +3678,26 @@ levers" above and
         calls/step (per-row 1800→800). Generated tokens byte-identical ON vs OFF
         e2e. Throughput NOT claimed (crude wall A/B noise-dominated; needs proper
         protocol; single-projection is a small ~5.3 ms/step slice).
-      - **Next packet — output-tiled DUAL pack8 (the bigger lever).** The
-        dual_transposed projection (2200 calls/step, ~9.1 ms profiled) dominates
-        the dense projection time; extend the same template to the two-output-group
-        `gemv_awq_dual_pack8` kernel, then the selected (MoE) transposed variants.
+      - **DUAL pack8 output-tiled: DONE** (`gemv_awq_dual_pack8_output_tiled_kernel`,
+        transposed+strided × bf16/fp16; gate 192/192). Wired into the dual decode
+        hot sites (linear-attn KV/QK, full-attn QKV+Z, shared gate+up); probe shows
+        400 dual output-tiled calls/c2-step (per-row 2200→1800; rotate-fused + some
+        linear-attn dual paths still on other kernels).
+      - **Result (2026-06-08) — NULL throughput, dispatch-bound.** Warmed decode
+        tok/s ON vs OFF (`HIPENGINE_DISABLE_PACK8_OUTPUT_TILED`), per-c prompt
+        (prompt×c=512), decode 128, median of 3: c2 129.1→130.5 (+1.1%), c4
+        178.7→176.0 (−1.6%), c8 203.4→203.0 (−0.2%) — all within run noise.
+        Output-tiling cuts weight **bandwidth** but not **dispatch count** (both
+        per-row and output-tiled are one launch per projection), and c>1 decode
+        here is dispatch-bound, so it does not move throughput. The kernels are
+        correct + a real bandwidth reduction and are kept (kill-switch-gated);
+        their payoff requires C3.0b dispatch-count reduction (graph replay +
+        fusion → bandwidth-bound regime) and/or longer contexts. Artifact:
+        `benchmarks/results/2026-06-08-hipengine-qwen35-output-tiled-gemv-c2c4c8-decode/`.
+      - **Deferred follow-ups (lower priority than C3.0b):** re-measure at longer
+        contexts (agentic-focus cases) once a ≥2048-token fixture / multi-prompt
+        path exists, full c-sweep; extend output-tiling to the rotate-staged dual
+        and the selected (MoE) transposed kernels.
 
 - [ ] **C3.1 INT8 KV c>N parity.** Validate batched INT8 KV append/decode
       end-to-end with the same generated-token gates as BF16. Acceptance:
