@@ -3586,6 +3586,42 @@ roll-up/status view.
 
 ### C3 packets — widen kernel/model coverage
 
+**Decode throughput packets (2026-06-07 dispatch-count profile).** Native c>1
+decode is dispatch-bound (917/5370/9362 dispatches per step at c1/c4/c8; c1 is
+already <=~37% GPU-utilized *with* graph replay on). See "Decode performance
+levers" above and
+`benchmarks/results/2026-06-07-hipengine-qwen35-decode-dispatch-profile-484/`.
+
+- [x] **C3.0a Per-step host-overhead trim.** Cache the static `(rows,slots)`
+      block table in `_batch_full_spans` (skip the per-layer-per-step host
+      build + synchronous host->device copy) and reuse persistent device
+      token/position scratch instead of malloc/free per step. Acceptance:
+      generated tokens byte-identical (c4/c8) / c2 `serial_lm_head` stable 137,
+      decode tok/s up. Evidence:
+      `benchmarks/results/2026-06-07-hipengine-qwen35-decode-host-trim-485/`
+      (c8 192->230 tok/s +19.9%, c4 +15.9%, c2 +14.7%, c1 unaffected).
+- [ ] **C3.0b Wire c-aware (c>1) decode graph replay.** Make the native batch
+      decode step device-resident (device token feedback via
+      `batch_lm_out_index`, on-device position/context advance, persistent
+      device block tables/spans), then capture/replay like the c=1
+      `capture_decode_graph` path. Acceptance:
+      `graph_bucket_stats.replay_kernel_hits>0`, generated tokens unchanged
+      (byte-identical / teacher-forced KL/top-1 green), decode tok/s up vs the
+      C3.0a baseline. (c=1 clean delta is +21.6% at 512 ctx; c>1 is currently
+      eager, `replay_kernel_hits=0`.)
+- [ ] **C3.0c Output-column-tiled c>1 GEMM kernel family — BIG LIFT, the next
+      structural thing.** Replace the c>1 GEMV-per-column projection/MoE path
+      with an output-column-tiled GEMM that loads each weight tile once and
+      reuses it across all `c` columns (caching the quantized activation once),
+      plus per-expert token batching for the MoE GEMMs. This both cuts decode
+      dispatch count and amortizes weight loads, and is the only lever toward
+      the c>1 roofline (`docs/ROOFLINE.md` §3.2). Treat as a standalone
+      kernel-family workstream with its own RED/GREEN correctness gate + rocprof
+      evidence, **not** part of the graph-replay change. Acceptance: per-step
+      decode kernel time scales sub-linearly with `c` (weight reuse measurable
+      in rocprof), generated tokens unchanged, aggregate decode tok/s improves
+      materially vs C3.0b.
+
 - [ ] **C3.1 INT8 KV c>N parity.** Validate batched INT8 KV append/decode
       end-to-end with the same generated-token gates as BF16. Acceptance:
       c=2 512/128 INT8 artifact is equality-green or explicitly
