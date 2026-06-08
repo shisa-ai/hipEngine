@@ -137,6 +137,7 @@ _SYMBOL_DUAL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_f
 _SYMBOL_DUAL_PACK8_MULTI_ROW_STRIDED_FP16 = "hipengine_gemv_awq_dual_pack8_multi_row_strided_fp16"
 _SYMBOL_DUAL_PACK8_MULTI_ROW_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_multi_row_transposed_fp16"
 _SYMBOL_DUAL_PACK8_MULTI_ROW_SPLIT_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_multi_row_split_transposed_fp16"
+_SYMBOL_DUAL_PACK8_MULTI_ROW_DECODE_SPLIT_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_fp16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED_KEYED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16"
 _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16"
@@ -2157,10 +2158,80 @@ def gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
     sharing of the new multi-row kernel.  ``rows`` must be in [1, 8].
     """
 
+    _launch_dual_pack8_multi_row_split_transposed_fp16(
+        _SYMBOL_DUAL_PACK8_MULTI_ROW_SPLIT_TRANSPOSED_FP16,
+        x_a_ptr, x_b_ptr, qweight_a_ptr, qzeros_a_ptr, scales_a_ptr,
+        qweight_b_ptr, qzeros_b_ptr, scales_b_ptr, out_a_ptr, out_b_ptr,
+        rows, in_features, out_packed_a, out_packed_b, group_size,
+        threads=threads, stream=stream, library=library, runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16(
+    x_a_ptr: int,
+    x_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M15.3: decode-dequant split-output multi-row dual W4 pack8 GEMV.
+
+    Bit-identical to two ``gemv_awq_pack8_multi_row_decode_transposed_fp16``
+    single GEMVs (same f32 dequant, k-order, and PARO_PACK8 reduction per
+    output) but fuses both projections into one launch.  ``rows`` in [1, 8].
+    """
+
+    _launch_dual_pack8_multi_row_split_transposed_fp16(
+        _SYMBOL_DUAL_PACK8_MULTI_ROW_DECODE_SPLIT_TRANSPOSED_FP16,
+        x_a_ptr, x_b_ptr, qweight_a_ptr, qzeros_a_ptr, scales_a_ptr,
+        qweight_b_ptr, qzeros_b_ptr, scales_b_ptr, out_a_ptr, out_b_ptr,
+        rows, in_features, out_packed_a, out_packed_b, group_size,
+        threads=threads, stream=stream, library=library, runtime=runtime,
+    )
+
+
+def _launch_dual_pack8_multi_row_split_transposed_fp16(
+    symbol: str,
+    x_a_ptr: int,
+    x_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
     _check_pack8_dual_shape(rows, in_features, out_packed_a, out_packed_b, group_size, threads)
     library = library or build_paro_awq_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_DUAL_PACK8_MULTI_ROW_SPLIT_TRANSPOSED_FP16)
+    fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,

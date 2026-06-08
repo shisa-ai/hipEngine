@@ -150,3 +150,71 @@ def test_multi_row_decode_transposed_fp16_matches_rowwise_pack8(_awq_lib, _runti
         assert np.array_equal(ref.view(np.uint16), fast.view(np.uint16))
     finally:
         _free(_runtime, bufs)
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 8])
+def test_dual_decode_split_matches_two_decode_singles(_awq_lib, _runtime, rows: int) -> None:
+    """M15.3: the decode-dequant split dual must equal two decode singles bit-for-bit."""
+
+    from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+        gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16,
+        gemv_awq_pack8_multi_row_decode_transposed_fp16,
+    )
+
+    rng = np.random.default_rng(0xD0A15 + rows)
+    in_features = 256
+    group_size = 64
+    out_packed_a = 16
+    out_packed_b = 10
+    out_features_a = out_packed_a * 8
+    out_features_b = out_packed_b * 8
+    groups = in_features // group_size
+    fp16 = np.dtype(np.float16).itemsize
+
+    x_a = (rng.standard_normal((rows, in_features)).astype(np.float32) * 0.05).astype(np.float16)
+    x_b = (rng.standard_normal((rows, in_features)).astype(np.float32) * 0.05).astype(np.float16)
+    qw_a = _packed_u4_words(rng, (out_packed_a, in_features))
+    qz_a = _packed_u4_words(rng, (groups, out_packed_a))
+    sc_a = rng.uniform(0.001, 0.04, size=(groups, out_features_a)).astype(np.float16)
+    qw_b = _packed_u4_words(rng, (out_packed_b, in_features))
+    qz_b = _packed_u4_words(rng, (groups, out_packed_b))
+    sc_b = rng.uniform(0.001, 0.04, size=(groups, out_features_b)).astype(np.float16)
+
+    bufs = []
+    try:
+        xa = _upload(_runtime, bufs, x_a)
+        xb = _upload(_runtime, bufs, x_b)
+        wa = _upload(_runtime, bufs, qw_a)
+        za = _upload(_runtime, bufs, qz_a)
+        sa = _upload(_runtime, bufs, sc_a)
+        wb = _upload(_runtime, bufs, qw_b)
+        zb = _upload(_runtime, bufs, qz_b)
+        sb = _upload(_runtime, bufs, sc_b)
+        ref_a = _alloc(_runtime, bufs, rows * out_features_a * fp16)
+        ref_b = _alloc(_runtime, bufs, rows * out_features_b * fp16)
+        fast_a = _alloc(_runtime, bufs, rows * out_features_a * fp16)
+        fast_b = _alloc(_runtime, bufs, rows * out_features_b * fp16)
+
+        gemv_awq_pack8_multi_row_decode_transposed_fp16(
+            xa.ptr, wa.ptr, za.ptr, sa.ptr, ref_a.ptr, rows, in_features, out_packed_a, group_size,
+            threads=128, library=_awq_lib, runtime=_runtime,
+        )
+        gemv_awq_pack8_multi_row_decode_transposed_fp16(
+            xb.ptr, wb.ptr, zb.ptr, sb.ptr, ref_b.ptr, rows, in_features, out_packed_b, group_size,
+            threads=128, library=_awq_lib, runtime=_runtime,
+        )
+        gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16(
+            xa.ptr, xb.ptr, wa.ptr, za.ptr, sa.ptr, wb.ptr, zb.ptr, sb.ptr,
+            fast_a.ptr, fast_b.ptr, rows, in_features, out_packed_a, out_packed_b, group_size,
+            threads=128, library=_awq_lib, runtime=_runtime,
+        )
+        _runtime.stream_synchronize(0)
+
+        ra = _download(_runtime, ref_a, (rows, out_features_a), np.float16)
+        rb = _download(_runtime, ref_b, (rows, out_features_b), np.float16)
+        fa = _download(_runtime, fast_a, (rows, out_features_a), np.float16)
+        fb = _download(_runtime, fast_b, (rows, out_features_b), np.float16)
+        assert np.array_equal(ra.view(np.uint16), fa.view(np.uint16))
+        assert np.array_equal(rb.view(np.uint16), fb.view(np.uint16))
+    finally:
+        _free(_runtime, bufs)

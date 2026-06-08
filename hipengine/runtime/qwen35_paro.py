@@ -119,6 +119,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_dual_fp16,
     awq_fusedw4_prefill_fp16,
     awq_fusedw4_prefill_strided_fp16,
+    gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16,
     gemv_awq_dual_pack8_multi_row_split_transposed_fp16,
     gemv_awq_pack8_multi_row_decode_transposed_fp16,
     gemv_awq_pack8_multi_row_strided_fp16,
@@ -2217,41 +2218,59 @@ class Qwen35ParoDecodeState:
             # the downstream qwen35_split_qgate / attention path reads correct
             # rows.  scratch.q_proj_key (the combined view) is intentionally
             # left inconsistent here; nothing downstream reads it directly.
-            # M15.1: optionally weight-amortize each single GEMV across the B+1
-            # verifier rows via the bit-exact multi-row decode kernel.
-            small_batch_gemv = (
-                gemv_awq_pack8_multi_row_decode_transposed_fp16
-                if _w4_multi_row_small_batch_site_enabled("full_qk")
-                else gemv_awq_pack8_transposed_fp16
-            )
-            small_batch_gemv(
-                scratch.q_rot.ptr,
-                q_qweight.ptr,
-                self.tensor(f"{q}.qzeros").ptr,
-                self.tensor(f"{q}.scales").ptr,
-                scratch.q_proj.ptr,
-                tokens,
-                scratch.q_rot.shape[-1],
-                q_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
-            small_batch_gemv(
-                scratch.k_rot.ptr,
-                k_qweight.ptr,
-                self.tensor(f"{k}.qzeros").ptr,
-                self.tensor(f"{k}.scales").ptr,
-                scratch.key_bf16.ptr,
-                tokens,
-                scratch.k_rot.shape[-1],
-                k_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
+            # M15.1/M15.3: weight-amortize across the B+1 verifier rows via the
+            # bit-exact multi-row decode kernel; M15.3 fuses the q+k pair into
+            # one split-dual launch (bit-identical to two decode singles).
+            if _w4_multi_row_small_batch_site_enabled("full_qk"):
+                gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16(
+                    scratch.q_rot.ptr,
+                    scratch.k_rot.ptr,
+                    q_qweight.ptr,
+                    self.tensor(f"{q}.qzeros").ptr,
+                    self.tensor(f"{q}.scales").ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    scratch.q_proj.ptr,
+                    scratch.key_bf16.ptr,
+                    tokens,
+                    scratch.q_rot.shape[-1],
+                    q_out_packed,
+                    k_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+            else:
+                gemv_awq_pack8_transposed_fp16(
+                    scratch.q_rot.ptr,
+                    q_qweight.ptr,
+                    self.tensor(f"{q}.qzeros").ptr,
+                    self.tensor(f"{q}.scales").ptr,
+                    scratch.q_proj.ptr,
+                    tokens,
+                    scratch.q_rot.shape[-1],
+                    q_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                gemv_awq_pack8_transposed_fp16(
+                    scratch.k_rot.ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    scratch.key_bf16.ptr,
+                    tokens,
+                    scratch.k_rot.shape[-1],
+                    k_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         elif _w4_multi_row_dual_site_eligible("full_qk", tokens, scratch.q_rot.shape[-1], group_size):
             # M12.6: weight-sharing multi-row dual W4 GEMV for small verifier batches.
             gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
@@ -3642,42 +3661,60 @@ class Qwen35ParoDecodeState:
             # M7.C.6: two single GEMVs, one for QKV (writes scratch.qkv.ptr)
             # and one for Z (writes scratch.z.ptr).  Direct port of the bf16
             # sibling pattern at project_linear_attention_qkv_z_bf16 line 1090+.
-            # M15.1: optionally weight-amortize each single GEMV across the B+1
-            # verifier rows via the bit-exact multi-row decode kernel.
+            # M15.1/M15.3: weight-amortize across the B+1 verifier rows via the
+            # bit-exact multi-row decode kernel; M15.3 fuses the qkv+z pair into
+            # one split-dual launch (bit-identical to two decode singles).
             awq_library = _library_for(library, "awq")
-            small_batch_gemv = (
-                gemv_awq_pack8_multi_row_decode_transposed_fp16
-                if _w4_multi_row_small_batch_site_enabled("linear_qkv_z")
-                else gemv_awq_pack8_transposed_fp16
-            )
-            small_batch_gemv(
-                scratch.qkv_rot.ptr,
-                qkv_qweight.ptr,
-                self.tensor(f"{qkv}.qzeros").ptr,
-                self.tensor(f"{qkv}.scales").ptr,
-                scratch.qkv.ptr,
-                tokens,
-                scratch.qkv_rot.shape[-1],
-                qkv_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
-            small_batch_gemv(
-                scratch.z_rot.ptr,
-                z_qweight.ptr,
-                self.tensor(f"{z}.qzeros").ptr,
-                self.tensor(f"{z}.scales").ptr,
-                scratch.z.ptr,
-                tokens,
-                scratch.z_rot.shape[-1],
-                z_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
+            if _w4_multi_row_small_batch_site_enabled("linear_qkv_z"):
+                gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16(
+                    scratch.qkv_rot.ptr,
+                    scratch.z_rot.ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.qkv.ptr,
+                    scratch.z.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    z_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+            else:
+                gemv_awq_pack8_transposed_fp16(
+                    scratch.qkv_rot.ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    scratch.qkv.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                gemv_awq_pack8_transposed_fp16(
+                    scratch.z_rot.ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.z.ptr,
+                    tokens,
+                    scratch.z_rot.shape[-1],
+                    z_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         else:
             if _w4_multi_row_dual_site_eligible("linear_qkv_z", tokens, scratch.qkv_rot.shape[-1], group_size):
                 # M12.6: multi-row dual W4 GEMV for the linear-attn QKV+Z projection.

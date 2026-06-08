@@ -910,7 +910,8 @@ __global__ void gemv_awq_dual_pack8_kernel(
 // ``gemv_awq_dual_pack8_kernel`` ABI: ``out[row * (out_features_a + out_features_b) + out_col]``),
 // 1 = separate ``out_a`` and ``out_b`` buffers (existing
 // ``awq_fusedw4_prefill_dual_fp16_kernel`` ABI).
-template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT, int MAX_ROWS>
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT, int MAX_ROWS,
+          bool decode_dequant = false>
 __launch_bounds__(128, 4)
 __global__ void gemv_awq_dual_pack8_multi_row_kernel(
     const scalar_t* __restrict__ x_a,
@@ -996,7 +997,9 @@ __global__ void gemv_awq_dual_pack8_multi_row_kernel(
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
           const int q = static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF);
-          const float wq = awq_prefill_dequant_weight(s[j], q, z[j]);
+          const float wq = decode_dequant
+              ? awq_decode_dequant_weight(s[j], q, z[j])
+              : awq_prefill_dequant_weight(s[j], q, z[j]);
           acc[r][j] = fmaf(xv, wq, acc[r][j]);
         }
       }
@@ -1019,7 +1022,10 @@ __global__ void gemv_awq_dual_pack8_multi_row_kernel(
       for (int j = 0; j < 8; ++j) {
         const int q = static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF);
         const int z = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
-        acc[r][j] = fmaf(xv, awq_prefill_dequant_weight(scale_ptr[j], q, z), acc[r][j]);
+        const float wq = decode_dequant
+            ? awq_decode_dequant_weight(scale_ptr[j], q, z)
+            : awq_prefill_dequant_weight(scale_ptr[j], q, z);
+        acc[r][j] = fmaf(xv, wq, acc[r][j]);
       }
     }
   }
@@ -3368,7 +3374,8 @@ extern "C" int hipengine_gemv_awq_dual_pack8_transposed_fp16(
 // ``OUT_LAYOUT`` picks between concatenated single-buffer output (matches
 // the existing single-row ``gemv_awq_dual_pack8_*`` ABI) and split output
 // buffers (matches the existing ``awq_fusedw4_prefill_dual_fp16`` ABI).
-template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT>
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT,
+          bool decode_dequant = false>
 static int launch_dual_pack8_multi_row(
     const scalar_t* x_a,
     const scalar_t* x_b,
@@ -3393,7 +3400,7 @@ static int launch_dual_pack8_multi_row(
   }
 #define HIPENGINE_LAUNCH_DUAL_PACK8_MULTI_ROW(MAX_ROWS) \
   hipLaunchKernelGGL( \
-      (gemv_awq_dual_pack8_multi_row_kernel<scalar_t, qweight_transposed, separate_inputs, OUT_LAYOUT, MAX_ROWS>), \
+      (gemv_awq_dual_pack8_multi_row_kernel<scalar_t, qweight_transposed, separate_inputs, OUT_LAYOUT, MAX_ROWS, decode_dequant>), \
       dim3(static_cast<unsigned int>(out_packed_a + out_packed_b)), \
       dim3(static_cast<unsigned int>(threads)), \
       0, \
@@ -3485,6 +3492,33 @@ extern "C" int hipengine_gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
     int64_t threads,
     hipStream_t stream) {
   return launch_dual_pack8_multi_row<half_t, true, true, 1>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out_a, out_b, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+}
+
+// M15.3: decode-dequant split-output dual.  Bit-identical to two
+// ``gemv_awq_pack8_multi_row_decode_transposed_fp16`` single GEMVs (same f32
+// dequant, k-order, and PARO_PACK8 reduction per output) but fuses both
+// projections into one launch to cut the verifier launch count.
+extern "C" int hipengine_gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out_a,
+    half_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_multi_row<half_t, true, true, 1, true>(
       x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
       out_a, out_b, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
 }

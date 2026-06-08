@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-08 (MTP M15.1 verifier projection weight-amortization)
+Last updated: 2026-06-08 (MTP M15.3 verifier dual-GEMV merge)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the

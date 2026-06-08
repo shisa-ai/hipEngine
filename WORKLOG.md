@@ -25705,3 +25705,31 @@ hipengine/runtime/qwen35_paro.py (gate + project_pack8_fp16 dispatch),
 tests/test_qwen35_paro_marlin_k_multi_row.py,
 benchmarks/results/2026-06-08-hipengine-mtp-m15.2-marlin-multirow-fragility.json,
 docs/MTP.md (M15.2 status). No default behavior change.
+
+## 2026-06-08 perf(mtp): M15.3 fuse verifier QKV/Z + Q/K decode GEMV pairs into one dual launch
+
+Grind step. Added a decode_dequant template to the existing dual multi-row pack8
+kernel and exposed `gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16`,
+which is bit-identical to two `gemv_awq_pack8_multi_row_decode_transposed_fp16`
+singles (same f32 dequant, k-order, PARO_PACK8 reduction per output). RED test
+`test_dual_decode_split_matches_two_decode_singles` (rows {2,3,4,5,6,8}).
+
+Wired into the verifier small-batch (2<=tokens<=7) linear QKV/Z (30 layers) and
+full Q/K (10 layers) projections: the M15.1a two decode singles per layer are now
+one split-dual launch. Default-on via HIPENGINE_W4_MULTI_ROW_SMALL_BATCH.
+
+Evidence (W7900, decode_batched, quicksort):
+- Exact-AR smoke (validate, D16 B3) passes.
+- Rocprof B=3 vs M15.1a singles: calls/pass 981 -> 941 (-40, the 40 fused pairs),
+  kernel 16.33 -> 16.11 ms/pass (-1.4%), w4_single_gemv 100 -> 20 launches.
+- Economics B=3 (back-to-back plain vs dual to control thermal): verify_ms/cycle
+  min 35.61 -> 34.55 (-3.0%), cycle_cost 4.9-5.5 -> 4.1-4.7, exact every run.
+
+Lesson reaffirmed: the economics WALL is noisy (a first dual run showed a spurious
++14%); rocprof launch/kernel-time and back-to-back economics are the reliable
+signals. -40 launches ~ -0.8 ms host residual on the launch-bound verifier.
+
+Files: hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.{hip,py},
+hipengine/runtime/qwen35_paro.py (qkv_z + full_qk dispatch),
+tests/test_paro_awq_gemv_multi_row_decode.py,
+benchmarks/results/2026-06-08-hipengine-mtp-m15.3-verifier-dual-gemv-merge.json.

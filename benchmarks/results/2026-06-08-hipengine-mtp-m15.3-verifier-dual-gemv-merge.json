@@ -1,0 +1,72 @@
+{
+ "schema": 1,
+ "task_id": 40,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "timestamp": "2026-06-08",
+ "date": "2026-06-08",
+ "summary": "M15.3: fuse the verifier QKV/Z and full Q/K decode GEMV pairs into one bit-exact split-dual launch. -40 launches/pass, exact AR.",
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100"
+ },
+ "backend": "hip_gfx1100",
+ "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+ "change": {
+  "kernel": "gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16 (decode_dequant template on the existing dual multi-row kernel)",
+  "merges": "linear_qkv_z (30 layers: 2 singles -> 1 dual) + full_qk (10 layers: 2 singles -> 1 dual)",
+  "bit_exact_test": "tests/test_paro_awq_gemv_multi_row_decode.py::test_dual_decode_split_matches_two_decode_singles rows {2,3,4,5,6,8}",
+  "gate": "HIPENGINE_W4_MULTI_ROW_SMALL_BATCH (default-on; off restores plain singles)"
+ },
+ "workload": {
+  "prompt": "code:quicksort_prefix",
+  "decode_tokens": 32,
+  "chain_attn_mode": "decode_batched",
+  "graph_mode": "off",
+  "candidate_budget": 3
+ },
+ "correctness": {
+  "exact_ar_match_all_runs": true,
+  "smoke": "mtp_chain_e2e_smoke D16 B3 decode_batched HIPENGINE_VERIFY_GPU_ACCEPT=validate exact_ar_match=true"
+ },
+ "rocprof_b3": {
+  "baseline": "M15.1a decode singles",
+  "calls_per_pass": {
+   "singles": 981.0,
+   "dual": 941.0,
+   "delta": -40.0
+  },
+  "kernel_ms_per_pass": {
+   "singles": 16.33,
+   "dual": 16.108,
+   "delta_pct": -1.4
+  },
+  "w4_single_gemv_calls": "100 -> 20 (qkv/z + q/k singles fused out)"
+ },
+ "economics_b3_backtoback": {
+  "plain_verify_ms_per_cycle": {
+   "min": 35.61,
+   "mean": 37.16
+  },
+  "dual_verify_ms_per_cycle": {
+   "min": 34.55,
+   "mean": 37.84,
+   "delta_min_pct": -3.0
+  },
+  "plain_cycle_cost": [
+   5.03,
+   4.91,
+   5.47
+  ],
+  "dual_cycle_cost": [
+   4.12,
+   4.69,
+   4.07
+  ]
+ },
+ "decision_reason": "Bit-exact dual-decode fuses two weight-amortized single GEMVs into one launch. -40 launches/pass (981->941), kernel -1.4%, verify min -3.0%, cycle_cost clearly lower, exact AR. The economics wall is noisy (+-14% swings); rocprof launch/kernel-time and back-to-back economics are the reliable signals. Default-on.",
+ "notes": [
+  "First economics run showed a spurious +14% wall (thermal/contention); back-to-back plain-vs-dual is the controlled comparison.",
+  "Launch-bound verifier: -40 launches ~ -0.8 ms host residual; grind continues."
+ ]
+}
