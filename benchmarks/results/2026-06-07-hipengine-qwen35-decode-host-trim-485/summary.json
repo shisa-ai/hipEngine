@@ -1,0 +1,45 @@
+{
+  "iteration": 485,
+  "kind": "decode_per_step_host_overhead_trim",
+  "created_at": "2026-06-08T00:30:00+00:00",
+  "host": "RX 7900 XTX via HIP_VISIBLE_DEVICES=1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "change": "Eliminated redundant per-step host work in native c>1 decode: (1) cache the static (rows,slots) block table in _batch_full_spans (skip host build + synchronous host->device copy every full-attention layer every step; invalidate on prefill writes + reset), (2) persistent device token scratch in _set_batch_token_embeddings (no malloc/free per step), (3) persistent device position scratch in _set_batch_positions.",
+  "numerically_identical_evidence": {
+    "c4_generated_tokens_byte_identical_before_after": true,
+    "c8_generated_tokens_byte_identical_before_after": true,
+    "c2_serial_lm_head_stable_137_after": "3/3 reps eq_prefix=137 passed=true (deterministic sampler)",
+    "c2_batched_lm_head_intermittent": "pre-existing documented batched-sampler race (after reps eq_prefix 0/137/104; row0 emitted row1's sequence). Not caused by this change; serial_lm_head is stable.",
+    "primitive_c2_c8_correctness": "passed, attn_batch_vs_numpy_max_abs c2 2.235e-08 / c8 5.96e-08 (unchanged)",
+    "targeted_pytest": "pass (scheduler/paro/kvcache/server bundle)"
+  },
+  "decode_tok_s_median_3runs": {
+    "c1": {
+      "before": 133.37,
+      "after": 133.9,
+      "delta_pct": 0.4
+    },
+    "c2": {
+      "before": 102.36,
+      "after": 117.41,
+      "delta_pct": 14.7
+    },
+    "c4": {
+      "before": 138.37,
+      "after": 160.33,
+      "delta_pct": 15.9
+    },
+    "c8": {
+      "before": 192.06,
+      "after": 230.37,
+      "delta_pct": 19.9
+    }
+  },
+  "c2_serial_lm_head_after_tok_s": 109.6,
+  "note": "c1 unchanged (+0.4%, the c=1 path does not use the batch setters/_batch_full_spans). Native c>1 decode improves c2 +14.7% (batched) / c4 +15.9% / c8 +19.9%. Still correctness-blocked for retained claims (free-running equality is chaos-limited; teacher-forced KL/top-1 is the correctness gate and is unchanged since tokens are byte-identical). No retained scoreboard row.",
+  "commands": {
+    "before": "perf-c{1,2,4,8}-r{1,2,3}.json (pre-change native_batch sweep)",
+    "after": "HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py --model <MODEL> --fixture <FIXTURE> --prompt-length 512 --batch-size {2,4,8} --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-full-attn-path native_batch --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json ...; c1 via scripts/qwen35_paro_bench.py"
+  }
+}

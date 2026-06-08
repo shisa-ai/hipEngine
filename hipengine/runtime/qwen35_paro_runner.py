@@ -1454,6 +1454,7 @@ class Qwen35ParoResidentSession:
             _key_scale, _value_scale, key_scale_buf, value_scale_buf = scale_buffers
             self.runtime.memset(key_scale_buf.ptr, 0, key_scale_buf.nbytes)
             self.runtime.memset(value_scale_buf.ptr, 0, value_scale_buf.nbytes)
+        self._decode_full_block_table_key = None
         self.last_prefill_execution = None
 
     def step(self, token_id: int, *, position: int, sample: bool = True) -> Qwen35ParoAutoregressiveStepResult | None:
@@ -2713,6 +2714,9 @@ class Qwen35ParoResidentSession:
         copy_host_to_device(self.prefill_position_buf, host_array_ptr(position_arr), position_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_context_count_buf, host_array_ptr(context_arr), context_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.prefill_block_table_buf, host_array_ptr(block_table_arr), block_table_arr.nbytes, runtime=self.runtime)
+        # Prefill overwrote the shared block-table buffer; force the decode
+        # block-table cache to rebuild on the next _batch_full_spans call.
+        self._decode_full_block_table_key = None
         temp_buffers: list[DeviceBuffer] = []
 
         def temp_tensor(array: np.ndarray, dtype: DType) -> Tensor:
@@ -3580,6 +3584,7 @@ class Qwen35ParoResidentSession:
                             local_block_table.nbytes,
                             runtime=self.runtime,
                         )
+                        self._decode_full_block_table_key = None
                         hidden_chunk = self._prefill_row_matrix_view(hidden, start, segment_rows)
                         block_table = Tensor.from_handle(
                             self.prefill_block_table_buf.ptr + block_table_offset,
@@ -3857,19 +3862,29 @@ class Qwen35ParoResidentSession:
         # active-row base internally.  Encode physical slot ids as row-relative
         # block-table offsets so row ``r`` can address slot ``slots[r]`` without
         # moving retained KV cache pages after reclaim/compaction.
-        logical_blocks = np.arange(self.blocks, dtype=np.int32)
-        block_rows = np.empty((rows, self.blocks), dtype=np.int32)
-        for row, slot in enumerate(slots):
-            delta_blocks = (int(slot) - row) * self.blocks
-            if delta_blocks < 0:
-                raise ValueError("batch full-attention slots must be in physical-slot order")
-            block_rows[row] = logical_blocks + np.int32(delta_blocks)
-        copy_host_to_device(
-            self.prefill_block_table_buf,
-            host_array_ptr(block_rows),
-            block_rows.nbytes,
-            runtime=self.runtime,
-        )
+        #
+        # The block table depends only on (rows, slots); it is identical across
+        # every decode step for a fixed active batch.  Cache it in a dedicated
+        # decode-only device buffer and skip the host build + synchronous
+        # host->device copy when the (rows, slots) key is unchanged.  This
+        # removes one synchronous copy per full-attention layer per decode step.
+        slots_key = (int(rows),) + tuple(int(slot) for slot in slots)
+        if getattr(self, "_decode_full_block_table_key", None) != slots_key:
+            logical_blocks = np.arange(self.blocks, dtype=np.int32)
+            block_rows = np.empty((rows, self.blocks), dtype=np.int32)
+            for row, slot in enumerate(slots):
+                delta_blocks = (int(slot) - row) * self.blocks
+                if delta_blocks < 0:
+                    raise ValueError("batch full-attention slots must be in physical-slot order")
+                block_rows[row] = logical_blocks + np.int32(delta_blocks)
+            copy_host_to_device(
+                self.prefill_block_table_buf,
+                host_array_ptr(block_rows),
+                block_rows.nbytes,
+                runtime=self.runtime,
+            )
+            self._decode_full_block_table_key = slots_key
+            self._decode_full_block_rows_list = block_rows.astype(np.int32, copy=False).tolist()
         block_table = Tensor.from_handle(
             self.prefill_block_table_buf.ptr,
             (rows, self.blocks),
@@ -3903,7 +3918,7 @@ class Qwen35ParoResidentSession:
             "decode_max_live_count": int(decode_spans.max_live_count),
             "block_size": int(getattr(self, "block_size", 256)),
             "block_table_len_per_row": int(self.blocks),
-            "block_table_rows": block_rows.astype(np.int32, copy=False).tolist(),
+            "block_table_rows": self._decode_full_block_rows_list,
             "storage_dtype": DType.parse(self.kv_storage_dtype).value,
         }
         return position_tensor, append_spans, decode_spans
@@ -6164,10 +6179,18 @@ class Qwen35ParoResidentSession:
             if token < 0 or token >= self.vocab_size:
                 raise ValueError(f"token_id {token} outside [0, {self.vocab_size})")
         token_arr = np.asarray(tokens, dtype=np.int64)
-        token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
+        # Reuse a persistent device scratch instead of malloc/free per decode
+        # step (the allocator round-trip + synchronous copy is per-step host
+        # overhead on the decode hot path).
+        token_scratch_bytes = int(self.max_batch_size) * DType.INT64.itemsize
+        token_buf = getattr(self, "_batch_token_id_scratch", None)
+        if token_buf is None or token_buf.nbytes < token_scratch_bytes:
+            token_buf = malloc(token_scratch_bytes, runtime=self.runtime)
+            self.buffers.append(token_buf)
+            self._batch_token_id_scratch = token_buf
         row_buf = None
         try:
-            copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=self.runtime)
+            copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
             set_i64_vector(
                 self.token_id_buf.ptr,
                 token_buf.ptr,
@@ -6202,7 +6225,6 @@ class Qwen35ParoResidentSession:
         finally:
             if row_buf is not None:
                 free(row_buf, runtime=self.runtime)
-            free(token_buf, runtime=self.runtime)
 
     def _set_batch_positions(
         self,
@@ -6224,10 +6246,16 @@ class Qwen35ParoResidentSession:
         if hasattr(self, "position_arr") and hasattr(self, "context_arr"):
             self.position_arr[: len(pos)] = pos_arr
             self.context_arr[: len(pos)] = pos_arr + np.int64(1)
-        pos_buf = malloc(pos_arr.nbytes, runtime=self.runtime)
+        # Reuse a persistent device scratch instead of malloc/free per decode step.
+        pos_scratch_bytes = int(self.max_batch_size) * DType.INT64.itemsize
+        pos_buf = getattr(self, "_batch_position_scratch", None)
+        if pos_buf is None or pos_buf.nbytes < pos_scratch_bytes:
+            pos_buf = malloc(pos_scratch_bytes, runtime=self.runtime)
+            self.buffers.append(pos_buf)
+            self._batch_position_scratch = pos_buf
         mask_buf = None
         try:
-            copy_host_to_device(pos_buf, host_array_ptr(pos_arr), runtime=self.runtime)
+            copy_host_to_device(pos_buf, host_array_ptr(pos_arr), pos_arr.nbytes, runtime=self.runtime)
             if active_mask is not None:
                 mask = tuple(bool(item) for item in active_mask)
                 if len(mask) != len(pos):
@@ -6248,7 +6276,6 @@ class Qwen35ParoResidentSession:
         finally:
             if mask_buf is not None:
                 free(mask_buf, runtime=self.runtime)
-            free(pos_buf, runtime=self.runtime)
 
     def _set_slot_token_embedding(self, token_id: int, *, slot: int, stream: int = 0) -> None:
         if token_id < 0 or token_id >= self.vocab_size:
