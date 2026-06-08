@@ -1322,6 +1322,71 @@ profile-routing**, which sidesteps per-cycle `C_B` by routing profitable prompts
 to spec and the rest to AR (already 1.35× offline; see `DFLASH.md`). Build MTP
 tree drafts only if/when `C_B` is cut to the ~2–3 range.
 
+## M16 — the C_B ≤ 2 program (lower the dispatch floor)
+
+The top-k oracle proved the MTP head is ready: at `C_B ≈ 2` this head + a
+root-branch tree beats AR comfortably. Everything now hinges on cutting `C_B` from
+~4.25 to ~2.0. **This is achievable on our hardware**: hipfire runs DFlash on the
+same W7900/gfx1100 at multiples of AR (see `DFLASH.md` 2026-06-02), so the ~20 µs/
+launch we measure is *our* orchestration cost, not a hard ROCm floor. llama.cpp
+gets there on CUDA via whole-trunk graph replay. We need the same runtime *shape*.
+
+### The C_B budget (what "≤2" requires)
+
+```text
+C_B = (launches * per_launch_us/1000 + kernel_ms_per_pass) / ar_ms_per_token
+```
+
+W7900 35B, B=3 (task #29): `ar_ms ≈ 9.0`, verify window **37.9 ms** =
+**19.4 ms host residual** (≈20 µs × 941 launches) + **18.5 ms kernel**. `C_1 ≈ 4.25`
+is almost all the residual + fixed overhead. For `C_3 ≤ 2.0` the verify window must
+fall to **≤ 18 ms** — a ~2.1× cut. A concrete decomposition target:
+
+| Term | now | target | how |
+|---|---:|---:|---|
+| host residual (launch submission) | 19.4 ms | **~5 ms** | clean graph replay *or* launch count → ~300 |
+| kernel time (B+1 rows) | 18.5 ms | **~12 ms** | finish weight-amortization + larger fused kernels |
+| → verify window | 37.9 ms | **~17 ms** | → `C_3 ≈ 1.9` |
+
+`C_B` is already **sublinear in B** after M15.1/M15.3, so once the floor drops, a
+higher-B root-branch tree (the oracle's 100%-in-top-8 head) carries the win.
+
+### What we have already learned (don't re-litigate)
+
+- **Python/ctypes is *not* the bottleneck.** The C-side MoE dispatcher
+  (M14.dispatch.1) was parity. The ~20 µs/launch is HIP runtime dispatch + queue
+  submission + inter-kernel GPU idle, not marshaling.
+- **Pairwise op fusion is occupancy/redundancy-walled.** Consumer-side rotate
+  fusion (M13.B.1/.2) hit a redundant-work trap; producer-side (M15.4) hit an
+  occupancy trap (one-block-per-row serializes the rotate). Op-pair fusion
+  cannot reach ≤2; only *fewer, larger* kernels or graph replay can.
+- **HIP graph replay measured neutral at >900 launches** (M12.1, M13.D) — but on
+  the *full* verify path with per-cycle bucket changes and validation overhead,
+  not a clean steady-state replay. This verdict must be re-tested in isolation
+  (M16.1) before concluding ROCm graphs can't help.
+
+### Tracks (ordered cheapest-diagnostic first)
+
+| # | Track | First concrete step / acceptance gate | Why it can reach ≤2 |
+|---|---|---|---|
+| **M16.1** | **Isolate the ROCm graph-replay per-node cost** | Micro-bench: capture N (=50/200/941) trivial back-to-back kernels into one HIP graph, replay it in steady state (same instantiation, fixed args, no validation), measure µs/node vs direct `hipLaunchKernelGGL`. Gate: report the real per-node replay cost. | If ROCm `hipGraphLaunch` is ~2–5 µs/node on a clean replay (CUDA-class), the residual drops 19.4 → ~4 ms *without touching kernels* — the single biggest lever. Our earlier "neutral" was likely capture/validation/bucket-churn overhead, not replay. |
+| **M16.2** | **Native C++ verify hot loop** (the hipfire shape) | Move the whole 40-layer verify forward into one native translation unit called once per cycle (extend M14.dispatch.1 from MoE-only to the full layer stack), with persistent fixed-address scratch. Gate: exact-AR + cycle wall vs Python orchestration. | Removes all per-kernel Python boundaries and makes the cycle a single capturable native call → enables one clean graph (M16.1) and removes host-side launch gaps. This is exactly hipfire's "native hot loop + persistent scratch" that achieves low `C_B` on gfx1100. |
+| **M16.3** | **Structural launch-count reduction (megakernels, not op-pairs)** | Fuse a whole MoE op (router→gate_up→silu→down→combine) and a whole attention block into single kernels, sized for the B+1 verifier rows. Gate: exact-AR (bit-exact RED) + launches/pass 941 → ≤ ~400 with flat-or-lower kernel time. | The only fusion class that beats the occupancy/redundancy walls. At ~300–400 launches even ROCm's current per-launch cost gives a ~6 ms residual. |
+| **M16.4** | **Finish weight-amortization of the kernel half** | Land the exact small-batch W4 multi-row GEMV for the prefill-style sites (`shared_gate_up`, `single_full_v`, `single_linear_out`; the `shared_dense_w4` 6.58 ms bucket), matching AR's rows==1 numerics so it survives exact-AR (M15.2's marlin-multi-row was bit-exact-per-row but argmax-fragile — the fix is matching the verifier *input*, or a numerics-compatible kernel). Gate: exact-AR 9-prompt + kernel ms/pass down. | Drives kernel time toward ~flat-in-B, the other ~6 ms of the budget. |
+| **M16.5** | **Re-enable graph buckets after M16.2/M16.3** | Per `(B+1, kv_bucket)` capture/replay once launch count and the native loop make replay load-bearing (task #34). Gate: ≥X% `C_B` improvement on an exact row. | Amplifies M16.2/M16.3; only pays off once the count is low or the native loop is captured cleanly. |
+
+### Sequencing logic
+
+1. **M16.1 first** — it is a cheap micro-bench that decides the whole strategy: if
+   clean ROCm graph replay is ~CUDA-class, the program is "native loop + one clean
+   graph" (M16.2 + M16.5) and we likely reach ≤2 without a megakernel rewrite. If
+   it is genuinely ~20 µs/node, the program is "fewer, larger kernels" (M16.3 + M16.4).
+2. hipfire is the proof of feasibility on gfx1100; when in doubt, copy its runtime
+   shape (native hot loop, persistent fixed-address scratch, batched verify,
+   captured graph) — not its non-exact acceptance policy (see the 2026-06-02 audit).
+3. Every track keeps the exact-AR gate; `C_B` improvements are only retained with a
+   recorded economics artifact and the bit-exact RED tests that M15 established.
+
 ## Closing the gap with llama.cpp MTP — kernel roadmap (2026-05-21)
 
 Historical note: this section captured the pre-M7.C.6 kernel-family roadmap.

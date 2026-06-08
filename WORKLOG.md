@@ -25840,3 +25840,36 @@ benchmarks/results/2026-06-08-hipengine-dflash-deployable-confidence-gate.json,
 docs/DFLASH.md (deployable gate section). Default-off; mechanism is env-gated.
 Follow-ups: CLI flag + engine DFlash decode API integration; threshold
 auto-calibration via a short warmup window.
+
+## 2026-06-08 docs(mtp): M16 — the C_B <= 2 program (lower the dispatch floor)
+
+Added docs/MTP.md "M16 — the C_B <= 2 program" turning the top-k oracle's
+conclusion ("model is ready; C_B is the wall") into an actionable roadmap.
+
+Framing: C_B = (launches * per_launch_us/1000 + kernel_ms) / ar_ms_per_token.
+W7900 35B B=3: verify window 37.9 ms = 19.4 ms host residual (~20us x 941
+launches) + 18.5 ms kernel; ar_ms ~9.0; C_1 ~4.25. For C_3 <= 2.0 the window
+must reach ~17-18 ms (~2.1x cut). Decomposition target: residual 19.4 -> ~5,
+kernel 18.5 -> ~12. C_B is already sublinear in B (M15.1/M15.3), so once the
+floor drops a higher-B root-branch tree (oracle 100% in-top-8 head) carries it.
+
+Existence proof: hipfire runs DFlash fast on the SAME W7900/gfx1100, so ~20us/
+launch is OUR orchestration cost, not a hard ROCm floor. llama.cpp does it on
+CUDA via whole-trunk graph replay. We need the same runtime shape.
+
+Tracks (cheapest-diagnostic first):
+- M16.1 isolate ROCm graph-replay per-node cost (micro-bench clean steady-state
+  replay vs direct launch) -- decides the whole strategy. Earlier "graph neutral"
+  (M12.1/M13.D) was on the full path with bucket churn + validation, not a clean
+  replay; must re-test in isolation.
+- M16.2 native C++ verify hot loop (extend M14.dispatch.1 to the full layer stack
+  + persistent fixed-address scratch) = the hipfire shape; enables one clean graph.
+- M16.3 structural megakernels (whole MoE op, whole attention block), not op-pairs
+  (which are occupancy/redundancy-walled per M13.B/M15.4); launches 941 -> ~400.
+- M16.4 finish weight-amortization of the shared_dense_w4 6.58 ms bucket with an
+  exact small-batch W4 kernel (M15.2 unblock).
+- M16.5 re-enable graph buckets once M16.2/M16.3 make replay load-bearing (#34).
+
+Known facts not to re-litigate: Python/ctypes isn't the bottleneck (C-dispatcher
+parity, M14.dispatch.1); pairwise fusion can't reach <=2 (occupancy/redundancy).
+Docs-only; no code change.
