@@ -3630,6 +3630,30 @@ levers" above and
       in rocprof), generated tokens unchanged, aggregate decode tok/s improves
       materially vs C3.0b.
 
+      *Design (scoped 2026-06-07).* The current c>1 projection/expert kernel is
+      `gemv_awq_selected_dual_pack8_strided_kernel`
+      (`kernels/hip_gfx1100/quant/paro_awq_gemv.hip`). Its grid is
+      `(out_pack, x_rows*lanes_per_x_row)` and `x_row = row / lanes_per_x_row`,
+      so each x_row gets its own blocks that **re-stream the full `qweight`** —
+      the weight is read `c` times for `c` columns. Output-tiling = one block per
+      output pack loads each weight tile once and accumulates all `c` columns
+      (writing `c` outputs), so weight bytes/token stop scaling with `c`.
+      Two sub-problems, do dense first:
+      (1) **Dense projections** (attention QKV/O, linear-attn in/out, router,
+      shared expert; `selected[row]` is a single shared weight) amortize cleanly
+      across the `c` columns — the tractable first win.
+      (2) **MoE expert GEMMs** are the active-weight bulk but route divergently
+      (c=8 can touch ~64 experts), so amortization only applies within an
+      expert's gathered tokens (grouped_compact already sorts by expert); the
+      per-expert GEMM must batch its small `M_e` decode tokens. Note the parent
+      `~/amd-gpu-tuning/MOE_KERNEL_DESIGN.md` covers **prefill** large-M MoE and
+      states decode uses the M=1 kernel, so there is no direct port — small-M
+      (c=2..8) decode GEMM is new kernel-family R&D. Per AGENTS.md that R&D
+      belongs in `~/amd-gpu-tuning/` (rocprof iteration, device-code gotchas);
+      hipEngine's side is the CPU-reference correctness gate (KL<=0.05 /
+      top-1>=90% vs `kernels/cpu_reference/`, plus byte-identical generated
+      tokens vs the current GEMV path) and the port once a stable kernel exists.
+
 - [ ] **C3.1 INT8 KV c>N parity.** Validate batched INT8 KV append/decode
       end-to-end with the same generated-token gates as BF16. Acceptance:
       c=2 512/128 INT8 artifact is equality-green or explicitly
