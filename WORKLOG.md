@@ -25805,3 +25805,38 @@ scripts/mtp_chain_e2e_smoke.py (+depth-1 topk_oracle in _run_spec_smoke),
 docs/MTP.md (top-k oracle section),
 benchmarks/results/2026-06-08-hipengine-mtp-topk-oracle.json. Diagnostic tooling;
 no runtime/default change.
+
+## 2026-06-08 perf(dflash): deployable routing via online whole-cycle drafter-confidence gate
+
+User goal: make DFlash routing deployable (the 27B profile-route hits 1.35x but
+needs prior per-prompt history; the online AdaptiveBudgetController only reaches
+~1.0x safety because it pays probe costs). Found a cheap deployable signal.
+
+Oracle: instrumented dflash_chain_e2e_bench.py to emit per-cycle drafter depth-1
+top-1 softmax prob p1 (--draft-top-k 2; HIPENGINE_DFLASH_CONF_ORACLE_OUT=<jsonl>)
++ accepted count. W7900 27B PARO + z-lab DFlash, 9-prompt D64, 161 cycles:
+corr(p1, accepted)=0.705; p1 mean 0.669 (accept=0) vs 0.954 (accept>=1);
+P(accept>=1) ~0.25 for p1<0.8, 0.94 for p1 in [0.9,0.97], 1.00 for p1>=0.97.
+The cheap drafter confidence strongly predicts acceptance.
+
+Gate: HIPENGINE_DFLASH_WHOLE_CYCLE_GATE=thr -> if drafter depth-1 p1 < thr, drop
+the whole cycle to AR (verify root only); else run the full chain. WHOLE-CYCLE
+(no mid-chain truncation), unlike --draft-p-min which truncates and HURT (0.92x
+at p_min=0.8). W7900 27B 9-prompt D64, exact 9/9 every row:
+  all-chain (no gate)      1.027x
+  gate @0.85               1.099x
+  gate @0.90               1.147x  <- best, deployable
+  gate @0.95               1.106x  (over-gates)
+  offline profile-route    1.35x   (non-deployable)
+
+So the confidence gate is the first DEPLOYABLE >1.10x exact DFlash row on this
+lane (online, per-cycle, no prompt history), capturing ~half the offline
+profile-route gain. Threshold is per-model (clean-separation ~0.9 here),
+calibrated from the oracle.
+
+Files: scripts/dflash_chain_e2e_bench.py (confidence_oracle summary +
+HIPENGINE_DFLASH_WHOLE_CYCLE_GATE + os import),
+benchmarks/results/2026-06-08-hipengine-dflash-deployable-confidence-gate.json,
+docs/DFLASH.md (deployable gate section). Default-off; mechanism is env-gated.
+Follow-ups: CLI flag + engine DFlash decode API integration; threshold
+auto-calibration via a short warmup window.

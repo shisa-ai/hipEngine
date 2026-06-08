@@ -1,0 +1,89 @@
+{
+ "schema": 1,
+ "task_id": 39,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "timestamp": "2026-06-08",
+ "date": "2026-06-08",
+ "summary": "Deployable DFlash routing via an online whole-cycle drafter-confidence gate. The drafter depth-1 confidence predicts acceptance (corr 0.705); gating spec-vs-AR per cycle on it lifts the 27B 9-prompt suite from 1.027x all-chain to 1.147x exact, with NO prompt history (vs the non-deployable offline profile-route 1.35x).",
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100"
+ },
+ "backend": "hip_gfx1100",
+ "models": {
+  "target": "z-lab/Qwen3.6-27B-PARO",
+  "drafter": "z-lab/Qwen3.6-27B-DFlash"
+ },
+ "workload": {
+  "prompts": 9,
+  "decode_tokens": 64,
+  "draft_budget": 4,
+  "draft_top_k": 2,
+  "verifier_mode": "native_bulk_bplus1",
+  "chain_attn_mode": "batched",
+  "canonical_commit": "branch_copy"
+ },
+ "oracle": {
+  "cycles": 161,
+  "corr_p1_accepted": 0.705,
+  "p1_mean_when_accept0": 0.669,
+  "p1_mean_when_accept_ge1": 0.954,
+  "bins_by_p1": [
+   {
+    "p1_lo": 0,
+    "p1_hi": 0.8,
+    "n": 38,
+    "P_accept_ge1": 0.26,
+    "mean_accepted": 0.61
+   },
+   {
+    "p1_lo": 0.8,
+    "p1_hi": 0.9,
+    "n": 12,
+    "P_accept_ge1": 0.58,
+    "mean_accepted": 1.75
+   },
+   {
+    "p1_lo": 0.9,
+    "p1_hi": 0.97,
+    "n": 17,
+    "P_accept_ge1": 0.94,
+    "mean_accepted": 2.94
+   },
+   {
+    "p1_lo": 0.97,
+    "p1_hi": 1.001,
+    "n": 94,
+    "P_accept_ge1": 1.0,
+    "mean_accepted": 3.38
+   }
+  ],
+  "note": "p1 = drafter depth-1 top-1 softmax prob (--draft-top-k 2). High p1 -> high P(accept>=1)."
+ },
+ "gate": {
+  "mechanism": "HIPENGINE_DFLASH_WHOLE_CYCLE_GATE=thr: if drafter depth-1 p1 < thr, drop the whole cycle to AR (verify root only); else run the full chain. Whole-cycle (no mid-chain truncation), unlike --draft-p-min.",
+  "all_chain_speedup_vs_ar": 1.027,
+  "sweep": {
+   "0.85": 1.099,
+   "0.90": 1.147,
+   "0.95": 1.106
+  },
+  "best": {
+   "thr": 0.9,
+   "speedup_vs_ar": 1.147,
+   "exact": "9/9"
+  },
+  "vs_offline_profile_route": "1.35x (non-deployable; needs prior per-prompt history). The confidence gate captures ~half the gain but is fully online/deployable.",
+  "why_draft_p_min_hurts": "_confidence_limited_active_count truncates the chain mid-stream (cuts good deeper drafts) -> 0.92x at p_min=0.8. The whole-cycle gate keeps the full chain when confident."
+ },
+ "correctness": {
+  "exact_ar_9_of_9": true,
+  "all_sweep_rows_exact": true
+ },
+ "commands": {
+  "oracle": "HIPENGINE_DFLASH_CONF_ORACLE_OUT=conf.jsonl ... dflash_chain_e2e_bench.py --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off",
+  "gate": "HIPENGINE_DFLASH_WHOLE_CYCLE_GATE=0.90 ... (same bench command)"
+ },
+ "next": "Promote the env gate to a CLI flag and into the engine DFlash decode API; per-model threshold calibration via the oracle (clean-separation point ~0.9 here)."
+}

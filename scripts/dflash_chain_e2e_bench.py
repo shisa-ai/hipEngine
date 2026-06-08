@@ -17,6 +17,7 @@ import argparse
 import ctypes
 import json
 import math
+import os
 import platform
 import shlex
 import statistics
@@ -2303,6 +2304,7 @@ def _run_dflash_chain_on_session(
     )
     generated: list[int] = []
     accepted_lengths: list[int] = []
+    confidence_trace: list[dict[str, Any]] = []
     draft_seconds_total = 0.0
     verify_seconds_total = 0.0
     commit_seconds_total = 0.0
@@ -2423,7 +2425,17 @@ def _run_dflash_chain_on_session(
             draft_nodes_this_cycle = int(compiled_tree.active_count)
             tree_active_nodes_total += draft_nodes_this_cycle
         else:
-            if draft_p_min > 0.0:
+            _wc_gate = os.environ.get("HIPENGINE_DFLASH_WHOLE_CYCLE_GATE")
+            if _wc_gate is not None and _wc_gate.strip():
+                # Whole-cycle confidence gate (deployable): keep the FULL chain
+                # when the drafter's depth-1 confidence is high, else drop to AR
+                # (active_budget=0 -> verify root only). No mid-chain truncation.
+                _p0 = float(draft.top1_probabilities[0]) if draft.top1_probabilities else 1.0
+                if _p0 < float(_wc_gate):
+                    active_budget = 0
+                    confidence_limited = True
+                    confidence_limited_cycles += 1
+            elif draft_p_min > 0.0:
                 active_budget = _confidence_limited_active_count(
                     draft.top1_probabilities,
                     max_active=active_budget,
@@ -2638,6 +2650,17 @@ def _run_dflash_chain_on_session(
             if rocprof_selected_region == "dflash_verify":
                 roctx.profiler_pause()
         accepted_lengths.append(accepted)
+        # Deployability oracle: per-cycle drafter confidence vs accepted count.
+        # Does the cheap pre-verifier signal (draft top-1 softmax probs) predict
+        # acceptance so an online gate can skip the verifier on likely rejects?
+        confidence_trace.append(
+            {
+                "top1_probs": [float(p) for p in draft.top1_probabilities[:requested_active_budget]],
+                "accepted": int(accepted),
+                "active_budget": int(requested_active_budget),
+                "cycle_wall_ms": (time.perf_counter() - t_cycle) * 1000.0,
+            }
+        )
         accepted_tokens = (
             list(verify_result.accepted_tokens)
             if verify_result is not None and verifier_mode == "native_bulk_bplus1" and tree_mode in {"chain_as_tree", "branching_topk"}
@@ -2702,7 +2725,50 @@ def _run_dflash_chain_on_session(
         root_token = int(bonus)
         context_tokens += len(committed)
     decode_seconds = time.perf_counter() - t1
+    # Deployability oracle: does the drafter's depth-1 confidence predict
+    # acceptance, so an online gate can route spec-vs-AR without a probe?
+    _conf_rows = [c for c in confidence_trace if c.get("top1_probs")]
+    if _conf_rows:
+        _p1 = [float(c["top1_probs"][0]) for c in _conf_rows]
+        _acc = [int(c["accepted"]) for c in _conf_rows]
+        _n = len(_conf_rows)
+        _mean_p1 = sum(_p1) / _n
+        _mean_acc = sum(_acc) / _n
+        _cov = sum((a - _mean_p1) * (b - _mean_acc) for a, b in zip(_p1, _acc)) / _n
+        _var_p1 = sum((a - _mean_p1) ** 2 for a in _p1) / _n
+        _var_acc = sum((b - _mean_acc) ** 2 for b in _acc) / _n
+        _corr = (_cov / math.sqrt(_var_p1 * _var_acc)) if _var_p1 > 0 and _var_acc > 0 else None
+        _p1_acc0 = [p for p, a in zip(_p1, _acc) if a == 0]
+        _p1_acc_ge1 = [p for p, a in zip(_p1, _acc) if a >= 1]
+        _bins: list[dict[str, Any]] = []
+        for lo, hi in [(0.0, 0.8), (0.8, 0.9), (0.9, 0.97), (0.97, 0.999), (0.999, 1.01)]:
+            _sel = [(p, a) for p, a in zip(_p1, _acc) if lo <= p < hi]
+            if _sel:
+                _bins.append({
+                    "p1_lo": lo, "p1_hi": hi, "n": len(_sel),
+                    "p_accept_ge1": sum(1 for _, a in _sel if a >= 1) / len(_sel),
+                    "mean_accepted": sum(a for _, a in _sel) / len(_sel),
+                })
+        confidence_oracle = {
+            "cycles": _n,
+            "mean_p1": _mean_p1,
+            "mean_accepted": _mean_acc,
+            "corr_p1_accepted": _corr,
+            "p1_mean_when_accept0": (sum(_p1_acc0) / len(_p1_acc0)) if _p1_acc0 else None,
+            "p1_mean_when_accept_ge1": (sum(_p1_acc_ge1) / len(_p1_acc_ge1)) if _p1_acc_ge1 else None,
+            "n_accept0": len(_p1_acc0),
+            "n_accept_ge1": len(_p1_acc_ge1),
+            "bins_by_p1": _bins,
+            "note": "p1 = drafter depth-1 top-1 softmax prob (needs --draft-top-k>=2). If high p1 -> high P(accept>=1), an online confidence gate can route spec-vs-AR without a probe.",
+        }
+    else:
+        confidence_oracle = {"cycles": 0, "note": "no confidence trace (run with --draft-top-k >= 2)"}
+    _conf_out = os.environ.get("HIPENGINE_DFLASH_CONF_ORACLE_OUT")
+    if _conf_out:
+        with open(_conf_out, "a", encoding="utf-8") as _cf:
+            _cf.write(json.dumps({"oracle": confidence_oracle, "trace": confidence_trace}) + "\n")
     metadata = {
+        "confidence_oracle": confidence_oracle,
         "prefill_seconds": prefill_seconds,
         "decode_seconds": decode_seconds,
         "draft_seconds": draft_seconds_total,
@@ -2952,6 +3018,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "tree_compiler": spec_meta.get("tree_compiler"),
             "accepted_draft_tokens": sum(int(x) for x in spec_meta["accepted_lengths"]),
             "accepted_lengths": spec_meta["accepted_lengths"],
+            "confidence_oracle": spec_meta.get("confidence_oracle"),
             "draft_calls": spec_meta["draft_calls"],
             "finite_draft_logits": spec_meta["finite_draft_logits"],
             "finite_verify_logits": spec_meta["finite_verify_logits"],

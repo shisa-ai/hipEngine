@@ -379,6 +379,47 @@ Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json), and
 [`2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json).
 
+### 2026-06-08 deployable routing: online whole-cycle drafter-confidence gate
+
+The 27B profile-route reaches `1.35x` but is **non-deployable** — it routes whole
+prompts from prior measured per-prompt speedup. The online `AdaptiveBudgetController`
+only reaches safety (`~1.0x`) because it pays speculative probe costs to learn
+acceptance. We closed part of that gap with a **cheap pre-verifier signal**.
+
+**Oracle (does drafter confidence predict acceptance?).** Instrumented the bench
+to emit, per cycle, the drafter's depth-1 top-1 softmax probability `p1`
+(`--draft-top-k 2`; `HIPENGINE_DFLASH_CONF_ORACLE_OUT=<jsonl>`) alongside the
+accepted count. W7900, 27B PARO + z-lab DFlash, 9-prompt D64 (161 cycles):
+**`corr(p1, accepted) = 0.705`**; `p1` mean is **0.669 when accepted=0** vs
+**0.954 when accepted≥1**; `P(accept≥1)` is `~0.25` for `p1<0.8`, **0.94** for
+`p1∈[0.9,0.97]`, **1.00** for `p1≥0.97`. The cheap drafter confidence is a strong,
+deployable acceptance predictor.
+
+**Whole-cycle gate.** `HIPENGINE_DFLASH_WHOLE_CYCLE_GATE=thr`: if the drafter's
+depth-1 `p1 < thr`, drop the whole cycle to AR (verify root only); else run the
+full chain. This is a *whole-cycle* decision — unlike `--draft-p-min`, which
+truncates the chain mid-stream (cutting good deeper drafts; it measured `0.92x`
+at `p_min=0.8`, worse than all-chain).
+
+W7900, 27B 9-prompt D64, exact `9/9` on every row:
+
+| Routing | speedup vs AR | deployable? |
+| --- | ---: | --- |
+| all-chain (no gate) | 1.027x | yes (but barely >AR) |
+| whole-cycle gate @0.85 | 1.099x | **yes (online, no history)** |
+| **whole-cycle gate @0.90** | **1.147x** | **yes** |
+| whole-cycle gate @0.95 | 1.106x | yes (over-gates) |
+| offline profile-route | 1.35x | **no** (needs prior per-prompt history) |
+
+So the confidence gate captures roughly half the offline profile-route's gain but
+is **fully online and exact** — the first deployable >1.10x exact DFlash row on
+this lane. Threshold is per-model/suite (clean-separation point ~0.9 here),
+calibrated from the oracle. Artifact:
+[`2026-06-08-hipengine-dflash-deployable-confidence-gate.json`](../benchmarks/results/2026-06-08-hipengine-dflash-deployable-confidence-gate.json).
+Follow-ups: promote the env gate to a CLI flag and into the engine DFlash decode
+API; combine with terminal-AR-tail and per-prompt budget levers; revisit
+threshold auto-calibration (a short warmup window to set `thr` online).
+
 ### 2026-06-02 hipfire replication, exactness audit, and importable lessons
 
 Retained diagnostic:
