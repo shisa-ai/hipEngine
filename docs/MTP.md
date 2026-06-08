@@ -1242,6 +1242,45 @@ so M15.1/M15.2 land for both providers (task #35). The 27B-dense profile-route
 `1.350×` row is real but offline/non-deployable; it does not change the
 launch-submission diagnosis for the online exact path.
 
+### Exactness policy — exact default vs approximate tier (2026-06-08)
+
+M15.2 proved the M12.6 "unsafe" sites are argmax-fragile *independent of dequant
+numerics*: even a multi-row kernel that is byte-identical to AR's single-row
+Marlin-K flips top-1 on `translation`/`summarize`, because the verifier's
+accumulated-chain input already differs slightly from AR's rows==1 input and the
+argmax in degenerate regions is knife-edge. That raises the obvious question:
+should the default verifier even require bit-exact AR equality?
+
+Position for the exact default path:
+
+1. **A flip changes the output, and it cascades.** Greedy commits the verifier's
+   top-1, so one flip at token *i* makes tokens *i..N* diverge from baseline. The
+   flips are not only in degenerate tails (`translation` flips at token 6, mid
+   content). The flipped token is *not lower quality* — both picks are within
+   float noise of the true logits — but it is no longer the baseline's output.
+2. **Relaxing the default buys little right now.** The verifier is
+   launch-submission bound (≈51% host residual); weight-amortizing the unsafe W4
+   bucket is kernel-time only and, even fully realized, leaves `C_3 ≈ 4.7` —
+   still launch-bound and still below AR. Relaxing exact-AR does not unlock the
+   launch wall, graph replay, or beating AR. So it would forfeit the one
+   guarantee that differentiates us (vs e.g. hipfire's non-exact DFlash; see the
+   2026-06-02 audit) for a non-decisive gain.
+3. **Approximate belongs in an explicit opt-in tier, not a relaxed default.**
+   That tier is task #36 (deeper-row acceptance despite mismatch, record first
+   divergence, `performance_claim=false`, never default), gated by *task-level
+   quality* (pass@k / perplexity parity over a real eval), not by exact-AR.
+
+Note: main already carries some relaxed-acceptance semantics in places; this is
+recorded here as policy intent (default = exact-AR; approximate = opt-in, quality
+-gated), and reconciling main's existing relaxations with this tiering is a
+follow-up, not part of the current grind.
+
+**Working decision for the current push:** do not relax the default to chase the
+unsafe-W4 bucket, and do not spend cycles measuring approximate quality yet.
+Get the *exact* path to beat AR first by grinding down the launch count and
+verifier shape (M15.1/M15.3); revisit the approximate tier only once exact MTP/
+DFlash beats AR and we want a higher-speed opt-in.
+
 ## Closing the gap with llama.cpp MTP — kernel roadmap (2026-05-21)
 
 Historical note: this section captured the pre-M7.C.6 kernel-family roadmap.
