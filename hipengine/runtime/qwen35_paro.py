@@ -142,6 +142,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16,
 )
 from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
+    paro_rmsnorm_rotate2_fp16,
     paro_rotate1_bf16,
     paro_rotate1_bf16_gate_fp16,
     paro_rotate1_fp16,
@@ -4778,15 +4779,46 @@ class Qwen35ParoDecodeState:
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
             moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
 
-        self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
-        self.rotate_linear_attention_inputs_fp16(
-            linear_scratch.attn_input,
-            linear_scratch,
-            tokens=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+        if _fused_rmsnorm_rotate_enabled() and _fused_rmsnorm_rotate2_shape_ok(
+            tokens, self.config.hidden_size, group_size
+        ):
+            # M15.4: one launch for input RMSNorm + qkv/z rotate (also writes the
+            # unrotated RMSNorm output to attn_input for the AB projection).
+            _lin_prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+            _qkv = f"{_lin_prefix}.in_proj_qkv"
+            _z = f"{_lin_prefix}.in_proj_z"
+            _pairs_qkv = self.tensor(f"{_qkv}.pairs")
+            paro_rmsnorm_rotate2_fp16(
+                hidden.ptr,
+                self.tensor(f"layers.{self.layer_weights.layer_id}.input_layernorm.weight").ptr,
+                linear_scratch.attn_input.ptr,
+                linear_scratch.qkv_rot.ptr,
+                linear_scratch.z_rot.ptr,
+                _pairs_qkv.ptr,
+                self.tensor(f"{_z}.pairs").ptr,
+                self.tensor(f"{_qkv}.theta").ptr,
+                self.tensor(f"{_z}.theta").ptr,
+                self.tensor(f"{_qkv}.channel_scales").ptr,
+                self.tensor(f"{_z}.channel_scales").ptr,
+                self.config.rms_norm_eps,
+                tokens,
+                self.config.hidden_size,
+                group_size,
+                _rotation_krot(_pairs_qkv),
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+        else:
+            self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+            self.rotate_linear_attention_inputs_fp16(
+                linear_scratch.attn_input,
+                linear_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         self.project_linear_attention_qkv_z_fp16(
             linear_scratch,
             tokens=tokens,
@@ -7668,6 +7700,33 @@ def _w4_multi_row_dual_site_eligible(site: str, tokens: int, in_features: int, g
         and 1 < int(tokens) <= 8
         and int(in_features) % int(group_size) == 0
     )
+
+
+def _fused_rmsnorm_rotate_enabled() -> bool:
+    """M15.4: fuse the linear-attention input RMSNorm + paro_rotate2 into one
+    launch on the verifier path (tokens > 1).
+
+    The fused kernel is bit-identical to ``input_rmsnorm_fp16`` followed by
+    ``rotate_linear_attention_inputs_fp16`` (see
+    ``tests/test_paro_rmsnorm_rotate2.py``), so exact-AR cannot regress; it just
+    removes one launch + one HBM round-trip per linear layer.  Default-off
+    pending the verifier economics; opt in with
+    ``HIPENGINE_FUSED_RMSNORM_ROTATE=1``.
+    """
+
+    return _env_enabled("HIPENGINE_FUSED_RMSNORM_ROTATE", default=False)
+
+
+def _fused_rmsnorm_rotate2_shape_ok(tokens: int, hidden: int, group_size: int) -> bool:
+    if int(tokens) <= 0 or int(group_size) <= 0 or int(group_size) % 2 != 0:
+        return False
+    half_group = int(group_size) // 2
+    if half_group <= 0 or 256 % half_group != 0:
+        return False
+    if int(hidden) % int(group_size) != 0:
+        return False
+    groups_per_batch = 256 // half_group
+    return (int(hidden) // int(group_size)) % groups_per_batch == 0
 
 
 def _w4_multi_row_small_batch_enabled() -> bool:

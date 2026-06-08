@@ -1,0 +1,51 @@
+{
+ "schema": 1,
+ "task_id": 41,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "timestamp": "2026-06-08",
+ "date": "2026-06-08",
+ "summary": "M15.4: fused RMSNorm+paro_rotate2 verifier kernel is bit-exact but occupancy-limited (neutral); default-off. The RMSNorm one-block-per-row reduction serializes the per-group rotate, canceling the -30 launch saving.",
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100"
+ },
+ "backend": "hip_gfx1100",
+ "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+ "change": {
+  "kernel": "paro_rmsnorm_rotate2_fp16 (fused input RMSNorm + qkv/z rotate, also writes unrotated RMSNorm to attn_input)",
+  "bit_exact_test": "tests/test_paro_rmsnorm_rotate2.py: tokens {1,3,4,6,8} x hidden {512,1024,2048,4096}, out_norm+out0+out1 byte-identical to rmsnorm->rotate2",
+  "gate": "HIPENGINE_FUSED_RMSNORM_ROTATE (default-off)",
+  "wired": "run_linear_attention_moe_chain_tloop_layer_fp16 (chain verifier; tree path is a task #35 follow-up)"
+ },
+ "rocprof_b3": {
+  "calls_per_pass": {
+   "off": 941.0,
+   "on": 911.0,
+   "delta": -30.0
+  },
+  "kernel_ms_per_pass": {
+   "off": 16.108,
+   "on": 16.805,
+   "delta_pct": 4.3
+  },
+  "note": "-30 launches but +4.3% kernel time: the fused kernel runs the per-group rotate in 16 sequential batches (256 threads / 64-lane groups) vs the standalone rotate2 256 parallel blocks."
+ },
+ "economics_b3_verify_ms_per_cycle": {
+  "session1": {
+   "off_min": 37.03,
+   "on_min": 34.77
+  },
+  "session2": {
+   "off_min": 34.98,
+   "on_min": 35.24,
+   "on_mean_delta_pct": 5.1
+  },
+  "verdict": "noise-dominated, roughly neutral across two back-to-back sessions (s1 ON -6% min, s2 ON +0.8% min/+5.1% mean)."
+ },
+ "decision_reason": "Bit-exact (RED test, incl. production hidden=4096) and exact-AR smoke passes, but the fusion is occupancy-limited: the RMSNorm full-row reduction forces one block per row, serializing the per-group butterfly the standalone rotate runs in parallel. -30 launches is canceled by +4.3% kernel time; economics wall is noise-neutral. Same class of trap as the M13.B consumer-side rotate fusions. Default-off; kept as correct infra + reproducible finding.",
+ "notes": [
+  "Rotate launches (190/pass) resist exact fusion: consumer-side (M13.B.1/B.2) hit a redundancy trap, producer-side (M15.4) hits an occupancy trap.",
+  "To beat AR via launch reduction likely needs a fundamentally lower launch count (megakernel / C-side per-layer dispatch), not pairwise op fusion."
+ ]
+}

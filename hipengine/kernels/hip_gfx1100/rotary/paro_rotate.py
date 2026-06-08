@@ -19,6 +19,18 @@ _SYMBOL_ROTATE1_FP16 = "hipengine_paro_rotate1_fp16"
 _SYMBOL_ROTATE2_FP16 = "hipengine_paro_rotate2_fp16"
 _SYMBOL_ROTATE3_FP16 = "hipengine_paro_rotate3_fp16"
 _SYMBOL_ROTATE1_BF16_GATE_FP16 = "hipengine_paro_rotate1_bf16_gate_fp16"
+_SYMBOL_RMSNORM_ROTATE2_FP16 = "hipengine_paro_rmsnorm_rotate2_fp16"
+
+# rmsnorm_rotate2: x, ln_weight, out_norm, out0, out1, pairs0, pairs1, theta0,
+# theta1, scales0, scales1 + eps, tokens, hidden, group_size, krot, stream
+_ARGTYPES_RMSNORM_ROTATE2 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_float,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
 
 # rotate1: x, out, pairs, theta, scales + tokens, hidden, group_size, krot, stream
 _ARGTYPES_ROTATE1 = (
@@ -303,6 +315,49 @@ def paro_rotate3_fp16(
     _check_launch(runtime, err)
 
 
+def paro_rmsnorm_rotate2_fp16(
+    x_ptr: int,
+    ln_weight_ptr: int,
+    out_norm_ptr: int,
+    out0_ptr: int,
+    out1_ptr: int,
+    pairs0_ptr: int,
+    pairs1_ptr: int,
+    theta0_ptr: int,
+    theta1_ptr: int,
+    scales0_ptr: int,
+    scales1_ptr: int,
+    eps: float,
+    tokens: int,
+    hidden: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M15.4: fused RMSNorm + paro_rotate2 (FP16).
+
+    Bit-identical to ``paro_rmsnorm_out_fp16`` followed by ``paro_rotate2_fp16``
+    (same 256-thread reduction, fp16 normed round-trip, and per-group butterfly),
+    in one launch.  ``x``/``ln_weight`` feed RMSNorm; ``out_norm`` receives the
+    (unrotated) RMSNorm output, and ``out0``/``out1`` the two rotated
+    projections.  Pass ``out_norm_ptr=0`` to skip the RMSNorm write-back.
+    Requires the M15.4 shape constraints (256-thread block;
+    ``(hidden/group_size) % (256/(group_size/2)) == 0``).
+    """
+
+    _check_rotate_shape(tokens, hidden, group_size, krot)
+    library = library or build_paro_rotate(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_RMSNORM_ROTATE2_FP16, _ARGTYPES_RMSNORM_ROTATE2, ctypes.c_int)
+    err = fn(x_ptr, ln_weight_ptr, out_norm_ptr, out0_ptr, out1_ptr, pairs0_ptr, pairs1_ptr,
+             theta0_ptr, theta1_ptr, scales0_ptr, scales1_ptr,
+             float(eps), tokens, hidden, group_size, krot, stream)
+    _check_launch(runtime, err)
+
+
 def register_paro_rotate_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paro_rotate1", "w4_paro", "bf16"),
@@ -337,6 +392,11 @@ def register_paro_rotate_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paro_rotate3", "w4_paro", "fp16"),
         paro_rotate3_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paro_rmsnorm_rotate2", "w4_paro", "fp16"),
+        paro_rmsnorm_rotate2_fp16,
         replace=replace,
     )
 

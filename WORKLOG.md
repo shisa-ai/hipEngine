@@ -25733,3 +25733,38 @@ Files: hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.{hip,py},
 hipengine/runtime/qwen35_paro.py (qkv_z + full_qk dispatch),
 tests/test_paro_awq_gemv_multi_row_decode.py,
 benchmarks/results/2026-06-08-hipengine-mtp-m15.3-verifier-dual-gemv-merge.json.
+
+## 2026-06-08 kernel(mtp): M15.4 fused RMSNorm+rotate2 — bit-exact but occupancy-limited (neutral, default-off)
+
+Grind step targeting the 190 paro_rotate launches/pass (~3.8 ms of pure dispatch).
+Built `paro_rmsnorm_rotate2_fp16`: one block/row, Phase 1 reproduces
+`paro_rmsnorm_out_kernel` byte-for-byte (256-thread vec8+tree reduction), Phase 2
+rounds normed to fp16 in LDS and also writes it to `attn_input` (the AB projection
+still needs the unrotated RMSNorm output), Phase 3 reproduces `paro_rotate2`'s
+per-group butterfly. RED test `tests/test_paro_rmsnorm_rotate2.py`: out_norm+out0+
+out1 byte-identical to rmsnorm->rotate2 for tokens {1,3,4,6,8} x hidden
+{512,1024,2048,4096} (incl. production 4096). Wired into the chain verifier behind
+`HIPENGINE_FUSED_RMSNORM_ROTATE` (default-off); exact-AR smoke passes.
+
+Result: NEUTRAL, not a win. W7900 B=3 rocprof: calls/pass 941 -> 911 (-30) but
+kernel time 16.108 -> 16.805 ms/pass (+4.3%). Economics wall is noise-dominated
+(session1 ON -6% min, session2 ON +0.8% min / +5.1% mean across back-to-back runs).
+
+Root cause: the RMSNorm full-row reduction forces one block per row, which
+serializes the per-group rotate (16 sequential 4-group batches at 256 threads vs
+the standalone rotate2's 256 parallel blocks). The lost occupancy cancels the
+-30 launch saving. This is the same class of trap as the M13.B consumer-side
+rotate fusions (redundancy trap), just on the producer side (occupancy trap).
+
+Strategic takeaway: the 190 rotate launches resist *exact pairwise* fusion from
+both directions. Recovering that ~3.8 ms of dispatch likely needs a fundamentally
+lower launch count (C-side per-layer dispatch issuing the whole layer's kernels
+back-to-back, or a megakernel), not op-pair fusion. M15.1a + M15.3 (projection
+amortize + dual merge, -40 launches, exact) remain the retained wins.
+
+Kept the kernel + test + wiring as correct, bit-exact infrastructure (default-off)
+and a reproducible finding so this is not re-tried blindly. Files:
+hipengine/kernels/hip_gfx1100/rotary/paro_rotate.{hip,py},
+hipengine/runtime/qwen35_paro.py (gate + chain-layer wiring),
+tests/test_paro_rmsnorm_rotate2.py,
+benchmarks/results/2026-06-08-hipengine-mtp-m15.4-fused-rmsnorm-rotate-neutral.json.
