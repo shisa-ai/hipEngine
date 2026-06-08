@@ -1,0 +1,155 @@
+{
+  "config": {
+    "counts": [
+      50,
+      100,
+      200,
+      500,
+      941,
+      2000
+    ],
+    "method": "N back-to-back hipLaunchKernelGGL issued from a single C call (no Python per-node overhead); same C burst captured into one graph and replayed; wall via perf_counter around stream sync; median over reps.",
+    "n_elements": 256,
+    "reps": 80,
+    "target_nodes_per_batch": 5000,
+    "warmup": 20
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "rows": [
+    {
+      "direct": {
+        "burst_us_median": 303.4610999748111,
+        "burst_us_min": 300.96503905951977,
+        "reps": 80,
+        "us_per_node": 6.0692219994962215
+      },
+      "graph": {
+        "batch_us_median": 28881.046106107533,
+        "inner_replays_per_batch": 100,
+        "replay_latency_us_median": 314.88598324358463,
+        "replay_latency_us_per_node": 6.297719664871693,
+        "reps": 80,
+        "steady_us_per_node": 5.776209221221507
+      },
+      "graph_speedup_vs_direct": 1.0507275216413907,
+      "node_count": 50
+    },
+    {
+      "direct": {
+        "burst_us_median": 591.5008950978518,
+        "burst_us_min": 586.5409038960934,
+        "reps": 80,
+        "us_per_node": 5.9150089509785175
+      },
+      "graph": {
+        "batch_us_median": 28447.207412682474,
+        "inner_replays_per_batch": 50,
+        "replay_latency_us_median": 588.5810824111104,
+        "replay_latency_us_per_node": 5.885810824111104,
+        "reps": 80,
+        "steady_us_per_node": 5.689441482536495
+      },
+      "graph_speedup_vs_direct": 1.039646680457896,
+      "node_count": 100
+    },
+    {
+      "direct": {
+        "burst_us_median": 1149.2015328258276,
+        "burst_us_min": 1136.8710547685623,
+        "reps": 80,
+        "us_per_node": 5.746007664129138
+      },
+      "graph": {
+        "batch_us_median": 28244.362911209464,
+        "inner_replays_per_batch": 25,
+        "replay_latency_us_median": 1154.0810810402036,
+        "replay_latency_us_per_node": 5.770405405201018,
+        "reps": 80,
+        "steady_us_per_node": 5.648872582241893
+      },
+      "graph_speedup_vs_direct": 1.0171954811288546,
+      "node_count": 200
+    },
+    {
+      "direct": {
+        "burst_us_median": 2819.4026090204716,
+        "burst_us_min": 2810.331992805004,
+        "reps": 80,
+        "us_per_node": 5.638805218040943
+      },
+      "graph": {
+        "batch_us_median": 28100.110008381307,
+        "inner_replays_per_batch": 10,
+        "replay_latency_us_median": 2831.5181843936443,
+        "replay_latency_us_per_node": 5.663036368787289,
+        "reps": 80,
+        "steady_us_per_node": 5.620022001676261
+      },
+      "graph_speedup_vs_direct": 1.0033421962332316,
+      "node_count": 500
+    },
+    {
+      "direct": {
+        "burst_us_median": 5279.817502014339,
+        "burst_us_min": 5272.806854918599,
+        "reps": 80,
+        "us_per_node": 5.6108581317899455
+      },
+      "graph": {
+        "batch_us_median": 31689.056078903377,
+        "inner_replays_per_batch": 6,
+        "replay_latency_us_median": 5305.003025569022,
+        "replay_latency_us_per_node": 5.637622768936261,
+        "reps": 80,
+        "steady_us_per_node": 5.612656053649199
+      },
+      "graph_speedup_vs_direct": 0.9996796664819529,
+      "node_count": 941
+    },
+    {
+      "direct": {
+        "burst_us_median": 11202.911962755024,
+        "burst_us_min": 11186.246993020177,
+        "reps": 80,
+        "us_per_node": 5.601455981377512
+      },
+      "graph": {
+        "batch_us_median": 33655.99608514458,
+        "inner_replays_per_batch": 3,
+        "replay_latency_us_median": 11237.127473577857,
+        "replay_latency_us_per_node": 5.6185637367889285,
+        "reps": 80,
+        "steady_us_per_node": 5.60933268085743
+      },
+      "graph_speedup_vs_direct": 0.9985957867133112,
+      "node_count": 2000
+    }
+  ],
+  "run_tag": "m16.1-graph-node-replay-microbench",
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "platform": "Linux-7.0.10-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "status": "diagnostic",
+  "summary": "Isolated HIP graph-replay per-node cost vs direct hipLaunchKernelGGL on W7900/gfx1100. Trivial one-block kernels, fixed args, single fixed stream, steady-state replay; decides the C_B program (native-loop+graph vs fewer-larger-kernels).",
+  "timestamp": "2026-06-08T05:05:53.540992+00:00",
+  "verdict": {
+    "direct_us_per_node_941": 5.6108581317899455,
+    "graph_speedup_vs_direct_941": 0.9996796664819529,
+    "hip_floor_us_per_node": 5.6108581317899455,
+    "implied_hip_floor_ms_941": 5.279817502014339,
+    "implied_orchestration_share_of_residual": 0.7276282460296143,
+    "implied_orchestration_us_per_op": 14.989141868210055,
+    "implied_residual_ms_direct_941": 5.279817502014339,
+    "implied_residual_ms_graph_941": 5.2815093464838965,
+    "observed_full_path_residual_us_per_op": 20.6,
+    "program": "native-loop FIRST (M16.2); fewer-larger-kernels for the floor (M16.3+M16.4); graphs NEUTRAL (de-prioritize M16.5)",
+    "rationale": "HIP floor is 5.61 us/node and a HIP graph does NOT beat a native launch loop (1.00x). So the ~20.6 us/op full-path residual is ~73% host-side per-op overhead (15.0 us/op: Python/ctypes marshaling + per-op pointer/bucket setup above the trivial-kernel floor), not HIP dispatch. A micro-bench-tight native C++ verify loop (M16.2: fixed args, baked launch sequence, persistent scratch) collapses the residual toward the 5.28 ms HIP floor at 941 nodes; going below that needs FEWER nodes (M16.3) + lower kernel time (M16.4). A HIP graph buys ~nothing over the native loop (M16.5 de-prioritized). Caveat: M14.dispatch.1's partial MoE dispatcher was parity, so the native loop must match this burst's tightness to realize the floor.",
+    "reference_node_count": 941,
+    "steady_us_per_node_941": 5.612656053649199
+  }
+}

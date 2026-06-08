@@ -25905,3 +25905,44 @@ build, no env var set so the flag alone drives the gate):
 Files: scripts/dflash_chain_e2e_bench.py, docs/DFLASH.md, benchmarks/README.md,
 benchmarks/CHANGELOG.md. Remaining #45 follow-ups: engine DFlash decode API
 integration; online threshold auto-calibration.
+
+## 2026-06-08 measure(mtp): M16.1 — clean HIP graph-replay per-node cost on gfx1100
+
+Task #40, the cheapest M16 diagnostic that decides the whole C_B strategy. New
+tool scripts/graph_node_microbench.py + scripts/microbench/graph_node_microbench.hip:
+a trivial one-block kernel (writes memory, non-elidable) issued back-to-back N times
+from a SINGLE C call (zero Python/ctypes per-node overhead), and the same C burst
+captured into ONE HIP graph and replayed in steady state. Measures us/node graph
+vs direct, N in {50,100,200,500,941,2000}. W7900 GPU0, require-cached build, 80 reps.
+
+Result (3 independent runs agree within 0.1 us):
+  N=941: direct 5.61 us/node, graph 5.61 us/node, speedup 1.00x
+  floor converges to ~5.6 us/node from N=50 (6.07) to N=2000 (5.60)
+
+Findings:
+1. Clean per-node dispatch floor on gfx1100 is ~5.6 us/node -- CUDA-class, NOT the
+   ~20 us the full verify path shows.
+2. A HIP graph does NOT beat a native launch loop (1.00x at 941). The 5.6 us is
+   GPU-side dispatch; graphs only remove HOST issue cost, which a tight native C
+   loop already removes. Re-confirms M12.1/M13.D "graph neutral" in clean isolation
+   AND explains why.
+3. Residual decomposition: full-path residual ~20.6 us/op (19.4ms/941, B=3) minus
+   the 5.6 us floor = ~15 us/op (~73%) host-side per-op overhead (Python/ctypes
+   marshaling + per-op pointer/bucket setup not paid by a fixed-arg native burst).
+   A micro-bench-tight native verify loop (M16.2) should collapse the residual
+   toward the ~5.3 ms HIP floor at 941 nodes. Caveat: M14.dispatch.1's partial MoE
+   dispatcher was parity, so M16.2 must match this burst's tightness (no per-op
+   state rebuild) to realize the floor.
+4. Below ~5.3 ms needs FEWER nodes (M16.3, ~5.6 us each) + lower kernel time
+   (M16.4), not graphs.
+
+Strategy resolved: M16.2 (native tight loop) FIRST = the lever; M16.3+M16.4 to push
+below the floor; M16.5 (graphs) DE-PRIORITIZED (1.00x vs native loop). Neither
+branch of the original M16.1 dichotomy held (not 2-5us-because-graphs-help, not a
+20us hardware wall).
+
+Files: scripts/graph_node_microbench.py, scripts/microbench/graph_node_microbench.hip,
+docs/MTP.md (M16.1 result block + tracks/sequencing/budget updates), benchmarks/
+results/2026-06-08-hipengine-m16.1-graph-node-replay-microbench.json, benchmarks/
+README.md, benchmarks/CHANGELOG.md. Diagnostic micro-bench (noop kernel, no
+KVLiveSpans/registry); no correctness gate applies. Next: M16.2 (task #41).

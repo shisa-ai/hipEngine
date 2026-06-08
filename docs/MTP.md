@@ -1328,8 +1328,12 @@ The top-k oracle proved the MTP head is ready: at `C_B ≈ 2` this head + a
 root-branch tree beats AR comfortably. Everything now hinges on cutting `C_B` from
 ~4.25 to ~2.0. **This is achievable on our hardware**: hipfire runs DFlash on the
 same W7900/gfx1100 at multiples of AR (see `DFLASH.md` 2026-06-02), so the ~20 µs/
-launch we measure is *our* orchestration cost, not a hard ROCm floor. llama.cpp
-gets there on CUDA via whole-trunk graph replay. We need the same runtime *shape*.
+launch we measure is *our* orchestration cost, not a hard ROCm floor. **M16.1
+(2026-06-08) measured the floor directly: clean steady-state dispatch is ~5.6 µs/
+node on gfx1100, ~3.7× below the ~20.6 µs/op full-path residual — confirming the
+residual is host-side per-op overhead, not a hardware dispatch wall.** llama.cpp
+gets there on CUDA via whole-trunk graph replay; on gfx1100 a *native launch loop*
+gets the same floor (see M16.1 result). We need that runtime *shape*.
 
 ### The C_B budget (what "≤2" requires)
 
@@ -1344,7 +1348,7 @@ fall to **≤ 18 ms** — a ~2.1× cut. A concrete decomposition target:
 
 | Term | now | target | how |
 |---|---:|---:|---|
-| host residual (launch submission) | 19.4 ms | **~5 ms** | clean graph replay *or* launch count → ~300 |
+| host residual (launch submission) | 19.4 ms | **~5 ms** | native tight launch loop (M16.2) → ~5.3 ms HIP floor at 941 nodes; then launch count → ~300 for less. (M16.1: a HIP graph is *neutral* vs a native loop, so graphs are not the lever.) |
 | kernel time (B+1 rows) | 18.5 ms | **~12 ms** | finish weight-amortization + larger fused kernels |
 | → verify window | 37.9 ms | **~17 ms** | → `C_3 ≈ 1.9` |
 
@@ -1360,27 +1364,73 @@ higher-B root-branch tree (the oracle's 100%-in-top-8 head) carries the win.
   fusion (M13.B.1/.2) hit a redundant-work trap; producer-side (M15.4) hit an
   occupancy trap (one-block-per-row serializes the rotate). Op-pair fusion
   cannot reach ≤2; only *fewer, larger* kernels or graph replay can.
-- **HIP graph replay measured neutral at >900 launches** (M12.1, M13.D) — but on
-  the *full* verify path with per-cycle bucket changes and validation overhead,
-  not a clean steady-state replay. This verdict must be re-tested in isolation
-  (M16.1) before concluding ROCm graphs can't help.
+- **HIP graph replay is neutral vs a native launch loop — now confirmed in clean
+  isolation (M16.1, 2026-06-08).** The earlier neutral verdict (M12.1, M13.D) was
+  on the *full* verify path with bucket churn + validation; M16.1 re-tested it with
+  trivial fixed-arg kernels, one stream, steady-state replay: graph replay and a
+  direct C launch burst both hit **~5.6 µs/node** and a graph is **1.00×** vs the
+  native loop at 941 nodes. The reason is now clear: the ~5.6 µs floor is GPU-side
+  dispatch, which graphs cannot remove — graphs only remove *host* issue cost, and
+  a tight native loop already does that. So graphs (M16.5) are **de-prioritized**;
+  the lever is the native loop (M16.2) for the host residual and fewer nodes
+  (M16.3) for the floor.
 
 ### Tracks (ordered cheapest-diagnostic first)
 
 | # | Track | First concrete step / acceptance gate | Why it can reach ≤2 |
 |---|---|---|---|
-| **M16.1** | **Isolate the ROCm graph-replay per-node cost** | Micro-bench: capture N (=50/200/941) trivial back-to-back kernels into one HIP graph, replay it in steady state (same instantiation, fixed args, no validation), measure µs/node vs direct `hipLaunchKernelGGL`. Gate: report the real per-node replay cost. | If ROCm `hipGraphLaunch` is ~2–5 µs/node on a clean replay (CUDA-class), the residual drops 19.4 → ~4 ms *without touching kernels* — the single biggest lever. Our earlier "neutral" was likely capture/validation/bucket-churn overhead, not replay. |
+| **M16.1** | **Isolate the ROCm graph-replay per-node cost** ✅ **Done 2026-06-08 — see result below.** | `scripts/graph_node_microbench.py`: trivial fixed-arg one-block kernels issued back-to-back from a C loop (zero Python per-node), same burst captured into one graph + replayed in steady state; µs/node graph vs direct, N∈{50…2000}. | **Resolved (not 2–5 nor 20):** the clean per-node floor is **~5.6 µs/node** and a HIP graph is **1.00×** vs a native launch loop. Graphs don't beat a native loop (the floor is GPU dispatch). → program is **native loop (M16.2) + fewer/larger kernels (M16.3/M16.4); graphs (M16.5) de-prioritized.** |
 | **M16.2** | **Native C++ verify hot loop** (the hipfire shape) | Move the whole 40-layer verify forward into one native translation unit called once per cycle (extend M14.dispatch.1 from MoE-only to the full layer stack), with persistent fixed-address scratch. Gate: exact-AR + cycle wall vs Python orchestration. | Removes all per-kernel Python boundaries and makes the cycle a single capturable native call → enables one clean graph (M16.1) and removes host-side launch gaps. This is exactly hipfire's "native hot loop + persistent scratch" that achieves low `C_B` on gfx1100. |
 | **M16.3** | **Structural launch-count reduction (megakernels, not op-pairs)** | Fuse a whole MoE op (router→gate_up→silu→down→combine) and a whole attention block into single kernels, sized for the B+1 verifier rows. Gate: exact-AR (bit-exact RED) + launches/pass 941 → ≤ ~400 with flat-or-lower kernel time. | The only fusion class that beats the occupancy/redundancy walls. At ~300–400 launches even ROCm's current per-launch cost gives a ~6 ms residual. |
 | **M16.4** | **Finish weight-amortization of the kernel half** | Land the exact small-batch W4 multi-row GEMV for the prefill-style sites (`shared_gate_up`, `single_full_v`, `single_linear_out`; the `shared_dense_w4` 6.58 ms bucket), matching AR's rows==1 numerics so it survives exact-AR (M15.2's marlin-multi-row was bit-exact-per-row but argmax-fragile — the fix is matching the verifier *input*, or a numerics-compatible kernel). Gate: exact-AR 9-prompt + kernel ms/pass down. | Drives kernel time toward ~flat-in-B, the other ~6 ms of the budget. |
-| **M16.5** | **Re-enable graph buckets after M16.2/M16.3** | Per `(B+1, kv_bucket)` capture/replay once launch count and the native loop make replay load-bearing (task #34). Gate: ≥X% `C_B` improvement on an exact row. | Amplifies M16.2/M16.3; only pays off once the count is low or the native loop is captured cleanly. |
+| **M16.5** | ~~Re-enable graph buckets after M16.2/M16.3~~ **(de-prioritized by M16.1)** | Per `(B+1, kv_bucket)` capture/replay. Gate: ≥X% `C_B` improvement on an exact row. | **M16.1 showed a HIP graph is 1.00× vs a native launch loop**, so graphs add ~nothing over M16.2. Keep the capture infra landed/opt-in, but do not invest here for `C_B` — revisit only if a future ROCm exposes cheaper graph dispatch. |
+
+### M16.1 result — the dispatch floor is ~5.6 µs/node and graphs are neutral (2026-06-08, measured)
+
+`scripts/graph_node_microbench.py` on W7900/gfx1100 (require-cached build, 80 reps,
+N∈{50,100,200,500,941,2000}; three independent runs agree within 0.1 µs). A
+trivial one-block kernel (writes memory so it can't be elided) is issued back-to-
+back `N` times from a **single C call** (zero Python/ctypes per-node overhead), and
+the *same* C burst is captured into **one HIP graph** and replayed in steady state.
+
+| N (nodes) | direct C burst µs/node | graph replay µs/node | graph vs direct |
+|---:|---:|---:|---:|
+| 50 | 6.07 | 5.79 | 1.05× |
+| 200 | 5.75 | 5.65 | 1.02× |
+| 941 | **5.61** | **5.61** | **1.00×** |
+| 2000 | 5.60 | 5.61 | 1.00× |
+
+**Findings.**
+1. The clean per-node dispatch floor on gfx1100 is **~5.6 µs/node** (converged,
+   stable 50→2000) — *CUDA-class*, not the ~20 µs the full path shows.
+2. **A HIP graph does not beat a native launch loop (1.00× at 941).** The ~5.6 µs
+   is GPU-side dispatch; graphs only remove *host* issue cost, which a tight native
+   C loop already removes. This re-confirms M12.1/M13.D's "graph neutral" verdict in
+   clean isolation and explains *why*.
+3. **Residual decomposition.** The full verify-path residual is ~20.6 µs/op
+   (19.4 ms / 941, B=3). Subtracting the 5.6 µs floor leaves **~15 µs/op (~73%) of
+   host-side per-op overhead** — Python/ctypes marshaling + per-op pointer/bucket
+   setup that a fixed-arg native burst does not pay. A micro-bench-tight native
+   verify loop (M16.2: baked launch sequence, persistent fixed-address scratch)
+   should collapse the residual toward the **~5.3 ms HIP floor at 941 nodes**.
+   *Caveat:* M14.dispatch.1's partial MoE dispatcher measured parity, so M16.2 must
+   match this burst's tightness (no per-op state rebuild) to realize the floor — a
+   half-native dispatcher that still reassembles pointers per op will stay at parity.
+4. Going **below** ~5.3 ms requires **fewer nodes** (M16.3 structural megakernels;
+   each removed node saves ~5.6 µs) and lower kernel time (M16.4) — not graphs.
+
+Artifact: `benchmarks/results/2026-06-08-hipengine-m16.1-graph-node-replay-microbench.json`.
 
 ### Sequencing logic
 
-1. **M16.1 first** — it is a cheap micro-bench that decides the whole strategy: if
-   clean ROCm graph replay is ~CUDA-class, the program is "native loop + one clean
-   graph" (M16.2 + M16.5) and we likely reach ≤2 without a megakernel rewrite. If
-   it is genuinely ~20 µs/node, the program is "fewer, larger kernels" (M16.3 + M16.4).
+1. **M16.1 is done (2026-06-08) and resolved the strategy** — see the result block
+   below. The clean floor is **~5.6 µs/node** and a HIP graph is **neutral** vs a
+   native launch loop (1.00×). Neither branch of the original dichotomy held: it is
+   not 2–5 µs *because graphs help* (graphs don't beat a native loop), nor a 20 µs
+   hardware wall (the floor is 5.6 µs). The program is therefore **M16.2 native
+   loop FIRST** (collapses the ~15 µs/op host overhead toward the ~5.3 ms HIP floor
+   at 941 nodes), then **M16.3 + M16.4** to cut node count and kernel time below the
+   floor; **M16.5 graphs are de-prioritized** (no win over the native loop).
 2. hipfire is the proof of feasibility on gfx1100; when in doubt, copy its runtime
    shape (native hot loop, persistent fixed-address scratch, batched verify,
    captured graph) — not its non-exact acceptance policy (see the 2026-06-02 audit).
