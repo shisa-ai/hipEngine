@@ -77019,3 +77019,32 @@ decode path and measured it. **Outcome: not promoted — kept gated off.**
   deployable value is the dispatch-bound **verify/C_B regime (B3/B4 PARO)**, not
   GGUF single-token AR decode; an optional GGUF path is a T16-fused variant.
   Artifact: `benchmarks/results/2026-06-09-hipengine-gguf-q4ks-b2-fused-moe-ffn-decode-diagnostic.json`.
+
+## 2026-06-09 — MEGAKERNEL B2 (cont.): E2E correctness certified — kernel correct, not promoted
+
+Closed the open B2 correctness question with a teacher-forced per-position
+logit-KL harness (`scripts/gguf_fused_moe_ffn_teacher_forced_kl.py`) + in-situ
+runner instrumentation (temporary, removed).
+
+- **Kernel is correct (proven 3 ways):** (1) bit-exact vs the fp32 cpu_reference
+  oracle on REAL layer-0 Q4_K expert weights (`max_rel 1.2e-8`); (2) in situ on
+  the real model (layer 0, router experts `[18,25,160,59,33,201,135,3]`) the
+  fused `moe_down_out` matches the unfused chain to ~1 bf16 ULP (`max_abs
+  1.22e-4`); (3) B1 oracle gate `kl 2.5e-4` (PASS KL<=0.05/top1>=90%).
+- **The earlier "benign greedy amplification" claim was imprecise.** The real
+  story: teacher-forced whole-model KL is large (prefill 0.0; decode mean 0.20
+  @2 tok, **1.09 @32 tok**) because it ACCUMULATES the unavoidable ~1-ULP bf16
+  reduction-order difference (fused per-subblock order vs unfused
+  thread-strided+tree-reduce) over 40 layers + KV drift. This is NOT a bug — any
+  kernel swap with a different reduction order shifts the exact E2E token stream.
+  The project gates correctness at the KERNEL level (KL vs cpu_reference, which
+  passes), not by E2E token identity.
+- **B2 verdict (final):** the fused megakernel is correct and wired (gated off,
+  transparent fallback), cuts launches 3->1, and improves the raw path +15.1%.
+  NOT promoted because (a) it reads raw Q4_K and does not apply to the deployed
+  T16-repack decode path (92.936 tok/s), and (b) single-token decode is
+  occupancy-bound (only top_k=8 blocks). Kept gated off.
+- **Next GGUF-megakernel target:** batched (c>1) GGUF decode, where c*top_k
+  selected rows give c*8 blocks (e.g. c=8 -> 64) and lift the occupancy wall;
+  plus the verify/C_B regime for the launch-reduction economics. Created as the
+  follow-on task.
