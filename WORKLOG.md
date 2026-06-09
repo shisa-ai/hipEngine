@@ -77130,3 +77130,52 @@ gate_up_input/gate_up/down_input/down_out).
   gated KL<=0.05 vs this oracle + row-invariance RED + rocprof 1-launch/layer +
   exact_ar_match. This is the campaign's hardest kernel (two cooperative in-block
   rotations + AWQ pack8 dequant) and is the substantial remaining B3 work.
+
+## 2026-06-09 — MEGAKERNEL B3 (DONE): fused PARO selected-FFN megakernel (B1-analog)
+
+Built the campaign's hardest kernel: the fused PARO selected-expert MoE FFN
+megakernel. One block per selected (token,expert) row does the *whole* expert
+FFN with both incoherence rotations folded in and the intermediates kept in LDS:
+`stage x -> cooperative in-block rotate1 (over hidden) -> AWQ pack8 gate/up GEMV
+-> silu*mul -> cooperative in-block down-rotate (over ffn_len) -> AWQ pack8 down
+GEMV`, output `out[rows, hidden]` (routing-weighted combine stays separate).
+Collapses the rotate1 + dual gate_up + silu/down-rotate + down launches (~5) to
+one and removes the rotate-out / gate_up-out HBM round-trips.
+
+- **Files:** `hipengine/kernels/hip_gfx1100/quant/paro_moe_ffn_fused.{hip,py}`
+  (f32_f32 + bf16_bf16 C ABI; registered `(hip_gfx1100, moe_ffn_selected,
+  w4_paro, fused_rotate_dual_silu_rotate_down_{f32_f32,bf16_bf16}_out)`),
+  RED `tests/test_paro_moe_ffn_fused.py`, rocprof smoke
+  `scripts/paro_moe_ffn_fused_smoke.py`. Structure mirrors the GGUF B1
+  megakernel (`gguf_q4_k_moe_ffn_fused.hip`); rotate/AWQ math forked from
+  `paro_awq_gemv.hip` (`gemv_awq_dual_pack8_transposed_rotate_staged_kernel` /
+  `gemv_awq_pack8_kernel`, nano-vllm-amd@59195ed). Thread-owns-output =>
+  row-invariant by construction (the T1 verifier requirement).
+- **Correctness gate (vs PARO B0 oracle `paro_moe_selected_ffn`):** f32 per-row
+  vs CPU primitive recompute `max_rel=1.8e-7`; f32 combine vs oracle
+  `max_rel=1.8e-7`; bf16 combine KL/top-1 gate `passed kl_mean=0.0 kl_max=0.0
+  top1=1.000` (gate KL<=0.05 / top1>=0.90); row-invariance bit-exact
+  (rows=1 == in-batch); inactive expert -> zeros. `pytest
+  tests/test_paro_moe_ffn_fused.py -> 5 passed`.
+- **rocprofv3 --kernel-trace smoke** (rows=32, hidden=2048, ffn_len=768, E=128,
+  krot=1; prebuilt .so + `--require-cached-build`): single dispatch of
+  `paro_selected_ffn_fused_kernel<unsigned short, unsigned short>`, grid 8192
+  work-items / 256 = **32 blocks (one block per (token,expert) row)**,
+  `VGPR_Count=32 Scratch_Size=0`, dur ~4.86 ms. Artifact dir
+  `/tmp/paro_b3_rocprof` (not committed per repo policy).
+- **HONEST perf state — NOT a win yet.** The ~4.86 ms / 32 rows is far from
+  roofline: the correctness-first thread-owns-output AWQ path reloads each
+  packed weight word 8x (one column per thread, 8 columns share a pack) and
+  re-reads scales/qzeros per-k. This validates the B3 architecture (correct
+  fused PARO megakernel, single launch/expert-row, KL gate, row-invariance) but
+  is ~50x off the unfused pack8 chain's weight traffic. It must NOT be claimed
+  as a C_B improvement. NEXT (B3 micro-opt): cooperative pack8 dequant (load
+  each packed word once, feed all 8 columns; hoist per-group scale/zero) to
+  bring the inner loop to pack8-GEMV traffic, then a verify-shaped A/B vs the
+  unfused PARO FFN chain and a measured C_B delta before any perf claim.
+- **B3 status:** B1-analog DONE (validated + single-launch + profiled). The
+  deployable verify-loop wiring (replace the unfused PARO FFN chain in
+  `runtime/moe_c1_dispatch.py` with this fused key) + the inner-loop micro-opt +
+  the measured C_B A/B are the remaining steps toward C_B<=2; per MEGAKERNEL.md
+  §8.3 the FFN megakernel is one unit of a multi-kernel campaign (FFN ->
+  attention -> rmsnorm/router), not a one-shot C_B fix.
