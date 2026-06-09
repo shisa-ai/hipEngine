@@ -155,15 +155,31 @@ __device__ inline float awq_pack8_col_dot(
     int out_features,
     int out_packed,
     int group_size) {
+  // Hoist per-group qzeros[group] and scales[group,col] (loop-invariant across
+  // the 128-wide group) out of the inner k loop, and vectorize the qweight /
+  // activation loads by 4. The per-k fmaf(act, (q-z)*sc, acc) stays k-ascending
+  // and bit-identical to the scalar path (f32 exact, row-invariant).
   float acc = 0.0f;
-  for (int k = 0; k < in_features; ++k) {
-    const int group = k / group_size;
-    const uint32_t pw = static_cast<uint32_t>(qweight_row[k]);
-    const uint32_t pz = static_cast<uint32_t>(qzeros_e[static_cast<int64_t>(group) * out_packed + pack]);
-    const int q = static_cast<int>((pw >> shift) & 0xFu);
+  const int groups = in_features / group_size;
+  for (int gi = 0; gi < groups; ++gi) {
+    const uint32_t pz = static_cast<uint32_t>(qzeros_e[static_cast<int64_t>(gi) * out_packed + pack]);
     const int z = static_cast<int>((pz >> shift) & 0xFu);
-    const float sc = scalar_to_float<scalar_t>(scales_e[static_cast<int64_t>(group) * out_features + col]);
-    acc = fmaf(act[k], static_cast<float>(q - z) * sc, acc);
+    const float sc = scalar_to_float<scalar_t>(scales_e[static_cast<int64_t>(gi) * out_features + col]);
+    const int k0 = gi * group_size;
+    const int32_t* __restrict__ wptr = qweight_row + k0;
+    int kk = 0;
+    for (; kk + 4 <= group_size; kk += 4) {
+      const int4 w4 = *reinterpret_cast<const int4*>(wptr + kk);
+      const float4 a4 = *reinterpret_cast<const float4*>(act + k0 + kk);
+      acc = fmaf(a4.x, static_cast<float>(static_cast<int>((static_cast<uint32_t>(w4.x) >> shift) & 0xFu) - z) * sc, acc);
+      acc = fmaf(a4.y, static_cast<float>(static_cast<int>((static_cast<uint32_t>(w4.y) >> shift) & 0xFu) - z) * sc, acc);
+      acc = fmaf(a4.z, static_cast<float>(static_cast<int>((static_cast<uint32_t>(w4.z) >> shift) & 0xFu) - z) * sc, acc);
+      acc = fmaf(a4.w, static_cast<float>(static_cast<int>((static_cast<uint32_t>(w4.w) >> shift) & 0xFu) - z) * sc, acc);
+    }
+    for (; kk < group_size; ++kk) {
+      const uint32_t pw = static_cast<uint32_t>(wptr[kk]);
+      acc = fmaf(act[k0 + kk], static_cast<float>(static_cast<int>((pw >> shift) & 0xFu) - z) * sc, acc);
+    }
   }
   return acc;
 }
