@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "status": "diagnostic",
+  "timestamp": "2026-06-09",
+  "run_tag": "b5-fused-moe-ffn-batched-occupancy",
+  "summary": "B5 tested the occupancy hypothesis from B2: does batching (c>1, rows=c*top_k) lift the fused MoE FFN megakernel out of the single-token occupancy wall? YES. The fused kernel beats the unfused raw Q4_K chain at every batch size, peaking at c=8 (4.47x), with KL~0 and launches/layer 3->1. BUT there is no GGUF concurrent c>1 decode E2E path to deploy it in (qwen35_gguf_bench is c=1-only; GGUF rows>1 = prefill, where WMMA beats the fused GEMV design). The batched-small-rows regime where the fused GEMV megakernel wins is precisely the speculative VERIFY shape (B+1 rows/request, GEMV-appropriate, dispatch-bound). Conclusion: the megakernel's deployment target is the verify/C_B regime (PARO), not GGUF decode. This completes the GGUF megakernel architecture-validation arc (B0-B5).",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100/RDNA3), 48 CUs",
+  "workload": {
+    "shape": "decode-shaped selected-expert MoE FFN, hidden=2048, ffn_len=512, top_k=8, experts=256",
+    "sweep": "c (concurrent decode tokens) in {1,2,4,8,16,32}; rows=c*top_k; fused blocks=rows"
+  },
+  "commands": {
+    "batch_microbench": "PYTHONPATH=. python3 scripts/gguf_q4_k_moe_ffn_fused_batch_microbench.py --require-cached-build --c 1 2 4 8 16 32"
+  },
+  "measurements": {
+    "note": "hot-cache A/B (fair for both paths), per-call ms; fused = 1 launch/layer, unfused raw chain = 3 (dual_gemv + silu + down)",
+    "sweep": [
+      {"c": 1, "rows": 8, "fused_ms": 0.2652, "unfused_ms": 0.4112, "speedup": 1.55, "kl": 0.0},
+      {"c": 2, "rows": 16, "fused_ms": 0.2679, "unfused_ms": 0.4150, "speedup": 1.55, "kl": 0.0},
+      {"c": 4, "rows": 32, "fused_ms": 0.2640, "unfused_ms": 0.7294, "speedup": 2.76, "kl": 0.0},
+      {"c": 8, "rows": 64, "fused_ms": 0.3229, "unfused_ms": 1.4436, "speedup": 4.47, "kl": 1.14e-14},
+      {"c": 16, "rows": 128, "fused_ms": 0.8545, "unfused_ms": 2.8632, "speedup": 3.35, "kl": 1.05e-23},
+      {"c": 32, "rows": 256, "fused_ms": 3.0400, "unfused_ms": 5.7133, "speedup": 1.88, "kl": 0.0}
+    ],
+    "peak_speedup": {"c": 8, "rows": 64, "speedup": 4.47},
+    "interpretation": "Speedup rises 1.55x -> 4.47x as c grows 1 -> 8 (more blocks = better CU utilization, confirming the occupancy hypothesis), then falls past c=16 as per-block heavy work exceeds CU residency. The c=8 sweet spot (64 blocks on 48 CUs) is the verify-shaped regime."
+  },
+  "correctness": {
+    "fused_vs_unfused_kl": "~0 across all c (numerically identical FFN; both bf16)",
+    "kernel_gate": "PASS (B2-certified: oracle-exact on real weights, 1-ULP vs unfused in situ, KL 2.5e-4 vs cpu_reference)"
+  },
+  "decision": {
+    "promote": false,
+    "occupancy_hypothesis": "CONFIRMED (batching lifts the megakernel; 4.47x at c=8)",
+    "blocker": "No GGUF concurrent c>1 decode E2E path exists (c=1-only harness; rows>1 = prefill where WMMA beats fused GEMV). The fused GEMV megakernel's winning regime (batched small rows) is the speculative verify shape, not any GGUF inference path.",
+    "next": "Pivot to the verify/C_B regime (PARO): wire the fused selected-expert FFN megakernel into the speculative verify loop (B+1 rows x concurrent requests = naturally batched small-rows, GEMV-appropriate, dispatch-bound), where launch-reduction (3->1) directly attacks the 931-launch/pass verify wall (MEGAKERNEL.md C_B target). This is the deployable target the whole B0-B5 GGUF arc was de-risking the architecture for."
+  },
+  "notes": [
+    "GGUF megakernel arc B0-B5 complete: B0 golden oracle, B1 fused kernel (correct, row-invariant, 1 launch/layer), B2 wired+certified (correct, not promoted: T16 deployed path + single-token occupancy), B5 batched occupancy CONFIRMED but no GGUF batched-decode deployment surface.",
+    "The architecture is validated and correct; the deployment surface is the verify regime."
+  ]
+}

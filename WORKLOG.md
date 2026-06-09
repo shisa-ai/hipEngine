@@ -77048,3 +77048,32 @@ runner instrumentation (temporary, removed).
   selected rows give c*8 blocks (e.g. c=8 -> 64) and lift the occupancy wall;
   plus the verify/C_B regime for the launch-reduction economics. Created as the
   follow-on task.
+
+## 2026-06-09 — MEGAKERNEL B5: batched-occupancy sweep — hypothesis CONFIRMED, no GGUF deploy surface
+
+Tested B2's occupancy hypothesis: does batching (c>1, rows=c*top_k) lift the
+fused MoE FFN megakernel out of the single-token occupancy wall?
+
+- **A/B microbench** (`scripts/gguf_q4_k_moe_ffn_fused_batch_microbench.py`),
+  hidden=2048/ffn=512/top_k=8/E=256, fused vs unfused raw chain across c:
+  c=1 1.55x, c=2 1.55x, c=4 2.76x, **c=8 4.47x (64 blocks, peak)**, c=16 3.35x,
+  c=32 1.88x. KL~0 throughout; launches/layer 3->1. **Occupancy hypothesis
+  CONFIRMED** — more blocks (c*top_k) lift the megakernel; c=8/64-blocks is the
+  sweet spot on 48 CUs, falling past c=16 as heavy per-block work exceeds CU
+  residency.
+- **But there is NO GGUF concurrent c>1 decode E2E path** to deploy it in:
+  `qwen35_gguf_bench.py` is c=1-only; GGUF rows>1 routes to
+  `_run_post_attention_moe_rows` = PREFILL (compact WMMA, where matrix cores beat
+  the fused GEMV design); the batch scheduler is speculative/PARO. So the
+  batched megakernel has no GGUF inference surface.
+- **The regime where the fused GEMV megakernel wins (batched small rows) IS the
+  speculative VERIFY shape** (B+1 rows/request x concurrent requests, GEMV-
+  appropriate, dispatch-bound). This is exactly MEGAKERNEL.md's thesis and the
+  B2 redirect. Deployment target = verify/C_B regime (PARO), where launch-
+  reduction (3->1) attacks the 931-launch/pass verify wall.
+- **GGUF megakernel arc B0-B5 COMPLETE:** B0 golden oracle; B1 fused kernel
+  (correct, row-invariant, 1 launch/layer); B2 wired+certified correct (not
+  promoted: T16 deployed path + single-token occupancy); B5 batched occupancy
+  confirmed but no GGUF batched-decode deploy surface. The architecture is
+  validated and correct; the deployable surface is the verify regime.
+  Artifact: `benchmarks/results/2026-06-09-hipengine-gguf-q4ks-b5-fused-moe-ffn-batched-occupancy.json`.
