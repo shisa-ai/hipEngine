@@ -243,6 +243,69 @@ __device__ inline void awq_pack8_dual_col_dot(
   *u_out = uacc;
 }
 
+// AWQ pack8 dot for a whole pack (8 output columns col0..col0+7) against staged
+// ``act``: loads each packed weight word ONCE and extracts all 8 nibbles, so the
+// per-word weight traffic is 8x lower than thread-owns-column. Per-column k
+// order is unchanged (f32 exact, row-invariant). out8[j] is column (pack*8 + j).
+template <typename scalar_t>
+__device__ inline void awq_pack8_pack_dot(
+    const float* __restrict__ act,
+    const int32_t* __restrict__ qweight_pack_row,  // qweight_e + pack * in_features
+    const int32_t* __restrict__ qzeros_e,
+    const scalar_t* __restrict__ scales_e,
+    int pack,
+    int in_features,
+    int out_features,
+    int out_packed,
+    int group_size,
+    float* __restrict__ out8) {
+  float acc[8];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) acc[j] = 0.0f;
+  const int col0 = pack << 3;
+  const int groups = in_features / group_size;
+  for (int gi = 0; gi < groups; ++gi) {
+    const uint32_t pz = static_cast<uint32_t>(qzeros_e[static_cast<int64_t>(gi) * out_packed + pack]);
+    int z[8];
+    float sc[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int sh = awq_shift_for_pack_lane(j);
+      z[j] = static_cast<int>((pz >> sh) & 0xFu);
+      sc[j] = scalar_to_float<scalar_t>(scales_e[static_cast<int64_t>(gi) * out_features + col0 + j]);
+    }
+    const int k0 = gi * group_size;
+    const int32_t* __restrict__ wptr = qweight_pack_row + k0;
+    int kk = 0;
+    for (; kk + 4 <= group_size; kk += 4) {
+      const int4 w4 = *reinterpret_cast<const int4*>(wptr + kk);
+      const float4 a4 = *reinterpret_cast<const float4*>(act + k0 + kk);
+      const uint32_t ws[4] = {static_cast<uint32_t>(w4.x), static_cast<uint32_t>(w4.y),
+                              static_cast<uint32_t>(w4.z), static_cast<uint32_t>(w4.w)};
+      const float as[4] = {a4.x, a4.y, a4.z, a4.w};
+#pragma unroll
+      for (int t = 0; t < 4; ++t) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int sh = awq_shift_for_pack_lane(j);
+          acc[j] = fmaf(as[t], static_cast<float>(static_cast<int>((ws[t] >> sh) & 0xFu) - z[j]) * sc[j], acc[j]);
+        }
+      }
+    }
+    for (; kk < group_size; ++kk) {
+      const uint32_t pw = static_cast<uint32_t>(wptr[kk]);
+      const float a = act[k0 + kk];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int sh = awq_shift_for_pack_lane(j);
+        acc[j] = fmaf(a, static_cast<float>(static_cast<int>((pw >> sh) & 0xFu) - z[j]) * sc[j], acc[j]);
+      }
+    }
+  }
+#pragma unroll
+  for (int j = 0; j < 8; ++j) out8[j] = acc[j];
+}
+
 template <typename scalar_t, typename out_t>
 __launch_bounds__(256, 2)
 __global__ void paro_selected_ffn_fused_kernel(
@@ -342,13 +405,18 @@ __global__ void paro_selected_ffn_fused_kernel(
   const int32_t* __restrict__ down_qz_e = down_qz + expert_id * down_z_expert;
   const scalar_t* __restrict__ down_sc_e = down_sc + expert_id * down_s_expert;
 
-  for (int c = threadIdx.x; c < hidden; c += blockDim.x) {
-    const int pack = c >> 3;
-    const int shift = awq_shift_for_pack_lane(c & 7);
-    const float acc = awq_pack8_col_dot<scalar_t>(
-        inter_s, down_qw_e + static_cast<int64_t>(pack) * ffn_len, down_qz_e, down_sc_e,
-        pack, shift, c, ffn_len, hidden, down_out_packed, group_size);
-    store_output<out_t>(out_row, c, acc);
+  // Thread-owns-pack: each thread owns one pack (8 hidden columns), loading each
+  // packed down weight word once. hidden=256-packs maps 1:1 to a 256-thread block.
+  for (int p = threadIdx.x; p < down_out_packed; p += blockDim.x) {
+    float out8[8];
+    awq_pack8_pack_dot<scalar_t>(
+        inter_s, down_qw_e + static_cast<int64_t>(p) * ffn_len, down_qz_e, down_sc_e,
+        p, ffn_len, hidden, down_out_packed, group_size, out8);
+    const int col0 = p << 3;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      store_output<out_t>(out_row, col0 + j, out8[j]);
+    }
   }
 }
 
