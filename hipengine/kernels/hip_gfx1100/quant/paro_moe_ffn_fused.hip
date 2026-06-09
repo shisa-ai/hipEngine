@@ -184,6 +184,65 @@ __device__ inline float awq_pack8_col_dot(
   return acc;
 }
 
+// Fused gate+up AWQ pack8 dot for one output column: shares the staged activation
+// load across both projections (same x_s, same k order). Per-output per-k fmaf
+// order is identical to two separate awq_pack8_col_dot calls (f32 exact,
+// row-invariant); only the activation load and group walk are shared.
+template <typename scalar_t>
+__device__ inline void awq_pack8_dual_col_dot(
+    const float* __restrict__ act,
+    const int32_t* __restrict__ gate_w_row,
+    const int32_t* __restrict__ gate_qz_e,
+    const scalar_t* __restrict__ gate_sc_e,
+    const int32_t* __restrict__ up_w_row,
+    const int32_t* __restrict__ up_qz_e,
+    const scalar_t* __restrict__ up_sc_e,
+    int pack,
+    int shift,
+    int col,
+    int in_features,
+    int out_features,
+    int out_packed,
+    int group_size,
+    float* __restrict__ g_out,
+    float* __restrict__ u_out) {
+  float gacc = 0.0f;
+  float uacc = 0.0f;
+  const int groups = in_features / group_size;
+  for (int gi = 0; gi < groups; ++gi) {
+    const int64_t zoff = static_cast<int64_t>(gi) * out_packed + pack;
+    const int64_t soff = static_cast<int64_t>(gi) * out_features + col;
+    const int gz = static_cast<int>((static_cast<uint32_t>(gate_qz_e[zoff]) >> shift) & 0xFu);
+    const int uz = static_cast<int>((static_cast<uint32_t>(up_qz_e[zoff]) >> shift) & 0xFu);
+    const float gsc = scalar_to_float<scalar_t>(gate_sc_e[soff]);
+    const float usc = scalar_to_float<scalar_t>(up_sc_e[soff]);
+    const int k0 = gi * group_size;
+    const int32_t* __restrict__ gw = gate_w_row + k0;
+    const int32_t* __restrict__ uw = up_w_row + k0;
+    int kk = 0;
+    for (; kk + 4 <= group_size; kk += 4) {
+      const float4 a4 = *reinterpret_cast<const float4*>(act + k0 + kk);
+      const int4 gw4 = *reinterpret_cast<const int4*>(gw + kk);
+      const int4 uw4 = *reinterpret_cast<const int4*>(uw + kk);
+      gacc = fmaf(a4.x, static_cast<float>(static_cast<int>((static_cast<uint32_t>(gw4.x) >> shift) & 0xFu) - gz) * gsc, gacc);
+      gacc = fmaf(a4.y, static_cast<float>(static_cast<int>((static_cast<uint32_t>(gw4.y) >> shift) & 0xFu) - gz) * gsc, gacc);
+      gacc = fmaf(a4.z, static_cast<float>(static_cast<int>((static_cast<uint32_t>(gw4.z) >> shift) & 0xFu) - gz) * gsc, gacc);
+      gacc = fmaf(a4.w, static_cast<float>(static_cast<int>((static_cast<uint32_t>(gw4.w) >> shift) & 0xFu) - gz) * gsc, gacc);
+      uacc = fmaf(a4.x, static_cast<float>(static_cast<int>((static_cast<uint32_t>(uw4.x) >> shift) & 0xFu) - uz) * usc, uacc);
+      uacc = fmaf(a4.y, static_cast<float>(static_cast<int>((static_cast<uint32_t>(uw4.y) >> shift) & 0xFu) - uz) * usc, uacc);
+      uacc = fmaf(a4.z, static_cast<float>(static_cast<int>((static_cast<uint32_t>(uw4.z) >> shift) & 0xFu) - uz) * usc, uacc);
+      uacc = fmaf(a4.w, static_cast<float>(static_cast<int>((static_cast<uint32_t>(uw4.w) >> shift) & 0xFu) - uz) * usc, uacc);
+    }
+    for (; kk < group_size; ++kk) {
+      const float a = act[k0 + kk];
+      gacc = fmaf(a, static_cast<float>(static_cast<int>((static_cast<uint32_t>(gw[kk]) >> shift) & 0xFu) - gz) * gsc, gacc);
+      uacc = fmaf(a, static_cast<float>(static_cast<int>((static_cast<uint32_t>(uw[kk]) >> shift) & 0xFu) - uz) * usc, uacc);
+    }
+  }
+  *g_out = gacc;
+  *u_out = uacc;
+}
+
 template <typename scalar_t, typename out_t>
 __launch_bounds__(256, 2)
 __global__ void paro_selected_ffn_fused_kernel(
@@ -257,12 +316,12 @@ __global__ void paro_selected_ffn_fused_kernel(
   for (int c = threadIdx.x; c < ffn_len; c += blockDim.x) {
     const int pack = c >> 3;
     const int shift = awq_shift_for_pack_lane(c & 7);
-    const float g = awq_pack8_col_dot<scalar_t>(
-        x_s, gate_qw_e + static_cast<int64_t>(pack) * hidden, gate_qz_e, gate_sc_e,
-        pack, shift, c, hidden, ffn_len, gate_out_packed, group_size);
-    const float u = awq_pack8_col_dot<scalar_t>(
-        x_s, up_qw_e + static_cast<int64_t>(pack) * hidden, up_qz_e, up_sc_e,
-        pack, shift, c, hidden, ffn_len, gate_out_packed, group_size);
+    float g, u;
+    awq_pack8_dual_col_dot<scalar_t>(
+        x_s,
+        gate_qw_e + static_cast<int64_t>(pack) * hidden, gate_qz_e, gate_sc_e,
+        up_qw_e + static_cast<int64_t>(pack) * hidden, up_qz_e, up_sc_e,
+        pack, shift, c, hidden, ffn_len, gate_out_packed, group_size, &g, &u);
     const float gb = round_intermediate<out_t>(g);
     const float ub = round_intermediate<out_t>(u);
     const float silu = gb / (1.0f + expf(-gb));
