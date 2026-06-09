@@ -1,0 +1,273 @@
+{
+  "arg_scaling_verdict": {
+    "arg_bound": false,
+    "arg_marshal_delta_us": 0.0007975872261614114,
+    "graph_wins_wide": false,
+    "program": "per-launch cost ~arg-count-independent; fewer kernels (M16.3) only, native loop (M16.2) parity",
+    "rationale": "going 2->16 args added only 0.0 us/launch, so the ~21 us/op full-path residual is not arg-marshaling. A native loop (M16.2) and a graph both still pay the fixed per-launch dispatch -> the lever is fewer launches (M16.3).",
+    "reference_node_count": 941,
+    "tiny_direct_us_per_node": 5.6057534250851395,
+    "wide_direct_us_per_node": 5.606551012311301,
+    "wide_graph_speedup_vs_direct": 1.000028580038678,
+    "wide_graph_us_per_node": 5.606390781445924
+  },
+  "config": {
+    "counts": [
+      1,
+      200,
+      941
+    ],
+    "kernels": [
+      "tiny",
+      "wide"
+    ],
+    "method": "N back-to-back hipLaunchKernelGGL issued from a single C call (no Python per-node overhead); same C burst captured into one graph and replayed; wall via perf_counter around stream sync; median over reps. tiny=2-arg kernel, wide=16-arg kernel.",
+    "n_elements": 256,
+    "reps": 50,
+    "target_nodes_per_batch": 5000,
+    "warmup": 10
+  },
+  "grid_sweep": [
+    {
+      "direct_us_per_node": 5.609224234706664,
+      "graph_speedup_vs_direct": 1.000387651369593,
+      "graph_us_per_node": 5.607050653841324,
+      "grid_blocks": 1,
+      "node_count": 941
+    },
+    {
+      "direct_us_per_node": 5.60944642590539,
+      "graph_speedup_vs_direct": 1.0002877785789521,
+      "graph_us_per_node": 5.607832611805363,
+      "grid_blocks": 64,
+      "node_count": 941
+    },
+    {
+      "direct_us_per_node": 7.250597754911015,
+      "graph_speedup_vs_direct": 1.1474132429160564,
+      "graph_us_per_node": 6.3190814640453485,
+      "grid_blocks": 1024,
+      "node_count": 941
+    },
+    {
+      "direct_us_per_node": 7.947311290281485,
+      "graph_speedup_vs_direct": 1.1215786601409063,
+      "graph_us_per_node": 7.08582605279156,
+      "grid_blocks": 2048,
+      "node_count": 941
+    },
+    {
+      "direct_us_per_node": 9.36037197206308,
+      "graph_speedup_vs_direct": 1.100686183436212,
+      "graph_us_per_node": 8.504124166291527,
+      "grid_blocks": 4096,
+      "node_count": 941
+    },
+    {
+      "direct_us_per_node": 12.337728096696763,
+      "graph_speedup_vs_direct": 1.0912928025392206,
+      "graph_us_per_node": 11.305607503311055,
+      "grid_blocks": 8192,
+      "node_count": 941
+    }
+  ],
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": null
+  },
+  "rows": [
+    {
+      "direct": {
+        "burst_us_median": 26.891008019447327,
+        "burst_us_min": 26.150839403271675,
+        "reps": 50,
+        "us_per_node": 26.891008019447327
+      },
+      "graph": {
+        "batch_us_median": 70009.83587931842,
+        "inner_replays_per_batch": 5000,
+        "replay_latency_us_median": 34.57046113908291,
+        "replay_latency_us_per_node": 34.57046113908291,
+        "reps": 50,
+        "steady_us_per_node": 14.001967175863683
+      },
+      "graph_speedup_vs_direct": 1.9205164304199713,
+      "node_count": 1
+    },
+    {
+      "direct": {
+        "burst_us_median": 1142.255961894989,
+        "burst_us_min": 1139.8759670555592,
+        "reps": 50,
+        "us_per_node": 5.711279809474945
+      },
+      "graph": {
+        "batch_us_median": 28216.402977705002,
+        "inner_replays_per_batch": 25,
+        "replay_latency_us_median": 1153.7560494616628,
+        "replay_latency_us_per_node": 5.768780247308314,
+        "reps": 50,
+        "steady_us_per_node": 5.643280595541
+      },
+      "graph_speedup_vs_direct": 1.0120495893802752,
+      "node_count": 200
+    },
+    {
+      "direct": {
+        "burst_us_median": 5275.013973005116,
+        "burst_us_min": 5271.753994747996,
+        "reps": 50,
+        "us_per_node": 5.6057534250851395
+      },
+      "graph": {
+        "batch_us_median": 31651.39106567949,
+        "inner_replays_per_batch": 6,
+        "replay_latency_us_median": 5274.569499306381,
+        "replay_latency_us_per_node": 5.605281083216132,
+        "reps": 50,
+        "steady_us_per_node": 5.605984956726796
+      },
+      "graph_speedup_vs_direct": 0.9999586992038966,
+      "node_count": 941
+    }
+  ],
+  "rows_by_kernel": {
+    "tiny": [
+      {
+        "direct": {
+          "burst_us_median": 26.891008019447327,
+          "burst_us_min": 26.150839403271675,
+          "reps": 50,
+          "us_per_node": 26.891008019447327
+        },
+        "graph": {
+          "batch_us_median": 70009.83587931842,
+          "inner_replays_per_batch": 5000,
+          "replay_latency_us_median": 34.57046113908291,
+          "replay_latency_us_per_node": 34.57046113908291,
+          "reps": 50,
+          "steady_us_per_node": 14.001967175863683
+        },
+        "graph_speedup_vs_direct": 1.9205164304199713,
+        "node_count": 1
+      },
+      {
+        "direct": {
+          "burst_us_median": 1142.255961894989,
+          "burst_us_min": 1139.8759670555592,
+          "reps": 50,
+          "us_per_node": 5.711279809474945
+        },
+        "graph": {
+          "batch_us_median": 28216.402977705002,
+          "inner_replays_per_batch": 25,
+          "replay_latency_us_median": 1153.7560494616628,
+          "replay_latency_us_per_node": 5.768780247308314,
+          "reps": 50,
+          "steady_us_per_node": 5.643280595541
+        },
+        "graph_speedup_vs_direct": 1.0120495893802752,
+        "node_count": 200
+      },
+      {
+        "direct": {
+          "burst_us_median": 5275.013973005116,
+          "burst_us_min": 5271.753994747996,
+          "reps": 50,
+          "us_per_node": 5.6057534250851395
+        },
+        "graph": {
+          "batch_us_median": 31651.39106567949,
+          "inner_replays_per_batch": 6,
+          "replay_latency_us_median": 5274.569499306381,
+          "replay_latency_us_per_node": 5.605281083216132,
+          "reps": 50,
+          "steady_us_per_node": 5.605984956726796
+        },
+        "graph_speedup_vs_direct": 0.9999586992038966,
+        "node_count": 941
+      }
+    ],
+    "wide": [
+      {
+        "direct": {
+          "burst_us_median": 27.07052044570446,
+          "burst_us_min": 26.609981432557106,
+          "reps": 50,
+          "us_per_node": 27.07052044570446
+        },
+        "graph": {
+          "batch_us_median": 69972.29845728725,
+          "inner_replays_per_batch": 5000,
+          "replay_latency_us_median": 35.27000080794096,
+          "replay_latency_us_per_node": 35.27000080794096,
+          "reps": 50,
+          "steady_us_per_node": 13.99445969145745
+        },
+        "graph_speedup_vs_direct": 1.9343741053632064,
+        "node_count": 1
+      },
+      {
+        "direct": {
+          "burst_us_median": 1142.5925185903907,
+          "burst_us_min": 1139.68295045197,
+          "reps": 50,
+          "us_per_node": 5.712962592951953
+        },
+        "graph": {
+          "batch_us_median": 28215.022990480065,
+          "inner_replays_per_batch": 25,
+          "replay_latency_us_median": 1145.8779918029904,
+          "replay_latency_us_per_node": 5.729389959014952,
+          "reps": 50,
+          "steady_us_per_node": 5.643004598096013
+        },
+        "graph_speedup_vs_direct": 1.012397295384013,
+        "node_count": 200
+      },
+      {
+        "direct": {
+          "burst_us_median": 5275.764502584934,
+          "burst_us_min": 5272.03013189137,
+          "reps": 50,
+          "us_per_node": 5.606551012311301
+        },
+        "graph": {
+          "batch_us_median": 31653.68235204369,
+          "inner_replays_per_batch": 6,
+          "replay_latency_us_median": 5272.78904337436,
+          "replay_latency_us_per_node": 5.603388994021636,
+          "reps": 50,
+          "steady_us_per_node": 5.606390781445924
+        },
+        "graph_speedup_vs_direct": 1.000028580038678,
+        "node_count": 941
+      }
+    ]
+  },
+  "run_tag": "m16.2-arg-scaling-graph-vs-native",
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "platform": "Linux-7.0.10-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "status": "diagnostic",
+  "summary": "Does per-launch host cost scale with kernel ARG COUNT, and does a HIP graph bake it away? Compares a 2-arg vs 16-arg kernel, direct hipLaunchKernelGGL burst vs graph replay, on W7900/gfx1100. Decides whether the M16.2 native loop can help (M14.dispatch.1 predicts parity) or whether graphs (M16.5) / fewer kernels (M16.3) are the lever.",
+  "timestamp": "2026-06-09T11:05:56.539940+00:00",
+  "verdict": {
+    "direct_us_per_node_941": 5.6057534250851395,
+    "graph_speedup_vs_direct_941": 0.9999586992038966,
+    "hip_floor_us_per_node": 5.6057534250851395,
+    "implied_hip_floor_ms_941": 5.275013973005116,
+    "implied_orchestration_share_of_residual": 0.7278760473259641,
+    "implied_orchestration_us_per_op": 14.994246574914861,
+    "implied_residual_ms_direct_941": 5.275013973005116,
+    "implied_residual_ms_graph_941": 5.275231844279915,
+    "kernel": "tiny",
+    "observed_full_path_residual_us_per_op": 20.6,
+    "program": "FEWER/LARGER kernels (M16.3) is the lever; native loop (M16.2) & graphs (M16.5) both predicted PARITY",
+    "rationale": "The 1-block floor is 5.61 us/launch and a graph is 1.00x vs a native loop. BUT this 1-block floor is only the launch-submission part; the --grid-sweep shows per-launch cost SCALES with grid size (GPU workgroup scheduling): real hot kernels launch thousands of blocks, so their ~20 us/op dispatch residual is command-processor-bound, NOT host/Python (M14.dispatch.1 removed Python and was parity) and NOT arg-marshaling. A native verify loop (M16.2) calls the same hipLaunchKernelGGL with the same grids -> it cannot reduce this -> predicted PARITY. Graphs (M16.5) are also ~neutral even at large grids. The only lever is FEWER launches and MORE compute-per-launch (M16.3 megakernels) so dispatch is paid fewer times and hidden behind compute, plus lower kernel time (M16.4).",
+    "reference_node_count": 941,
+    "steady_us_per_node_941": 5.605984956726796
+  }
+}

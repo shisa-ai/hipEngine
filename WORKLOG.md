@@ -77367,3 +77367,32 @@ Next GDN lever (not yet done): per-(v_head,t) scalars q_scale/k_scale/beta/decay
 (incl. exp+softplus transcendentals) are recomputed by all 128 dv blocks per
 head -- a tiny pre-pass could remove that 128x redundancy. Then on to gate_up.
 Artifact: benchmarks/results/2026-06-09-hipengine-mtp-m16.5-gdn-chain-shuffle-reductions.json
+
+## 2026-06-09 — M16 grid-reduction pivot: dispatch retest + MEGAKERNEL §9
+
+Pivot to grid-reduction (before returning to gate_up). Re-ran the dispatch
+microbench (`scripts/graph_node_microbench.py`, grid-sweep) on the current tree
+to ground "what's going on with dispatches," since rocprof kernel-trace cannot
+see the inter-launch dispatch floor (ROOFLINE §5.3 hidden bucket; my earlier
+whole-trace DurationNs sum + ad-hoc per-launch model were both wrong).
+
+Measured (W7900/gfx1100, current tree): per-launch dispatch = ~5.6 µs base +
+grid term — 1-64 blk 5.61 µs, 1024 7.25, 2048 7.95, 4096 9.36, 8192 12.34.
+Graph-neutral (1.00× at N≥200, ≤1.15× large grids), arg-independent (2→16 args
++0.0 µs). Re-confirms M16.2: the residual is GPU command-processor workgroup
+scheduling, not host/Python/marshaling. Verify split ≈ 13.6 ms kernel + ~19.4 ms
+dispatch floor → C_B≤2 is dispatch-floor-bound; kernel-time wins (M16.4) only
+touch the 13.6 ms third.
+
+Grid-reduction targets: GDN chain recurrence is genuine over-launch — 4096 blocks
+(32 v_heads × 128 dv), each doing 1 dv with q/k load + q_sum/k_sum + 3
+transcendentals/t recomputed 128×, and a strided (uncoalesced) state write whose
+consecutive dv_idx are adjacent. dv-tiling (VTILE dv/block, grid 4096→1024)
+cuts dispatch + 128×→32× redundancy + coalesces the state write, all without
+changing the global state layout. The down GEMV's 8192 blocks are likely
+occupancy-driven (B4 lesson), assess before touching.
+
+Documented review/discoveries/approach in docs/MEGAKERNEL.md §9 (fixed the
+dangling §8.3 redirect → §9). Multi-stream overlap (7/8 pipes idle, ROOFLINE
+§1.6) recorded as the next floor lever after grid-reduction.
+Artifact: benchmarks/results/2026-06-09-hipengine-m16-dispatch-grid-sweep-retest.json

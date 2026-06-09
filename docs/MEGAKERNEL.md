@@ -46,7 +46,7 @@ the 32-row verify shape; the megakernel stays default OFF. Artifacts:
 `...-b4-megakernel-occupancy-redesign.json`. **C_B redirect:** the biggest
 verify-cycle families are GDN linear attention (14.1 ms/pass), gate_up dual
 (10.0), down (8.4), w4_dual (8.0) — lower `C_B` by making those wide kernels fill
-the 32-row shape better, not by collapsing launches (see §8.3).
+the 32-row shape better, not by collapsing launches (see §9, grid-reduction).
 
 ---
 
@@ -279,3 +279,119 @@ kept.
    multi-unit campaign (FFN → attention → rmsnorm/router), not a single kernel.
    Meanwhile the **27B-dense DFlash gate already ships 1.16× AR today**; weigh
    campaign investment against hardening that deployable path.
+
+---
+
+## 9. Grid-reduction — the measured dispatch model and the GDN over-launch
+
+**Status: in progress (2026-06-09).** Pivot after the B4 redirect: instead of
+collapsing launches behind a barrier (regresses, §3) or one big megakernel
+(occupancy trap, §4/B4), attack the two ways a launch costs `C_B` — *kernel
+time* (M16.4) and *dispatch* (this section) — on the kernels that over-launch
+tiny-work blocks.
+
+### 9.1 The profiler blind spot (why our earlier dispatch numbers were wrong)
+
+`rocprofv3 --kernel-trace` sums `DurationNs` per kernel — **GPU-active time
+only**. ROOFLINE §5.3: *"the kernel-trace profile misses a significant
+component: the time between kernel launches (dispatch overhead) is invisible in
+per-kernel time accounting but real on the wall clock."* An earlier ad-hoc pass
+summed `DurationNs` across the **whole** trace (prefill+AR+verify, not the
+marker-windowed verify passes) and bolted on a fabricated per-launch model — both
+wrong. The dispatch floor is not in the kernel CSV at all; it must be measured
+by the **replay-delta** method (wall − kernel, ROOFLINE §5.3) or the dedicated
+dispatch microbench, not inferred from `DurationNs`.
+
+### 9.2 The dispatch model — re-measured on the current tree
+
+`scripts/graph_node_microbench.py` (M16.1/M16.2), re-run W7900/gfx1100, current
+tree (artifact `benchmarks/results/2026-06-09-hipengine-m16-dispatch-grid-sweep-retest.json`):
+
+| grid blocks | direct µs/launch | graph µs/launch | graph speedup |
+|---:|---:|---:|---:|
+| 1 – 64 | 5.61 | 5.61 | 1.00× |
+| 1024 | 7.25 | 6.32 | 1.15× |
+| 2048 | 7.95 | 7.09 | 1.12× |
+| 4096 | 9.36 | 8.50 | 1.10× |
+| 8192 | 12.34 | 11.31 | 1.09× |
+
+- **Per-launch dispatch cost scales with grid size** (GPU command-processor /
+  workgroup scheduling), ~5.6 µs base + grid term. This is the residual a native
+  loop and graphs cannot remove (re-confirms M16.2).
+- **Graph-neutral in steady state** (1.00× at N≥200; ≤1.15× even at large grids
+  — ROOFLINE §1.6: graphs amortize PM4/doorbell/MES, not MEC/SPI per-dispatch).
+- **Arg-count independent**: 2→16 args adds 0.0 µs — not marshaling.
+
+Verify-cycle split (B=3, batched): ≈ **13.6 ms kernel + ~19.4 ms dispatch floor**
+(931 launches × ~20 µs). **C_B ≤ 2 is dispatch-floor-bound**: zeroing all kernel
+time still leaves the ~19.4 ms floor. So a kernel-time win (M16.4) touches only
+the 13.6 ms third; cutting the floor needs **fewer launches, smaller grids, or
+multi-stream overlap**.
+
+### 9.3 Grid-reduction targets (over-launch vs occupancy-needed)
+
+Two verify kernels launch the largest grids; each block is then in the most
+expensive dispatch class:
+
+| kernel | grid | per-launch dispatch | over-launch? |
+|---|---:|---:|---|
+| GDN chain recurrence | `(num_v_heads=32, head_v_dim=128)` = **4096** | 9.36 µs | **YES** — each block does 1 dv column with massive redundant per-(v_head,t) work |
+| selected down GEMV (W4) | **8192** | 12.34 µs | assess — likely occupancy-driven (B4 lesson: GEMVs need rows×out-cols parallelism to fill 48 CUs) |
+
+The distinction is the whole game. **GDN's 4096 blocks are genuine over-launch**;
+the **down GEMV's 8192 may be load-bearing occupancy** (collapsing it risks the
+B4 split-K coalescing/occupancy regression). Grid-reduction is only a win where
+the extra blocks carry *redundant* work, not where they fill the machine.
+
+### 9.4 GDN chain recurrence — the dv-tiling lever (combined dispatch + kernel)
+
+`qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel` launches one block
+per `(v_head, dv_idx)` = 4096 blocks. Per block, per t-step it recomputes work
+that is **identical across all 128 dv-blocks of the same v_head**:
+
+- q/k load (`conv_out[q_base+dk]`, `conv_out[k_base+dk]`) — depends only on
+  `(v_head, t)`, not `dv_idx`.
+- `q_sum`/`k_sum` block reductions → `q_scale`/`k_scale`.
+- `beta` (sigmoid), `decay` (`expf(-expf(a_log)·softplus(...))`) — **3
+  transcendentals/t recomputed 128×**.
+
+Only `kv_mem`, `delta`, the state update, and the out accumulation are
+dv-specific. Additionally the state write
+`chain_recurrent_state[t·state_stride + state_head_base + dk·head_v_dim + dv_idx]`
+is strided by `head_v_dim` per block (uncoalesced — the "8 MB strided state
+write" flagged in WORKLOG), but **consecutive `dv_idx` are adjacent in memory**.
+
+**Approach — dv-tiling.** Have each block process `VTILE` consecutive dv columns
+(grid `(32, 128/VTILE)`; VTILE=4 → 1024 blocks, VTILE=8 → 512). This is the only
+GDN lever that hits all three costs at once and stays compatible with the
+runtime's state layout (the layout is unchanged; only the per-block write span
+widens):
+
+1. **Dispatch**: 4096 (9.36 µs) → 1024 (7.25 µs) blocks; ~−2 µs × GDN launches/pass.
+2. **Redundant compute**: q/k load + scales + 3 transcendentals/t computed
+   128× → 32× (VTILE=4). This is the WORKLOG "next GDN lever."
+3. **State-write coalescing**: VTILE consecutive `dv_idx` writes per dk become a
+   contiguous span instead of single strided floats — addresses the dominant
+   remaining GDN cost without the invasive global-layout change WORKLOG warned off.
+
+Discipline: RED-first against `scripts/gdn_chain_microbench.py` (out_max_abs /
+state_max_abs oracle) before+after; correctness gate vs `cpu_reference`;
+`rocprofv3 --kernel-trace` confirming the kernel name + duration; on-model
+`exact_ar_match=true`; benchmarks rollup updated. State layout must stay
+byte-identical (runtime reads it elsewhere — not the M-class invasive change).
+
+**Already landed (M16.4, this campaign):** GDN chain recurrence warp-shuffle
+reductions (BLOCK 64→32, `partial[]` LDS → `__shfl`): rocprof 78.5 → 72.0
+µs/call (**−8.3%**), GDN family 14.14 → 12.96 ms/pass, total verifier kernel
+13.84 → 13.61 ms/pass, `exact_ar_match=true`. That win is pure kernel-time (grid
+unchanged at 4096); dv-tiling is the grid-reduction follow-on.
+
+### 9.5 The unexploited lever — multi-stream overlap
+
+ROOFLINE §1.6: the chip has **8 compute ACEs (pipes); single-HIP-stream
+inference uses 1**, so 7/8 of the compute frontend is idle. Independent verify
+kernels on separate streams could overlap dispatch+execution across pipes and
+hide the floor. Limited by the layer-sequential dependency chain (layer N+1
+needs N), but intra-layer independent work (e.g. across the B+1 tokens, or
+attention vs MoE branches where they exist) is a candidate. Not yet scoped;
+recorded here so it is not forgotten as the next floor lever after grid-reduction.
