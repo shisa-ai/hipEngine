@@ -805,7 +805,13 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
-            elif rows > 1 and not force_gemv and group_size % 16 == 0 and width % group_size == 0:
+            elif (
+                rows > 1
+                and not force_gemv
+                and group_size % 16 == 0
+                and width % group_size == 0
+                and not (_w4_output_tiled_prefill_enabled() and rows in _PACK8_OUTPUT_TILED_ROWS)
+            ):
                 awq_fusedw4_prefill_strided_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -871,7 +877,13 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
-            elif rows > 1 and not force_gemv and group_size % 16 == 0 and width % group_size == 0:
+            elif (
+                rows > 1
+                and not force_gemv
+                and group_size % 16 == 0
+                and width % group_size == 0
+                and not (_w4_output_tiled_prefill_enabled() and rows in _PACK8_OUTPUT_TILED_ROWS)
+            ):
                 awq_fusedw4_prefill_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -10506,6 +10518,28 @@ def _shared_expert_fused_rotate_enabled() -> bool:
     """
 
     return _env_enabled("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", default=False)
+
+
+def _w4_output_tiled_prefill_enabled() -> bool:
+    """M16.4: route the small verifier batch (rows in {2,4,8}) for single-output
+    W4 projections through the weight-amortized output-column-tiled GEMV
+    (``gemv_awq_pack8_output_tiled_(transposed_)fp16``) instead of the WMMA
+    ``awq_fusedw4_prefill_*`` small-batch kernel.
+
+    The output-tiled GEMV is bit-identical to the per-row strided/transposed
+    pack8 GEMV (``tests/test_paro_awq_output_tiled_gemv.py``) -- i.e. byte-exact
+    to AR's rows==1 projection -- so exact-AR cannot regress; only throughput is
+    at stake.  The WMMA prefill kernel starves at tokens=4 (the B+1 verifier
+    shape), so the amortized GEMV is the M16.4 lever.  Default-off until the
+    rocprof + exact-AR gate promotes it.
+
+    Default-on (2026-06-09): W7900/gfx1100 B=3 verifier rocprof shows the
+    single-output W4 projections move from ``awq_fusedw4_prefill_fp16`` to the
+    byte-exact output-tiled GEMV, cutting verifier kernel time ~-5.6% at
+    decode-tokens=8 (17.02 -> 16.07 ms/pass) / ~-10.7% at decode-tokens=4
+    (13.60 -> 12.15) with exact-AR preserved.  Opt out with ``=0``.
+    """
+    return _env_enabled("HIPENGINE_W4_OUTPUT_TILED_PREFILL", default=True)
 
 
 def _w4_multi_row_pack8_enabled() -> bool:

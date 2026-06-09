@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-09
+
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed MTP-BF16 / MTP verifier W7900 gfx1100 B=3: **M16.4 first measured gain** — verifier kernel time 17.02 -> 16.07 ms/pass (-5.6%) at decode-tokens=8 (and 13.60 -> 12.15, -10.7%, at decode-tokens=4) by routing single-output W4 projections (rows in {2,4,8}) from the WMMA `awq_fusedw4_prefill_*` small-batch kernel to the byte-exact output-column-tiled GEMV (`HIPENGINE_W4_OUTPUT_TILED_PREFILL` default-on). `w4_single_prefill_smallbatch` 60/2.553 -> 36/0.792 ms; net single-W4 -1.17 ms/pass; launches/pass unchanged. Output-tiled is bit-identical to the per-row pack8 GEMV (AR's rows==1 fallback), so exact-AR preserved (byte-exact gate 192/192; exact_ar_match=true at decode-tokens=8). `performance_claim=false`; remaining single-prefill + `w4_dual_prefill_smallbatch` duals are the next step. `benchmarks/results/2026-06-09-hipengine-mtp-m16.4-w4-output-tiled-prefill.json`.
+
 ## 2026-06-08
 
 - [diagnostic retained] hipEngine / M16.2 launch-cost arg+grid scaling / W7900 gfx1100: per-launch host cost is arg-count-independent (2-arg 5.62 = 16-arg 5.62 us/launch at N=941) but SCALES with grid size (1024 blk 7.27, 8192 12.19, 65536 51.40 us/launch); graph replay only 1.02-1.13x even at large grids. Real hot W4 GEMVs launch thousands of blocks, so the ~12-20 us/op residual is GPU workgroup scheduling, not host/Python (M14.dispatch.1 parity) nor arg-marshaling. DISPROVES M16.2's premise: a native verify loop is predicted parity; graphs (M16.5) neutral; the sole launch-residual lever is M16.3 (fewer/larger kernels). Corrects the M16.1 'native loop is the lever' read. `benchmarks/results/2026-06-08-hipengine-m16.2-launch-cost-arg-grid-scaling.json`.

@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "task_id": 57,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-06-09T10:05:00+09:00",
+  "date": "2026-06-09",
+  "summary": "M16.4: route single-output W4 verifier projections (rows in {2,4,8}) from the WMMA awq_fusedw4_prefill_fp16/strided small-batch kernel to the byte-exact output-column-tiled GEMV (default-on). Exact AR preserved; verifier kernel time -5.6% at decode-tokens=8 (17.02 -> 16.07 ms/pass) and -10.7% at decode-tokens=4 (13.60 -> 12.15).",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "change": {
+    "env": "HIPENGINE_W4_OUTPUT_TILED_PREFILL (default on; opt-out =0)",
+    "site": "project_pack8_fp16 branch B2/C2 (single-output W4: o_proj/v_proj/out_proj etc.) now yields the rows in {2,4,8} verifier batch to the already-wired output-tiled B3/C3 path instead of awq_fusedw4_prefill_*",
+    "kernel_before": "awq_fusedw4_prefill_fp16 / awq_fusedw4_prefill_strided_fp16 (WMMA small-batch prefill; tiles starve at tokens=4)",
+    "kernel_after": "gemv_awq_pack8_output_tiled_fp16 / gemv_awq_pack8_output_tiled_transposed_fp16 (weight read once, output columns tiled across the B+1 rows)",
+    "bit_exact_test": "tests/test_paro_awq_output_tiled_gemv.py (192 cases: output-tiled == per-row strided/transposed pack8 GEMV, byte-identical, rows {2,4,8}, fp16/bf16). The per-row GEMV is AR's rows==1 projection, so the verifier rows become byte-exact vs AR -> exact-AR cannot regress."
+  },
+  "workload": {
+    "prompt": "bos_only",
+    "prompt_tokens": 1,
+    "candidate_budget": 3,
+    "chain_attn_mode": "c1_loop",
+    "proposal_impl": "persistent_device"
+  },
+  "measurements": {
+    "decode_tokens_8": {
+      "verifier_passes": 5,
+      "kernel_ms_per_pass_before": 17.02,
+      "kernel_ms_per_pass_after": 16.07,
+      "delta_pct": -5.6,
+      "calls_per_pass": 1530,
+      "w4_single_prefill_smallbatch_before": "60.0 calls / 2.553 ms",
+      "w4_single_prefill_smallbatch_after": "36.0 calls / 0.792 ms",
+      "w4_single_gemv_before": "34.0 calls / 0.177 ms",
+      "w4_single_gemv_after": "58.0 calls / 0.770 ms",
+      "net_single_w4_ms": "2.730 -> 1.562 (-1.168)"
+    },
+    "decode_tokens_4": {
+      "verifier_passes": 1,
+      "kernel_ms_per_pass_before": 13.60,
+      "kernel_ms_per_pass_after": 12.15,
+      "delta_pct": -10.7,
+      "w4_single_prefill_smallbatch_before": "60.0 calls / 2.550 ms",
+      "w4_single_prefill_smallbatch_after": "30.0 calls / 0.351 ms",
+      "w4_single_gemv_before": "20.0 calls / 0.118 ms",
+      "w4_single_gemv_after": "50.0 calls / 0.669 ms"
+    }
+  },
+  "correctness": {
+    "byte_exact_gate": "tests/test_paro_awq_output_tiled_gemv.py 192/192 passed",
+    "exact_ar_match_decode8_default_on": true,
+    "note": "Output-tiled is bit-identical to the per-row pack8 GEMV (the exact rows==1 AR fallback), so no prompt can change verifier output at these sites."
+  },
+  "commands": {
+    "baseline": "HIP_VISIBLE_DEVICES=0 HIPENGINE_W4_OUTPUT_TILED_PREFILL=0 python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --decode-tokens 8 --candidate-budget 3",
+    "experiment": "HIP_VISIBLE_DEVICES=0 python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --decode-tokens 8 --candidate-budget 3",
+    "byte_exact": "python3 -m pytest tests/test_paro_awq_output_tiled_gemv.py -q"
+  },
+  "notes": "First measured M16 gain (M16.1/M16.2 were diagnostics that closed graphs + native-loop). Only ~half of single-prefill (the rows in {2,4,8} project_pack8 sites) converts; the remaining single-prefill and the w4_dual_prefill_smallbatch (30 calls/0.92 ms/pass) duals are the next M16.4 step (dual output-tiled kernel is also byte-exact-tested). Pass composition differs by decode-tokens, so compare baseline-vs-exp within a single decode-tokens setting only."
+}

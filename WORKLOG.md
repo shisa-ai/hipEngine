@@ -76800,3 +76800,45 @@ cycles in 0.32s (~46 ms/cycle). New synthetic regression test
 `test_qwen35_resident_verify_trunk_is_distinct_full_capacity_pair` (distinct
 ptrs + full-capacity sizing) + `test_qwen35_decode_state.py` 60/60 +
 `test_qwen35_resident_batch_layout.py` full green. Unblocks M16.x measurement.
+
+## 2026-06-09 perf(M16.4): route single-W4 verifier projections to byte-exact output-tiled GEMV
+
+First measured M16 gain (M16.1/M16.2 were diagnostics that closed graphs +
+native-loop). The verifier's single-output W4 projections (o_proj/v_proj/
+out_proj etc.) were firing the WMMA `awq_fusedw4_prefill_*` small-batch kernel,
+which starves at tokens=4 (the B+1 verifier shape): `w4_single_prefill_smallbatch`
+was the #1 W4 kernel-time bucket at 60 calls / 2.55 ms/pass.
+
+**Change.** Added `_w4_output_tiled_prefill_enabled()` (`HIPENGINE_W4_OUTPUT_TILED_PREFILL`,
+default-on, opt-out `=0`). `project_pack8_fp16` branch B2/C2 now yields the
+rows-in-{2,4,8} verifier batch to the already-wired output-tiled B3/C3 path
+(`gemv_awq_pack8_output_tiled_(transposed_)fp16`) instead of the prefill kernel.
+Output-tiled is bit-identical to the per-row pack8 GEMV (byte-exact gate
+`tests/test_paro_awq_output_tiled_gemv.py`, 192/192), and the per-row GEMV is
+AR's rows==1 projection -> the verifier rows become byte-exact vs AR, so
+exact-AR cannot regress (same safety class as M15.1). The flag is a no-op when
+output-tiled rows are disabled, so the pinned decode_state baseline is unaffected.
+
+**Measured (W7900/gfx1100, B=3, c1_loop, persistent_device).**
+- decode-tokens=8 (5 passes): total kernel `17.02 -> 16.07 ms/pass` (-5.6%);
+  `w4_single_prefill_smallbatch` `60/2.553 -> 36/0.792 ms`, `w4_single_gemv`
+  (output-tiled) `34/0.177 -> 58/0.770 ms`, net single-W4 `-1.17 ms/pass`;
+  launches/pass unchanged (1530); `exact_ar_match=true`.
+- decode-tokens=4 (1 pass): `13.60 -> 12.15 ms/pass` (-10.7%).
+
+**Validation.** byte-exact gate 192/192; exact-AR smoke decode-tokens=8 default-on
+`exact_ar_match=true status=passed`; `test_qwen35_decode_state.py` 60/60.
+Commands: `[HIPENGINE_W4_OUTPUT_TILED_PREFILL=0] python3 scripts/mtp_verifier_rocprof.py
+--backend hip_gfx1100 --decode-tokens 8 --candidate-budget 3`. Artifact
+`benchmarks/results/2026-06-09-hipengine-mtp-m16.4-w4-output-tiled-prefill.json`.
+
+**Next M16.4 step.** Only the project_pack8 single sites convert (~half of
+single-prefill); the remaining single-prefill and `w4_dual_prefill_smallbatch`
+(30 calls / 0.92 ms/pass) duals are untouched. The dual output-tiled kernel
+(`gemv_awq_dual_pack8_output_tiled_transposed_fp16`) is byte-exact-tested, so the
+4 dual sites (QKV / gate_up) are the next exact-safe conversion.
+
+Separately observed (pre-existing, not from this change): the verifier diverges
+from AR at ~token 10 at decode-tokens>=12 (`accepted=0`, argmax drift); flag
+on/off give identical mtp tokens, so M16.4 single-site conversion does not move
+it. Tracked for a later exact-horizon investigation.
