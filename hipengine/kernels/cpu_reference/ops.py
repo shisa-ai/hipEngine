@@ -386,6 +386,63 @@ def paro_rotate1(
     return out
 
 
+def paro_moe_selected_ffn(
+    x: ArrayLike,
+    selected_experts: ArrayLike,
+    routing_weights: ArrayLike,
+    gate_awq: tuple,
+    up_awq: tuple,
+    down_awq: tuple,
+    hidden: int,
+    ffn_len: int,
+    group_size: int,
+    rotate1_calib: tuple,
+    down_rotate_calib: tuple,
+) -> np.ndarray:
+    """Reference PARO selected-expert MoE FFN (the B3 megakernel-gated unit).
+
+    Matches the deployed PARO chain: ``rotate1(x)`` [shared incoherence rotation
+    over hidden] then, per (token, expert): AWQ gate/up GEMV -> ``silu(gate)*up``
+    -> down-rotate [shared, over ffn_len] -> AWQ down GEMV -> routing-weighted
+    combine. ``*_awq`` are ``(qweight[E,...], qzeros[E,...], scales[E,...])``
+    rank-(1+...) per-expert AWQ pack8 transposed weights. ``rotate1_calib`` /
+    ``down_rotate_calib`` are ``(pairs, theta, scales, krot)`` for
+    :func:`paro_rotate1` over hidden / ffn_len respectively.
+
+    Row-invariant by construction: ``rotate1`` is row-independent and each
+    (token, expert) pair is processed independently.
+    """
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    sel = np.asarray(selected_experts, dtype=np.int64)
+    weights = np.asarray(routing_weights, dtype=np.float32)
+    if x_arr.ndim != 2 or x_arr.shape[1] != hidden:
+        raise ValueError("x must have shape [tokens, hidden]")
+    tokens = x_arr.shape[0]
+    if sel.ndim != 2 or sel.shape[0] != tokens or weights.shape != sel.shape:
+        raise ValueError("selected_experts/routing_weights must be [tokens, top_k]")
+    top_k = sel.shape[1]
+    gate_qw, gate_qz, gate_sc = gate_awq
+    up_qw, up_qz, up_sc = up_awq
+    down_qw, down_qz, down_sc = down_awq
+    r1_pairs, r1_theta, r1_scales, r1_krot = rotate1_calib
+    d_pairs, d_theta, d_scales, d_krot = down_rotate_calib
+
+    x_rot = paro_rotate1(x_arr, r1_pairs, r1_theta, r1_scales, group_size, int(r1_krot))
+    out = np.zeros((tokens, hidden), dtype=np.float32)
+    for t in range(tokens):
+        xt = x_rot[t : t + 1]
+        for k in range(top_k):
+            e = int(sel[t, k])
+            gate = awq_pack8_gemv_transposed(xt, gate_qw[e], gate_qz[e], gate_sc[e], hidden, ffn_len, group_size)
+            up = awq_pack8_gemv_transposed(xt, up_qw[e], up_qz[e], up_sc[e], hidden, ffn_len, group_size)
+            act = (_silu(gate) * up).astype(np.float32)
+            act_rot = paro_rotate1(act, d_pairs, d_theta, d_scales, group_size, int(d_krot))
+            down = awq_pack8_gemv_transposed(act_rot, down_qw[e], down_qz[e], down_sc[e], ffn_len, hidden, group_size)
+            out[t] += np.float32(weights[t, k]) * down[0]
+    return out
+
+
 def o_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     return linear(x, weight, bias)
 
@@ -1058,6 +1115,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "rotate1", "w4_paro"),
         paro_rotate1,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "moe_ffn_selected", "w4_paro"),
+        paro_moe_selected_ffn,
         replace=replace,
     )
 

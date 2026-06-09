@@ -77107,3 +77107,26 @@ reproduction as "the campaign's risk surface", so I de-risked the math FIRST.
   cooperative rotations + AWQ dequant per block); (d) RED vs oracle +
   row-invariance + rocprof 1-launch/layer + exact_ar_match (T1: same
   row-invariant kernel for AR rows=1 and verify rows=B+1).
+
+## 2026-06-09 — MEGAKERNEL B3 (cont.): PARO selected-FFN oracle (PARO B0)
+
+Resolved the down-rotate (`silu_mul_dual_rotate_out` applies the SAME rotate1
+Givens structure over ffn_len after silu*mul), and traced the structure:
+rotate1(post_norm) [shared, over hidden] -> dual AWQ gate/up -> silu*mul +
+down-rotate [shared, over ffn_len] -> AWQ down -> routing combine (scratch ABI
+gate_up_input/gate_up/down_input/down_out).
+
+- **PARO selected-FFN oracle** `paro_moe_selected_ffn` (cpu_reference), composed
+  from the GPU-validated primitives; registered `(cpu_reference,
+  moe_ffn_selected, w4_paro)`. Row-invariant by construction (rotate1 is
+  row-independent; each (token,expert) independent).
+- Tests (`tests/test_cpu_reference_paro_moe_ffn.py`): oracle vs an independent
+  dense-dequant recompute (different code path); **row-invariance** (rows=1 ==
+  in-batch per row); registry resolve. 6 PARO tests pass.
+- **B3 status:** PARO B0 stage reached (validated primitives + oracle), the
+  GGUF-B0 analog for PARO. REMAINING = the fused HIP kernel (B1-analog): one
+  block per (token,expert) doing in-block rotate1 (cooperative Givens, shared
+  calib) -> AWQ gate_up GEMV -> silu -> in-block down-rotate -> AWQ down GEMV,
+  gated KL<=0.05 vs this oracle + row-invariance RED + rocprof 1-launch/layer +
+  exact_ar_match. This is the campaign's hardest kernel (two cooperative in-block
+  rotations + AWQ pack8 dequant) and is the substantial remaining B3 work.
