@@ -1,0 +1,41 @@
+{
+  "name": "m16.3-b3-paro-ffn-megakernel-microbench",
+  "date": "2026-06-09",
+  "campaign": "M16.3 megakernel (lower C_B to <=2)",
+  "stage": "B3 micro-opt (kernel-time half; B5 crossover)",
+  "performance_claim": false,
+  "kind": "diagnostic-microbench-AB",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100 / RDNA3), 48 CUs",
+  "model_shape": "Qwen3.6-35B-A3B PARO: hidden=2048, moe_intermediate(ffn_len)=512, num_experts=256, top_k=8, group_size=128, krot=1 (synthetic AWQ weights)",
+  "workload": "selected-expert MoE FFN at the verify/decode shape; c decode tokens -> rows=c*top_k selected (token,expert) blocks",
+  "verify_command": "PYTHONPATH=. python3 scripts/paro_moe_ffn_fused_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --c 1 2 4 8 16 --iters 300 --warmup 30",
+  "fused_kernel": "paro_selected_ffn_fused_kernel<unsigned short, unsigned short> (one block per (token,expert); rotate1 -> AWQ gate/up GEMV -> silu*mul -> down-rotate -> AWQ down GEMV; intermediate on-chip)",
+  "unfused_baseline": "paro_rotate1 -> gemv_awq_selected_dual_pack8_transposed -> silu_mul_dual_rotate_out -> gemv_awq_selected_pack8_transposed (production PARO chain)",
+  "correctness_gate": {
+    "guard": "tests/test_paro_moe_ffn_fused.py 5 passed (f32 max_rel 1.8e-7 vs cpu_reference primitive recompute; bf16 KL<=0.05/top1>=0.90 vs paro_moe_selected_ffn oracle; row-invariance bit-exact; inactive->zeros)",
+    "fused_vs_unfused_kl": "1.1e-5 .. 2.6e-5 (<=0.05)"
+  },
+  "optimize_loop": {
+    "lane": "megakernel",
+    "run_tag": "run-20260609-085936",
+    "metric": "fused_ms at c=4 (lower better, keep-revert)",
+    "baseline_fused_ms": 1.377874,
+    "final_fused_ms_c4_steady": 0.163178,
+    "cumulative_speedup_vs_baseline": "~7.8x",
+    "kept_iterations": [
+      "hoist per-group qzeros/scales + int4/float4 vectorize: 1.378 -> 0.556 ms",
+      "fuse gate+up dual-dot (share staged activation): 0.556 -> 0.351 ms",
+      "down stage thread-owns-pack (load each packed word once): 0.351 -> 0.249 ms",
+      "gate_up stage thread-owns-pack-dual: 0.249 -> 0.177 ms"
+    ]
+  },
+  "rocprof": "single dispatch of paro_selected_ffn_fused_kernel<unsigned short,unsigned short>; grid 8192 work-items / 256 = 32 blocks (one per (token,expert)); VGPR_Count=136, Scratch_Size=0, SGPR=128",
+  "sweep": [
+    {"c": 1, "rows": 8, "blocks": 8, "fused_ms": 0.187025, "unfused_ms": 0.705197, "speedup": 3.771, "kl": 1.10e-05},
+    {"c": 2, "rows": 16, "blocks": 16, "fused_ms": 0.157549, "unfused_ms": 0.667895, "speedup": 4.239, "kl": 2.61e-05},
+    {"c": 4, "rows": 32, "blocks": 32, "fused_ms": 0.163178, "unfused_ms": 0.670790, "speedup": 4.111, "kl": 1.33e-05},
+    {"c": 8, "rows": 64, "blocks": 64, "fused_ms": 0.212845, "unfused_ms": 0.658795, "speedup": 3.095, "kl": 1.99e-05},
+    {"c": 16, "rows": 128, "blocks": 128, "fused_ms": 0.530640, "unfused_ms": 0.661772, "speedup": 1.247, "kl": 2.21e-05}
+  ],
+  "interpretation": "Kernel-time half of C_B is now well past the B5 crossover: the fused PARO FFN megakernel is 4.1x faster than the unfused chain it replaces at the B=3 verify shape (c=4) and faster across c=1..16, single-launch, no scratch, correctness held. This is a microbench A/B (one FFN call), not an end-to-end C_B claim. Next: B4 wire the fused key into runtime/moe_c1_dispatch.py and measure the actual verify-cycle C_B delta on the real model."
+}

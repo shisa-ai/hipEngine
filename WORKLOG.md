@@ -77179,3 +77179,43 @@ one and removes the rotate-out / gate_up-out HBM round-trips.
   the measured C_B A/B are the remaining steps toward C_B<=2; per MEGAKERNEL.md
   §8.3 the FFN megakernel is one unit of a multi-kernel campaign (FFN ->
   attention -> rmsnorm/router), not a one-shot C_B fix.
+
+## 2026-06-09 — MEGAKERNEL B3 micro-opt (pi-multiloop): kernel-time crossover
+
+Ran a pi-multiloop optimize loop (lane `megakernel`, run-20260609-085936,
+keep-revert on fused_ms at the verify shape, guard = correctness pytest +
+fused-vs-unfused KL<=0.05 + row-invariance) to make the correct-but-slow B3
+megakernel actually fast — the kernel-time half of C_B (MEGAKERNEL.md B3->B4).
+
+Harness: `scripts/paro_moe_ffn_fused_microbench.py` (A/B fused megakernel vs the
+production unfused PARO chain `paro_rotate1 -> selected dual AWQ gate/up GEMV ->
+silu_mul_dual_rotate -> selected AWQ down GEMV`, swept over decode batch c).
+Verify shape = Qwen3.6-35B-A3B PARO: hidden=2048, ffn_len=512, E=256, top_k=8,
+c=4 (B=3) -> 32 (token,expert) blocks. W7900, steady-state 3-sample protocol.
+
+Kept iterations (each f32 bit-exact 1.8e-7, row-invariant, KL gate held):
+- hoist per-group qzeros/scales out of the inner k loop + int4/float4 vectorize:
+  **1.378 -> 0.556 ms** (crossed unfused for the first time).
+- fuse gate+up dual-dot (share the staged-activation load): 0.556 -> 0.351 ms.
+- down stage thread-owns-pack (load each packed down word once, 8 nibbles):
+  0.351 -> 0.249 ms.
+- gate_up stage thread-owns-pack-dual (8 gate + 8 up cols/thread, word once):
+  0.249 -> **0.163-0.177 ms**.
+
+Result (steady c-sweep): c=1 3.77x, c=2 4.24x, **c=4 4.11x**, c=8 3.10x, c=16
+1.25x over the unfused chain; cumulative **~7.8x** vs the correctness-first B3
+baseline. rocprof: single dispatch, 32 blocks, VGPR=136, Scratch=0. Guard
+`tests/test_paro_moe_ffn_fused.py` 5 passed every iteration; fused-vs-unfused KL
+1.1e-5..2.6e-5. Artifact:
+`benchmarks/results/2026-06-09-hipengine-m16.3-b3-paro-ffn-megakernel-microbench.json`.
+Loop PAUSED (resumable) — crossover achieved with large margin; diminishing
+returns on further kernel micro-opt.
+
+- **HONEST scope:** this is a microbench A/B of one FFN call (performance_claim=
+  false), NOT an end-to-end C_B claim. The launch-count half of C_B and the
+  actual verify-cycle delta are unproven until **B4**: wire the
+  `(hip_gfx1100, moe_ffn_selected, w4_paro, fused_rotate_dual_silu_rotate_down_*)`
+  key into `runtime/moe_c1_dispatch.py`, re-baseline AR (T1), then measure C_B
+  via `scripts/mtp_verifier_economics.py`. Per MEGAKERNEL.md §8.3 the FFN
+  megakernel is one unit of a multi-kernel campaign (FFN -> attention ->
+  rmsnorm/router); it improves C_B but does not reach <=2 alone.

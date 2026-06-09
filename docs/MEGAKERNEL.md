@@ -9,6 +9,16 @@ Companion evidence:
 - `benchmarks/results/2026-06-09-hipengine-m16.3-launch-census-batched-b3.json`
 - `benchmarks/results/2026-06-09-hipengine-m16.3-staged-rotate-recheck.json`
 - `benchmarks/results/2026-06-09-hipengine-economics-rerun-mtp-dflash-35b-27b.json`
+- `benchmarks/results/2026-06-09-hipengine-m16.3-b3-paro-ffn-megakernel-microbench.json`
+
+**Progress (2026-06-09):** B0/B1 (GGUF) and **B3** (PARO fused FFN megakernel)
+are built + validated; a pi-multiloop kernel-time optimize loop took the PARO
+megakernel from the correctness-first ~1.38 ms to **0.163 ms** at the c=4 verify
+shape (~7.8x), **4.1x past the unfused PARO chain** it replaces (B5 crossover),
+single-launch, Scratch=0, KL gate held. Next deployable step is **B4**: wire the
+fused key into `runtime/moe_c1_dispatch.py`, re-baseline AR (T1), and measure the
+actual verify-cycle `C_B` delta. The FFN megakernel improves `C_B` but does not
+reach <=2 alone (multi-unit campaign; see §8.3).
 
 ---
 
@@ -216,8 +226,8 @@ performance work, and so GGUF (no rotation) front-loads the architecture.
 | **B0** | Golden oracle + fixtures: cpu_reference FFN (gate_up→silu→down→combine) for GGUF Q4_K and PARO W4, fixed inputs/weights | fixture committed; legacy chain reproduces it within KL≤0.05 |
 | **B1** | GGUF fused FFN megakernel (one block per (token,expert), intermediate on-chip), rows∈{1,4} | KL≤0.05/top-1≥90% vs B0; **row-invariance RED** (rows=1 vs in-batch per-row identical); `rocprofv3 --kernel-trace` shows 1 launch/layer |
 | **B2** | Wire GGUF AR decode + (if applicable) verify to B1; re-baseline AR | GGUF E2E KL≤0.05; AR tok/s ≥ prior; launches/layer down |
-| **B3** | PARO fused FFN: B1 + fused PARO rotate as first in-block stage | KL≤0.05 vs PARO B0; row-invariance RED; exact_ar_match=True when used for both AR+verify |
-| **B4** | Wire PARO verifier (and AR) to B3; measure | MTP economics: exact_ar_match=True, **launches/pass down, `C_B` ≤ baseline**, artifact + rollup |
+| **B3** ✅ | PARO fused FFN: B1 + fused PARO rotate as first in-block stage | **DONE** (kernel `9d2d31c`): KL≤0.05 vs PARO B0, row-invariance RED bit-exact, f32 1.8e-7, 1 launch/layer. Micro-opt loop: 4.1x past the unfused chain at c=4 (B5 crossover), ~7.8x off the correctness-first baseline. |
+| **B4** ⬅ next | Wire PARO verifier (and AR) to B3; measure | MTP economics: exact_ar_match=True, **launches/pass down, `C_B` ≤ baseline**, artifact + rollup. (B3 megakernel ready; not yet wired into `runtime/moe_c1_dispatch.py`.) |
 | **B5+** | Next megakernels: GDN/full-attn block, rmsnorm fold, router fuse — only those that remove **big-grid** launches or real work | same gates |
 
 Discipline: every stage keeps an unfused fallback registered (architectural
