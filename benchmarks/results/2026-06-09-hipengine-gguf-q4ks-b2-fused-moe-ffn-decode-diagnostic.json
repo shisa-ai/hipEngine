@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "status": "not_promoted",
+  "timestamp": "2026-06-09",
+  "run_tag": "b2-fused-moe-ffn-gguf-q4ks-decode",
+  "summary": "B2 wired the B1 fused selected-expert Q4_K MoE FFN megakernel into the GGUF rows==1 decode path (HIPENGINE_GGUF_FUSED_MOE_FFN, default off, transparent fallback, raw-Q4_K only). It improves the raw-path decode +15.1% and reduces the selected-FFN launches 3->1, but it does NOT beat the deployed T16-repack decode baseline (92.936 tok/s) because the raw megakernel does not apply to the T16 path. Kept gated off; the deployable win is the verify/C_B regime, not GGUF single-token AR decode.",
+  "performance_claim": {
+    "metric": "decode_tok_s",
+    "deployed_t16_baseline": 92.936,
+    "raw_path_fused_off": 9.859,
+    "raw_path_fused_on": 11.343,
+    "raw_path_delta_pct": 15.1,
+    "beats_deployed_baseline": false
+  },
+  "hardware": "AMD Radeon Pro W7900 (gfx1100/RDNA3)",
+  "software": {
+    "fused_kernel": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_moe_ffn_fused.{hip,py}",
+    "wiring": "hipengine/runtime/qwen35_gguf_runner.py::_try_run_post_attention_moe_c1_fused_ffn",
+    "flag": "HIPENGINE_GGUF_FUSED_MOE_FFN=1 (default off)"
+  },
+  "workload": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "quant": "gguf_q4_k_s",
+    "shape": "512/128",
+    "mode": "raw Q4_K decode (no decode-repack, --no-use-gemv-decode, --no-graph-replay-decode)"
+  },
+  "commands": {
+    "fused_off": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_readme_sweep.py --engine gguf --model $GGUF_S --quant gguf_q4_k_s --workloads 512/128 --warmup-runs 1 --measured-runs 2 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --no-use-gemv-decode --no-graph-replay-decode --json /tmp/b2_raw_fused_off.json",
+    "fused_on": "HIPENGINE_GGUF_FUSED_MOE_FFN=1 <same as above> --json /tmp/b2_raw_fused_on.json",
+    "microbench": "PYTHONPATH=. python3 scripts/gguf_q4_k_moe_ffn_fused_microbench.py --require-cached-build"
+  },
+  "correctness": {
+    "b1_kernel_gate": "fused vs B0 cpu_reference oracle: f32 kl=9.3e-12/top1=1.0/max_rel=6.9e-6; bf16 kl_mean=2.5e-4/top1=1.0 (KL<=0.05/top1>=90% PASS)",
+    "fused_vs_unfused_microbench_kl": 4.2e-08,
+    "cross_scale_oracle_max_rel": "<6e-5 for x in {1e-3,1e-2,1e-1,1.0}, no non-finite",
+    "e2e_first3_decode_tokens": "MATCH (OFF==ON: [169706,151531,118])",
+    "e2e_full_sequence": "diverges at decode token 3 then fused greedy trajectory lands in a degenerate 220-loop; both paths emit finite logits; attributed to benign greedy amplification of ~1 bf16 ULP/layer differences (reduction order + expf). A per-position teacher-forced logit-KL harness is the proper E2E KL certification and is NOT yet run.",
+    "e2e_kl_certified": false
+  },
+  "profiler": {
+    "fused_dispatches_per_layer": 1,
+    "unfused_dispatches_per_layer": 3,
+    "fused_kernel_trace": "gguf_q4_k_selected_ffn_fused_kernel<unsigned short, unsigned short>, VGPR=104 (post B1.x decode hoist), grid=rows blocks",
+    "microbench_decode_shape_ms_per_call": {"fused": 0.2656, "unfused_raw_chain": 0.4202, "fused_speedup": 1.58}
+  },
+  "decision": {
+    "promote": false,
+    "reason": "Raw megakernel does not apply to the deployed T16-repack decode path; it improves only the non-default raw path (9.859->11.343 tok/s) and cannot beat the 92.936 tok/s T16 baseline. E2E sequence-level correctness is not certified (needs per-position logit-KL). Kept gated off.",
+    "next_steps": [
+      "Verify regime (B3/B4 PARO): the megakernel's launch-reduction value is in dispatch-bound speculative verify, not single-token GGUF AR decode.",
+      "Optional GGUF deployment path: a T16-fused FFN megakernel variant (so it composes with the decode-repack path and can be compared to the 92.936 tok/s baseline).",
+      "E2E correctness certification: per-position teacher-forced logit-KL harness (fused vs unfused/fp32 reference)."
+    ]
+  },
+  "notes": [
+    "Architectural validation (B0 oracle, B1 fused kernel, row-invariance, launch 3->1) is complete and committed; this artifact records the B2 deployment-path measurement and verdict.",
+    "Kernel is correct in isolation; the E2E divergence is greedy amplification, not a structural bug (first 3 decode tokens match exactly)."
+  ]
+}

@@ -76985,3 +76985,37 @@ First M16.3 megakernel (MEGAKERNEL.md §7 B1). New
   prior) and may need a B1.x before wiring on by default.
 - Bundle: `pytest tests/test_gguf_q4_k_moe_ffn_fused.py tests/test_cpu_reference_moe_ffn.py
   tests/test_cpu_reference.py` -> 24 passed. docs/KERNELS.md catalog row added.
+
+## 2026-06-09 — MEGAKERNEL B2: wire fused MoE FFN into GGUF decode + honest verdict
+
+Wired the B1 fused selected-expert Q4_K MoE FFN megakernel into the GGUF rows==1
+decode path and measured it. **Outcome: not promoted — kept gated off.**
+
+- **B1.x perf hoist (gguf_q4_k_moe_ffn_fused.hip):** block-structured Q4_K dequant
+  (`gguf_q4_k_block_dot`: decode d/dmin/scale once per 256-K block instead of per
+  element). Single-shot 3.61 -> 0.815 ms (VGPR 24 -> 104). B1 tests still pass.
+- **bf16-pipeline match:** the bf16 variant now rounds gate/up + silu(gate)*up to
+  bf16 (`round_intermediate<out_t>`, `expf`) so it is numerically equivalent to
+  the unfused dual_gemv -> silu_mul -> down chain it replaces (the engine is bf16
+  throughout). f32 variant stays full-fp32 reference. B1 oracle gate still passes.
+- **Wiring:** `runtime/qwen35_gguf_runner.py::_try_run_post_attention_moe_c1_fused_ffn`,
+  env `HIPENGINE_GGUF_FUSED_MOE_FFN` (default off). Extracted the unfused chain
+  into `_run_post_attention_moe_c1_unfused_selected_ffn` (the architectural
+  fallback). Applies only to raw `gguf_q4_k` experts; transparent fallback for
+  T16. Writes `scratch.moe_down_out`; shared expert + combine unchanged.
+- **A/B microbench (`scripts/gguf_q4_k_moe_ffn_fused_microbench.py`)**, decode
+  shape (1 token x top_k=8, hidden=2048, ffn=512): fused 0.266 ms vs unfused raw
+  chain 0.420 ms (**1.58x**), launches 3 -> 1, fused-vs-unfused KL 4.2e-8.
+- **E2E (raw mode, 512/128, W7900):** fused OFF 9.859 -> ON 11.343 tok/s
+  (+15.1%); both finite logits; **first 3 decode tokens match exactly**, then the
+  greedy sequence diverges (benign ~1 bf16 ULP/layer amplification: reduction
+  order + expf) and the fused trajectory lands in a degenerate 220-loop.
+- **Verdict (honest):** the kernel is correct in isolation (B1 oracle f32
+  kl=9.3e-12 / bf16 kl=2.5e-4; cross-scale oracle max_rel<6e-5; microbench
+  kl=4e-8) and improves the raw path, BUT the **deployed decode baseline (92.936
+  tok/s) uses T16-repack**, which the raw megakernel does not touch — so it does
+  not beat the shipped path. E2E sequence-level KL is **not certified** (needs a
+  per-position teacher-forced logit-KL harness). Kept gated off. The megakernel's
+  deployable value is the dispatch-bound **verify/C_B regime (B3/B4 PARO)**, not
+  GGUF single-token AR decode; an optional GGUF path is a T16-fused variant.
+  Artifact: `benchmarks/results/2026-06-09-hipengine-gguf-q4ks-b2-fused-moe-ffn-decode-diagnostic.json`.

@@ -123,6 +123,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_moe_ffn_fused import (
+    gguf_q4_k_selected_ffn_fused_bf16_bf16_out,
+)
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
@@ -2061,85 +2064,29 @@ class Qwen35GGUFFullStackRunner:
         ):
             return
         selected_rows = top_k
-        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
-        expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
-            gate_weight,
-            up_weight,
-            scratch.post_norm.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.ffn_intermediate.ptr,
-            x_rows=1,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        if not expert_silu_ready:
-            if not _launch_selected_raw_gguf_moe_pair(
+        if not (
+            _env_flag(_GGUF_FUSED_MOE_FFN_ENV, False)
+            and _try_run_post_attention_moe_c1_fused_ffn(
+                self,
+                layer,
                 gate_weight,
                 up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=1,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            ):
-                _launch_selected_raw_gguf_moe_linear(
-                    gate_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                _launch_selected_raw_gguf_moe_linear(
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            silu_mul_separate_out_bf16(
-                scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                scratch.ffn_intermediate.ptr,
-                rows=selected_rows,
-                features=cfg.expert_feed_forward_length,
+                down_weight,
+                scratch,
+                top_k=top_k,
                 stream=stream,
                 runtime=runtime,
             )
-        _launch_selected_raw_gguf_moe_linear(
-            down_weight,
-            scratch.ffn_intermediate.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.moe_down_out.ptr,
-            x_rows=selected_rows,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=cfg.expert_feed_forward_length,
-            out_features=self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        ):
+            self._run_post_attention_moe_c1_unfused_selected_ffn(
+                gate_weight,
+                up_weight,
+                down_weight,
+                scratch,
+                selected_rows=selected_rows,
+                stream=stream,
+                runtime=runtime,
+            )
 
         if launch_gguf_linear_pair_concat(
             layer.weight("ffn_gate_shexp"),
@@ -2221,6 +2168,101 @@ class Qwen35GGUFFullStackRunner:
             out_ptr,
             top_k,
             self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+
+    def _run_post_attention_moe_c1_unfused_selected_ffn(
+        self,
+        gate_weight,
+        up_weight,
+        down_weight,
+        scratch,
+        *,
+        selected_rows: int,
+        stream: int,
+        runtime: HipRuntime,
+    ) -> None:
+        """Unfused selected-expert FFN: gate_up GEMV -> silu*mul -> down GEMV into
+        ``scratch.moe_down_out``. Numerically-equivalent fallback for the fused B1
+        megakernel (architectural invariant), and the default rows==1 path."""
+        cfg = self.weights.config
+        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
+        expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
+            gate_weight,
+            up_weight,
+            scratch.post_norm.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.ffn_intermediate.ptr,
+            x_rows=1,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not expert_silu_ready:
+            if not _launch_selected_raw_gguf_moe_pair(
+                gate_weight,
+                up_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                x_rows=1,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            ):
+                _launch_selected_raw_gguf_moe_linear(
+                    gate_weight,
+                    scratch.post_norm.ptr,
+                    scratch.moe_selected_experts.ptr,
+                    scratch.ffn_gate_up.ptr,
+                    x_rows=1,
+                    rows=selected_rows,
+                    num_experts=cfg.expert_count,
+                    in_features=self.hidden_size,
+                    out_features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                _launch_selected_raw_gguf_moe_linear(
+                    up_weight,
+                    scratch.post_norm.ptr,
+                    scratch.moe_selected_experts.ptr,
+                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                    x_rows=1,
+                    rows=selected_rows,
+                    num_experts=cfg.expert_count,
+                    in_features=self.hidden_size,
+                    out_features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            silu_mul_separate_out_bf16(
+                scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                scratch.ffn_intermediate.ptr,
+                rows=selected_rows,
+                features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        _launch_selected_raw_gguf_moe_linear(
+            down_weight,
+            scratch.ffn_intermediate.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.moe_down_out.ptr,
+            x_rows=selected_rows,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=cfg.expert_feed_forward_length,
+            out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
         )
@@ -2536,6 +2578,8 @@ _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
+# B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
+_GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 
 
 @dataclass(frozen=True)
@@ -5137,6 +5181,68 @@ def _try_run_post_attention_moe_rows_compact_gemv(
     )
     return True
 
+
+
+def _try_run_post_attention_moe_c1_fused_ffn(
+    runner: Qwen35GGUFFullStackRunner,
+    layer,
+    gate_weight: Qwen35GGUFDeviceWeight,
+    up_weight: Qwen35GGUFDeviceWeight,
+    down_weight: Qwen35GGUFDeviceWeight,
+    scratch,
+    *,
+    top_k: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in B1 fused selected-expert MoE FFN megakernel for rows==1 decode.
+
+    Replaces the gate_up GEMV -> silu*mul -> down GEMV chain (3 launches) with a
+    single fused launch writing ``scratch.moe_down_out`` (per-selected-row down);
+    the shared expert + routing-weighted combine run unchanged afterward. Applies
+    only when all three expert tensors are raw ``gguf_q4_k`` (the megakernel reads
+    raw Q4_K bytes); returns ``False`` for T16/repacked layouts so the caller
+    falls back to the unfused chain.
+    """
+
+    cfg = runner.weights.config if runner.weights is not None else None
+    if cfg is None:
+        return False
+    for weight in (gate_weight, up_weight, down_weight):
+        if weight.spec.quant_key != "gguf_q4_k":
+            return False
+    num_experts = int(cfg.expert_count)
+    hidden_size = int(runner.hidden_size)
+    expert_ffn = int(cfg.expert_feed_forward_length)
+    if hidden_size % 256 != 0 or expert_ffn % 256 != 0:
+        return False
+    if top_k <= 0 or top_k > int(getattr(scratch, "moe_selected_rows_capacity", top_k)):
+        return False
+    _validate_raw_rank3_expert_weight(
+        gate_weight, num_experts=num_experts, in_features=hidden_size, out_features=expert_ffn
+    )
+    _validate_raw_rank3_expert_weight(
+        up_weight, num_experts=num_experts, in_features=hidden_size, out_features=expert_ffn
+    )
+    _validate_raw_rank3_expert_weight(
+        down_weight, num_experts=num_experts, in_features=expert_ffn, out_features=hidden_size
+    )
+    gguf_q4_k_selected_ffn_fused_bf16_bf16_out(
+        scratch.post_norm.ptr,
+        scratch.moe_selected_experts.ptr,
+        gate_weight.allocation("raw").tensor.ptr,
+        up_weight.allocation("raw").tensor.ptr,
+        down_weight.allocation("raw").tensor.ptr,
+        scratch.moe_down_out.ptr,
+        1,
+        top_k,
+        num_experts,
+        hidden_size,
+        expert_ffn,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
 
 
 def _try_run_post_attention_moe_c1_compact_gemv(

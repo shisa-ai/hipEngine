@@ -72,6 +72,21 @@ __device__ inline void store_output<uint16_t>(uint16_t* out, int64_t idx, float 
   out[idx] = float_to_bf16_bits(value);
 }
 
+// Round an FFN intermediate to the engine's working precision. The bf16 output
+// variant rounds gate/up and silu(gate)*up to bf16 so the fused kernel is
+// numerically equivalent to the unfused dual_gemv -> silu_mul -> down chain it
+// replaces (which materializes those intermediates as bf16). The f32 variant
+// keeps full fp32 as the reference path.
+template <typename out_t>
+__device__ inline float round_intermediate(float value) {
+  return value;
+}
+
+template <>
+__device__ inline float round_intermediate<uint16_t>(float value) {
+  return bf16_bits_to_float(float_to_bf16_bits(value));
+}
+
 __device__ inline uint8_t gguf_q4_k_scale(const uint8_t* scales, int subblock) {
   if (subblock < 4) {
     return scales[subblock] & 0x3Fu;
@@ -105,6 +120,34 @@ __device__ inline float gguf_q4_k_weight(const uint8_t* row, int k) {
   const float scale = static_cast<float>(gguf_q4_k_scale(scales, subblock));
   const float minv = static_cast<float>(gguf_q4_k_min(scales, subblock));
   return d * scale * static_cast<float>(q) - dmin * minv;
+}
+
+// Partial dot product over one 256-element Q4_K superblock against staged
+// activations ``x_block[0..255]``. The fp16 d/dmin header and per-subblock
+// scale/min are decoded ONCE per block (vs per element in gguf_q4_k_weight),
+// which is the dominant inner-loop cost. Numerically identical to summing
+// ``x_block[i] * gguf_q4_k_weight(row, block_idx*256 + i)``.
+__device__ inline float gguf_q4_k_block_dot(
+    const uint8_t* __restrict__ row, int block_idx, const float* __restrict__ x_block) {
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q4_K_BLOCK_BYTES;
+  const float d = fp16_bytes_to_float(block);
+  const float dmin = fp16_bytes_to_float(block + 2);
+  const uint8_t* scales = block + 4;
+  const uint8_t* qs = block + 16;
+  float acc = 0.0f;
+  for (int sb = 0; sb < 8; ++sb) {
+    const float scale = d * static_cast<float>(gguf_q4_k_scale(scales, sb));
+    const float minv = dmin * static_cast<float>(gguf_q4_k_min(scales, sb));
+    const uint8_t* qsb = qs + (sb >> 1) * 32;
+    const bool hi = sb & 1;
+    const float* xsb = x_block + sb * 32;
+    for (int lane = 0; lane < 32; ++lane) {
+      const uint8_t packed = qsb[lane];
+      const uint8_t q = hi ? (packed >> 4) : (packed & 0x0Fu);
+      acc += xsb[lane] * (scale * static_cast<float>(q) - minv);
+    }
+  }
+  return acc;
 }
 
 template <typename scalar_t, typename out_t>
@@ -153,29 +196,35 @@ __global__ void gguf_q4_k_selected_ffn_fused_kernel(
   const int64_t gate_expert_bytes = static_cast<int64_t>(ffn_len) * gate_row_bytes;
   const uint8_t* __restrict__ gate_e = gate_w + expert_id * gate_expert_bytes;
   const uint8_t* __restrict__ up_e = up_w + expert_id * gate_expert_bytes;
+  const int hidden_blocks = hidden / QK_K;
   for (int c = threadIdx.x; c < ffn_len; c += blockDim.x) {
     const uint8_t* __restrict__ wg = gate_e + static_cast<int64_t>(c) * gate_row_bytes;
     const uint8_t* __restrict__ wu = up_e + static_cast<int64_t>(c) * gate_row_bytes;
     float g = 0.0f;
     float u = 0.0f;
-    for (int k = 0; k < hidden; ++k) {
-      const float xv = x_s[k];
-      g += xv * gguf_q4_k_weight(wg, k);
-      u += xv * gguf_q4_k_weight(wu, k);
+    for (int b = 0; b < hidden_blocks; ++b) {
+      const float* __restrict__ x_block = x_s + b * QK_K;
+      g += gguf_q4_k_block_dot(wg, b, x_block);
+      u += gguf_q4_k_block_dot(wu, b, x_block);
     }
-    const float silu = g / (1.0f + __expf(-g));
-    inter_s[c] = silu * u;
+    // Match the unfused chain's bf16 working precision (dual_gemv outputs bf16
+    // gate/up; silu_mul materializes a bf16 intermediate with expf).
+    const float gb = round_intermediate<out_t>(g);
+    const float ub = round_intermediate<out_t>(u);
+    const float silu = gb / (1.0f + expf(-gb));
+    inter_s[c] = round_intermediate<out_t>(silu * ub);
   }
   __syncthreads();
 
   const int down_row_bytes = (ffn_len / QK_K) * Q4_K_BLOCK_BYTES;
   const int64_t down_expert_bytes = static_cast<int64_t>(hidden) * down_row_bytes;
   const uint8_t* __restrict__ down_e = down_w + expert_id * down_expert_bytes;
+  const int ffn_blocks = ffn_len / QK_K;
   for (int c = threadIdx.x; c < hidden; c += blockDim.x) {
     const uint8_t* __restrict__ wd = down_e + static_cast<int64_t>(c) * down_row_bytes;
     float acc = 0.0f;
-    for (int k = 0; k < ffn_len; ++k) {
-      acc += inter_s[k] * gguf_q4_k_weight(wd, k);
+    for (int b = 0; b < ffn_blocks; ++b) {
+      acc += gguf_q4_k_block_dot(wd, b, inter_s + b * QK_K);
     }
     store_output<out_t>(out_row, c, acc);
   }
