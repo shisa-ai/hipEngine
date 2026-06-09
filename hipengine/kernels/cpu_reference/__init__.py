@@ -14,6 +14,10 @@ from hipengine.kernels.cpu_reference.fixtures import (
 )
 from hipengine.kernels.cpu_reference.ops import (
     attention_decode,
+    awq_pack8_dequant_transposed,
+    awq_pack8_gemv_transposed,
+    awq_pack8_shift_for_lane,
+    paro_rotate1,
     dequantize_kv_int8_per_token_head,
     embed,
     full_attn_prefill,
@@ -50,6 +54,10 @@ __all__ = [
     "LayerFixture",
     "Tolerances",
     "attention_decode",
+    "awq_pack8_dequant_transposed",
+    "awq_pack8_gemv_transposed",
+    "awq_pack8_shift_for_lane",
+    "paro_rotate1",
     "dequantize_kv_int8_per_token_head",
     "embed",
     "full_attn_prefill",

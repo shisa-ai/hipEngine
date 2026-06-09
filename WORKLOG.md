@@ -77077,3 +77077,33 @@ fused MoE FFN megakernel out of the single-token occupancy wall?
   confirmed but no GGUF batched-decode deploy surface. The architecture is
   validated and correct; the deployable surface is the verify regime.
   Artifact: `benchmarks/results/2026-06-09-hipengine-gguf-q4ks-b5-fused-moe-ffn-batched-occupancy.json`.
+
+## 2026-06-09 — MEGAKERNEL B3 (start): validated PARO oracle primitives
+
+B3 ports the B1 fused FFN megakernel to the PARO substrate (the verify-economics
+target). PARO is far more complex than GGUF: AWQ W4 pack8 dequant + TWO PARO
+incoherence rotations (rotate1 before gate_up; a down-rotate fused into
+silu_mul_dual_rotate_out before the down GEMV). MEGAKERNEL.md flags the rotation
+reproduction as "the campaign's risk surface", so I de-risked the math FIRST.
+
+- **Validated PARO oracle primitives** (cpu_reference, `ops.py`):
+  - `awq_pack8_gemv_transposed` / `awq_pack8_dequant_transposed`: AWQ W4 pack8
+    transposed layout, `w[out,k]=(q-z)*scale`, q/z 4-bit nibbles via
+    `awq_pack8_shift_for_lane`, group128. Registered `(cpu_reference, linear,
+    w4_paro, pack8_gemv_transposed)`.
+  - `paro_rotate1`: per-group pre-scale + `krot` rounds of Givens rotations on
+    calibration pairs/theta (matches `paro_rotate1_kernel`). Registered
+    `(cpu_reference, rotate1, w4_paro)`.
+  - Both **validated vs the deployed GPU kernels** to ~1 bf16 ULP (rotate1
+    max_rel 3.8e-3, AWQ GEMV 3.6e-3) in `tests/test_cpu_reference_paro_primitives.py`
+    (3 tests + numpy self-consistency: orthogonality/norm-preservation + row-
+    independence). `pytest ...paro_primitives + ...cpu_reference -> 16 passed`.
+- **B3 remaining (handoff):** (a) trace the exact PARO selected-FFN structure in
+  `runtime/moe_c1_dispatch.py` / `runtime/qwen35_paro.py` (rotate1 shared vs
+  per-expert; down-rotate location; combine); (b) compose the PARO selected-FFN
+  oracle in cpu_reference from these primitives (the PARO B0); (c) the fused HIP
+  kernel — in-block rotate1 (cooperative Givens) -> AWQ gate_up GEMV -> silu ->
+  in-block down-rotate -> AWQ down GEMV (the campaign's hardest kernel: two
+  cooperative rotations + AWQ dequant per block); (d) RED vs oracle +
+  row-invariance + rocprof 1-launch/layer + exact_ar_match (T1: same
+  row-invariant kernel for AR rows=1 and verify rows=B+1).

@@ -272,6 +272,120 @@ def gguf_q4_k_moe_selected_ffn(
     )
 
 
+def awq_pack8_shift_for_lane(lane: int) -> int:
+    """Bit shift for the AWQ pack8 interleaved layout (matches the HIP kernels)."""
+
+    packed_pos = (4 + (lane >> 1)) if (lane & 1) else (lane >> 1)
+    return packed_pos * 4
+
+
+def awq_pack8_dequant_transposed(
+    qweight: ArrayLike,
+    qzeros: ArrayLike,
+    scales: ArrayLike,
+    in_features: int,
+    out_features: int,
+    group_size: int = 128,
+) -> np.ndarray:
+    """Dequantize AWQ W4 pack8 (transposed qweight layout) to dense ``[out, in]``.
+
+    ``qweight`` is ``[out_features/8, in_features]`` int32 with 8 output channels
+    packed per word; ``qzeros`` is ``[groups, out_features/8]`` int32 (same
+    packing); ``scales`` is ``[groups, out_features]`` f32. Per the HIP decode
+    path: ``w[out, k] = (q - z) * scale`` with ``q``/``z`` 4-bit nibbles selected
+    by :func:`awq_pack8_shift_for_lane` and ``group = k // group_size``.
+    """
+
+    qw = np.asarray(qweight).view(np.uint32)
+    qz = np.asarray(qzeros).view(np.uint32)
+    sc = np.asarray(scales, dtype=np.float32)
+    out_packed = out_features // 8
+    if qw.shape != (out_packed, in_features):
+        raise ValueError("qweight must have shape [out_features/8, in_features]")
+    groups = in_features // group_size
+    if qz.shape != (groups, out_packed) or sc.shape != (groups, out_features):
+        raise ValueError("qzeros/scales shapes do not match in/out/group sizes")
+    group_of_k = np.arange(in_features, dtype=np.int64) // group_size
+    weight = np.empty((out_features, in_features), dtype=np.float32)
+    for out_col in range(out_features):
+        pack = out_col >> 3
+        shift = np.uint32(awq_pack8_shift_for_lane(out_col & 7))
+        q = ((qw[pack, :] >> shift) & np.uint32(0xF)).astype(np.float32)
+        z = ((qz[group_of_k, pack] >> shift) & np.uint32(0xF)).astype(np.float32)
+        weight[out_col] = (q - z) * sc[group_of_k, out_col]
+    return weight
+
+
+def awq_pack8_gemv_transposed(
+    x: ArrayLike,
+    qweight: ArrayLike,
+    qzeros: ArrayLike,
+    scales: ArrayLike,
+    in_features: int,
+    out_features: int,
+    group_size: int = 128,
+) -> np.ndarray:
+    """Reference GEMV over AWQ W4 pack8 transposed weights: ``x @ dequant(W).T``."""
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    if x_arr.ndim != 2 or x_arr.shape[1] != in_features:
+        raise ValueError("x must have shape [rows, in_features]")
+    weight = awq_pack8_dequant_transposed(qweight, qzeros, scales, in_features, out_features, group_size)
+    return np.matmul(x_arr, weight.T).astype(np.float32)
+
+
+def paro_rotate1(
+    x: ArrayLike,
+    pairs: ArrayLike,
+    theta: ArrayLike,
+    scales: ArrayLike,
+    group_size: int,
+    krot: int,
+) -> np.ndarray:
+    """Reference PARO single-output incoherence rotation (matches paro_rotate1).
+
+    Per group of ``group_size`` channels, pre-scale by ``scales`` then apply
+    ``krot`` rounds of Givens rotations on calibration ``pairs`` with ``theta``
+    angles: ``(b[i], b[j]) -> (c*b[i] + s*b[j], -s*b[i] + c*b[j])``. ``pairs`` is
+    ``[krot, hidden]`` int (group-local indices interleaved per pair); ``theta``
+    is ``[krot, hidden/2]`` f32; ``scales`` is ``[hidden]`` f32.
+    """
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    if x_arr.ndim != 2:
+        raise ValueError("x must have shape [tokens, hidden]")
+    tokens, hidden = x_arr.shape
+    pairs_arr = np.asarray(pairs, dtype=np.int64).reshape(krot, hidden)
+    theta_arr = np.asarray(theta, dtype=np.float32).reshape(krot, hidden // 2)
+    scales_arr = np.asarray(scales, dtype=np.float32).reshape(hidden)
+    half = group_size // 2
+    groups = hidden // group_size
+    out = np.empty_like(x_arr)
+    for row in range(tokens):
+        for g in range(groups):
+            base = g * group_size
+            buf = np.empty(group_size, dtype=np.float32)
+            buf[:half] = x_arr[row, base : base + half] * scales_arr[base : base + half]
+            buf[half:] = x_arr[row, base + half : base + group_size] * scales_arr[base + half : base + group_size]
+            for r in range(krot):
+                new_buf = buf.copy()
+                for lane in range(half):
+                    pb = base + 2 * lane
+                    i = int(pairs_arr[r, pb])
+                    j = int(pairs_arr[r, pb + 1])
+                    angle = float(theta_arr[r, g * half + lane])
+                    s = np.float32(np.sin(angle))
+                    c = np.float32(np.cos(angle))
+                    bi = buf[i]
+                    bj = buf[j]
+                    new_buf[i] = bi * c + bj * s
+                    new_buf[j] = -bi * s + bj * c
+                buf = new_buf
+            out[row, base : base + half] = buf[:half]
+            out[row, base + half : base + group_size] = buf[half:]
+    return out
+
+
 def o_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     return linear(x, weight, bias)
 
@@ -934,6 +1048,16 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "moe_ffn_selected", "gguf_q4_k"),
         gguf_q4_k_moe_selected_ffn,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "linear", "w4_paro", "pack8_gemv_transposed"),
+        awq_pack8_gemv_transposed,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "rotate1", "w4_paro"),
+        paro_rotate1,
         replace=replace,
     )
 
