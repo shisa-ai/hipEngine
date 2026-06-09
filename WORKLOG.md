@@ -76842,3 +76842,25 @@ Separately observed (pre-existing, not from this change): the verifier diverges
 from AR at ~token 10 at decode-tokens>=12 (`accepted=0`, argmax drift); flag
 on/off give identical mtp tokens, so M16.4 single-site conversion does not move
 it. Tracked for a later exact-horizon investigation.
+
+## 2026-06-09 measure: fresh MTP/DFlash-vs-AR economics on current tree (35B MoE + 27B dense)
+
+Re-ran end-to-end economics after the merge-fix (8fcd2d3c) + M16.4 (f0fe5aa7).
+W7900/gfx1100, same-session AR control, all rows exact.
+
+- **MTP 35B-A3B** (quicksort, D32, batched): B=3 `0.519x AR` (mtp 53.7 vs AR 103.5
+  tok/s), C_B `5.46 -> 4.67`, visible/cycle 2.385, accept 0.462, verify 35.1
+  ms/cycle; B=5 `0.461x` (C_B 6.83 -> 6.23). To break even at current accept,
+  C_B must fall 4.67 -> <=2.385.
+- **DFlash 35B-A3B** (z-lab drafter, D32): B=4 `0.400x` (40.4 vs 100.8 tok/s),
+  B=8 `0.297x`; aggregate 0.343x. (prior baseline B=4 ~0.348x.)
+- **DFlash 27B-dense + online whole-cycle gate 0.90** (9 prompts, D64): `1.1615x AR`
+  (37.78 vs 32.53 tok/s), 9/9 exact (prior 1.147x). Per-prompt
+  [1.11,0.99,1.33,1.11,1.33,0.92,1.28,1.33,1.23].
+
+Read: C_B is ~model-compute-bound; AR-per-token is far cheaper on the A3B MoE
+(3B active, AR ~103 tok/s) than the 27B dense (AR ~32.5 tok/s). So speculative
+amortizes on dense (1.16x) but not MoE (0.52x). M16.4 trimmed the ~16 ms kernel
+part of the ~45 ms cycle; the break-even lever is M16.3 (megakernels) to cut the
+~1200 launches/pass that dominate the ~35 ms verify residual. Artifact
+benchmarks/results/2026-06-09-hipengine-economics-rerun-mtp-dflash-35b-27b.json.

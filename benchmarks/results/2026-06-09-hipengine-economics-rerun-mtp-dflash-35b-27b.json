@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "task_id": 63,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-06-09T11:10:00+09:00",
+  "date": "2026-06-09",
+  "summary": "Fresh same-session economics on the current tree (post merge-fix 8fcd2d3c + M16.4 f0fe5aa7, with M15.x): MTP 35B-A3B and DFlash 35B-A3B remain BELOW AR (~0.5x / ~0.4x); DFlash 27B-dense + online whole-cycle gate is 1.161x AR. Qualitative picture unchanged: speculative wins on the dense model (expensive AR) and loses on the MoE model (cheap A3B AR). C_B improved (35B MTP B=3 5.46 -> 4.67).",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
+  "backend": "hip_gfx1100",
+  "tree": {"head_commit": "f0fe5aa7", "includes": ["merge 8b7c763b", "verifier-trunk fix 8fcd2d3c", "M16.4 output-tiled f0fe5aa7", "M15.1 multi-row decode"]},
+  "results": {
+    "mtp_35b_a3b": {
+      "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "workload": "quicksort prompt (90 tok), decode-tokens=32, chain-attn-mode=batched, proposal_impl=persistent_device",
+      "B3": {"x_ar": 0.519, "C_B": 4.67, "visible_per_cycle": 2.385, "accepted_per_cycle": 1.385, "acceptance_rate": 0.462, "ar_tok_s": 103.5, "mtp_tok_s": 53.7, "cycle_wall_ms": 45.1, "verify_ms_per_cycle": 35.1, "perfect_accept_ceiling_x": 0.857, "C_B_needed_for_1x": 2.385, "exact_ar": true},
+      "B5": {"x_ar": 0.461, "C_B": 6.23, "visible_per_cycle": 2.82, "exact_ar": true},
+      "prior_baseline_2026_06_07": {"B3_C_B": 5.46, "B5_C_B": 6.83}
+    },
+    "dflash_35b_a3b": {
+      "target": "Qwen3.6-35B-A3B-PARO ... MTP-BF16", "drafter": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "workload": "quicksort, decode-tokens=32, native_bulk_bplus1, full-attn-chain=batched, tree=chain, commit=branch_copy",
+      "B4": {"x_ar": 0.400, "spec_tok_s": 40.4, "ar_tok_s": 100.8, "avg_accept_len": 0.94, "exact_ar": true},
+      "B8": {"x_ar": 0.297, "spec_tok_s": 32.5, "ar_tok_s": 109.5, "exact_ar": true},
+      "aggregate_x_ar": 0.343,
+      "prior_baseline_2026_06_07": {"B4_C_B": 5.56, "B8_C_B": 6.65}
+    },
+    "dflash_27b_dense_gate": {
+      "target": "z-lab/Qwen3.6-27B-PARO", "drafter": "z-lab/Qwen3.6-27B-DFlash",
+      "workload": "9 prompts, decode-tokens=64, draft-budget=4, top-k=2, native_bulk_bplus1, full-attn-chain=batched, commit=branch_copy, --whole-cycle-gate 0.90",
+      "x_ar": 1.1615, "spec_tok_s": 37.78, "ar_tok_s": 32.53, "exact_ar_all_9": true,
+      "per_prompt_x_ar": [1.11, 0.99, 1.33, 1.11, 1.33, 0.92, 1.28, 1.33, 1.23],
+      "prior_baseline_2026_06_08": {"x_ar": 1.147}
+    }
+  },
+  "commands": {
+    "mtp_35b": "ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp_verifier_economics.py --model <35B> --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3,5 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off",
+    "dflash_35b": "python3 scripts/dflash_chain_e2e_bench.py --target-model <35B> --drafter-model <z-lab/35B-A3B-DFlash> --backend hip_gfx1100 --max-prompts 1 --decode-tokens 32 --draft-budgets 4,8 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --verifier-graph off --tree-mode chain --canonical-commit-mode branch_copy",
+    "dflash_27b": "python3 scripts/dflash_chain_e2e_bench.py --target-model <z-lab/27B-PARO> --drafter-model <z-lab/27B-DFlash> --backend hip_gfx1100 --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off --whole-cycle-gate 0.90"
+  },
+  "interpretation": "C_B (verifier cycle cost) is roughly model-compute-bound, while AR-per-token is far cheaper on the A3B MoE (3B active) than the 27B dense. So speculative decode amortizes on the dense model (AR 32.5 tok/s -> 1.16x with gate) but not on the MoE (AR 103.5 tok/s -> 0.52x). To make MTP win on the 35B MoE at current acceptance, C_B must drop from 4.67 to <=2.385 (~halve) -- the M16 C_B<=2 goal; the lever is M16.3 (fewer/larger megakernels to cut the ~1200 launches/pass), since the verify cycle is ~35 ms dominated by dispatch, not the ~16 ms of kernel time M16.4 trimmed."
+}
