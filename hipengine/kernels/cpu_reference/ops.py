@@ -138,6 +138,140 @@ def gguf_q4_k_pack8_gemv(
     return np.matmul(x_arr, weight.T).astype(np.float32)
 
 
+def gguf_moe_selected_ffn(
+    x: ArrayLike,
+    selected_experts: ArrayLike,
+    routing_weights: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+) -> np.ndarray:
+    """Reference selected-expert MoE FFN (the megakernel-gated unit).
+
+    For each token ``t`` and each of its ``top_k`` selected experts ``e``:
+    ``gate = Wg_e @ x_t``; ``up = Wu_e @ x_t``; ``inter = silu(gate) * up``;
+    ``down = Wd_e @ inter``; ``out_t += routing_weights[t, k] * down``.
+
+    Expert weights are raw GGUF byte tensors shaped ``[E, out, row_bytes]``
+    (rank-3). Each per-expert row block is dequantized with its quant type.
+    This is the exact compute the B1 fused FFN megakernel reproduces, and it is
+    row-invariant by construction (each token/expert pair is independent).
+    """
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    sel = np.asarray(selected_experts, dtype=np.int64)
+    weights = np.asarray(routing_weights, dtype=np.float32)
+    if x_arr.ndim != 2:
+        raise ValueError("x must have shape [tokens, hidden]")
+    tokens, hidden = x_arr.shape
+    if sel.ndim != 2 or sel.shape[0] != tokens:
+        raise ValueError("selected_experts must have shape [tokens, top_k]")
+    if weights.shape != sel.shape:
+        raise ValueError("routing_weights must match selected_experts shape")
+    top_k = sel.shape[1]
+    gate_q = np.asarray(gate_qweight)
+    up_q = np.asarray(up_qweight)
+    down_q = np.asarray(down_qweight)
+    if gate_q.ndim != 3 or up_q.ndim != 3 or down_q.ndim != 3:
+        raise ValueError("expert weights must be rank-3 [E, out, row_bytes]")
+    num_experts = gate_q.shape[0]
+    if up_q.shape[0] != num_experts or down_q.shape[0] != num_experts:
+        raise ValueError("gate/up/down must share the expert axis length")
+    out = np.zeros((tokens, hidden), dtype=np.float32)
+    for t in range(tokens):
+        xt = x_arr[t : t + 1]
+        for k in range(top_k):
+            expert = int(sel[t, k])
+            if expert < 0 or expert >= num_experts:
+                raise ValueError("selected expert id out of range")
+            gate = gguf_quant_gemv(xt, gate_q[expert], gate_qtype)
+            up = gguf_quant_gemv(xt, up_q[expert], up_qtype)
+            inter = (_silu(gate) * up).astype(np.float32)
+            down = gguf_quant_gemv(inter, down_q[expert], down_qtype)
+            out[t] += np.float32(weights[t, k]) * down[0]
+    return out
+
+
+def gguf_moe_ffn_block(
+    x: ArrayLike,
+    residual: ArrayLike,
+    selected_experts: ArrayLike,
+    routing_weights: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+    shared_gate_logit_weight: ArrayLike,
+    shared_gate_qweight: ArrayLike,
+    shared_up_qweight: ArrayLike,
+    shared_down_qweight: ArrayLike,
+    shared_qtype: GGMLQuantizationType,
+) -> np.ndarray:
+    """Reference full qwen35moe FFN block matching ``_run_post_attention_moe_c1``.
+
+    ``out = residual + selected_ffn + sigmoid(shared_gate_logit) * shared_ffn``
+    where ``selected_ffn`` is :func:`gguf_moe_selected_ffn`, the shared expert is
+    a dense Q8_0 ``silu(gate) * up -> down`` FFN, and ``shared_gate_logit`` is the
+    F32 ``ffn_gate_inp_shexp`` projection of ``x``.
+    """
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    res = np.asarray(residual, dtype=np.float32)
+    if x_arr.ndim != 2:
+        raise ValueError("x must have shape [tokens, hidden]")
+    if res.shape != x_arr.shape:
+        raise ValueError("residual must match x shape")
+    selected_out = gguf_moe_selected_ffn(
+        x_arr,
+        selected_experts,
+        routing_weights,
+        gate_qweight,
+        up_qweight,
+        down_qweight,
+        gate_qtype,
+        up_qtype,
+        down_qtype,
+    )
+    shared_gate = gguf_quant_gemv(x_arr, np.asarray(shared_gate_qweight), shared_qtype)
+    shared_up = gguf_quant_gemv(x_arr, np.asarray(shared_up_qweight), shared_qtype)
+    shared_inter = (_silu(shared_gate) * shared_up).astype(np.float32)
+    shared_out = gguf_quant_gemv(shared_inter, np.asarray(shared_down_qweight), shared_qtype)
+    gate_vec = np.asarray(shared_gate_logit_weight, dtype=np.float32)
+    if gate_vec.ndim != 1 or gate_vec.shape[0] != x_arr.shape[1]:
+        raise ValueError("shared_gate_logit_weight must have shape [hidden]")
+    shared_gate_logit = x_arr @ gate_vec
+    gate = _sigmoid(shared_gate_logit)[:, None]
+    return (res + selected_out + gate * shared_out).astype(np.float32)
+
+
+def gguf_q4_k_moe_selected_ffn(
+    x: ArrayLike,
+    selected_experts: ArrayLike,
+    routing_weights: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+) -> np.ndarray:
+    """Q4_K/Q4_K/Q4_K specialization (the Qwen3.6-35B-A3B-UD-Q4_K_S expert path)."""
+
+    return gguf_moe_selected_ffn(
+        x,
+        selected_experts,
+        routing_weights,
+        gate_qweight,
+        up_qweight,
+        down_qweight,
+        GGMLQuantizationType.Q4_K,
+        GGMLQuantizationType.Q4_K,
+        GGMLQuantizationType.Q4_K,
+    )
+
+
 def o_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     return linear(x, weight, bias)
 
@@ -795,6 +929,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "linear", "gguf_q4_k", "pack8_f32_f32_out"),
         gguf_q4_k_pack8_gemv,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "moe_ffn_selected", "gguf_q4_k"),
+        gguf_q4_k_moe_selected_ffn,
         replace=replace,
     )
 
