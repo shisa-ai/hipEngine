@@ -76864,3 +76864,34 @@ amortizes on dense (1.16x) but not MoE (0.52x). M16.4 trimmed the ~16 ms kernel
 part of the ~45 ms cycle; the break-even lever is M16.3 (megakernels) to cut the
 ~1200 launches/pass that dominate the ~35 ms verify residual. Artifact
 benchmarks/results/2026-06-09-hipengine-economics-rerun-mtp-dflash-35b-27b.json.
+
+## 2026-06-09 measure: M16.3 launch census of the batched B=3 verifier (foundation)
+
+rocprof --kernel-trace census of the current hip_gfx1100/batched B=3 verifier
+(the economics path whose C_B we are cutting). W7900/gfx1100, decode-tokens=8.
+
+**931 launches/pass, 15.97 ms kernel/pass.** No single family dominates
+(>78/pass); launch count is spread ~1/layer across ~9 families.
+
+Top launch buckets (per pass):
+- paro_rotate (1+2+3): ~146  (input rotation before each W4 GEMV)
+- gemv_awq_dual_pack8 (shared gate_up): 77 (1046 us -- biggest kernel-time)
+- silu_mul_dual_rotate_out: 77 (down-rotate already FUSED, default-on)
+- router (logits+select): 77  (2 launches/layer)
+- rmsnorm (norm+add_norm): 78
+- copyBuffer D2D: 55 (pure plumbing)
+- selected gate_up/down GEMVs + combine: ~38 each
+
+Notes:
+- The old 120/pass runtime_memset is gone (fillBufferAligned 0.6/pass) -- M7.C
+  already eliminated it; do not chase.
+- Rotate-fusion flags exist + are bit-exact but default-off due to prior
+  regressions: M13.B.1 selected fused-rotate (+12.4 ms/pass redundant LDS
+  rotation -- bad trade), selected_moe_staged_rotate (HBM-staged, regressed),
+  shared_expert_fused_rotate=M13.B.2 (HBM-staged keyed-barrier, "off until a
+  fresh W7900 exact/rocprof row"). selected_moe_down_staged is default-ON (net win).
+- Plan: cheapest-first, re-measure the bit-exact staged-rotate flags on the
+  current tree (M15.x/M16.4 may have shifted the trade) before building a new
+  megakernel; then router-fusion + selected-MoE megakernel.
+
+Artifact benchmarks/results/2026-06-09-hipengine-m16.3-launch-census-batched-b3.json

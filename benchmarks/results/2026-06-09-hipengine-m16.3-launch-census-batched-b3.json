@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "task_id": 64,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-06-09",
+  "purpose": "M16.3 launch census: per-family launch count + kernel time of the current batched B=3 verifier (the economics path), to pick the first megakernel/fusion target. 931 launches/pass, 15.97 ms kernel/pass on W7900/gfx1100.",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
+  "backend": "hip_gfx1100",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 (40 layers: 30 linear + 10 full attn, 256 experts/top-8)",
+  "command": "scripts/mtp_verifier_rocprof.py --decode-tokens 8 --candidate-budget 3 --steady-state-skip 1 --backend hip_gfx1100 --chain-attn-mode batched --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt",
+  "trace_csv": "/tmp/hipengine-rocprof-mtp-verifier-batched/mtp-verifier-baseline_kernel_trace.csv",
+  "per_pass": {"launches": 931, "kernel_ms": 15.97},
+  "top_families_by_launch_count_per_pass": {
+    "paro_rotate1": {"per_pass": 77.9, "us_per_pass": 435.0},
+    "gemv_awq_dual_pack8 (shared gate_up)": {"per_pass": 76.8, "us_per_pass": 1046.0},
+    "silu_mul_dual_rotate_out (down-rotate FUSED)": {"per_pass": 76.8, "us_per_pass": 415.5},
+    "paro_rotate2 (shared input rotate)": {"per_pass": 67.9, "us_per_pass": 368.7},
+    "__amd_rocclr_copyBuffer (D2D)": {"per_pass": 55.1, "us_per_pass": 155.4},
+    "gemv_paro_marlin_k_fma": {"per_pass": 48.0, "us_per_pass": 513.3},
+    "paro_rmsnorm_out": {"per_pass": 38.8, "us_per_pass": 139.1},
+    "paro_add_rmsnorm_out": {"per_pass": 38.8, "us_per_pass": 136.0},
+    "qwen35_router_select": {"per_pass": 38.8, "us_per_pass": 265.2},
+    "gemv_awq_selected_dual_pack8_strided (selected gate_up)": {"per_pass": 38.8, "us_per_pass": 756.0},
+    "gemv_awq_pack8 (shared down)": {"per_pass": 38.5, "us_per_pass": 244.0},
+    "qwen35_router_logits": {"per_pass": 38.4, "us_per_pass": 202.8},
+    "gemv_awq_selected_pack8 (selected down)": {"per_pass": 38.4, "us_per_pass": 467.1},
+    "weighted_sum_shared_gate_combine_residual": {"per_pass": 38.4, "us_per_pass": 116.2},
+    "f32_to_fp16": {"per_pass": 29.1, "us_per_pass": 47.1},
+    "dense_dual_gemv_out": {"per_pass": 28.8, "us_per_pass": 102.8},
+    "qwen35_linear_attn_conv_decode": {"per_pass": 28.8, "us_per_pass": 89.4},
+    "qwen35_gdn_recurrent_rmsnorm_gate": {"per_pass": 28.8, "us_per_pass": 406.5},
+    "dflash_dense_bf16_wmma": {"per_pass": 10.3, "us_per_pass": 221.1}
+  },
+  "grouped_buckets_per_pass": {
+    "paro_rotate (1+2+3)": {"launches": 145.7, "us": 803.7},
+    "rmsnorm (norm+add_norm)": {"launches": 77.6, "us": 275.1},
+    "router (logits+select)": {"launches": 77.1, "us": 468.0},
+    "copyBuffer D2D": {"launches": 55.1, "us": 155.4},
+    "f32<->fp16 staging conv": {"launches": 38.8, "us": 69.7}
+  },
+  "findings": [
+    "No single family dominates (>78/pass); launch count is spread ~1/layer across ~9 families. Reaching 931->400 requires fusing several.",
+    "Biggest launch bucket: paro_rotate (1+2+3) at ~146/pass -- input rotation before each W4 GEMV. Down-rotate is already fused (silu_mul_dual_rotate_out, default-on selected_moe_down_staged).",
+    "The old 120/pass runtime_memset is GONE (fillBufferAligned now 0.6/pass) -- already eliminated; do not chase.",
+    "copyBuffer D2D at 55/pass is pure plumbing (bit-exact by construction); candidate for write-through elimination.",
+    "router logits+select (77/pass = 2/layer) are a clean self-contained fusion candidate (deterministic topk -> bit-exact RED easy)."
+  ],
+  "next": "Cheapest-first: re-measure the existing bit-exact staged-rotate flags (HIPENGINE_SHARED_EXPERT_FUSED_ROTATE, HIPENGINE_SELECTED_MOE_STAGED_ROTATE) on the current tree (post M15.x/M16.4) for exact-AR + launches + C_B, since those changes may have shifted the kernel-time trade. Then design the router-fusion megakernel and the selected-MoE megakernel."
+}
