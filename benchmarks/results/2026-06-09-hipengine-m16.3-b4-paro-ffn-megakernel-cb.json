@@ -1,0 +1,29 @@
+{
+  "name": "m16.3-b4-paro-ffn-megakernel-cb",
+  "date": "2026-06-09",
+  "campaign": "M16.3 megakernel (lower C_B to <=2)",
+  "stage": "B4 wire + measure (on-model verify-cycle C_B)",
+  "performance_claim": false,
+  "kind": "diagnostic-negative-result",
+  "verdict": "megakernel REGRESSES C_B as wired; do not enable by default",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100 / RDNA3), 48 CUs",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 (fp16 activations/theta/scales; hidden=2048, moe_intermediate=512, E=256, top_k=8, krot=8, 40 layers)",
+  "harness": "scripts/mtp_chain_e2e_smoke.py --backend hip_gfx1100 --proposal-impl reload_d2h --chain-attn-mode batched --decode-tokens 8 --candidate-budget 3",
+  "note_decode_tokens": "decode-tokens capped at 8 because the spec-decode baseline diverges from AR at ~token 10 in BOTH proposal impls with the gate OFF (pre-existing, not the megakernel); <=8 keeps exact_ar_match=true for a clean comparison.",
+  "cb_definition": "C_B = (verify_seconds*1000 / target_forward_calls) / (1000 / ar.decode_tok_s)  [verify-cycle cost in AR-token-equivalents]",
+  "configs": [
+    {"id": "A", "desc": "C dispatcher (production baseline, gate off)", "env": "HIPENGINE_PARO_FFN_MEGAKERNEL=0", "verify_ms_per_cycle": [41.9, 40.32], "ar_decode_tok_s": [103.3, 111.0], "C_B": [4.33, 4.475], "exact_ar_match": true, "megakernel_fires": 0},
+    {"id": "B", "desc": "Python fallback, unfused FFN (dispatch off, gate off)", "env": "HIPENGINE_MOE_C1_C_DISPATCH=0 HIPENGINE_PARO_FFN_MEGAKERNEL=0", "verify_ms_per_cycle": [42.07], "ar_decode_tok_s": [112.3], "C_B": [4.72], "exact_ar_match": true, "megakernel_fires": 0},
+    {"id": "C", "desc": "PARO FFN megakernel (gate on; bypasses C dispatcher)", "env": "HIPENGINE_PARO_FFN_MEGAKERNEL=1", "verify_ms_per_cycle": [49.54, 49.69], "ar_decode_tok_s": [108.3, 106.5], "C_B": [5.365, 5.290], "exact_ar_match": true, "megakernel_fires": 240, "fires_breakdown": "40 MoE layers x 6 verify forward calls"},
+    {"id": "ref", "desc": "microbench synchronized per-call latency (krot=8, c=4, hot cache, isolated)", "fused_ms": 0.205, "unfused_naive_ms": 0.678, "speedup_vs_naive": 3.31, "caveat": "synchronized per-call latency vs the NAIVE unfused chain; does NOT predict streamed in-cycle cost or compare vs production fused staged-keyed selected kernels"}
+  ],
+  "correctness": "exact_ar_match=true in A, B, and C (megakernel produces byte-identical verified tokens). On-model stacked qweight/qzeros/scales + int64 selected_experts + krot=8 rotation layouts all validated. KL fused-vs-unfused ~1.7e-5.",
+  "finding": "The fused PARO FFN megakernel, wired into run_moe_c1_fp16 and firing in all 40 MoE layers, RAISES the verify-cycle C_B from ~4.4 (production C dispatcher) to ~5.3 (+20%). Bypassing the C dispatcher is not the cause (config B Python-fallback-unfused is ~42 ms, ~= the dispatcher's ~41 ms). The megakernel kernel itself is ~7-9 ms/cycle slower than the production selected path.",
+  "root_cause_hypothesis": "(1) The B3 microbench measured SYNCHRONIZED per-call latency at tiny shapes (dominated by fixed launch/sync overhead) and compared vs the NAIVE unfused chain; in the STREAMED verify cycle kernels are pipelined (no per-call sync), so that overhead -- and the 5->1 launch collapse -- is immaterial (config B ~= A). (2) The megakernel's block-per-(token,expert) design launches only rows=32 blocks on 48 CUs (occupancy-starved) and runs the whole FFN serially per block, while the production multi-kernel selected path parallelizes each stage across output-packs x rows and fills the GPU. At the verify shape, GPU fill beats launch count.",
+  "recommended_next": [
+    "Re-baseline the microbench against the PRODUCTION fused staged-keyed selected kernels (gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16 + selected silu_rotate_staged_keyed + staged down), not the naive unfused chain.",
+    "Measure per-kernel in-cycle durations via rocprofv3 on one verify cycle (gate on vs off) to confirm the occupancy/fill hypothesis.",
+    "If pursued: redesign the megakernel for more parallelism at the verify shape (split-K or multiple blocks per (token,expert) with a reduction) so it fills 48 CUs; only then can it beat the production selected path in-cycle.",
+    "Keep HIPENGINE_PARO_FFN_MEGAKERNEL default OFF until it demonstrably lowers in-cycle C_B."
+  ]
+}

@@ -77219,3 +77219,46 @@ returns on further kernel micro-opt.
   via `scripts/mtp_verifier_economics.py`. Per MEGAKERNEL.md §8.3 the FFN
   megakernel is one unit of a multi-kernel campaign (FFN -> attention ->
   rmsnorm/router); it improves C_B but does not reach <=2 alone.
+
+## 2026-06-09 — MEGAKERNEL B4 wire + measure: megakernel REGRESSES C_B (negative result)
+
+Wired the B3 PARO FFN megakernel into the deployed runtime and measured the
+actual verify-cycle C_B on the real model. Honest result: **it regresses C_B**.
+
+What landed (all validated, default-off):
+- fp16 instantiation of the megakernel (`_Float16` path; the deployed
+  Qwen3.6-35B-A3B-PARO is fp16 despite the "BF16" name — theta/scales/acts are
+  F16). RED `tests/test_paro_moe_ffn_fused.py` fp16 case clears the KL gate
+  (6 passed). Commit d3a3bfd2.
+- `selected_moe_ffn_megakernel_fp16` + verify-path gate
+  `HIPENGINE_PARO_FFN_MEGAKERNEL` (default off, tokens>1) in `run_moe_c1_fp16`,
+  replacing the selected sub-chain and writing `scratch.down_out`. Commit 4ec17c19.
+
+On-model correctness (W7900/gfx1100, batched verify, B=3, decode-tokens=8):
+megakernel fires in all 40 MoE layers (240 = 40x6), **exact_ar_match=true** —
+byte-identical verified tokens vs AR. Real stacked qweight/qzeros/scales,
+int64 selected_experts, krot=8 rotations all validated.
+
+C_B measurement (verify-cycle cost in AR-token-equivalents; decode-tokens capped
+at 8 because the spec baseline diverges from AR at ~token 10 with the gate OFF —
+pre-existing, not the megakernel):
+- A C dispatcher (production baseline):           C_B ~4.33-4.48
+- B Python fallback, unfused FFN:                 C_B ~4.72
+- C megakernel (gate on):                         C_B ~5.29-5.37  (REGRESSION)
+
+So the megakernel raises verify-cycle cost ~40 -> ~49.6 ms (+20% C_B), the
+opposite of the microbench. Root cause: the B3 microbench measured SYNCHRONIZED
+per-call latency at tiny shapes vs the NAIVE unfused chain; in the STREAMED
+verify cycle kernels are pipelined, so the per-call overhead and the 5->1 launch
+collapse are immaterial (config B ~= A). The megakernel's block-per-(token,
+expert) design launches only rows=32 blocks on 48 CUs (occupancy-starved) and
+runs the FFN serially per block, while the production multi-kernel selected path
+fills the GPU at each stage. **At the verify shape, GPU fill beats launch count.**
+
+Artifact: `benchmarks/results/2026-06-09-hipengine-m16.3-b4-paro-ffn-megakernel-cb.json`.
+Decision: keep the wiring (correctness-validated infrastructure) but
+HIPENGINE_PARO_FFN_MEGAKERNEL stays **default OFF**. Next: re-baseline the
+microbench against the PRODUCTION fused staged-keyed selected kernels, rocprof
+one verify cycle (on vs off) to confirm the occupancy hypothesis, and only
+pursue the megakernel further with a higher-parallelism (split-K / multi-block)
+redesign that fills 48 CUs at the verify shape.

@@ -8061,14 +8061,15 @@ class Qwen35ParoDecodeState:
 
         rows = tokens * self.config.num_experts_per_tok
         global _PARO_FFN_MEGAKERNEL_FIRED
-        if not _PARO_FFN_MEGAKERNEL_FIRED and os.environ.get("HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG"):
-            import sys as _sys
-            print(
-                f"[paro-ffn-megakernel] fired: tokens={tokens} rows={rows} krot={krot} "
-                f"hidden={self.config.hidden_size} ffn={self.config.moe_intermediate_size}",
-                file=_sys.stderr, flush=True,
-            )
-            _PARO_FFN_MEGAKERNEL_FIRED = True
+        if os.environ.get("HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG"):
+            _PARO_FFN_MEGAKERNEL_FIRED += 1
+            if _PARO_FFN_MEGAKERNEL_FIRED == 1:
+                import sys as _sys
+                print(
+                    f"[paro-ffn-megakernel] first fire: tokens={tokens} rows={rows} krot={krot} "
+                    f"hidden={self.config.hidden_size} ffn={self.config.moe_intermediate_size}",
+                    file=_sys.stderr, flush=True,
+                )
         paro_selected_ffn_fused_fp16_fp16_out(
             hidden.ptr,
             scratch.selected_experts.ptr,
@@ -10600,7 +10601,24 @@ def _selected_moe_down_staged_enabled() -> bool:
 
 
 _PARO_FFN_MEGAKERNEL_LIBRARY = None
-_PARO_FFN_MEGAKERNEL_FIRED = False
+_PARO_FFN_MEGAKERNEL_FIRED = 0
+
+
+def _paro_ffn_megakernel_fire_count() -> int:
+    return _PARO_FFN_MEGAKERNEL_FIRED
+
+
+if os.environ.get("HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG"):
+    import atexit as _atexit
+
+    @_atexit.register
+    def _report_paro_ffn_megakernel_fires() -> None:
+        import sys as _sys
+
+        print(
+            f"[paro-ffn-megakernel] total fires this process = {_PARO_FFN_MEGAKERNEL_FIRED}",
+            file=_sys.stderr, flush=True,
+        )
 
 
 def _selected_moe_ffn_megakernel_enabled() -> bool:

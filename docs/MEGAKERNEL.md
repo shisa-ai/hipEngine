@@ -14,11 +14,27 @@ Companion evidence:
 **Progress (2026-06-09):** B0/B1 (GGUF) and **B3** (PARO fused FFN megakernel)
 are built + validated; a pi-multiloop kernel-time optimize loop took the PARO
 megakernel from the correctness-first ~1.38 ms to **0.163 ms** at the c=4 verify
-shape (~7.8x), **4.1x past the unfused PARO chain** it replaces (B5 crossover),
-single-launch, Scratch=0, KL gate held. Next deployable step is **B4**: wire the
-fused key into `runtime/moe_c1_dispatch.py`, re-baseline AR (T1), and measure the
-actual verify-cycle `C_B` delta. The FFN megakernel improves `C_B` but does not
-reach <=2 alone (multi-unit campaign; see §8.3).
+shape (~7.8x), **4.1x past the *naive* unfused PARO chain** in a synchronized
+per-call microbench, single-launch, Scratch=0, KL gate held.
+
+**B4 measured (2026-06-09) — negative result, campaign redirect.** The fp16
+megakernel was wired into `run_moe_c1_fp16` (gated `HIPENGINE_PARO_FFN_MEGAKERNEL`,
+default off) and measured on the real model (W7900, batched verify, B=3):
+exact_ar_match=true (correct, fires in all 40 layers), but it **REGRESSES**
+verify-cycle `C_B` from ~4.4 (production C dispatcher) to ~5.3 (+20%). The
+microbench over-stated the benefit: it measured synchronized per-call latency vs
+the *naive* unfused chain, but in the *streamed* verify cycle kernels are
+pipelined (the 5→1 launch collapse is immaterial — a Python-fallback unfused
+config ~= the dispatcher) and the megakernel's block-per-(token,expert) design
+launches only rows=32 blocks on 48 CUs (occupancy-starved) vs the production
+multi-kernel selected path that fills the GPU per stage. **At the verify shape,
+GPU fill beats launch count.** Artifact:
+`benchmarks/results/2026-06-09-hipengine-m16.3-b4-paro-ffn-megakernel-cb.json`.
+Next: re-baseline the microbench vs the production fused staged-keyed selected
+kernels; rocprof one verify cycle on/off; only pursue a higher-parallelism
+(split-K / multi-block) megakernel redesign that fills 48 CUs. The FFN megakernel
+does not reach `C_B` <= 2 and, as currently designed, does not help at all
+in-cycle (see §8.3).
 
 ---
 
@@ -227,7 +243,7 @@ performance work, and so GGUF (no rotation) front-loads the architecture.
 | **B1** | GGUF fused FFN megakernel (one block per (token,expert), intermediate on-chip), rows∈{1,4} | KL≤0.05/top-1≥90% vs B0; **row-invariance RED** (rows=1 vs in-batch per-row identical); `rocprofv3 --kernel-trace` shows 1 launch/layer |
 | **B2** | Wire GGUF AR decode + (if applicable) verify to B1; re-baseline AR | GGUF E2E KL≤0.05; AR tok/s ≥ prior; launches/layer down |
 | **B3** ✅ | PARO fused FFN: B1 + fused PARO rotate as first in-block stage | **DONE** (kernel `9d2d31c`): KL≤0.05 vs PARO B0, row-invariance RED bit-exact, f32 1.8e-7, 1 launch/layer. Micro-opt loop: 4.1x past the unfused chain at c=4 (B5 crossover), ~7.8x off the correctness-first baseline. |
-| **B4** ⬅ next | Wire PARO verifier (and AR) to B3; measure | MTP economics: exact_ar_match=True, **launches/pass down, `C_B` ≤ baseline**, artifact + rollup. (B3 megakernel ready; not yet wired into `runtime/moe_c1_dispatch.py`.) |
+| **B4** ⚠ measured | Wire PARO verifier to B3; measure | **DONE, negative.** Wired (gated, default off); exact_ar_match=True on-model, but `C_B` **regressed** ~4.4→~5.3 (occupancy-starved block-per-row design loses to the production selected path in the streamed cycle; launch collapse immaterial). Microbench measured synchronized per-call latency vs the naive chain, not streamed in-cycle cost. Needs a higher-parallelism redesign + production-kernel baseline before it can help. |
 | **B5+** | Next megakernels: GDN/full-attn block, rmsnorm fold, router fuse — only those that remove **big-grid** launches or real work | same gates |
 
 Discipline: every stage keeps an unfused fallback registered (architectural
