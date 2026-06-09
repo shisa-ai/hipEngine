@@ -1469,6 +1469,43 @@ Graphs (M16.5) stay de-prioritized (≤1.13× even at large grids). M16.2 is clo
 as predicted-parity. Artifact:
 `benchmarks/results/2026-06-08-hipengine-m16.2-launch-cost-arg-grid-scaling.json`.
 
+### M16.3 progress — census + staged-rotate confirmed-negative (2026-06-09, measured)
+
+Fresh launch census of the **batched B=3 verifier** (the economics path), W7900/
+gfx1100: **931 launches/pass, 15.97 ms kernel/pass.** No single family dominates
+(>78/pass); launch count is spread ~1/layer across ~9 families. Biggest buckets:
+`paro_rotate` (1+2+3) ~146/pass, `router` (logits+select) 77, `rmsnorm`
+(norm+add) 78, `copyBuffer` D2D 55, selected/shared GEMVs ~38 each. The old
+120/pass `runtime_memset` is **gone** (fillBufferAligned 0.6/pass — already
+eliminated; do not chase). Artifact
+`benchmarks/results/2026-06-09-hipengine-m16.3-launch-census-batched-b3.json`.
+
+**Cheapest-first, the existing bit-exact staged-rotate flags were re-measured on
+the current tree (post M15.x/M16.4) and stay default-OFF — they REGRESS `C_B`:**
+
+| config | `C_B` (B=3) | exact | launches removed |
+|---|---:|---|---|
+| baseline (default) | **4.67** | ✓ | — |
+| `SHARED_EXPERT_FUSED_ROTATE=1` | 5.13 | ✓ | ~68/pass (rotate2) |
+| `+ SELECTED_MOE_STAGED_ROTATE=1` | 5.06 | ✓ | ~146/pass (rotate1+2) |
+
+This is **empirical proof on the current tree** that op-pair *staging* fusion
+cannot reach `C_B ≤ 2`: removing ~68–146 **small-grid** rotate launches via
+HBM-staged keyed-barrier kernels saves only the ~5.6 µs/launch dispatch floor
+(M16.1) per launch, which is **smaller** than the barrier-spin + staged HBM
+round-trip the staged kernel adds. Consistent with M13.B.1/M15.4. Artifact
+`benchmarks/results/2026-06-09-hipengine-m16.3-staged-rotate-recheck.json`.
+
+**Consequence — the first true megakernel must consolidate REAL work + HBM
+intermediate traffic across big-grid GEMVs, not move small-grid plumbing behind
+a barrier.** The flagship target is the **selected-expert FFN**:
+fuse `gate_up → silu → down → combine` into one kernel where each block carries
+one `(token, expert)` pair, keeping the 512-d intermediate on-chip so the
+gate_up-output write + down-input read vanish and ~3 big-grid launches/layer
+collapse to 1 (~114 launches/pass + the intermediate HBM traffic). Removing
+small-grid launches (rotate/rmsnorm/router) is at best neutral, at worst
+negative, so it is **de-prioritized** as a standalone lever.
+
 ### Sequencing logic
 
 1. **M16.1 + M16.2 are done (2026-06-08) and resolved the strategy** — see both

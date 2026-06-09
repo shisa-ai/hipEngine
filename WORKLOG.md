@@ -76895,3 +76895,26 @@ Notes:
   megakernel; then router-fusion + selected-MoE megakernel.
 
 Artifact benchmarks/results/2026-06-09-hipengine-m16.3-launch-census-batched-b3.json
+
+## 2026-06-09 measure: M16.3 staged-rotate flags confirmed-negative on current tree
+
+Cheapest-first before building a new kernel: re-measured the existing bit-exact
+staged-rotate fusion flags (they were default-off "pending a fresh W7900 row").
+MTP economics, 35B-A3B, B=3, batched, decode-tokens=32:
+
+- baseline default:                          C_B 4.67  (exact)
+- HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1:    C_B 5.13  (exact, ~68 launches removed) REGRESSED
+- + HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1:  C_B 5.06  (exact, ~146 removed)        REGRESSED
+
+Both stay default-off. Empirical proof on the current tree that op-pair STAGING
+fusion can't reach C_B<=2: removing small-grid rotate launches saves only the
+~5.6 us/launch floor (M16.1), which is less than the barrier-spin + staged HBM
+round-trip added. Consistent with M13.B.1/M15.4.
+
+Consequence: the first TRUE megakernel must consolidate real work + HBM
+intermediate traffic across big-grid GEMVs, not move plumbing behind a barrier.
+Flagship target = selected-expert FFN: fuse gate_up->silu->down->combine with
+the 512-d intermediate kept on-chip (each block carries one (token,expert)),
+collapsing ~3 big-grid launches/layer -> 1 (~114 launches/pass) + killing the
+gate_up-out write / down-in read HBM round-trip. Updated docs/MTP.md M16.3.
+Artifacts: ...m16.3-launch-census-batched-b3.json, ...m16.3-staged-rotate-recheck.json

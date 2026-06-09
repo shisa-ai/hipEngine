@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "task_id": 65,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-06-09",
+  "purpose": "M16.3 cheapest-first: re-measure the existing bit-exact staged-rotate fusion flags on the current tree (post M15.x/M16.4) to see if the kernel-time trade shifted enough to promote them. It did not.",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
+  "backend": "hip_gfx1100",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": "quicksort prompt, decode-tokens=32, candidate-budget=3, chain-attn-mode=batched, proposal_impl=persistent_device",
+  "results": {
+    "baseline_default": {"C_B": 4.67, "mtp_over_ar": 0.519, "exact_ar": true, "note": "current default (selected_moe_down_staged on, input rotates unfused)"},
+    "shared_expert_fused_rotate": {"flags": "HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1", "C_B": 5.13, "mtp_over_ar": 0.473, "exact_ar": true, "launches_removed_per_pass": "~68 (paro_rotate2)", "verdict": "REGRESSED"},
+    "shared_plus_selected_staged_rotate": {"flags": "HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=1 HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1", "C_B": 5.06, "mtp_over_ar": 0.478, "exact_ar": true, "launches_removed_per_pass": "~146 (rotate1+rotate2)", "verdict": "REGRESSED"}
+  },
+  "conclusion": "Both staged-rotate flags stay default-OFF on the current tree. Removing ~68-146 small-grid rotate launches via HBM-staged-keyed-barrier kernels REGRESSES C_B (4.67 -> 5.06-5.13) even though it is bit-exact. The ~5.6 us/launch dispatch floor saved (M16.1) is smaller than the barrier-spin + staged HBM round-trip added. Empirical proof on the current tree that op-pair staging fusion cannot reach the C_B<=2 goal -- consistent with M13.B.1/M15.4.",
+  "implication_for_m16.3": "The first true megakernel must consolidate REAL work + HBM intermediate traffic across big-grid GEMVs (e.g. fuse the selected-expert FFN gate_up->silu->down->combine so the 512-d intermediate stays on-chip and the gate_up-output write + down-input read vanish, collapsing ~3 big-grid launches/layer into 1). Removing small-grid plumbing launches (rotate/rmsnorm/router) is at best neutral and at worst negative."
+}
