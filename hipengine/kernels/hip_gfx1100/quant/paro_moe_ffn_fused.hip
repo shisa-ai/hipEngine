@@ -306,6 +306,88 @@ __device__ inline void awq_pack8_pack_dot(
   for (int j = 0; j < 8; ++j) out8[j] = acc[j];
 }
 
+// Dual gate+up AWQ pack8 dot for a whole pack (8 gate + 8 up output columns):
+// loads each packed gate/up word ONCE and extracts all 8 nibbles, and shares the
+// staged-activation load across both projections. Per-column k order unchanged
+// (f32 exact, row-invariant). g8/u8[j] is column (pack*8 + j).
+template <typename scalar_t>
+__device__ inline void awq_pack8_dual_pack_dot(
+    const float* __restrict__ act,
+    const int32_t* __restrict__ gate_pack_row,
+    const int32_t* __restrict__ gate_qz_e,
+    const scalar_t* __restrict__ gate_sc_e,
+    const int32_t* __restrict__ up_pack_row,
+    const int32_t* __restrict__ up_qz_e,
+    const scalar_t* __restrict__ up_sc_e,
+    int pack,
+    int in_features,
+    int out_features,
+    int out_packed,
+    int group_size,
+    float* __restrict__ g8,
+    float* __restrict__ u8) {
+  float gacc[8];
+  float uacc[8];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) { gacc[j] = 0.0f; uacc[j] = 0.0f; }
+  const int col0 = pack << 3;
+  const int groups = in_features / group_size;
+  for (int gi = 0; gi < groups; ++gi) {
+    const int64_t zoff = static_cast<int64_t>(gi) * out_packed + pack;
+    const int64_t soff = static_cast<int64_t>(gi) * out_features + col0;
+    const uint32_t gpz = static_cast<uint32_t>(gate_qz_e[zoff]);
+    const uint32_t upz = static_cast<uint32_t>(up_qz_e[zoff]);
+    int gz[8];
+    int uz[8];
+    float gsc[8];
+    float usc[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int sh = awq_shift_for_pack_lane(j);
+      gz[j] = static_cast<int>((gpz >> sh) & 0xFu);
+      uz[j] = static_cast<int>((upz >> sh) & 0xFu);
+      gsc[j] = scalar_to_float<scalar_t>(gate_sc_e[soff + j]);
+      usc[j] = scalar_to_float<scalar_t>(up_sc_e[soff + j]);
+    }
+    const int k0 = gi * group_size;
+    const int32_t* __restrict__ gw = gate_pack_row + k0;
+    const int32_t* __restrict__ uw = up_pack_row + k0;
+    int kk = 0;
+    for (; kk + 4 <= group_size; kk += 4) {
+      const float4 a4 = *reinterpret_cast<const float4*>(act + k0 + kk);
+      const int4 gw4 = *reinterpret_cast<const int4*>(gw + kk);
+      const int4 uw4 = *reinterpret_cast<const int4*>(uw + kk);
+      const uint32_t gws[4] = {static_cast<uint32_t>(gw4.x), static_cast<uint32_t>(gw4.y),
+                               static_cast<uint32_t>(gw4.z), static_cast<uint32_t>(gw4.w)};
+      const uint32_t uws[4] = {static_cast<uint32_t>(uw4.x), static_cast<uint32_t>(uw4.y),
+                               static_cast<uint32_t>(uw4.z), static_cast<uint32_t>(uw4.w)};
+      const float as[4] = {a4.x, a4.y, a4.z, a4.w};
+#pragma unroll
+      for (int t = 0; t < 4; ++t) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int sh = awq_shift_for_pack_lane(j);
+          gacc[j] = fmaf(as[t], static_cast<float>(static_cast<int>((gws[t] >> sh) & 0xFu) - gz[j]) * gsc[j], gacc[j]);
+          uacc[j] = fmaf(as[t], static_cast<float>(static_cast<int>((uws[t] >> sh) & 0xFu) - uz[j]) * usc[j], uacc[j]);
+        }
+      }
+    }
+    for (; kk < group_size; ++kk) {
+      const uint32_t gpw = static_cast<uint32_t>(gw[kk]);
+      const uint32_t upw = static_cast<uint32_t>(uw[kk]);
+      const float a = act[k0 + kk];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int sh = awq_shift_for_pack_lane(j);
+        gacc[j] = fmaf(a, static_cast<float>(static_cast<int>((gpw >> sh) & 0xFu) - gz[j]) * gsc[j], gacc[j]);
+        uacc[j] = fmaf(a, static_cast<float>(static_cast<int>((upw >> sh) & 0xFu) - uz[j]) * usc[j], uacc[j]);
+      }
+    }
+  }
+#pragma unroll
+  for (int j = 0; j < 8; ++j) { g8[j] = gacc[j]; u8[j] = uacc[j]; }
+}
+
 template <typename scalar_t, typename out_t>
 __launch_bounds__(256, 2)
 __global__ void paro_selected_ffn_fused_kernel(
@@ -376,19 +458,23 @@ __global__ void paro_selected_ffn_fused_kernel(
   const int32_t* __restrict__ up_qz_e = up_qz + expert_id * gate_z_expert;
   const scalar_t* __restrict__ up_sc_e = up_sc + expert_id * gate_s_expert;
 
-  for (int c = threadIdx.x; c < ffn_len; c += blockDim.x) {
-    const int pack = c >> 3;
-    const int shift = awq_shift_for_pack_lane(c & 7);
-    float g, u;
-    awq_pack8_dual_col_dot<scalar_t>(
+  // Thread-owns-pack: each thread owns one pack (8 gate + 8 up cols), loading
+  // each packed gate/up word once. ffn_len/8 packs.
+  for (int p = threadIdx.x; p < gate_out_packed; p += blockDim.x) {
+    float g8[8], u8[8];
+    awq_pack8_dual_pack_dot<scalar_t>(
         x_s,
-        gate_qw_e + static_cast<int64_t>(pack) * hidden, gate_qz_e, gate_sc_e,
-        up_qw_e + static_cast<int64_t>(pack) * hidden, up_qz_e, up_sc_e,
-        pack, shift, c, hidden, ffn_len, gate_out_packed, group_size, &g, &u);
-    const float gb = round_intermediate<out_t>(g);
-    const float ub = round_intermediate<out_t>(u);
-    const float silu = gb / (1.0f + expf(-gb));
-    inter_s[c] = round_intermediate<out_t>(silu * ub);
+        gate_qw_e + static_cast<int64_t>(p) * hidden, gate_qz_e, gate_sc_e,
+        up_qw_e + static_cast<int64_t>(p) * hidden, up_qz_e, up_sc_e,
+        p, hidden, ffn_len, gate_out_packed, group_size, g8, u8);
+    const int col0 = p << 3;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const float gb = round_intermediate<out_t>(g8[j]);
+      const float ub = round_intermediate<out_t>(u8[j]);
+      const float silu = gb / (1.0f + expf(-gb));
+      inter_s[col0 + j] = round_intermediate<out_t>(silu * ub);
+    }
   }
   __syncthreads();
 
