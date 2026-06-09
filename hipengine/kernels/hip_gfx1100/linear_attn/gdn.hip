@@ -41,6 +41,35 @@ __device__ inline float softplus_f32(float value) {
   return value > 20.0f ? value : log1pf(expf(value));
 }
 
+// Block-wide sum via warp shuffles, with a tiny LDS combine only when the block
+// spans multiple wavefronts.  For a single-wavefront block (nthreads ==
+// warpSize) this is pure shuffle: no __syncthreads, no LDS.  Butterfly xor so
+// every lane returns the full block sum and can use it directly.  Sized for
+// blocks up to 2 wavefronts (the chain GDN uses 32 or 64 threads).
+__device__ inline float block_all_reduce_sum(float v, float* __restrict__ lds, int tid, int nthreads) {
+  for (int off = warpSize >> 1; off > 0; off >>= 1) {
+    v += __shfl_xor(v, off);
+  }
+  const int num_warps = nthreads / warpSize;
+  if (num_warps <= 1) {
+    return v;
+  }
+  const int lane = tid & (warpSize - 1);
+  const int warp = tid / warpSize;
+  if (lane == 0) {
+    lds[warp] = v;
+  }
+  __syncthreads();
+  float total = 0.0f;
+#pragma unroll
+  for (int w = 0; w < 2; ++w) {
+    if (w < num_warps) total += lds[w];
+  }
+  __syncthreads();
+  return total;
+}
+
+
 template <typename scalar_t>
 __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
@@ -869,9 +898,9 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
     int64_t num_v_heads,
     int64_t head_k_dim,
     int64_t head_v_dim) {
-  constexpr int BLOCK = 64;
+  const int BLOCK = static_cast<int>(blockDim.x);
   constexpr int DK_MAX = 4;
-  __shared__ float partial[BLOCK];
+  __shared__ float lds[2];
 
   const int64_t v_head = blockIdx.x;
   const int64_t dv_idx = blockIdx.y;
@@ -923,28 +952,8 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
       }
     }
 
-    partial[tid] = q_sum_local;
-    __syncthreads();
-    #pragma unroll
-    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        partial[tid] += partial[tid + stride];
-      }
-      __syncthreads();
-    }
-    const float q_sum = partial[0];
-    __syncthreads();
-    partial[tid] = k_sum_local;
-    __syncthreads();
-    #pragma unroll
-    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        partial[tid] += partial[tid + stride];
-      }
-      __syncthreads();
-    }
-    const float k_sum = partial[0];
-    __syncthreads();
+    const float q_sum = block_all_reduce_sum(q_sum_local, lds, tid, BLOCK);
+    const float k_sum = block_all_reduce_sum(k_sum_local, lds, tid, BLOCK);
 
     const float q_scale = rsqrtf(q_sum + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
     const float k_scale = rsqrtf(k_sum + 1.0e-6f);
@@ -960,17 +969,7 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
         kv_local += kn * ds;
       }
     }
-    partial[tid] = kv_local;
-    __syncthreads();
-    #pragma unroll
-    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        partial[tid] += partial[tid + stride];
-      }
-      __syncthreads();
-    }
-    const float kv_mem = partial[0];
-    __syncthreads();
+    const float kv_mem = block_all_reduce_sum(kv_local, lds, tid, BLOCK);
 
     const float value = conv_out[value_offset + dv_idx];
     const float delta = (value - kv_mem) * beta;
@@ -985,19 +984,10 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
         out_local += new_state * (q_local[i] * q_scale);
       }
     }
-    partial[tid] = out_local;
-    __syncthreads();
-    #pragma unroll
-    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        partial[tid] += partial[tid + stride];
-      }
-      __syncthreads();
-    }
+    const float out_red = block_all_reduce_sum(out_local, lds, tid, BLOCK);
     if (tid == 0) {
-      acc_buf[(t * num_v_heads + v_head) * head_v_dim + dv_idx] = partial[0];
+      acc_buf[(t * num_v_heads + v_head) * head_v_dim + dv_idx] = out_red;
     }
-    __syncthreads();
   }
 }
 
@@ -1650,7 +1640,10 @@ int launch_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop(
       head_k_dim > 256 || (head_k_dim % 64) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int threads = 64;
+  // One wavefront/block (gfx1100 warpSize=32) when head_k_dim<=128 so the
+  // per-token reductions are pure warp shuffles (no LDS, no __syncthreads);
+  // fall back to 64 for head_k_dim in {192,256} to keep dk_per_thread<=DK_MAX.
+  const int threads = (head_k_dim <= 128) ? 32 : 64;
   hipLaunchKernelGGL(
       (qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<scalar_t>),
       dim3(static_cast<unsigned int>(num_v_heads), static_cast<unsigned int>(head_v_dim)),

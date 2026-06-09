@@ -77324,3 +77324,46 @@ default OFF. C_B redirect: the big verify-cycle families are GDN linear attn
 making those WIDE kernels fill the 32-row shape better, not by collapsing
 launches. Artifact:
 benchmarks/results/2026-06-09-hipengine-m16.3-b4-megakernel-occupancy-redesign.json
+
+## 2026-06-09 — M16.5: GDN chain recurrence shuffle reductions (-8.3% kernel)
+
+Moved to the biggest verify-cycle family: qwen35_gdn_chain_recurrent (14.1
+ms/pass). rocprof + body read: grid is num_v_heads*head_v_dim = 32*128 = 4096
+blocks x 64 threads -> the GPU is SATURATED (not occupancy-starved like the FFN).
+The cost is per-block: a serial 4-token recurrence with 4 LDS+__syncthreads tree
+reductions per token (q_sum, k_sum, kv_mem, out). gfx1100 wavefront=32, so a
+64-thread block is 2 warps needing LDS for cross-warp reduction.
+
+Change: launch the chain block as a SINGLE wavefront (32 threads) when
+head_k_dim<=128 (dk_per_thread=4=DK_MAX), and replace the 4 LDS tree-reductions
+with a warp-shuffle helper (block_all_reduce_sum: pure __shfl_xor for 1 warp,
+warp-shuffle + 1 LDS combine for 2 warps). Zero reduction LDS / __syncthreads on
+the deployed shape. Only the chain kernel changed; the tree DFlash kernel is
+untouched (still BLOCK=64 LDS).
+
+RED harness: scripts/gdn_chain_microbench.py (HIP-graph GPU timing + numpy f32
+delta-rule oracle incl. rmsnorm-gate finalize). Validated baseline (out_max_abs
+1.07e-6) then the change.
+
+Results (W7900, gate off, decode-tokens=8, 6 passes):
+- microbench T=4: 98.2 -> 89.5 us/call (recurrence+finalize, HIP-graph GPU time)
+- rocprof qwen35_gdn_chain_recurrent: 78.5 -> 72.0 us/call (-8.3%)
+- GDN family: 14.137 -> 12.959 ms / 180 calls (2.36 -> 2.16 ms/pass)
+- total verifier kernel: 13.84 -> 13.606 ms/pass
+- exact_ar_match=true on-model; 30 GDN/linear_attn tests pass
+- microbench oracle: out_max_abs 9.5e-7, state_max_abs 6.0e-8
+
+Gotcha hit + recorded: the first rocprof run HUNG at 0% GPU for 23 min. Cause was
+NOT my kernel (microbench ran it fine) -- the model build key pins
+--offload-arch=gfx1100 (cache key 289c...) which differs from the microbench's
+default-arch key (8b9d...), so the rocprof'd smoke tried to REBUILD gdn.so and
+the clang++ --version subprocess hung under rocprof (the documented "no hipcc
+under rocprof" gotcha). Fix: kill stuck hipcc/clang, rm the partial 289c build
+dir, warm-build via a plain (non-rocprof) smoke, then rocprof hits the cache.
+Lesson: after editing a .hip, warm-build the MODEL's gfx1100-pinned key (not just
+the microbench's default key) before rocprof.
+
+Next GDN lever (not yet done): per-(v_head,t) scalars q_scale/k_scale/beta/decay
+(incl. exp+softplus transcendentals) are recomputed by all 128 dv blocks per
+head -- a tiny pre-pass could remove that 128x redundancy. Then on to gate_up.
+Artifact: benchmarks/results/2026-06-09-hipengine-mtp-m16.5-gdn-chain-shuffle-reductions.json

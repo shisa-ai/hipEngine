@@ -1,0 +1,26 @@
+{
+  "name": "mtp-m16.5-gdn-chain-shuffle-reductions",
+  "date": "2026-06-09",
+  "status": "accepted",
+  "performance_claim": true,
+  "kind": "verifier-kernel-optimization",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, 48 CUs, wavefront=32)",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "kernel": "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop (fp16)",
+  "change": "Replace the 4 per-token LDS+__syncthreads block tree-reductions (q_sum, k_sum, kv_mem, out) with warp-shuffle reductions (block_all_reduce_sum), and launch the block as a single wavefront (32 threads) when head_k_dim<=128 so the reductions are pure __shfl_xor with zero __syncthreads and zero reduction LDS. Falls back to 64 threads (2-warp shuffle+LDS combine) for head_k_dim in {192,256}. Only the chain kernel is changed; the tree DFlash kernel is untouched.",
+  "dims": {"num_k_heads": 16, "num_v_heads": 32, "head_k_dim": 128, "head_v_dim": 128, "grid_blocks": 4096, "threads_per_block_old": 64, "threads_per_block_new": 32},
+  "correctness": {
+    "microbench_oracle": "scripts/gdn_chain_microbench.py vs numpy f32 delta-rule reference: out_max_abs 9.5e-7, leaf(state)_max_abs 6.0e-8 (essentially bit-exact; KL gate 0.05 trivially met)",
+    "on_model": "exact_ar_match=true (batched verify B=3, decode-tokens=8, W7900)",
+    "tests": "30 GDN/linear_attn pytest cases pass; tree kernel unchanged"
+  },
+  "measurement": {
+    "harness": "scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 8 --candidate-budget 3 (6 verify passes, gate off)",
+    "microbench_gpu_us_per_call_T4": {"old_lds_tree": 98.2, "new_shuffle": 89.5},
+    "rocprof_gdn_chain_recurrent_us_per_call": {"old": 78.5, "new": 72.0, "delta_pct": -8.3},
+    "rocprof_gdn_chain_total_ms_180_calls": {"old": 14.137, "new": 12.959},
+    "rocprof_gdn_ms_per_pass": {"old": 2.356, "new": 2.160, "delta": -0.196},
+    "rocprof_total_kernel_ms_per_pass": {"old": 13.837, "new": 13.606}
+  },
+  "notes": "GDN chain recurrence is the biggest single verify-cycle kernel family. The GPU is already saturated (4096 blocks on 48 CUs) so the win is per-block: removing the LDS tree-reduction syncs. ~8.3% on the kernel; verify-cycle C_B impact is incremental (-0.20 ms/pass of a ~13.6 ms/pass kernel budget). Next GDN lever: the per-(v_head,t) scalars (q_scale, k_scale, beta, decay incl. exp/softplus transcendentals) are recomputed by all 128 dv blocks of each head -- a tiny pre-pass could remove that redundancy."
+}
