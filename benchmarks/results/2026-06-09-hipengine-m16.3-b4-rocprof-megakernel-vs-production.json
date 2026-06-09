@@ -1,0 +1,51 @@
+{
+  "name": "m16.3-b4-rocprof-megakernel-vs-production-selected",
+  "date": "2026-06-09",
+  "performance_claim": false,
+  "kind": "diagnostic-rocprof-ground-truth",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, 48 CUs)",
+  "harness": "scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 8 --candidate-budget 3 (full trace, 6 verify passes)",
+  "off_production": {
+    "kernel_calls": 5602,
+    "kernel_ms": 83.023,
+    "passes": 6,
+    "ms_per_pass": 13.837,
+    "sel": {
+      "gate_up_dual": {
+        "calls": 240,
+        "total_ms": 10.003,
+        "avg_us": 41.68
+      },
+      "down_silu_rotate_staged": {
+        "calls": 240,
+        "total_ms": 8.436,
+        "avg_us": 35.15
+      },
+      "rotate1": {
+        "calls": 660,
+        "total_ms": 3.168,
+        "avg_us": 4.8
+      }
+    }
+  },
+  "on_megakernel": {
+    "kernel_calls": 5122,
+    "kernel_ms": 114.985,
+    "passes": 6,
+    "ms_per_pass": 19.164,
+    "sel": {
+      "megakernel": {
+        "calls": 240,
+        "total_ms": 52.046,
+        "avg_us": 216.86
+      },
+      "rotate1": {
+        "calls": 420,
+        "total_ms": 2.036,
+        "avg_us": 4.85
+      }
+    }
+  },
+  "finding": "Megakernel = 216.9 us/call (32 blocks) vs production selected FFN = rotate1 4.8 + gate_up_dual 41.7 + silu_rotate_down_staged 35.2 = 81.6 us/call (two wide GPU-filling kernels). Megakernel is 2.66x SLOWER on the GPU; kernel_ms/pass 13.8->19.2 (+5.4 ms/pass). The microbench's own fused number (~205 us at krot=8) matches rocprof (217 us) -- the microbench was right about the megakernel but compared it against an 8x strawman (naive non-staged chain ~678 us, not the deployed 81.6 us).",
+  "root_cause": "Occupancy starvation: 32 blocks (rows) on 48 CUs leaves >=16 CUs idle, and the gate_up stage uses only 64/256 threads (64 ffn-packs). The production path parallelizes each GEMV over rows x output-packs (2048 / 8192 work items) and fills the GPU. To use >32 CUs the kernel MUST split output columns across blocks -- which fights the single-launch on-chip-intermediate fusion."
+}

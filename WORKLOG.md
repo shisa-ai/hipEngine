@@ -77262,3 +77262,30 @@ microbench against the PRODUCTION fused staged-keyed selected kernels, rocprof
 one verify cycle (on vs off) to confirm the occupancy hypothesis, and only
 pursue the megakernel further with a higher-parallelism (split-K / multi-block)
 redesign that fills 48 CUs at the verify shape.
+
+## 2026-06-09 — B4 rocprof ground truth: megakernel 2.66x SLOWER than production selected FFN
+
+Profiled one batched B=3 verify window (scripts/mtp_verifier_rocprof.py, W7900,
+decode-tokens=8) gate off vs on. Definitive per-call costs:
+- Megakernel (gate on):                 216.9 us/call, 32 blocks, kernel_ms/pass 19.16
+- Production selected FFN (gate off):    81.6 us/call total =
+    rotate1 4.8 + gate_up_dual GEMV 41.7 + silu+rotate+down staged 35.2,
+    two WIDE GPU-filling kernels, kernel_ms/pass 13.84
+=> megakernel is 2.66x slower on the GPU; gate-on raises total kernel time
+   83.0 -> 115.0 ms (+5.4 ms/pass), which is the C_B regression source.
+
+Microbench post-mortem: the microbench's FUSED number (~205 us at krot=8)
+MATCHES rocprof (217 us) -- so the microbench correctly measured the megakernel.
+Its error was the BASELINE: it compared against the naive non-staged chain
+(~678 us), an 8x strawman. The deployed path is already two wide fused kernels
+(rotate+gate_up dual, silu+rotate+down staged) at 81.6 us. The megakernel can't
+beat that at 32 rows.
+
+Root cause (occupancy): 32 blocks (rows) on 48 CUs leaves >=16 CUs idle, and the
+gate_up stage uses only 64/256 threads (64 ffn-packs). Production parallelizes
+each GEMV over rows x output-packs (2048 / 8192 work items) -> fills the GPU. To
+use >32 CUs the megakernel MUST split output columns across blocks, which fights
+the single-launch on-chip-intermediate fusion. Next: fix the microbench to the
+production baseline, then test whether an output-split / multi-block-per-row
+megakernel can fill the CUs and beat 81.6 us.
+Artifact: benchmarks/results/2026-06-09-hipengine-m16.3-b4-rocprof-megakernel-vs-production.json
