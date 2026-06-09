@@ -76949,3 +76949,39 @@ the golden oracle the B1 fused-FFN megakernel will be gated against.
 - Next: B1 — GGUF fused selected-expert FFN megakernel (one block per
   (token,expert), 512-d intermediate on-chip), gated KL<=0.05/top-1>=90% vs B0
   + row-invariance RED + rocprof 1-launch/layer.
+
+## 2026-06-09 — MEGAKERNEL B1: fused selected-expert GGUF Q4_K MoE FFN megakernel
+
+First M16.3 megakernel (MEGAKERNEL.md §7 B1). New
+`hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_moe_ffn_fused.{hip,py}` +
+`tests/test_gguf_q4_k_moe_ffn_fused.py` + `scripts/gguf_q4_k_moe_ffn_fused_smoke.py`.
+
+- Kernel `gguf_q4_k_selected_ffn_fused_kernel<scalar_t,out_t>`: one block per
+  selected `(token,expert)` row computes the whole expert FFN —
+  gate_up GEMV -> silu*mul -> down GEMV — with the ffn_len intermediate kept on
+  chip (dynamic LDS `hidden + ffn_len` f32). The gate_up-output HBM write +
+  down-input HBM read vanish; 3 big-grid GEMV launches collapse to 1. Output is
+  per-selected-row down `[rows, hidden]`; routing-weighted combine stays separate.
+  Forked Q4_K dequant + selected addressing from `gguf_q4_k_gemv.hip`.
+- **Thread-owns-output** (each thread computes complete output cols, no
+  cross-thread reduction) -> row-invariant by construction. Registered four-axis
+  `(hip_gfx1100, moe_ffn_selected, gguf_q4_k, fused_dual_silu_down_{bf16_bf16,f32_f32}_out)`.
+  Unfused fallback = existing primitive chain (selected_dual_gemv -> silu_mul ->
+  selected_gemv), unchanged in the runner.
+- Correctness vs B0 oracle `cpu_reference.gguf_moe_selected_ffn` (5 tests pass):
+  f32 `kl_mean=9.3e-12`, top-1 `1.0`, `max_rel=6.9e-6` (megakernel math correct);
+  bf16 `kl_mean=2.5e-4`, `kl_max=8.5e-4`, top-1 `1.0` (clears KL<=0.05/top-1>=90%);
+  GPU **row-invariance bit-exact** (rows=1 == in-batch per row); inactive-expert
+  lane emits zeros. `evaluate_logits` used for the KL/top-1 gate.
+- rocprof `--kernel-trace` (W7900, hidden=2048, ffn_len=512, E=256, rows=8):
+  **1 dispatch** of `gguf_q4_k_selected_ffn_fused_kernel<unsigned short,unsigned short>`,
+  VGPR=24, SGPR=128, Workgroup=256, `End-Start=3.61 ms`. Cache warmed outside
+  the profiler; `--require-cached-build` + precomputed compiler-version file.
+- **Perf caveat (next step):** correct but slow — 3.61 ms/8-rows is
+  occupancy-bound (only `rows` blocks: 8 at decode) plus redundant per-`k` Q4_K
+  header decode (d/dmin/scale re-decoded every element). B1's gate is
+  correctness + 1-launch/layer + row-invariance (all met); the occupancy /
+  block-structured-dequant optimization is measured in B2 (gate: AR tok/s >=
+  prior) and may need a B1.x before wiring on by default.
+- Bundle: `pytest tests/test_gguf_q4_k_moe_ffn_fused.py tests/test_cpu_reference_moe_ffn.py
+  tests/test_cpu_reference.py` -> 24 passed. docs/KERNELS.md catalog row added.
