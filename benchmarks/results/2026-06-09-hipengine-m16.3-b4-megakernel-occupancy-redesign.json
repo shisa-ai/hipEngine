@@ -1,0 +1,23 @@
+{
+  "name": "m16.3-b4-megakernel-occupancy-redesign",
+  "date": "2026-06-09",
+  "performance_claim": false,
+  "kind": "diagnostic-negative-result",
+  "verdict": "single-launch fused megakernel cannot beat the production two-kernel staged path at the verify shape; split-K regresses",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, 48 CUs)",
+  "measurement": "scripts/paro_moe_ffn_fused_microbench.py with HIP-graph replay GPU timing (launch-overhead-free); fp16, krot=8, deployed dims (hidden=2048, ffn=512, E=256, top_k=8), production-class baseline at threads=64. Validated against rocprof (megakernel 210us~=217us, baseline 83us~=81.6us).",
+  "verify_shape_c4": {
+    "production_baseline_us": 84.8,
+    "megakernel_threadownspack_us": 193.4,
+    "megakernel_splitk_lds_us": 532.3,
+    "megakernel_splitk_shuffle_us": 521.1
+  },
+  "c_sweep_megakernel_us": {"c1": 175, "c2": 298, "c4": 521, "c8": 1760, "note": "split-K shuffle; scales badly with block count vs the flat ~210us of thread-owns-pack"},
+  "findings": [
+    "Corrected microbench (HIP-graph GPU time) matches rocprof: megakernel ~193-210 us vs production selected FFN ~83 us at c=4 -> megakernel is ~2.3-2.5x SLOWER on the GPU.",
+    "split-K to use all 256 threads in the gate_up stage (only 64/256 active in thread-owns-pack) REGRESSED the kernel: LDS reduction 532 us (occupancy loss from +16KB LDS), warp-shuffle reduction 521 us (no LDS, still regresses). Both scale badly with block count (175 us at c=1 -> 1760 us at c=8) vs the flat ~210 us of thread-owns-pack -- the scattered per-thread K-slice loads lose the contiguous coalescing the thread-owns-pack design relies on, and 4x more in-flight weight requests contend.",
+    "Root tension: the down GEMV reduces over the full intermediate, which needs the full gate_up, so the only intra-row parallelism is split-K (lost). Filling the GPU requires parallelizing each GEMV over rows x output-columns across many blocks -- which is exactly the production two-kernel staged design (materialize the intermediate to HBM between two GPU-filling kernels)."
+  ],
+  "conclusion": "At the verify shape (32 rows) the single-launch on-chip-fused megakernel is the wrong design: it is occupancy-starved (32 blocks on 48 CUs) and cannot be parallelized intra-row without losing coalescing. The production two-kernel staged path already fills the GPU and is ~2.5x faster. HIPENGINE_PARO_FFN_MEGAKERNEL stays default OFF.",
+  "redirect": "C_B levers are elsewhere: the biggest verify-cycle kernel families are linear_attention_gdn (14.1 ms/pass), gate_up_dual GEMV (10.0 ms), down GEMV (8.4 ms), w4_dual (8.0 ms). Lowering C_B means making THOSE wide kernels faster / filling the GPU better at the 32-row shape -- not collapsing launches."
+}

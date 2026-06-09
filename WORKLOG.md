@@ -77289,3 +77289,38 @@ the single-launch on-chip-intermediate fusion. Next: fix the microbench to the
 production baseline, then test whether an output-split / multi-block-per-row
 megakernel can fill the CUs and beat 81.6 us.
 Artifact: benchmarks/results/2026-06-09-hipengine-m16.3-b4-rocprof-megakernel-vs-production.json
+
+## 2026-06-09 — B4 microbench fix + occupancy redesign: split-K regresses, megakernel is wrong design for verify shape
+
+Did the 3 follow-ups (correct microbench, confirm occupancy, parallelize).
+
+(1) Microbench was MEASURING PYTHON LAUNCH OVERHEAD, not GPU time. A per-call
+loop pays ~4x ctypes launch overhead for the 4-kernel baseline (~600 us) while
+the single fused kernel (217 us GPU) is GPU-bound -- so it secretly compared
+launch COUNT (1 vs 4), not GPU efficiency. Rewrote it to use HIP graph
+capture/replay (one host launch per replay). Now matches rocprof: c=4 fused
+~193-210 us vs production ~83 us (0.4x). Also fp16 + krot=8 + production-class
+baseline + blocks-vs-48-CU. Committed.
+
+(2) Occupancy confirmed: fused time is FLAT ~210 us across c=1..8 (8->64 blocks)
+while production scales with work (46->162 us) -- latency/occupancy-bound, only
+32 blocks on 48 CUs at the verify shape, and gate_up uses only 64/256 threads.
+
+(3) Tried split-K to use all 256 threads in gate_up. BOTH variants regressed:
+LDS-reduction 532 us (lost occupancy to +16KB LDS), warp-shuffle 521 us (no LDS,
+still regresses). Both scale badly with block count (175 us @c1 -> 1760 us @c8)
+vs flat ~210 us for thread-owns-pack -- split-K scatters the per-thread weight
+loads and loses the contiguous coalescing thread-owns-pack relies on, plus 4x
+in-flight requests contend. Reverted (correctness gate held throughout, KL ~2e-7).
+
+Conclusion: at 32 rows the single-launch on-chip-fused megakernel is the wrong
+design. The down GEMV needs the full intermediate <- full gate_up, so the only
+intra-row parallelism is split-K (lost to coalescing). Filling the GPU requires
+parallelizing each GEMV over rows x output-columns across many blocks = the
+production two-kernel staged design (intermediate to HBM between two GPU-filling
+kernels), which is already ~2.5x faster. HIPENGINE_PARO_FFN_MEGAKERNEL stays
+default OFF. C_B redirect: the big verify-cycle families are GDN linear attn
+(14.1 ms/pass), gate_up_dual (10.0), down (8.4), w4_dual (8.0) -- lower C_B by
+making those WIDE kernels fill the 32-row shape better, not by collapsing
+launches. Artifact:
+benchmarks/results/2026-06-09-hipengine-m16.3-b4-megakernel-occupancy-redesign.json
