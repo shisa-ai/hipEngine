@@ -8025,6 +8025,83 @@ class Qwen35ParoDecodeState:
         )
         return scratch.down_out
 
+    def selected_moe_ffn_megakernel_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        threads: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """B4: fused selected-expert PARO FFN megakernel -> ``scratch.down_out``.
+
+        Numerically-equivalent (KL ~2e-5) replacement for
+        ``selected_moe_gate_up_pack8_fp16`` + ``activate_rotate_moe_down_fp16``
+        + ``selected_moe_down_pack8_fp16``.  Reads the un-rotated MoE input
+        ``hidden`` and applies rotate1 internally, so it does not depend on the
+        ``gate_up_input`` / ``gate_up`` / ``down_input`` scratch buffers.
+        Requires gate_up and down rotations to share ``krot`` (true for the
+        deployed model; raises otherwise so the caller can fall back).
+        """
+
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        gate_up_pairs = self.tensor(f"{prefix}.gate_up_weight_pairs")
+        down_pairs = self.tensor(f"{prefix}.down_weight_pairs")
+        krot = _rotation_krot(gate_up_pairs)
+        if krot != _rotation_krot(down_pairs):
+            raise ValueError(
+                "selected_moe_ffn_megakernel_fp16 requires gate_up krot == down krot"
+            )
+        from hipengine.kernels.hip_gfx1100.quant.paro_moe_ffn_fused import (
+            paro_selected_ffn_fused_fp16_fp16_out,
+        )
+
+        rows = tokens * self.config.num_experts_per_tok
+        global _PARO_FFN_MEGAKERNEL_FIRED
+        if not _PARO_FFN_MEGAKERNEL_FIRED and os.environ.get("HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG"):
+            import sys as _sys
+            print(
+                f"[paro-ffn-megakernel] fired: tokens={tokens} rows={rows} krot={krot} "
+                f"hidden={self.config.hidden_size} ffn={self.config.moe_intermediate_size}",
+                file=_sys.stderr, flush=True,
+            )
+            _PARO_FFN_MEGAKERNEL_FIRED = True
+        paro_selected_ffn_fused_fp16_fp16_out(
+            hidden.ptr,
+            scratch.selected_experts.ptr,
+            self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode").ptr,
+            self.tensor(f"{prefix}.stacked_gate_qzeros").ptr,
+            self.tensor(f"{prefix}.stacked_gate_scales").ptr,
+            self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode").ptr,
+            self.tensor(f"{prefix}.stacked_up_qzeros").ptr,
+            self.tensor(f"{prefix}.stacked_up_scales").ptr,
+            self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode").ptr,
+            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+            self.tensor(f"{prefix}.stacked_down_scales").ptr,
+            gate_up_pairs.ptr,
+            self.tensor(f"{prefix}.gate_up_weight_theta").ptr,
+            self.tensor(f"{prefix}.gate_up_weight_channel_scales").ptr,
+            down_pairs.ptr,
+            self.tensor(f"{prefix}.down_weight_theta").ptr,
+            self.tensor(f"{prefix}.down_weight_channel_scales").ptr,
+            scratch.down_out.ptr,
+            tokens,
+            rows,
+            self.config.num_experts,
+            self.config.hidden_size,
+            self.config.moe_intermediate_size,
+            group_size,
+            krot,
+            threads=threads,
+            stream=stream,
+            library=_paro_ffn_megakernel_library(library),
+            runtime=self.runtime,
+        )
+        return scratch.down_out
+
     def selected_moe_activate_down_pack8_fp16(
         self,
         scratch: Qwen35ParoMoeScratch,
@@ -9303,6 +9380,28 @@ class Qwen35ParoDecodeState:
         """
 
         scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if (
+            _selected_moe_ffn_megakernel_enabled()
+            and tokens > 1
+            and group_size == 128
+            and self._shared_expert_kind == "packed_paro_w4"
+        ):
+            # B4: fused selected-expert FFN megakernel replaces the selected
+            # sub-chain (gate_up + activate/down-rotate + down) with one launch
+            # per (token, expert).  Router, shared expert and combine stay as
+            # their own kernels.  Bypasses the C dispatcher.
+            self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+            self.selected_moe_ffn_megakernel_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            shared = self.shared_expert_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            return self.combine_moe_c1_shared_residual_fp16(
+                scratch,
+                shared=shared,
+                residual=residual,
+                out=out,
+                tokens=tokens,
+                library=library,
+                stream=stream,
+            )
         if self._try_moe_c1_c_dispatch(
             hidden=hidden,
             residual=residual,
@@ -10498,6 +10597,43 @@ def _selected_moe_down_staged_enabled() -> bool:
     """
 
     return _env_enabled("HIPENGINE_SELECTED_MOE_DOWN_STAGED", default=True)
+
+
+_PARO_FFN_MEGAKERNEL_LIBRARY = None
+_PARO_FFN_MEGAKERNEL_FIRED = False
+
+
+def _selected_moe_ffn_megakernel_enabled() -> bool:
+    """B4 gate for the fused selected-expert PARO FFN megakernel.
+
+    One launch per (token, expert) computes the whole selected expert FFN
+    (rotate1 -> dual gate/up AWQ GEMV -> silu*mul -> down-rotate -> down AWQ
+    GEMV) with both incoherence rotations and the ffn-wide intermediate held
+    on-chip, writing the per-selected-row down projection into
+    ``scratch.down_out``.  Replaces the 3-call/~5-launch unfused selected
+    sub-chain.  Default off; enable with ``HIPENGINE_PARO_FFN_MEGAKERNEL=1``.
+    Verify-path only (tokens > 1); AR decode (tokens=1) keeps the unfused
+    path so the AR baseline is untouched.
+    """
+
+    return _env_enabled("HIPENGINE_PARO_FFN_MEGAKERNEL", default=False)
+
+
+def _paro_ffn_megakernel_library(library=None):
+    """Resolve the fused PARO FFN megakernel .so, cached process-wide."""
+
+    if isinstance(library, dict):
+        lib = library.get("paro_ffn_fused")
+        if lib is not None:
+            return lib
+    global _PARO_FFN_MEGAKERNEL_LIBRARY
+    if _PARO_FFN_MEGAKERNEL_LIBRARY is None:
+        from hipengine.kernels.hip_gfx1100.quant.paro_moe_ffn_fused import (
+            build_paro_moe_ffn_fused,
+        )
+
+        _PARO_FFN_MEGAKERNEL_LIBRARY = build_paro_moe_ffn_fused(load=True)
+    return _PARO_FFN_MEGAKERNEL_LIBRARY
 
 
 def _shared_expert_fused_rotate_enabled() -> bool:
