@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_moe_ffn_fused import (
     build_paro_moe_ffn_fused,
     paro_selected_ffn_fused_bf16_bf16_out,
     paro_selected_ffn_fused_f32_f32_out,
+    paro_selected_ffn_fused_fp16_fp16_out,
 )
 from tests.test_cpu_reference_paro_moe_ffn import (
     FFN_LEN,
@@ -141,6 +142,11 @@ def _run_fused(library, *, dtype: str, x: np.ndarray, selected: np.ndarray, f: d
         out_host = np.zeros((rows, HIDDEN), dtype=np.uint16)
         launch = paro_selected_ffn_fused_bf16_bf16_out
         cast = _f32_to_bf16_u16
+    elif dtype == "fp16":
+        x_dev = np.ascontiguousarray(x, dtype=np.float16)
+        out_host = np.zeros((rows, HIDDEN), dtype=np.float16)
+        launch = paro_selected_ffn_fused_fp16_fp16_out
+        cast = lambda a: np.ascontiguousarray(a, dtype=np.float16)
     else:
         raise ValueError(dtype)
 
@@ -189,7 +195,9 @@ def _run_fused(library, *, dtype: str, x: np.ndarray, selected: np.ndarray, f: d
         for buf in bufs:
             if hasattr(buf, "ptr"):
                 free(buf)
-    return out_host.astype(np.float32) if dtype == "f32" else _bf16_u16_to_f32(out_host)
+    if dtype == "bf16":
+        return _bf16_u16_to_f32(out_host)
+    return out_host.astype(np.float32)
 
 
 def test_fused_f32_matches_cpu_per_row_down(fused_library):
@@ -213,6 +221,17 @@ def test_fused_f32_combine_matches_b0_oracle(fused_library):
 def test_fused_bf16_combine_passes_kl_top1_gate(fused_library):
     f = build_paro_fixture()
     gpu = _run_fused(fused_library, dtype="bf16", x=f["x"], selected=_selected_flat(f), f=f, x_rows=TOKENS, rows=ROWS)
+    combined = _combine(gpu, f["routing"])
+    oracle = _oracle(f)
+    result = evaluate_logits(oracle, combined)
+    assert result.passed, f"kl_mean={result.kl_mean} kl_max={result.kl_max} top1={result.top1_agreement}"
+
+
+def test_fused_fp16_combine_passes_kl_top1_gate(fused_library):
+    # The deployed runtime path is fp16 (theta/scales/activations are F16). This
+    # exercises the _Float16 instantiation used by run_moe_c1_fp16.
+    f = build_paro_fixture()
+    gpu = _run_fused(fused_library, dtype="fp16", x=f["x"], selected=_selected_flat(f), f=f, x_rows=TOKENS, rows=ROWS)
     combined = _combine(gpu, f["routing"])
     oracle = _oracle(f)
     result = evaluate_logits(oracle, combined)

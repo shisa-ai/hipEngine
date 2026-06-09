@@ -27,6 +27,7 @@ _SOURCE = Path(__file__).with_name("paro_moe_ffn_fused.hip")
 _OUTPUT_NAME = "paro_moe_ffn_fused.so"
 _FAMILY = "paro_moe_ffn_fused"
 _SYMBOL_BF16_BF16_OUT = "hipengine_paro_selected_ffn_fused_bf16_bf16_out"
+_SYMBOL_FP16_FP16_OUT = "hipengine_paro_selected_ffn_fused_fp16_fp16_out"
 _SYMBOL_F32_F32_OUT = "hipengine_paro_selected_ffn_fused_f32_f32_out"
 _ALLOWED_THREADS = {64, 128, 256}
 
@@ -195,6 +196,56 @@ def paro_selected_ffn_fused_f32_f32_out(
     )
 
 
+def paro_selected_ffn_fused_fp16_fp16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    gate_qw_ptr: int,
+    gate_qz_ptr: int,
+    gate_sc_ptr: int,
+    up_qw_ptr: int,
+    up_qz_ptr: int,
+    up_sc_ptr: int,
+    down_qw_ptr: int,
+    down_qz_ptr: int,
+    down_sc_ptr: int,
+    r1_pairs_ptr: int,
+    r1_theta_ptr: int,
+    r1_cscale_ptr: int,
+    dr_pairs_ptr: int,
+    dr_theta_ptr: int,
+    dr_cscale_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    hidden: int,
+    ffn_len: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fused selected-expert PARO MoE FFN with FP16 activation and FP16 output."""
+
+    _launch_fused(
+        _SYMBOL_FP16_FP16_OUT,
+        (
+            x_ptr, selected_ptr,
+            gate_qw_ptr, gate_qz_ptr, gate_sc_ptr,
+            up_qw_ptr, up_qz_ptr, up_sc_ptr,
+            down_qw_ptr, down_qz_ptr, down_sc_ptr,
+            r1_pairs_ptr, r1_theta_ptr, r1_cscale_ptr,
+            dr_pairs_ptr, dr_theta_ptr, dr_cscale_ptr,
+            out_ptr,
+        ),
+        x_rows, rows, num_experts, hidden, ffn_len, group_size, krot,
+        threads=threads, stream=stream, library=library, runtime=runtime,
+    )
+
+
 def paro_selected_ffn_fused_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -256,6 +307,11 @@ def register_paro_moe_ffn_fused_kernels(*, replace: bool = True) -> None:
         paro_selected_ffn_fused_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "moe_ffn_selected", "w4_paro", "fused_rotate_dual_silu_rotate_down_fp16_fp16_out"),
+        paro_selected_ffn_fused_fp16_fp16_out,
+        replace=replace,
+    )
 
 
 register_paro_moe_ffn_fused_kernels()
@@ -266,5 +322,6 @@ __all__ = [
     "plan_paro_moe_ffn_fused_build",
     "paro_selected_ffn_fused_f32_f32_out",
     "paro_selected_ffn_fused_bf16_bf16_out",
+    "paro_selected_ffn_fused_fp16_fp16_out",
     "register_paro_moe_ffn_fused_kernels",
 ]

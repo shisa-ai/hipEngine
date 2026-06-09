@@ -84,6 +84,15 @@ __device__ inline float round_intermediate<uint16_t>(float value) {
   return bf16_bits_to_float(float_to_bf16_bits(value));
 }
 
+// FP16 variant: round gate/up and silu(gate)*up to fp16 so the fused kernel
+// tracks the unfused fp16 dual_gemv -> silu_mul -> down chain (which
+// materializes those intermediates as fp16). scalar_to_float / store_output use
+// the generic _Float16 casts (native), so only the rounding needs specializing.
+template <>
+__device__ inline float round_intermediate<_Float16>(float value) {
+  return static_cast<float>(static_cast<_Float16>(value));
+}
+
 // AWQ pack8 interleaved nibble shift (matches loading.qwen35_paro.awq_pack8_shift_for_lane
 // and paro_awq_gemv.hip awq_shift_for_pack_lane).
 __device__ inline int awq_shift_for_pack_lane(int lane) {
@@ -600,6 +609,40 @@ extern "C" int hipengine_paro_selected_ffn_fused_bf16_bf16_out(
       static_cast<const uint16_t*>(dr_theta),
       static_cast<const uint16_t*>(dr_cscale),
       static_cast<uint16_t*>(out),
+      x_rows, rows, num_experts, hidden, ffn_len, group_size, krot, threads,
+      static_cast<hipStream_t>(stream));
+}
+
+extern "C" int hipengine_paro_selected_ffn_fused_fp16_fp16_out(
+    const void* x, const void* selected,
+    const void* gate_qw, const void* gate_qz, const void* gate_sc,
+    const void* up_qw, const void* up_qz, const void* up_sc,
+    const void* down_qw, const void* down_qz, const void* down_sc,
+    const void* r1_pairs, const void* r1_theta, const void* r1_cscale,
+    const void* dr_pairs, const void* dr_theta, const void* dr_cscale,
+    void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t hidden, int64_t ffn_len, int64_t group_size, int64_t krot,
+    int64_t threads, void* stream) {
+  return launch_paro_selected_ffn_fused_out<_Float16, _Float16>(
+      static_cast<const _Float16*>(x),
+      static_cast<const int64_t*>(selected),
+      static_cast<const int32_t*>(gate_qw),
+      static_cast<const int32_t*>(gate_qz),
+      static_cast<const _Float16*>(gate_sc),
+      static_cast<const int32_t*>(up_qw),
+      static_cast<const int32_t*>(up_qz),
+      static_cast<const _Float16*>(up_sc),
+      static_cast<const int32_t*>(down_qw),
+      static_cast<const int32_t*>(down_qz),
+      static_cast<const _Float16*>(down_sc),
+      static_cast<const int16_t*>(r1_pairs),
+      static_cast<const _Float16*>(r1_theta),
+      static_cast<const _Float16*>(r1_cscale),
+      static_cast<const int16_t*>(dr_pairs),
+      static_cast<const _Float16*>(dr_theta),
+      static_cast<const _Float16*>(dr_cscale),
+      static_cast<_Float16*>(out),
       x_rows, rows, num_experts, hidden, ffn_len, group_size, krot, threads,
       static_cast<hipStream_t>(stream));
 }
