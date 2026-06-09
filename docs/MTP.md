@@ -1471,6 +1471,13 @@ as predicted-parity. Artifact:
 
 ### M16.3 progress — census + staged-rotate confirmed-negative (2026-06-09, measured)
 
+> **Implementation spec for the M16.3 megakernel campaign lives in
+> [docs/MEGAKERNEL.md](MEGAKERNEL.md)** (target kernel, the T1 self-consistent +
+> KL accuracy strategy that drops bit-exact-vs-legacy, the GGUF-first
+> simplification, and the staged RED-first build plan). This block is the
+> economics/measurement record.
+
+
 Fresh launch census of the **batched B=3 verifier** (the economics path), W7900/
 gfx1100: **931 launches/pass, 15.97 ms kernel/pass.** No single family dominates
 (>78/pass); launch count is spread ~1/layer across ~9 families. Biggest buckets:
