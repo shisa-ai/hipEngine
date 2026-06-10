@@ -77610,3 +77610,45 @@ tree-path validation, the necessary co-requisite. #106 seed: alpha 0.277-0.364
 (chain 0.317, best gated-k2 0.364), visible 2.39-2.82 tok/cycle, depth1 in-top-8
 1.0. The reload_d2h proposer is correctness-first (per-call MTP reload), so the
 spec tok/s is diagnostic only. #100 reuses this curve rather than re-measuring.
+
+## 2026-06-09 — #100: per-position p-min truncation + B-down sweep (MTP chain)
+
+Added DFlash-style --draft-p-min to the MTP chain path: stop drafting at the
+first depth whose head top-1 prob proxy (top-8 softmax) < p_min; truncate-to-0
+cycles become plain AR. Exactness preserved (chain commits only target-verified
+tokens + the correction) -> exact_ar_match AND gpu_accept_match_cpu hold for ALL
+9 sweep configs. eff_budget snapped to allowed {1,2,3,5}. --pmin-sweep shares
+one resident runner. Commit d7ea28a8 (wiring) + artifact:
+benchmarks/results/2026-06-09-hipengine-mtp-pmin-bdown-sweep.json
+
+Sweep (hip_gfx1100, quicksort 90-tok, decode=32, batched). est launches/visible-
+token from the #98 model (verify 711 + 240/row; AR 920); wall tok/s diagnostic
+only (reload path). wasted0 = drafted>=1 & accepted 0 (the cost p-min targets):
+
+| B | pmin | alpha | avg_acc | wasted0 | ar_cyc | estL/tok |
+|---|------|-------|---------|---------|--------|----------|
+| 1 | 0.00 | 0.824 | 0.824   | 3       | 0      | 653 |
+| 1 | 0.50 | 0.722 | 0.722   | 1       | 4      | 657 |
+| 1 | 0.65 | 0.600 | 0.600   | 0       | 8      | 677 |
+| 2 | 0.00 | 0.607 | 1.214   | 4       | 0      | 646 |
+| 2 | 0.50 | 0.607 | 1.214   | 1       | 3      | 589 |
+| 2 | 0.65 | 0.533 | 1.067   | 0       | 6      | 593 |
+| 3 | 0.00 | 0.528 | 1.583   | 3       | 0      | 647 |
+| 3 | 0.50 | 0.528 | 1.583   | 1       | 2      | 575 |
+| 3 | 0.65 | 0.405 | 1.214   | 0       | 5      | 579 |
+
+Findings: (1) p-min eliminates wasted multi-row verifies (3/4/3 -> 0) — the head
+knows when it's unsure (bimodal accept hist confirmed). NOTE total zero-accept
+RATE rises with p-min because AR conversions are also accept-0 (but cheap); the
+meaningful metric is wasted0 (multi-row verifies), which p-min cuts. (2) p_min=0.5
+is the sweet spot for B>=2: avg_accept UNCHANGED, est launches/visible-token drop
+~9-12% (B=3 647->575) by converting wasted verifies to cheap AR with NO accept
+loss — stacks with #101/#105. (3) p_min=0.65 over-truncates (cuts real accepts).
+(4) B=1 never benefits (no multi-row waste). (5) vs StepFun: p-min insight CONFIRMED,
+but our optimum is B=3+p_min=0.5 (575 launches/visible-tok), NOT B=1 — our verify
+fixed cost (711, #98) amortizes better over higher B; StepFun's B=1-optimal is
+MI50/llama.cpp stack-specific. (6) All spec configs (575-677) already undercut
+AR's 920 launches/visible-token per the #98 model; realizing it as wall tok/s
+needs #101/#105. Proxy caveat: top-8 softmax overestimates true vocab prob, so a
+proxy p_min is milder than the same value on true prob — read measured truncation
+rates, not the bare threshold. #106 seed: best B=3/p0.5, 575 launches/visible-tok.
