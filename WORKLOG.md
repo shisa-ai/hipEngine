@@ -77520,3 +77520,50 @@ wins do not move C_B (dispatch-floored). C_B levers are the dispatch floor
 (S9.2) and multi-stream (S9.5). Do not regress an already-tuned memory-bound
 GEMV. Docs: MEGAKERNEL S9.6. Artifact:
 benchmarks/results/2026-06-09-hipengine-m16-gateup-threadcount-ab.json
+
+## 2026-06-09 — #98: AR decode + MTP verify per-token launch census
+
+rocprofv3 --kernel-trace on hip_gfx1100 (NOT harness-default gfx1151), prebuilt
+.so + --require-cached-build + precomputed compiler-version file (no hipcc under
+profiler). Verify windowed to mtp_verify_pass_* / mtp_verify_cycle_* roctx
+markers (6 passes each, B=1 and B=5). Model: PARO-full4096-e5-packed-MTP-BF16,
+max_layers=40. Artifact:
+benchmarks/results/2026-06-09-hipengine-m16-ar-verify-launch-census.json
+
+AR DECODE (measured floor): **920.0 launches/tok** (29440 kernels / 32 decode
+tok, exact). gpu-busy 7.06 ms/tok vs wall 10.65 ms/tok = 3.59 ms/tok hidden gap
+(34%, ~3.9 us/launch). Roofline's "~1600" was an upper estimate; the real eager
+floor is 920. Of the 920, **~451/tok is fusible glue**: rotations 160
+(rotate1 80 + rotate2 70 + rotate3 10), silu_mul_dual_rotate 80, norms 91
+(rmsnorm_out 41 + add_rmsnorm 40 + head_rmsnorm 10), router logits+select 80,
+gate_combine 40, type-conv 40 (f32<->fp16), **42/tok _amd_rocclr_copyBuffer**
+(rocclr internal copies — eliminable via preallocated/in-place buffers). The
+irreducible matmul launches are ~280/tok GEMVs (dual_pack8 80, marlin 50,
+selected_dual/selected/awq_pack8 120, dense_dual 30) + attention core (GDN 60,
+full-attn). #105 target: fuse PARO rotations + rmsnorm into GEMV epilogues and
+kill the copyBuffer/type-conv churn -> 920 -> ~400-500/tok.
+
+VERIFY (LpP = fixed + marginal*rows, rows=B+1):
+- B=1 (2 rows): 1191 launches/pass, 11.43 ms busy, 31.75 ms wall.
+- B=5 (6 rows): 2151 launches/pass, 23.66 ms busy, 59.32 ms wall.
+- **fixed = 711 launches (5.32 ms)**, **marginal = 240 launches/row (3.06 ms/row)**.
+- fixed/AR = 0.77x; marginal/row = 0.26 AR-equiv in launches.
+
+The marginal is pathological: a genuinely batched verify adds ~0 launches/row,
+but ours adds a full per-row kernel set. Per-row scaling families (the #101
+target spec): marlin_k_fma +20/row, awq_dual_pack8 +20/row, paro_rotate1
++20/row, silu_mul_dual_rotate +20/row, then selected/awq/rmsnorm/router/attn
+all +10/row. The verify path launches per-draft-row GEMVs instead of one
+MULTI-ROW grid over B+1 rows. #101 = convert verifier projections to multi-row
+GEMV (collapses 240/row -> ~0; B=5 2151 -> ~800 launches/pass).
+
+PROPOSER (answering "does C_B include the MTP-head pass?"): YES, as a SEPARATE
+pass outside mtp_verify_pass_*. Negligible at B=1 (0.8 launches, 59 us) but
+**265 launches / 12.3 ms at B=5** (autoregressive MTP head over draft tokens,
+~53 launches/draft-token). Tail (sample/accept) ~66 launches / 3.2 ms,
+B-invariant. So folding the B>=2 draft proposer into the verify path is real
+#101 scope, not just the verify pass.
+
+#106 forecast seed recorded in artifact: AR 920 launches / 7.06 ms busy / 10.65
+ms wall; verify fixed 711 launches/5.32 ms + 240/row/3.06 ms-row; proposer
+~0 @B1, 265/12.3 ms @B5; tail 66 launches.

@@ -1,0 +1,441 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "diagnostic-census",
+  "status": "retained",
+  "id": "2026-06-09-hipengine-m16-ar-verify-launch-census",
+  "task": "#98",
+  "title": "AR decode + MTP verify per-token launch census (dispatch floor)",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100/RDNA3",
+    "backend": "hip_gfx1100"
+  },
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "max_layers": 40,
+  "method": "rocprofv3 --kernel-trace, prebuilt .so + --require-cached-build + precomputed compiler-version file (no hipcc under profiler); verify windowed to mtp_verify_pass_* roctx markers (verify-only, proposer excluded)",
+  "commands": {
+    "ar": "python3 scripts/qwen35_paro_bench.py --model <pkg> --backend auto --token-id 9707 --prompt-length 16 --decode-tokens 32 --warmup-decode-tokens 2 --max-layers 40 --no-graph-replay-decode --rocprof-selected-region measured_decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "verify": "scripts/mtp_verifier_rocprof.py baseline at candidate_budget=1 and =5 (mtp_verify_pass_* / mtp_verify_cycle_* markers)"
+  },
+  "ar_decode": {
+    "launches_per_tok": 920.0,
+    "kernels_total": 29440,
+    "decode_tokens": 32,
+    "gpu_busy_us_per_tok": 7064.4,
+    "wall_us_per_tok": 10650,
+    "hidden_gap_us_per_tok": 3585.6,
+    "hidden_gap_pct": 34,
+    "per_launch_gap_us": 3.9,
+    "warmed_tok_s": 86.99,
+    "families": [
+      {
+        "family": "gemv_awq_dual_pack8",
+        "count": 2560,
+        "per_tok": 80.0,
+        "mean_ns": 13453,
+        "busy_us_per_tok": 1076.22
+      },
+      {
+        "family": "paro_rotate1",
+        "count": 2560,
+        "per_tok": 80.0,
+        "mean_ns": 5381,
+        "busy_us_per_tok": 430.51
+      },
+      {
+        "family": "silu_mul_dual_rotate_out",
+        "count": 2560,
+        "per_tok": 80.0,
+        "mean_ns": 5142,
+        "busy_us_per_tok": 411.37
+      },
+      {
+        "family": "paro_rotate2",
+        "count": 2240,
+        "per_tok": 70.0,
+        "mean_ns": 5360,
+        "busy_us_per_tok": 375.19
+      },
+      {
+        "family": "gemv_paro_marlin_k_fma",
+        "count": 1600,
+        "per_tok": 50.0,
+        "mean_ns": 10639,
+        "busy_us_per_tok": 531.97
+      },
+      {
+        "family": "__amd_rocclr_copyBuffer",
+        "count": 1344,
+        "per_tok": 42.0,
+        "mean_ns": 1988,
+        "busy_us_per_tok": 83.49
+      },
+      {
+        "family": "paro_rmsnorm_out",
+        "count": 1312,
+        "per_tok": 41.0,
+        "mean_ns": 3497,
+        "busy_us_per_tok": 143.4
+      },
+      {
+        "family": "paro_add_rmsnorm_out",
+        "count": 1280,
+        "per_tok": 40.0,
+        "mean_ns": 3499,
+        "busy_us_per_tok": 139.95
+      },
+      {
+        "family": "qwen35_router_logits",
+        "count": 1280,
+        "per_tok": 40.0,
+        "mean_ns": 5342,
+        "busy_us_per_tok": 213.69
+      },
+      {
+        "family": "qwen35_router_select",
+        "count": 1280,
+        "per_tok": 40.0,
+        "mean_ns": 6929,
+        "busy_us_per_tok": 277.17
+      },
+      {
+        "family": "gemv_awq_selected_dual_pack8_strided",
+        "count": 1280,
+        "per_tok": 40.0,
+        "mean_ns": 18907,
+        "busy_us_per_tok": 756.29
+      },
+      {
+        "family": "gemv_awq_selected_pack8",
+        "count": 1280,
+        "per_tok": 40.0,
+        "mean_ns": 12108,
+        "busy_us_per_tok": 484.33
+      },
+      {
+        "family": "gemv_awq_pack8",
+        "count": 1280,
+        "per_tok": 40.0,
+        "mean_ns": 5955,
+        "busy_us_per_tok": 238.21
+      },
+      {
+        "family": "weighted_sum_shared_gate_combine_residual_out",
+        "count": 1280,
+        "per_tok": 40.0,
+        "mean_ns": 2803,
+        "busy_us_per_tok": 112.13
+      },
+      {
+        "family": "dense_dual_gemv_out",
+        "count": 960,
+        "per_tok": 30.0,
+        "mean_ns": 3662,
+        "busy_us_per_tok": 109.86
+      },
+      {
+        "family": "qwen35_linear_attn_conv_decode_lowp",
+        "count": 960,
+        "per_tok": 30.0,
+        "mean_ns": 3051,
+        "busy_us_per_tok": 91.53
+      },
+      {
+        "family": "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+        "count": 960,
+        "per_tok": 30.0,
+        "mean_ns": 13549,
+        "busy_us_per_tok": 406.46
+      },
+      {
+        "family": "f32_to_fp16",
+        "count": 960,
+        "per_tok": 30.0,
+        "mean_ns": 1598,
+        "busy_us_per_tok": 47.93
+      },
+      {
+        "family": "paro_rotate3",
+        "count": 320,
+        "per_tok": 10.0,
+        "mean_ns": 6635,
+        "busy_us_per_tok": 66.35
+      },
+      {
+        "family": "qwen35_split_qgate_fp16",
+        "count": 320,
+        "per_tok": 10.0,
+        "mean_ns": 3466,
+        "busy_us_per_tok": 34.66
+      },
+      {
+        "family": "fp16_to_f32",
+        "count": 320,
+        "per_tok": 10.0,
+        "mean_ns": 2074,
+        "busy_us_per_tok": 20.74
+      },
+      {
+        "family": "qwen35_head_rmsnorm_partial_rotary_position",
+        "count": 320,
+        "per_tok": 10.0,
+        "mean_ns": 5657,
+        "busy_us_per_tok": 56.57
+      },
+      {
+        "family": "qwen35_write_paged_kv_mixed_value_position_tensor",
+        "count": 320,
+        "per_tok": 10.0,
+        "mean_ns": 3312,
+        "busy_us_per_tok": 33.12
+      },
+      {
+        "family": "qwen35_full_attn_decode_context_tensor",
+        "count": 320,
+        "per_tok": 10.0,
+        "mean_ns": 19003,
+        "busy_us_per_tok": 190.03
+      },
+      {
+        "family": "qwen35_full_attn_gate_mul_fp16",
+        "count": 320,
+        "per_tok": 10.0,
+        "mean_ns": 1969,
+        "busy_us_per_tok": 19.69
+      },
+      {
+        "family": "set_i64_scalar",
+        "count": 32,
+        "per_tok": 1.0,
+        "mean_ns": 3159,
+        "busy_us_per_tok": 3.16
+      },
+      {
+        "family": "embedding_lookup_bf16_i64",
+        "count": 32,
+        "per_tok": 1.0,
+        "mean_ns": 2959,
+        "busy_us_per_tok": 2.96
+      },
+      {
+        "family": "set_decode_position_i64",
+        "count": 32,
+        "per_tok": 1.0,
+        "mean_ns": 1998,
+        "busy_us_per_tok": 2.0
+      },
+      {
+        "family": "fp16_to_bf16",
+        "count": 32,
+        "per_tok": 1.0,
+        "mean_ns": 2236,
+        "busy_us_per_tok": 2.24
+      },
+      {
+        "family": "w8a16_linear",
+        "count": 32,
+        "per_tok": 1.0,
+        "mean_ns": 694917,
+        "busy_us_per_tok": 694.92
+      },
+      {
+        "family": "argmax_stage1",
+        "count": 32,
+        "per_tok": 1.0,
+        "mean_ns": 5171,
+        "busy_us_per_tok": 5.17
+      },
+      {
+        "family": "argmax_stage2",
+        "count": 32,
+        "per_tok": 1.0,
+        "mean_ns": 3120,
+        "busy_us_per_tok": 3.12
+      }
+    ],
+    "glue_per_tok": 451.0,
+    "fusion_note": "~451/tok of 920 are fusible glue (rotations 160, norms 91, silu+rotate 80, type-conv 40, rocclr copies 42, router logits/select 80, gate_combine 40). GEMVs ~280/tok + attention core are the irreducible matmul launches. Fusing glue toward GEMV epilogues targets 920 -> ~400-500/tok."
+  },
+  "verify": {
+    "b1_rows2": {
+      "launches_per_pass": 1191,
+      "busy_ms_per_pass": 11.43,
+      "wall_ms_per_pass": 31.75,
+      "proposer_launches": 0.8,
+      "proposer_wall_us": 58.7,
+      "tail_launches": 65
+    },
+    "b5_rows6": {
+      "launches_per_pass": 2151,
+      "busy_ms_per_pass": 23.66,
+      "wall_ms_per_pass": 59.32,
+      "proposer_launches": 265,
+      "proposer_wall_us": 12273.5,
+      "tail_launches": 66
+    },
+    "decomposition": {
+      "model": "launches_per_pass = fixed + marginal*rows ; rows=B+1",
+      "fixed_launches": 711,
+      "marginal_launches_per_row": 240,
+      "fixed_busy_ms": 5.31,
+      "marginal_busy_ms_per_row": 3.06,
+      "fixed_vs_AR": 0.77,
+      "marginal_AR_equiv_per_row": 0.26
+    },
+    "per_row_families": [
+      {
+        "family": "silu_mul_dual_rotate_out",
+        "per_row": 20.0,
+        "b1_per_pass": 40.0,
+        "b5_per_pass": 120.0
+      },
+      {
+        "family": "gemv_paro_marlin_k_fma",
+        "per_row": 20.0,
+        "b1_per_pass": 40.0,
+        "b5_per_pass": 120.0
+      },
+      {
+        "family": "gemv_awq_dual_pack8",
+        "per_row": 20.0,
+        "b1_per_pass": 40.0,
+        "b5_per_pass": 120.0
+      },
+      {
+        "family": "paro_rotate1",
+        "per_row": 20.0,
+        "b1_per_pass": 130.0,
+        "b5_per_pass": 210.0
+      },
+      {
+        "family": "qwen35_head_rmsnorm_partial_rotary_position",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "weighted_sum_shared_gate_combine_residual_out",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "gemv_awq_selected_dual_pack8_strided",
+        "per_row": 10.0,
+        "b1_per_pass": 50.0,
+        "b5_per_pass": 90.0
+      },
+      {
+        "family": "paro_rmsnorm_out",
+        "per_row": 10.0,
+        "b1_per_pass": 51.0,
+        "b5_per_pass": 91.0
+      },
+      {
+        "family": "qwen35_full_attn_gate_mul_fp16",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "qwen35_router_select",
+        "per_row": 10.0,
+        "b1_per_pass": 50.0,
+        "b5_per_pass": 90.0
+      },
+      {
+        "family": "gemv_awq_pack8",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "paro_add_rmsnorm_out",
+        "per_row": 10.0,
+        "b1_per_pass": 50.0,
+        "b5_per_pass": 90.0
+      },
+      {
+        "family": "paro_rotate2",
+        "per_row": 10.0,
+        "b1_per_pass": 80.0,
+        "b5_per_pass": 120.0
+      },
+      {
+        "family": "paro_rotate3",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "fp16_to_f32",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "qwen35_split_qgate_fp16",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "qwen35_write_paged_kv_mixed_value_position_tensor",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "qwen35_full_attn_decode_context_tensor",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "gemv_awq_selected_pack8",
+        "per_row": 10.0,
+        "b1_per_pass": 20.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "awq_fusedw4_prefill_fp16",
+        "per_row": 7.5,
+        "b1_per_pass": 30.0,
+        "b5_per_pass": 60.0
+      },
+      {
+        "family": "qwen35_router_logits_token_tile",
+        "per_row": 7.5,
+        "b1_per_pass": 0,
+        "b5_per_pass": 30.0
+      },
+      {
+        "family": "qwen35_router_logits",
+        "per_row": 2.5,
+        "b1_per_pass": 50.0,
+        "b5_per_pass": 60.0
+      }
+    ]
+  },
+  "proposer_finding": {
+    "question": "Does C_B include the proposer/MTP-head pass?",
+    "answer": "YES, as a SEPARATE pass outside mtp_verify_pass_*. Negligible at B=1 (0.8 launches, 59 us) but 265 launches / 12.3 ms at B=5 (autoregressive MTP-head over draft tokens, ~53 launches/draft-token). Folding the draft proposer into the verify tail / batching it is #101 scope and matters for B>=2."
+  },
+  "forecast_seed_106": {
+    "verify_fixed_launches": 711,
+    "verify_marginal_launches_per_row": 240,
+    "verify_fixed_busy_ms": 5.31,
+    "verify_marginal_busy_ms_per_row": 3.06,
+    "proposer_launches_b1": 0.8,
+    "proposer_launches_b5": 265,
+    "proposer_busy_ms_b5": 12.3,
+    "tail_launches": 66,
+    "ar_launches_per_tok": 920,
+    "ar_gpu_busy_ms": 7.06,
+    "ar_wall_ms": 10.65
+  },
+  "targets": {
+    "105_AR_fusion": "Rank by count: rotate1(80) silu_mul_dual_rotate(80) rotate2(70) marlin(50)... fuse PARO rotations + rmsnorm into GEMV epilogues; eliminate 42/tok rocclr copyBuffer + 40/tok type-conv via preallocated/in-place buffers.",
+    "101_verify_batching": "Per-row families replicate instead of batching: marlin_k_fma +20/row, awq_dual_pack8 +20/row, selected_pack8 +10/row, etc. -> convert per-row verifier GEMVs to MULTI-ROW (B+1 rows / one grid). Also fold the B>=2 proposer pass (265 launches@B5) into the verify path."
+  }
+}
