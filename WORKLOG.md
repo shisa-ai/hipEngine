@@ -77396,3 +77396,46 @@ Documented review/discoveries/approach in docs/MEGAKERNEL.md §9 (fixed the
 dangling §8.3 redirect → §9). Multi-stream overlap (7/8 pipes idle, ROOFLINE
 §1.6) recorded as the next floor lever after grid-reduction.
 Artifact: benchmarks/results/2026-06-09-hipengine-m16-dispatch-grid-sweep-retest.json
+
+## 2026-06-09 — M16.6 GDN chain dv-tiling (first win under T1)
+
+Grid-reduction on the GDN chain recurrence (the genuine 4096-block over-launch).
+Templated the kernel `<scalar_t, VTILE>`; each block now owns VTILE=4 consecutive
+dv columns -> grid (32, head_v_dim/4) = 4096 -> 1024 blocks. The per-(v_head,t)
+work shared across the dv tile is computed ONCE per block: q/k load, q_sum/k_sum
+warp reductions, q_scale/k_scale, beta(sigmoid)+decay(expf(-expf*softplus)). The
+4 consecutive dv writes into chain_recurrent_state[...+dk*head_v_dim+dv_idx]
+coalesce. VTILE=1 is the bit-identical unfused fallback. Tree DFlash kernel
+untouched. RED: scripts/gdn_chain_microbench.py (numpy f32 cpu_reference oracle).
+
+Results (W7900, gate off):
+- microbench T=4: 86.99 -> 67.76 us/call (-22%), T=8 155.02 -> 118.42 (-24%);
+  out_max_abs 1.07e-6, leaf 5.96e-8 (KL << 0.05 -- the T1 gate).
+- rocprof qwen35_gdn_chain_recurrent: 72.0 -> 53.39 us/call (-25.8%; -32% vs the
+  original 78.5), 2.16 -> 1.602 ms/pass (-0.56 ms/pass); grid 1024 / VGPR 64 /
+  Scratch 0 confirmed on-model.
+- 555 GDN/linear_attn/qwen35 pytest pass (34 skipped).
+
+T1 DECISION (human lead, 2026-06-09): adopted T1 for the verify path. The verify
+GDN/megakernel correctness gate is now KL<=0.05/top-1>=90% vs cpu_reference, NOT
+bit-exact exact_ar_match. Recorded in docs/MEGAKERNEL.md (§5 ADOPTED, §8.1
+RESOLVED, §9.4 LANDED) and docs/TESTING.md §4.
+
+Why T1 was needed here: the dv-tiling restructures loops, so the compiler
+reorders FMAs by ~1 ULP (out_max_abs 1.67e-6 -> 1.07e-6 vs oracle -- still far
+inside the KL gate). On-model that tips ONE verify token vs the *different*
+AR-path decode kernel, flipping exact_ar_match true->false. Isolated decisively:
+git stash of only gdn.hip -> committed baseline gives exact_ar_match=true (mtp==ar
+all 8 tokens); dv-tiling -> false at position 2 (then AR cascade). AR tokens
+identical in both runs (decode kernel untouched). Not a KL regression.
+
+OWED before any MTP economics/C_B claim under T1: re-baseline AR tok/s AND the
+acceptance rate on REAL prompts. The degenerate 1-token smoke (prompt 151646)
+cannot assess acceptance -- it showed 0 accepts for BOTH dv-tiled and baseline.
+
+Scope note (answering "useful beyond MTP?"): this kernel is verify-path-only; c=1
+AR GDN decode uses a different, already-grid-efficient kernel (dim3(num_v_heads)=
+32 blocks, q/k once per v_head -- no 128x redundancy). The reusable asset is the
+dispatch model + grid-reduction technique, which DOES apply to c=1 decode
+(ROOFLINE §5.3: c=1 4K decode is ~33% dispatch-bound).
+Artifact: benchmarks/results/2026-06-09-hipengine-m16-gdn-chain-dvtiling.json

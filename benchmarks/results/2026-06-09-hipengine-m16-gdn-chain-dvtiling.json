@@ -1,0 +1,52 @@
+{
+  "name": "m16-gdn-chain-dvtiling",
+  "date": "2026-06-09",
+  "status": "accepted",
+  "performance_claim": true,
+  "kind": "verifier-kernel-optimization",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, 48 CUs, wavefront=32)",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "kernel": "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop (templated <scalar_t, VTILE>, fp16/bf16)",
+  "correctness_policy": "T1 (self-consistent + KL-gated), adopted 2026-06-09 (human lead). Verify-path gate is KL<=0.05/top-1>=90% vs cpu_reference, NOT bit-exact exact_ar_match. See docs/MEGAKERNEL.md S5/S8.1/S9.4 and docs/TESTING.md S4.",
+  "change": "dv-tiling: each chain-recurrence block now owns VTILE=4 consecutive dv columns (grid (num_v_heads, head_v_dim) = 4096 -> (num_v_heads, head_v_dim/4) = 1024 blocks). The per-(v_head,t) work shared across the tile is computed ONCE per block: q/k load, q_sum/k_sum warp reductions, q_scale/k_scale, and the beta/decay transcendentals (sigmoid + expf(-expf*softplus)). The 4 consecutive dv state writes into chain_recurrent_state[...+dk*head_v_dim+dv_idx] coalesce instead of being single strided floats. Per-dv math (kv_mem, delta, state update, out) is unchanged. VTILE=1 is the bit-identical unfused fallback for non-divisible head_v_dim. Only the chain kernel changed; the tree DFlash kernel is untouched.",
+  "dims": {
+    "num_k_heads": 16,
+    "num_v_heads": 32,
+    "head_k_dim": 128,
+    "head_v_dim": 128,
+    "VTILE": 4,
+    "grid_blocks_old": 4096,
+    "grid_blocks_new": 1024,
+    "threads_per_block": 32,
+    "vgpr": 64,
+    "scratch": 0,
+    "lds_bytes": 512
+  },
+  "correctness": {
+    "microbench_oracle": "scripts/gdn_chain_microbench.py vs numpy f32 delta-rule reference (cpu_reference): out_max_abs 1.07e-6, leaf(state)_max_abs 5.96e-8 -> KL << 0.05 (T1 gate met by 4+ orders of magnitude)",
+    "on_model": "exact_ar_match=false under T1 (~1 ULP FP-reorder flips one verify token vs the AR-path decode kernel at the degenerate 1-token-prompt boundary). Baseline committed kernel = exact_ar_match=true (verified by stash+rerun). This is the documented T0->T1 trade, not a correctness regression under the project KL gate.",
+    "tests": "555 GDN/linear_attn/qwen35 pytest cases pass (34 skipped); tree kernel unchanged"
+  },
+  "measurement": {
+    "microbench_harness": "scripts/gdn_chain_microbench.py --max-nodes 4 8 --iters 400 --warmup 40 (HIP-graph GPU timing)",
+    "microbench_gpu_us_per_call": {
+      "T4": {"baseline_shuffle": 86.99, "dvtile": 67.76, "delta_pct": -22.1},
+      "T8": {"baseline_shuffle": 155.02, "dvtile": 118.42, "delta_pct": -23.6}
+    },
+    "rocprof_harness": "scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 8 --candidate-budget 3 (gate off); CSV post-processed (helper exits 1 on exact_ar_mismatch, expected under T1)",
+    "rocprof_chain_recurrent_us_per_call": {
+      "original_lds_tree": 78.5,
+      "baseline_shuffle": 72.0,
+      "dvtile": 53.39,
+      "delta_pct_vs_shuffle": -25.8,
+      "delta_pct_vs_original": -32.0
+    },
+    "rocprof_chain_recurrent_ms_per_pass": {
+      "baseline_shuffle": 2.16,
+      "dvtile": 1.602,
+      "delta_ms_per_pass": -0.56
+    }
+  },
+  "owed": "T1 cost: re-baseline AR tok/s and economics-relevant acceptance rate on REAL prompts before any MTP C_B/economics claim. The degenerate 1-token smoke cannot assess acceptance (0 accepts for both paths).",
+  "lineage": "in-tree; follows the M16.5 GDN shuffle-reduction win (commit on mpt-dflash). Dispatch model re-confirmed by benchmarks/results/2026-06-09-hipengine-m16-dispatch-grid-sweep-retest.json (grid 4096=9.36us -> 1024=7.25us dispatch)."
+}

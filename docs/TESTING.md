@@ -185,6 +185,17 @@ For every new/ported kernel:
 
 A perf win with a failed correctness gate is a failed change.
 
+**Speculative-verify path (T1, adopted 2026-06-09).** For MTP/DFlash verify
+kernels (e.g. the GDN chain recurrence), the gate is the KL/top-1 bound above
+vs `cpu_reference` — **not** bit-exact `exact_ar_match`. `exact_ar_match`
+(spec tokens == same-run AR tokens) is a self-consistency check between two
+*different* kernels (the chain/verify kernel vs the AR decode kernel); a
+KL-correct verify kernel can still flip it by ~1 ULP at a near-tie boundary
+(amplified by the degenerate 1-token smoke prompt). Such a flip is **not** a
+correctness regression — gate on KL vs cpu_reference. See `docs/MEGAKERNEL.md`
+§5/§8.1/§9.4 for the T0→T1 rationale. Owed when claiming MTP *economics*
+(not kernel correctness): re-baseline AR tok/s and acceptance rate on real prompts.
+
 ### 5. K1 dense INT8 KV gate
 
 Use this gate for `storage_dtype="int8_per_token_head"` changes and for any

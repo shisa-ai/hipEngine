@@ -179,7 +179,10 @@ Three accuracy tiers for the megakernel:
 | **T1 self-consistent + KL** ⭐ | one **row-invariant** megakernel for **both** AR (rows=1) and verify (rows=B+1); gate KL≤0.05/top-1≥90% vs cpu_reference | **much easier** (pick the fastest row-deterministic kernel) | **preserved by construction** | within KL gate |
 | **T2 fully relaxed** | verify need not equal AR; gate sequence-KL + acceptance within tolerance | easiest | dropped | within KL gate |
 
-**Recommendation: T1 (self-consistent + KL-gated).**
+**Recommendation: T1 (self-consistent + KL-gated).** — **ADOPTED 2026-06-09**
+(human lead sign-off) **for the verify path**; see §8.1 and §9.4. The verify GDN /
+megakernel correctness gate is now KL ≤ 0.05 / top-1 ≥ 90% vs `cpu_reference`,
+**not** bit-exact `exact_ar_match`.
 
 Why T1 preserves `exact_ar_match` without bit-exact-vs-legacy: if the *same*
 megakernel computes the FFN for both the AR rows=1 path and the verify rows=B+1
@@ -268,9 +271,15 @@ kept.
 
 ## 8. Open decisions (for the human lead)
 
-1. **Adopt T1 (self-consistent + KL) as the megakernel correctness policy?**
-   This is the unlock — it drops bit-exact-vs-legacy. Needs sign-off because it
-   re-baselines AR and shifts the exact token stream within the KL gate.
+1. ✅ **RESOLVED (2026-06-09): T1 adopted for the verify path** (human lead
+   sign-off). The verify GDN / megakernel correctness gate is now KL ≤ 0.05 /
+   top-1 ≥ 90% vs `cpu_reference` (the project gate), **not** bit-exact
+   `exact_ar_match`. First application: the GDN dv-tiling win (§9.4) — KL-correct
+   (out/leaf ~1e-6 vs cpu_reference) but flips `exact_ar_match` true→false via a
+   ~1 ULP FP-reorder; landed under T1. **T1 cost still owed:** re-baseline AR
+   tok/s and the economics-relevant *acceptance rate* on **real** prompts — the
+   degenerate 1-token smoke cannot assess acceptance (it showed 0 accepts for
+   both the dv-tiled and baseline paths).
 2. **GGUF-first or PARO-first?** GGUF-first de-risks the architecture without the
    butterfly and ships a standalone GGUF-decode win; PARO-first goes straight at
    the MTP economics but pays the rotation complexity up front.
@@ -284,7 +293,7 @@ kept.
 
 ## 9. Grid-reduction — the measured dispatch model and the GDN over-launch
 
-**Status: in progress (2026-06-09).** Pivot after the B4 redirect: instead of
+**Status: dv-tiling landed under T1 (2026-06-09).** Pivot after the B4 redirect: instead of
 collapsing launches behind a barrier (regresses, §3) or one big megakernel
 (occupancy trap, §4/B4), attack the two ways a launch costs `C_B` — *kernel
 time* (M16.4) and *dispatch* (this section) — on the kernels that over-launch
@@ -385,6 +394,27 @@ reductions (BLOCK 64→32, `partial[]` LDS → `__shfl`): rocprof 78.5 → 72.0
 µs/call (**−8.3%**), GDN family 14.14 → 12.96 ms/pass, total verifier kernel
 13.84 → 13.61 ms/pass, `exact_ar_match=true`. That win is pure kernel-time (grid
 unchanged at 4096); dv-tiling is the grid-reduction follow-on.
+
+**LANDED — dv-tiling (VTILE=4, this campaign, under T1).** The chain recurrence
+kernel is templated `<scalar_t, VTILE>`, each block owns 4 consecutive dv columns
+(grid `(32, head_v_dim/4)` = **4096 → 1024 blocks**; VTILE=1 is the bit-identical
+unfused fallback for non-divisible `head_v_dim`). Per-(v_head,t) q/k load, the
+`q_sum`/`k_sum` reductions, and the `q_scale`/`k_scale`/`beta`/`decay`
+transcendentals are computed once per tile; the 4 consecutive dv state writes
+coalesce. Measured:
+- microbench oracle vs `cpu_reference` (numpy f32): T=4 **86.99 → 67.76 µs**
+  (−22%), T=8 155.02 → 118.42 µs (−24%); out_max_abs 1.07e-6, leaf 5.96e-8
+  (**KL ≪ 0.05** — the T1 gate, met by 4+ orders of magnitude).
+- on-model rocprof (`mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode
+  batched --decode-tokens 8 --candidate-budget 3`, gate off): chain recurrence
+  **72.0 → 53.39 µs/call (−25.8%)**, 2.16 → 1.602 ms/pass (−0.56 ms/pass); grid
+  1024 blocks confirmed, VGPR=64, **Scratch=0 (no spill)**, kernel name confirmed.
+- **Behavior under T1:** `exact_ar_match` flips true→false (~1 ULP FP-reorder
+  from the restructured loops tips one verify token vs the *different* AR-path
+  decode kernel, at the degenerate 1-token-prompt boundary). This is **not** a
+  correctness regression under the project gate (KL/top-1 vs cpu_reference); it is
+  exactly the T0→T1 trade §5 describes, and is accepted per §8.1. **Owed:**
+  acceptance-rate re-baseline on real prompts before any MTP economics claim.
 
 ### 9.5 The unexploited lever — multi-stream overlap
 

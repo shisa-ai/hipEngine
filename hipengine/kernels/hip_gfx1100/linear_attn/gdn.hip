@@ -881,7 +881,14 @@ __global__ void qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel(
 // Single-chain verifier variant.  For parent_ids == [-1,0,1,...], keep the
 // recurrent state for each (v_head, dv, dk) lane in registers across t, but
 // materialize every row so partial accepts can commit without a replay.
-template <typename scalar_t>
+// dv-tiling: each block owns VTILE consecutive dv columns of one v_head, so the
+// per-(v_head,t) work (q/k load, q_sum/k_sum reductions, q_scale/k_scale, and
+// the beta/decay transcendentals) is computed ONCE and reused across the tile
+// instead of redundantly by every single-dv block. Grid drops num_v_heads*head_v_dim
+// -> num_v_heads*(head_v_dim/VTILE) (lower dispatch), and the VTILE consecutive
+// dv writes into chain_recurrent_state[...+dk*head_v_dim+dv_idx] form a contiguous
+// span (coalesced) instead of single strided floats. Per-dv math is unchanged.
+template <typename scalar_t, int VTILE>
 __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
     const float* __restrict__ conv_out,
     const scalar_t* __restrict__ /* gate */,
@@ -903,8 +910,8 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
   __shared__ float lds[2];
 
   const int64_t v_head = blockIdx.x;
-  const int64_t dv_idx = blockIdx.y;
-  if (v_head >= num_v_heads || dv_idx >= head_v_dim) {
+  const int64_t dv_base = static_cast<int64_t>(blockIdx.y) * VTILE;
+  if (v_head >= num_v_heads || dv_base + VTILE > head_v_dim) {
     return;
   }
   const int64_t repeat = num_v_heads / num_k_heads;
@@ -919,13 +926,17 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
   const int tid = static_cast<int>(threadIdx.x);
   const int dk_per_thread = static_cast<int>(head_k_dim / BLOCK);
 
-  float ps_local[DK_MAX];
+  float ps_local[DK_MAX][VTILE];
   #pragma unroll
   for (int i = 0; i < DK_MAX; ++i) {
     const int dk = tid * dk_per_thread + i;
-    ps_local[i] = (i < dk_per_thread && dk < head_k_dim)
-        ? base_recurrent_state[state_head_base + dk * head_v_dim + dv_idx]
-        : 0.0f;
+    const bool dk_ok = (i < dk_per_thread && dk < head_k_dim);
+    #pragma unroll
+    for (int j = 0; j < VTILE; ++j) {
+      ps_local[i][j] = dk_ok
+          ? base_recurrent_state[state_head_base + dk * head_v_dim + (dv_base + j)]
+          : 0.0f;
+    }
   }
 
   for (int64_t t = 0; t < max_nodes; ++t) {
@@ -960,33 +971,37 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
     const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
 
-    float kv_local = 0.0f;
     #pragma unroll
-    for (int i = 0; i < DK_MAX; ++i) {
-      if (i < dk_per_thread) {
-        const float kn = k_local[i] * k_scale;
-        const float ds = ps_local[i] * decay;
-        kv_local += kn * ds;
+    for (int j = 0; j < VTILE; ++j) {
+      const int64_t dv_idx = dv_base + j;
+      float kv_local = 0.0f;
+      #pragma unroll
+      for (int i = 0; i < DK_MAX; ++i) {
+        if (i < dk_per_thread) {
+          const float kn = k_local[i] * k_scale;
+          const float ds = ps_local[i][j] * decay;
+          kv_local += kn * ds;
+        }
       }
-    }
-    const float kv_mem = block_all_reduce_sum(kv_local, lds, tid, BLOCK);
+      const float kv_mem = block_all_reduce_sum(kv_local, lds, tid, BLOCK);
 
-    const float value = conv_out[value_offset + dv_idx];
-    const float delta = (value - kv_mem) * beta;
-    float out_local = 0.0f;
-    #pragma unroll
-    for (int i = 0; i < DK_MAX; ++i) {
-      const int dk = tid * dk_per_thread + i;
-      if (i < dk_per_thread && dk < head_k_dim) {
-        const float new_state = ps_local[i] * decay + k_local[i] * k_scale * delta;
-        ps_local[i] = new_state;
-        chain_recurrent_state[t * state_stride + state_head_base + dk * head_v_dim + dv_idx] = new_state;
-        out_local += new_state * (q_local[i] * q_scale);
+      const float value = conv_out[value_offset + dv_idx];
+      const float delta = (value - kv_mem) * beta;
+      float out_local = 0.0f;
+      #pragma unroll
+      for (int i = 0; i < DK_MAX; ++i) {
+        const int dk = tid * dk_per_thread + i;
+        if (i < dk_per_thread && dk < head_k_dim) {
+          const float new_state = ps_local[i][j] * decay + k_local[i] * k_scale * delta;
+          ps_local[i][j] = new_state;
+          chain_recurrent_state[t * state_stride + state_head_base + dk * head_v_dim + dv_idx] = new_state;
+          out_local += new_state * (q_local[i] * q_scale);
+        }
       }
-    }
-    const float out_red = block_all_reduce_sum(out_local, lds, tid, BLOCK);
-    if (tid == 0) {
-      acc_buf[(t * num_v_heads + v_head) * head_v_dim + dv_idx] = out_red;
+      const float out_red = block_all_reduce_sum(out_local, lds, tid, BLOCK);
+      if (tid == 0) {
+        acc_buf[(t * num_v_heads + v_head) * head_v_dim + dv_idx] = out_red;
+      }
     }
   }
 }
@@ -1644,27 +1659,27 @@ int launch_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop(
   // per-token reductions are pure warp shuffles (no LDS, no __syncthreads);
   // fall back to 64 for head_k_dim in {192,256} to keep dk_per_thread<=DK_MAX.
   const int threads = (head_k_dim <= 128) ? 32 : 64;
-  hipLaunchKernelGGL(
-      (qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<scalar_t>),
-      dim3(static_cast<unsigned int>(num_v_heads), static_cast<unsigned int>(head_v_dim)),
-      dim3(threads),
-      0,
-      stream,
-      conv_out,
-      gate,
-      a,
-      b,
-      dt_bias,
-      a_log,
-      norm_weight,
-      base_recurrent_state,
-      leaf_recurrent_state,
-      acc_buf,
-      max_nodes,
-      num_k_heads,
-      num_v_heads,
-      head_k_dim,
-      head_v_dim);
+  // dv-tiling: collapse the grid by VTILE (4096 -> 1024 blocks at 32x128) when
+  // head_v_dim is divisible; VTILE=1 is the bit-identical unfused fallback.
+  constexpr int kChainVTile = 4;
+  const bool use_tile = (head_v_dim % kChainVTile) == 0;
+#define HIPENGINE_LAUNCH_GDN_CHAIN_TLOOP(VT, GRID_Y)                              \
+  hipLaunchKernelGGL(                                                            \
+      (qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<scalar_t, VT>), \
+      dim3(static_cast<unsigned int>(num_v_heads),                              \
+           static_cast<unsigned int>(GRID_Y)),                                  \
+      dim3(threads),                                                            \
+      0,                                                                        \
+      stream,                                                                   \
+      conv_out, gate, a, b, dt_bias, a_log, norm_weight,                        \
+      base_recurrent_state, leaf_recurrent_state, acc_buf,                      \
+      max_nodes, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+  if (use_tile) {
+    HIPENGINE_LAUNCH_GDN_CHAIN_TLOOP(kChainVTile, head_v_dim / kChainVTile);
+  } else {
+    HIPENGINE_LAUNCH_GDN_CHAIN_TLOOP(1, head_v_dim);
+  }
+#undef HIPENGINE_LAUNCH_GDN_CHAIN_TLOOP
   int err = static_cast<int>(hipGetLastError());
   if (err != static_cast<int>(hipSuccess)) {
     return err;

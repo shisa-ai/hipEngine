@@ -104,7 +104,7 @@ def main() -> None:
     CUS = 48
 
     print(f"num_k_heads={Hk} num_v_heads={Hv} head_k_dim={Dk} head_v_dim={Dv}  CUs={CUS} (W7900)")
-    print(f"grid = num_v_heads*head_v_dim = {Hv*Dv} blocks x 64 threads")
+    print(f"grid = num_v_heads*(head_v_dim/VTILE) blocks (dv-tiled; <= {Hv*Dv}) x 32 threads")
     print(f"GPU time via HIP graph replay; out/leaf max_abs vs numpy f32 oracle")
     print(f"{'T':>3} {'blocks':>7} {'us/call':>9} {'out_max_abs':>12} {'leaf_max_abs':>13}")
 
