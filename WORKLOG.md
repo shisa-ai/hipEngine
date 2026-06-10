@@ -77497,3 +77497,26 @@ a free collapse. Folded into the gate_up/down kernel-time work (#97).
 Docs: MEGAKERNEL §9.3 rewritten with real grids + occupancy math + the
 CU-count correction. Artifact:
 benchmarks/results/2026-06-09-hipengine-m16-selected-gemv-grid-occupancy.json
+
+## 2026-06-09 — #97: gate_up GEMV kernel-time — no free win, deferred
+
+Assessed the gate_up dual W4 GEMV kernel time at the verify shape. The verify
+gate_up is gemv_awq_selected_dual_pack8_strided_kernel<_,true> at grid (8192,32)
+(rows = tokens*top_k = 4*8), WG=64, VGPR=104, ~45.6 us/call. Memory-bound W4,
+already well-formed (coalesced transposed loads, 8-way vectorized FMA,
+shuffle-reduce, __restrict__, __launch_bounds__(128,4)).
+
+Canonical lever (thread count, "fill the 32-row shape"): already per-shape-tuned
+(threads = 64 if tokens>1 else 128, since ca4796d8 May). Env-gated 64->128 probe
+(launch-param only, cached .so, rocprof) on the path where it applies (tokens=1
+gate_up): NEUTRAL-to-worse, median 18.80 -> 19.08 us, and 128 splits the grid
+8192->16384. The tokens=4 verify gate_up already runs WG=64. Thread count is not
+a kernel-time lever. Probe removed; qwen35_paro.py clean.
+
+Remaining lever = output-tiling (S9.3): a DISPATCH play (cheaper grid class +
+fewer x re-loads) with a per-block-serial tradeoff and B4 coalescing risk -- not
+kernel-time. DEFERRED: the S0.1/S9.4 economics A/B proved verify kernel-time
+wins do not move C_B (dispatch-floored). C_B levers are the dispatch floor
+(S9.2) and multi-stream (S9.5). Do not regress an already-tuned memory-bound
+GEMV. Docs: MEGAKERNEL S9.6. Artifact:
+benchmarks/results/2026-06-09-hipengine-m16-gateup-threadcount-ab.json

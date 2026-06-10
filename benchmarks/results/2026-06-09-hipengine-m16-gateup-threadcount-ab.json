@@ -1,0 +1,29 @@
+{
+  "name": "m16-gateup-threadcount-ab",
+  "date": "2026-06-09",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "kernel-threadcount-ab",
+  "task": 97,
+  "purpose": "Assess gate_up dual W4 GEMV kernel-time at the verify shape. Test the canonical 'fill the shape' lever (thread count 64 vs 128) via an env-gated launch-param probe; rocprof mtp_verifier (cached .so), W7900 gfx1100, chain-attn batched.",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
+  "kernel": "gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true> (transposed; the unfused gate_up path)",
+  "verify_gate_up": {
+    "grid": [8192, 32], "wg": 64, "vgpr": 104, "calls": 840,
+    "median_us_gu64": 45.60, "median_us_gu128": 46.00,
+    "note": "rows = tokens*top_k = 4*8 = 32; the real verify gate_up cost. Stayed WG=64 in both runs (the probe only reached the tokens=1 path); already at the tuned thread count."
+  },
+  "threadcount_ab_tokens1": {
+    "gu64": {"grid": [8192, 8], "wg": 64, "median_us": 18.80, "mean_us": 19.63},
+    "gu128": {"grid": [16384, 8], "wg": 128, "median_us": 19.08, "mean_us": 19.79},
+    "verdict": "threads=128 neutral-to-worse (+1.5% median) AND splits the grid 8192->16384; the existing threads=64 tuning (since ca4796d8, May) holds."
+  },
+  "kernel_quality": "memory-bound W4 GEMV, already well-formed: coalesced transposed weight loads, 8-way vectorized FMA, shuffle-reduce, __restrict__, __launch_bounds__(128,4).",
+  "finding": "No free kernel-time win for the gate_up GEMV. Thread count (the canonical fill-the-shape lever) is already tuned and 64->128 is neutral-to-worse. The kernel is memory-bound and well-optimized. The only remaining lever is output-tiling (MEGAKERNEL S9.3), which is a DISPATCH play (cheaper grid class + fewer x re-loads) with a per-block-serial tradeoff and B4 coalescing risk -- not a kernel-time win.",
+  "decision": "DEFER a speculative output-tiling rewrite. The S0.1/S9.4 economics A/B proved verify kernel-time wins do not move C_B (dispatch-floored). C_B levers are the dispatch floor (S9.2) and multi-stream (S9.5). Do not regress an already-tuned, memory-bound GEMV.",
+  "related": [
+    "docs/MEGAKERNEL.md §9.6",
+    "benchmarks/results/2026-06-09-hipengine-m16-selected-gemv-grid-occupancy.json",
+    "benchmarks/results/2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json"
+  ]
+}

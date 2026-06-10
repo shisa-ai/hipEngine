@@ -460,3 +460,27 @@ hide the floor. Limited by the layer-sequential dependency chain (layer N+1
 needs N), but intra-layer independent work (e.g. across the B+1 tokens, or
 attention vs MoE branches where they exist) is a candidate. Not yet scoped;
 recorded here so it is not forgotten as the next floor lever after grid-reduction.
+
+### 9.6 gate_up/down GEMV kernel-time assessment (#97) — no free win, deferred
+
+The verify gate_up is `gemv_awq_selected_dual_pack8_strided_kernel<_,true>` at
+grid **(8192, 32)** (rows = tokens×top_k = 4×8), WG=64, VGPR=104, **~45.6 µs/call**
+(840 calls/smoke). The kernel is memory-bound W4 and already well-formed:
+coalesced transposed weight loads, 8-way vectorized FMA, shuffle-reduce,
+`__restrict__`, `__launch_bounds__(128,4)`.
+
+**Thread-count A/B (the canonical "fill the 32-row shape" lever).** Thread count
+is already per-shape-tuned (`threads = 64 if tokens > 1 else 128`, since May
+`ca4796d8`). An env-gated 64→128 probe on the path where it applies (tokens=1
+gate_up) was **neutral-to-worse: median 18.80 → 19.08 µs** (and 128 splits the grid
+8192→16384). The tokens=4 verify gate_up already runs at the tuned WG=64. So
+thread count is **not** a kernel-time lever here.
+
+**Remaining lever = output-tiling** (§9.3: multiple out-packs/rows per block).
+That shrinks the grid into a cheaper dispatch class and cuts x re-loads, but it
+is a **dispatch** play with a per-block-serial-work tradeoff and B4 coalescing
+risk — not a kernel-time win. **Deferred:** the §0.1/§9.4 economics A/B proved
+verify kernel-time wins do not move C_B (dispatch-floored), so a speculative
+output-tiling rewrite of an already-tuned, memory-bound GEMV is not warranted.
+The C_B levers are §9.2 (dispatch floor) and §9.5 (multi-stream). Artifact:
+`benchmarks/results/2026-06-09-hipengine-m16-gateup-threadcount-ab.json`.
