@@ -189,6 +189,7 @@ def _run_spec_smoke(
     tree_mode: str = "chain",
     tree_top_k: int = 2,
     confidence_threshold: float = 0.0,
+    draft_p_min: float = 0.0,
     runner: Qwen35ParoNextTokenRunner | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
     if tree_mode not in {"chain", "branching_topk"}:
@@ -209,6 +210,11 @@ def _run_spec_smoke(
     gated_to_chain_cycles = 0
     gpu_accept_match_all = True
     tree_nodes_total = 0
+    # Per-position p-min truncation instrumentation.
+    pmin_ar_cycles = 0            # truncated all the way to AR (no verify)
+    pmin_truncated_cycles = 0     # truncated below active_budget but still verified
+    wasted_verify_zero_cycles = 0  # ran a multi-draft verify that accepted 0
+    pmin_eff_budgets: list[int] = []
     proposal_seconds = 0.0
     verify_seconds = 0.0
     target_forward_calls = 0
@@ -280,6 +286,48 @@ def _run_spec_smoke(
                 draft = proposal["draft_batch"]
                 candidate_topk = proposal.get("candidate_topk") or []
                 candidate_topk_values = proposal.get("candidate_topk_values") or []
+                # Per-position p-min truncation (chain path; DFlash --draft-p-min
+                # analog): keep leading drafts while the head's top-1 prob proxy
+                # >= p_min, stop at the first low-confidence depth. eff_budget is
+                # snapped to the allowed MTP budgets. Exactness is preserved --
+                # the chain still commits only target-verified tokens + the
+                # target correction, so the sequence stays identical to AR.
+                pmin_eff_budget = active_budget
+                if draft_p_min > 0.0 and tree_mode == "chain" and candidate_topk_values:
+                    keep = 0
+                    for d in range(active_budget):
+                        p1 = _topk_softmax_top1(candidate_topk_values[d]) if d < len(candidate_topk_values) else 1.0
+                        if p1 >= draft_p_min:
+                            keep += 1
+                        else:
+                            break
+                    allowed_pmin = [b for b in MTP_CHAIN_CANDIDATE_BUDGETS if b <= keep]
+                    pmin_eff_budget = max(allowed_pmin) if allowed_pmin else 0
+                    if pmin_eff_budget < active_budget:
+                        pmin_truncated_cycles += 1
+                    candidates = candidates[:pmin_eff_budget]
+                pmin_eff_budgets.append(int(pmin_eff_budget))
+                if draft_p_min > 0.0 and tree_mode == "chain" and pmin_eff_budget == 0:
+                    # Head is unsure at depth 1 -> plain AR step, no speculation
+                    # this cycle (the 'draft-N-accept-0' -> AR conversion).
+                    step_result = session.step_with_hidden_taps(
+                        root,
+                        position=context,
+                        capture_layer_ids=(capture_layer_id,),
+                        capture_hidden_concat=capture,
+                        capture_row=context,
+                        sample=True,
+                    )
+                    if step_result is None:
+                        raise RuntimeError("p-min AR step produced no token")
+                    pmin_ar_cycles += 1
+                    accepted_lengths.append(0)
+                    accept_depth_hist[0] = accept_depth_hist.get(0, 0) + 1
+                    generated.append(root)
+                    previous_hidden_row = context
+                    context += 1
+                    root = int(step_result.token_id)
+                    continue
                 # Online whole-cycle confidence gate: if the depth-1 top-1
                 # probability proxy is below threshold, fall back from the wide
                 # branching tree to the cheaper chain (top-1) verify for this
@@ -314,9 +362,9 @@ def _run_spec_smoke(
                     )
                     accepted_tokens = list(verify.accepted_tokens)
                 else:
-                    # chain (top-1) path, or gated-to-AR (active_budget honored
-                    # but a single-row chain effectively verifies the root).
-                    target_batch = _target_batch(root, context, candidates, active_budget)
+                    # chain (top-1) path. pmin_eff_budget == active_budget unless
+                    # per-position p-min truncated the chain this cycle.
+                    target_batch = _target_batch(root, context, candidates, pmin_eff_budget, candidate_budget=pmin_eff_budget)
                     verify = session.verify_chain_bulk_and_commit(
                         target_batch,
                         base_slot=0,
@@ -331,6 +379,8 @@ def _run_spec_smoke(
                 accepted = int(verify.accepted_count)
                 accepted_lengths.append(accepted)
                 accept_depth_hist[accepted] = accept_depth_hist.get(accepted, 0) + 1
+                if accepted == 0 and not use_tree and pmin_eff_budget > 0:
+                    wasted_verify_zero_cycles += 1
                 if verify.gpu_accept_match_cpu is not None:
                     gpu_accept_match_all = gpu_accept_match_all and bool(verify.gpu_accept_match_cpu)
                 # Depth-1 top-k oracle: where does the target's chosen next token
@@ -424,6 +474,14 @@ def _run_spec_smoke(
         "confidence_threshold": float(confidence_threshold),
         "gated_to_chain_cycles": gated_to_chain_cycles,
         "tree_nodes_total": tree_nodes_total,
+        "draft_p_min": float(draft_p_min),
+        "pmin_ar_cycles": pmin_ar_cycles,
+        "pmin_truncated_cycles": pmin_truncated_cycles,
+        "wasted_verify_zero_cycles": wasted_verify_zero_cycles,
+        "zero_accept_cycles": accept_depth_hist.get(0, 0),
+        "zero_accept_rate": (accept_depth_hist.get(0, 0) / n_cycles) if n_cycles else None,
+        "avg_eff_budget": (sum(pmin_eff_budgets) / len(pmin_eff_budgets)) if pmin_eff_budgets else None,
+        "avg_verify_rows": ((sum(b for b in pmin_eff_budgets if b > 0) + sum(1 for b in pmin_eff_budgets if b > 0)) / max(1, sum(1 for b in pmin_eff_budgets if b > 0))) if any(b > 0 for b in pmin_eff_budgets) else None,
         "accept_depth_histogram": {str(k): accept_depth_hist[k] for k in sorted(accept_depth_hist)},
         "gpu_accept_match_cpu": gpu_accept_match_all,
         "proposal_trace_sample": proposal_trace,
@@ -511,6 +569,125 @@ def _run_acceptance_curve(
             "(cycles*candidate_budget); visible_tokens_per_cycle = 1+avg_accepted is "
             "the comparable metric vs llama.cpp p-min-inflated alpha. Per (B+1)/C_B, "
             "this does NOT beat AR until the #98->#105/#101 dispatch floor lands."
+        ),
+    }
+
+
+# #98 verify launch model (per cycle): fixed + marginal*rows, rows = eff_budget+1.
+_VERIFY_FIXED_LAUNCHES = 711.0
+_VERIFY_MARGINAL_LAUNCHES_PER_ROW = 240.0
+_AR_LAUNCHES = 920.0  # plain AR decode step (#98)
+
+
+def _run_pmin_sweep(
+    model: Path,
+    prompt_tokens: Sequence[int],
+    *,
+    decode_tokens: int,
+    backend: str,
+    chain_attn_mode: str,
+    budgets: Sequence[int],
+    p_mins: Sequence[float],
+) -> dict[str, Any]:
+    """Per-position p-min truncation x B-down sweep on the MTP chain path.
+
+    Shares ONE resident target runner across the AR baseline and every config.
+    Reports zero-accept-cycle reduction, avg-accept, an estimated C_B from the
+    #98 launch model, and the diagnostic reload tok/s.  p-min is gated on a
+    restricted top-8 softmax proxy (overestimates the true full-vocab top-1
+    probability), so a proxy threshold is milder than the same numeric value on
+    true vocab probability -- the measured truncation rates are the grounded
+    comparison, not the bare threshold.
+    """
+    runner = Qwen35ParoNextTokenRunner(model, backend=backend)
+    ar_tokens, ar = _run_ar_baseline(
+        model, prompt_tokens, decode_tokens=int(decode_tokens), backend=backend, runner=runner
+    )
+    sweep: list[dict[str, Any]] = []
+    baseline_zero_rate: dict[int, float] = {}
+    for B in budgets:
+        for pmin in p_mins:
+            spec_tokens, spec = _run_spec_smoke(
+                model,
+                prompt_tokens,
+                decode_tokens=int(decode_tokens),
+                candidate_budget=int(B),
+                backend=backend,
+                chain_attn_mode=chain_attn_mode,
+                tree_mode="chain",
+                draft_p_min=float(pmin),
+                runner=runner,
+            )
+            n = int(spec["cycles"]) or 1
+            avg_rows = spec["avg_verify_rows"]
+            verify_cycles = n - int(spec["pmin_ar_cycles"])
+            # Estimated verify launches/cycle from the #98 model (verify cycles
+            # carry fixed+marginal*rows; pmin-AR cycles carry one AR step).
+            est_verify_launches = (
+                (_VERIFY_FIXED_LAUNCHES + _VERIFY_MARGINAL_LAUNCHES_PER_ROW * avg_rows) if avg_rows else 0.0
+            )
+            est_cycle_launches = (
+                (verify_cycles * est_verify_launches + int(spec["pmin_ar_cycles"]) * _AR_LAUNCHES) / n
+            )
+            # C_B proxy: estimated verify launches per VISIBLE token committed.
+            visible_per_cycle = float(spec["visible_tokens_per_cycle"]) or 1.0
+            est_launches_per_visible_token = est_cycle_launches / visible_per_cycle
+            row = {
+                "candidate_budget": int(B),
+                "draft_p_min": float(pmin),
+                "alpha": round(float(spec["alpha"]), 4),
+                "avg_accepted": round(float(spec["avg_accepted"]), 3),
+                "visible_tokens_per_cycle": round(visible_per_cycle, 3),
+                "cycles": n,
+                "zero_accept_cycles": int(spec["zero_accept_cycles"]),
+                "zero_accept_rate": round(float(spec["zero_accept_rate"]), 4) if spec["zero_accept_rate"] is not None else None,
+                "wasted_verify_zero_cycles": int(spec["wasted_verify_zero_cycles"]),
+                "pmin_ar_cycles": int(spec["pmin_ar_cycles"]),
+                "pmin_truncated_cycles": int(spec["pmin_truncated_cycles"]),
+                "avg_eff_budget": round(float(spec["avg_eff_budget"]), 3) if spec["avg_eff_budget"] is not None else None,
+                "avg_verify_rows": round(float(avg_rows), 3) if avg_rows else None,
+                "est_verify_launches_per_cycle": round(est_cycle_launches, 1),
+                "est_launches_per_visible_token": round(est_launches_per_visible_token, 1),
+                "exact_ar_match": spec_tokens == ar_tokens,
+                "gpu_accept_match_cpu": spec["gpu_accept_match_cpu"],
+                "accept_depth_histogram": spec["accept_depth_histogram"],
+                "tok_s_diagnostic": spec["tok_s"],
+            }
+            if float(pmin) == 0.0:
+                baseline_zero_rate[int(B)] = row["zero_accept_rate"] or 0.0
+            sweep.append(row)
+    # Zero-accept-cycle reduction vs the p_min=0 baseline at the same B, and
+    # wasted-multi-row-verify reduction (the cost p-min actually removes).
+    for row in sweep:
+        base = baseline_zero_rate.get(row["candidate_budget"])
+        row["zero_accept_rate_reduction_vs_pmin0"] = (
+            round(base - row["zero_accept_rate"], 4) if base is not None and row["zero_accept_rate"] is not None else None
+        )
+    return {
+        "status": "passed",
+        "performance_claim": False,
+        "model": str(model),
+        "backend": backend,
+        "prompt_tokens": list(prompt_tokens),
+        "decode_tokens": int(decode_tokens),
+        "chain_attn_mode": chain_attn_mode,
+        "ar_tokens": ar_tokens,
+        "ar": ar,
+        "ar_tok_s": ar["tok_s"],
+        "pmin_sweep": sweep,
+        "verify_launch_model": {
+            "fixed_launches": _VERIFY_FIXED_LAUNCHES,
+            "marginal_launches_per_row": _VERIFY_MARGINAL_LAUNCHES_PER_ROW,
+            "ar_launches": _AR_LAUNCHES,
+            "source": "#98 census (benchmarks/results/2026-06-09-hipengine-m16-ar-verify-launch-census.json)",
+        },
+        "note": (
+            "Per-position p-min truncation x B-down sweep (chain, correctness-first). "
+            "p-min uses a restricted top-8 softmax proxy (overestimates true vocab "
+            "top-1 prob), so the proxy threshold is milder than the same value on "
+            "true prob -- read the measured truncation/zero-accept rates, not the bare "
+            "threshold. C_B is estimated from the #98 launch model; reload tok/s is "
+            "diagnostic only."
         ),
     }
 
@@ -760,6 +937,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             tree_top_ks=_parse_int_list(args.curve_tree_top_ks),
             confidence_thresholds=_parse_float_list(args.curve_thresholds),
         )
+    if bool(getattr(args, "pmin_sweep", False)):
+        return _run_pmin_sweep(
+            model,
+            prompt_tokens,
+            decode_tokens=int(args.decode_tokens),
+            backend=str(args.backend),
+            chain_attn_mode=str(args.chain_attn_mode),
+            budgets=_parse_int_list(args.sweep_budgets),
+            p_mins=_parse_float_list(args.sweep_pmins),
+        )
     ar_tokens, ar = _run_ar_baseline(model, prompt_tokens, decode_tokens=int(args.decode_tokens), backend=str(args.backend))
     if args.proposal_impl in {"persistent_device", "persistent_device_b1"}:
         spec_tokens, spec = _run_spec_persistent_device(
@@ -784,6 +971,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             tree_mode=str(getattr(args, "tree_mode", "chain")),
             tree_top_k=int(getattr(args, "tree_top_k", 2)),
             confidence_threshold=float(getattr(args, "confidence_threshold", 0.0)),
+            draft_p_min=float(getattr(args, "draft_p_min", 0.0)),
         )
     return {
         "status": "passed" if spec_tokens == ar_tokens else "exact_ar_mismatch",
@@ -818,6 +1006,10 @@ def main() -> int:
     parser.add_argument("--acceptance-curve", action="store_true", help="reload_d2h only: sweep the realized acceptance curve over branch width x confidence threshold, sharing one resident target runner. Reports alpha, visible tokens/cycle, accept-depth histogram, exact_ar_match, gpu_accept_match_cpu per config.")
     parser.add_argument("--curve-tree-top-ks", default="2,3,4", help="comma-separated branch widths for --acceptance-curve")
     parser.add_argument("--curve-thresholds", default="0.0", help="comma-separated confidence thresholds for --acceptance-curve")
+    parser.add_argument("--draft-p-min", type=float, default=0.0, help="reload_d2h chain only: per-position draft confidence floor (DFlash analog). Stop drafting at the first depth whose head top-1 prob proxy < p_min; truncate-to-0 cycles become plain AR. 0 disables.")
+    parser.add_argument("--pmin-sweep", action="store_true", help="reload_d2h only: sweep per-position p-min x B (chain path), sharing one resident target runner. Reports zero-accept reduction, avg-accept, estimated C_B (#98 launch model), tok/s.")
+    parser.add_argument("--sweep-budgets", default="1,2,3", help="comma-separated candidate budgets for --pmin-sweep (must be in {1,2,3,5})")
+    parser.add_argument("--sweep-pmins", default="0.0,0.5,0.65", help="comma-separated p-min thresholds for --pmin-sweep")
     parser.add_argument(
         "--rocprof-warmup-cycles",
         type=int,
@@ -845,6 +1037,27 @@ def main() -> int:
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    if "pmin_sweep" in result:
+        summary = {
+            "status": result["status"],
+            "ar_tok_s": result["ar_tok_s"],
+            "sweep": [
+                {
+                    "B": row["candidate_budget"],
+                    "pmin": row["draft_p_min"],
+                    "alpha": row["alpha"],
+                    "avg_acc": row["avg_accepted"],
+                    "zero_rate": row["zero_accept_rate"],
+                    "zero_red": row["zero_accept_rate_reduction_vs_pmin0"],
+                    "ar_cyc": row["pmin_ar_cycles"],
+                    "est_launch_per_tok": row["est_launches_per_visible_token"],
+                    "exact_ar": row["exact_ar_match"],
+                }
+                for row in result["pmin_sweep"]
+            ],
+        }
+        print(json.dumps(summary, sort_keys=True))
+        return 0 if result["status"] == "passed" else 1
     if "acceptance_curve" in result:
         summary = {
             "status": result["status"],
