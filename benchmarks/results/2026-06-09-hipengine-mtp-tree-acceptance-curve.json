@@ -1,0 +1,226 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "diagnostic-acceptance-curve",
+  "status": "retained",
+  "id": "2026-06-09-hipengine-mtp-tree-acceptance-curve",
+  "task": "#99",
+  "title": "Realized MTP branching-topk tree acceptance curve (correctness-first)",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100/RDNA3",
+    "backend": "hip_gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "prompt": "quicksort (90 tokens)",
+  "decode_tokens": 32,
+  "candidate_budget": 5,
+  "chain_attn_mode": "batched",
+  "proposal_impl": "reload_d2h (correctness-first; MTP weights reloaded per proposal; NOT a tok/s path)",
+  "method": "mtp_chain_e2e_smoke.py --acceptance-curve: one resident target runner shared across AR + every config; proposer emits per-depth top-k IDs+VALUES; balanced DDTree via _build_branching_topk_tree_target_batch -> verify_tree_bulk_and_commit; commit via dflash_accept_chain_i32 longest-path (verify.accepted_tokens).",
+  "command": "python3 scripts/mtp_chain_e2e_smoke.py --model <pkg> --prompt-tokens <quicksort> --decode-tokens 32 --candidate-budget 5 --backend hip_gfx1100 --chain-attn-mode batched --proposal-impl reload_d2h --acceptance-curve --curve-tree-top-ks 2,3,4 --curve-thresholds 0.0,0.7",
+  "ar_tok_s_diagnostic": 1.296,
+  "correctness": {
+    "all_exact_ar_match": true,
+    "all_gpu_accept_match_cpu": true
+  },
+  "acceptance_curve": [
+    {
+      "tree_mode": "chain",
+      "tree_top_k": 1,
+      "confidence_threshold": 0.0,
+      "alpha": 0.3167,
+      "avg_accepted": 1.583,
+      "visible_tokens_per_cycle": 2.583,
+      "cycles": 12,
+      "gated_to_chain_cycles": 0,
+      "tree_nodes_total": 0,
+      "accept_depth_histogram": {
+        "0": 3,
+        "1": 2,
+        "2": 4,
+        "3": 3
+      },
+      "exact_ar_match": true,
+      "gpu_accept_match_cpu": true,
+      "depth1_top1_rate": 0.75,
+      "depth1_in_topk_rate": 1.0,
+      "depth1_rescuable_rate": 0.25,
+      "verify_seconds_per_cycle": 0.04387942133083319
+    },
+    {
+      "tree_mode": "branching_topk",
+      "tree_top_k": 2,
+      "confidence_threshold": 0.0,
+      "alpha": 0.3167,
+      "avg_accepted": 1.583,
+      "visible_tokens_per_cycle": 2.583,
+      "cycles": 12,
+      "gated_to_chain_cycles": 0,
+      "tree_nodes_total": 58,
+      "accept_depth_histogram": {
+        "0": 1,
+        "1": 3,
+        "2": 8
+      },
+      "exact_ar_match": true,
+      "gpu_accept_match_cpu": true,
+      "depth1_top1_rate": 0.75,
+      "depth1_in_topk_rate": 1.0,
+      "depth1_rescuable_rate": 0.25,
+      "verify_seconds_per_cycle": 0.045690188029160105
+    },
+    {
+      "tree_mode": "branching_topk",
+      "tree_top_k": 2,
+      "confidence_threshold": 0.7,
+      "alpha": 0.3636,
+      "avg_accepted": 1.818,
+      "visible_tokens_per_cycle": 2.818,
+      "cycles": 11,
+      "gated_to_chain_cycles": 6,
+      "tree_nodes_total": 25,
+      "accept_depth_histogram": {
+        "0": 2,
+        "1": 1,
+        "2": 5,
+        "3": 3
+      },
+      "exact_ar_match": true,
+      "gpu_accept_match_cpu": true,
+      "depth1_top1_rate": 0.8181818181818182,
+      "depth1_in_topk_rate": 1.0,
+      "depth1_rescuable_rate": 0.18181818181818182,
+      "verify_seconds_per_cycle": 0.044985568870536306
+    },
+    {
+      "tree_mode": "branching_topk",
+      "tree_top_k": 3,
+      "confidence_threshold": 0.0,
+      "alpha": 0.2769,
+      "avg_accepted": 1.385,
+      "visible_tokens_per_cycle": 2.385,
+      "cycles": 13,
+      "gated_to_chain_cycles": 0,
+      "tree_nodes_total": 60,
+      "accept_depth_histogram": {
+        "1": 8,
+        "2": 5
+      },
+      "exact_ar_match": true,
+      "gpu_accept_match_cpu": true,
+      "depth1_top1_rate": 0.7692307692307693,
+      "depth1_in_topk_rate": 1.0,
+      "depth1_rescuable_rate": 0.23076923076923078,
+      "verify_seconds_per_cycle": 0.04829900054476009
+    },
+    {
+      "tree_mode": "branching_topk",
+      "tree_top_k": 3,
+      "confidence_threshold": 0.7,
+      "alpha": 0.3167,
+      "avg_accepted": 1.583,
+      "visible_tokens_per_cycle": 2.583,
+      "cycles": 12,
+      "gated_to_chain_cycles": 8,
+      "tree_nodes_total": 20,
+      "accept_depth_histogram": {
+        "0": 3,
+        "1": 2,
+        "2": 4,
+        "3": 3
+      },
+      "exact_ar_match": true,
+      "gpu_accept_match_cpu": true,
+      "depth1_top1_rate": 0.75,
+      "depth1_in_topk_rate": 1.0,
+      "depth1_rescuable_rate": 0.25,
+      "verify_seconds_per_cycle": 0.043251036026049405
+    },
+    {
+      "tree_mode": "branching_topk",
+      "tree_top_k": 4,
+      "confidence_threshold": 0.0,
+      "alpha": 0.2769,
+      "avg_accepted": 1.385,
+      "visible_tokens_per_cycle": 2.385,
+      "cycles": 13,
+      "gated_to_chain_cycles": 0,
+      "tree_nodes_total": 60,
+      "accept_depth_histogram": {
+        "1": 8,
+        "2": 5
+      },
+      "exact_ar_match": true,
+      "gpu_accept_match_cpu": true,
+      "depth1_top1_rate": 0.7692307692307693,
+      "depth1_in_topk_rate": 1.0,
+      "depth1_rescuable_rate": 0.23076923076923078,
+      "verify_seconds_per_cycle": 0.048423115002851076
+    },
+    {
+      "tree_mode": "branching_topk",
+      "tree_top_k": 4,
+      "confidence_threshold": 0.7,
+      "alpha": 0.3167,
+      "avg_accepted": 1.583,
+      "visible_tokens_per_cycle": 2.583,
+      "cycles": 12,
+      "gated_to_chain_cycles": 8,
+      "tree_nodes_total": 20,
+      "accept_depth_histogram": {
+        "0": 3,
+        "1": 2,
+        "2": 4,
+        "3": 3
+      },
+      "exact_ar_match": true,
+      "gpu_accept_match_cpu": true,
+      "depth1_top1_rate": 0.75,
+      "depth1_in_topk_rate": 1.0,
+      "depth1_rescuable_rate": 0.25,
+      "verify_seconds_per_cycle": 0.04351496585877612
+    }
+  ],
+  "best_config": {
+    "tree_mode": "branching_topk",
+    "tree_top_k": 2,
+    "confidence_threshold": 0.7,
+    "alpha": 0.3636,
+    "visible_tokens_per_cycle": 2.818
+  },
+  "findings": {
+    "head_ready": "MTP head depth-1 in-top-8 = 1.0 (target next-token always in top-8); top-1 = 0.75-0.82; depth-1 rescuable (rank 2..8) = 0.18-0.25.",
+    "tree_depth_starved": "At the MTP chain budget cap of 5 the balanced breadth-first tree trades depth for breadth: chain reaches depth 3 (hist {0:3,1:2,2:4,3:3}), widening to k>=3 caps at depth 2 (hist {1:8,2:5}) and LOSES net acceptance (alpha 0.277 vs chain 0.317). The 23% depth-1 branch-rescue does not pay back the sacrificed depth-2/3 chain agreement.",
+    "gate_recovers_depth": "Only the confidence-gated narrow tree (k=2, thr=0.7) beats the chain: alpha 0.364 vs 0.317, visible 2.82 vs 2.58 tok/cycle. The gate falls back to the deeper chain on low-confidence cycles (6/11), restoring depth-3 acceptance while keeping depth-1 breadth on confident cycles.",
+    "not_a_tok_s_win": "Per (B+1)/C_B ceiling and the #98 dispatch floor (verify fixed 711 + 240/row launches), even alpha=0.364 / 2.82 visible-tok-per-cycle does NOT beat AR until #98->#105/#101 land. This is the realizable-acceptance datum + tree-path validation, a necessary co-requisite, not a speedup."
+  },
+  "forecast_seed_106": {
+    "alpha_range": [
+      0.277,
+      0.364
+    ],
+    "alpha_chain": 0.317,
+    "alpha_best_gated_k2": 0.364,
+    "avg_accepted_range": [
+      1.38,
+      1.82
+    ],
+    "visible_tokens_per_cycle_range": [
+      2.385,
+      2.818
+    ],
+    "depth1_in_topk_rate": 1.0,
+    "depth1_top1_rate_range": [
+      0.75,
+      0.82
+    ],
+    "depth1_rescuable_rate_range": [
+      0.18,
+      0.25
+    ],
+    "budget": 5,
+    "realized_max_tree_depth": 2,
+    "chain_max_depth": 3,
+    "note": "alpha = accepted/(cycles*budget). visible_tokens_per_cycle = 1+avg_accepted is the comparable metric vs llama.cpp p-min-inflated alpha. Feed alpha_best_gated_k2 and the #98 C_B (verify fixed 711 launches/5.32ms + 240/row/3.06ms-row, proposer ~265 launches/12.3ms@B5) into (B+1)/C_B."
+  }
+}

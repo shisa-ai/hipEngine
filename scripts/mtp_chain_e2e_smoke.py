@@ -240,6 +240,14 @@ def _run_spec_smoke(
             while len(generated) < int(decode_tokens):
                 remaining = int(decode_tokens) - len(generated)
                 active_budget = min(int(candidate_budget), max(0, remaining - 1))
+                # The native MTP chain proposer only compiles allowed budgets
+                # {1,2,3,5}; near the decode tail active_budget can land on 4.
+                # Snap down to the largest allowed budget so the proposer never
+                # compiles an invalid chain (drafting fewer tokens is safe --
+                # only accepted tokens are committed and the tail is truncated).
+                if active_budget > 0:
+                    allowed = [b for b in MTP_CHAIN_CANDIDATE_BUDGETS if b <= active_budget]
+                    active_budget = max(allowed) if allowed else 0
                 if active_budget <= 0:
                     step_result = session.step_with_hidden_taps(
                         root,

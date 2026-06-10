@@ -77567,3 +77567,46 @@ B-invariant. So folding the B>=2 draft proposer into the verify path is real
 #106 forecast seed recorded in artifact: AR 920 launches / 7.06 ms busy / 10.65
 ms wall; verify fixed 711 launches/5.32 ms + 240/row/3.06 ms-row; proposer
 ~0 @B1, 265/12.3 ms @B5; tail 66 launches.
+
+## 2026-06-09 — #99: MTP -> branching-topk tree wired; realized acceptance curve
+
+Wired the present MTP head to the existing tree path. Two-line proposer gap
+closed: scripts/mtp_native_decode_step_smoke.py now copies token_topk_values_buf
+D2H and emits candidate_topk_values (per-depth top-8 logits) alongside
+candidate_topk (IDs). scripts/mtp_chain_e2e_smoke.py gained --tree-mode
+branching_topk (balanced DDTree via dflash bench
+_build_branching_topk_tree_target_batch -> session.verify_tree_bulk_and_commit,
+commit via verify.accepted_tokens longest-path), --tree-top-k,
+--confidence-threshold (top-k-softmax proxy; gates wide tree -> chain on
+low-confidence cycles), and --acceptance-curve (sweeps width x threshold sharing
+ONE resident target runner). active_budget snapped to allowed MTP budgets
+{1,2,3,5} (tail can land on 4). Commit 45b029e5 (wiring) + artifact:
+benchmarks/results/2026-06-09-hipengine-mtp-tree-acceptance-curve.json
+
+Curve (hip_gfx1100, quicksort 90-tok prompt, decode=32, budget=5, batched).
+ALL configs exact_ar_match=true AND gpu_accept_match_cpu=true (tree accept/commit
+path validated on the model we have):
+
+| mode            | k | thr | alpha | vis/cyc | depth_hist            |
+|-----------------|---|-----|-------|---------|-----------------------|
+| chain           | 1 | -   | 0.317 | 2.58    | {0:3,1:2,2:4,3:3}     |
+| branching_topk  | 2 | 0.0 | 0.317 | 2.58    | {0:1,1:3,2:8}         |
+| branching_topk  | 2 | 0.7 | 0.364 | 2.82    | {0:2,1:1,2:5,3:3}     |
+| branching_topk  | 3 | 0.0 | 0.277 | 2.38    | {1:8,2:5}             |
+| branching_topk  | 4 | 0.0 | 0.277 | 2.38    | {1:8,2:5}             |
+
+Oracle: depth-1 in-top-8 = 1.0 (target next-token always present), top-1
+0.75-0.82, rescuable (rank 2..8) 0.18-0.25 — matches the task's 82%/100% bound.
+
+Findings: the head is READY but realized acceptance is DEPTH-limited, not
+breadth-limited, at the budget cap of 5. The balanced tree trades depth for
+breadth: chain reaches depth 3, widening to k>=3 caps at depth 2 and LOSES net
+acceptance (0.277 vs 0.317). The 23% depth-1 branch-rescue does not repay the
+sacrificed depth-2/3 chain agreement. ONLY the confidence-gated narrow tree
+(k=2, thr=0.7) beats the chain (alpha 0.364, 2.82 visible-tok/cycle) by falling
+back to the deeper chain on the 6/11 low-confidence cycles. Per (B+1)/C_B and
+the #98 dispatch floor this is NOT a tok/s win — realizable-acceptance datum +
+tree-path validation, the necessary co-requisite. #106 seed: alpha 0.277-0.364
+(chain 0.317, best gated-k2 0.364), visible 2.39-2.82 tok/cycle, depth1 in-top-8
+1.0. The reload_d2h proposer is correctness-first (per-call MTP reload), so the
+spec tok/s is diagnostic only. #100 reuses this curve rather than re-measuring.
