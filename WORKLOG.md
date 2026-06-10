@@ -77471,3 +77471,29 @@ relaxed profile: FP reduction-order/FMA reassociation, ~1-2 ULP fp32, drift-tier
 T2, strict VTILE=1 fallback, the MEGAKERNEL-policy-T1 vs RELAXED-drift-T2 naming
 distinction). Closed the "owed" notes in MEGAKERNEL §8.1/§9.4.
 Artifact: benchmarks/results/2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json
+
+## 2026-06-09 — #96: selected GEMV grid = occupancy slack, not over-launch
+
+Assessed the verify-path selected gate_up/down W4 GEMV grids (launcher source
+launch_selected_dual_pack8 / launch_selected_pack8 + on-model rocprof trace).
+
+Grid structure (definitive, from .hip): dim3(out_packed[_a+_b], rows) -- one
+block per UNIQUE (output_pack, row) dot-product, in_features looped internally,
+NO split-K, NO redundant recompute. Real grids (W7900 trace, 35B-A3B):
+- gate_up selected_dual_pack8_strided: (8192,8) = 65,536 WGs, 29.84 us/call
+- down selected_pack8_kernel:          (16384,8)= 131,072 WGs, 13.24 us/call
+
+Occupancy: W7900 = 96 CUs (48 WGPs; the doc's "48 CUs" was a WGP/CU conflation),
+32 max waves/CU. At VGPR=104 ~14 WGs/CU -> ~1,350 WGs fills the machine. The
+grids run 49x (gate_up) / 97x (down) that depth -- far past the ~4-8 waves for
+latency hiding.
+
+Verdict: NOT over-launch (unlike GDN's 128x redundant dv-blocks); each block is
+unique work. BUT large occupancy SLACK -> reducible via output-tiling (multiple
+out-packs/rows per block: cheaper dispatch class + fewer x re-loads). That is a
+kernel restructure with a dispatch-vs-kernel tradeoff + B4 coalescing risk, NOT
+a free collapse. Folded into the gate_up/down kernel-time work (#97).
+
+Docs: MEGAKERNEL §9.3 rewritten with real grids + occupancy math + the
+CU-count correction. Artifact:
+benchmarks/results/2026-06-09-hipengine-m16-selected-gemv-grid-occupancy.json

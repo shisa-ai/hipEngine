@@ -342,17 +342,40 @@ multi-stream overlap**.
 ### 9.3 Grid-reduction targets (over-launch vs occupancy-needed)
 
 Two verify kernels launch the largest grids; each block is then in the most
-expensive dispatch class:
+expensive dispatch class. Grids below are **total workgroups** from on-model
+rocprof (`selected_*` use `dim3(out_packed, rows)`; the Grid_Y is the
+token×selected-expert row count, not the expert count):
 
-| kernel | grid | per-launch dispatch | over-launch? |
+| kernel | grid (total WGs) | WG / VGPR | over-launch? |
 |---|---:|---:|---|
-| GDN chain recurrence | `(num_v_heads=32, head_v_dim=128)` = **4096** | 9.36 µs | **YES** — each block does 1 dv column with massive redundant per-(v_head,t) work |
-| selected down GEMV (W4) | **8192** | 12.34 µs | assess — likely occupancy-driven (B4 lesson: GEMVs need rows×out-cols parallelism to fill 48 CUs) |
+| GDN chain recurrence | `(num_v_heads, head_v_dim)` = **4096** | 256 / 64 | **YES** — 1 dv column/block with massive redundant per-(v_head,t) recompute |
+| selected gate_up dual GEMV (W4) | `(8192, 8)` = **65,536** | 64 / 104 | **NO** (slack) — each block = unique (out-pack, row) dot-product; no split-K, no redundant work |
+| selected down GEMV (W4) | `(16384, 8)` = **131,072** | 64 / 104 | **NO** (slack) — same `dim3(out_packed, rows)` structure, unique work/block |
 
-The distinction is the whole game. **GDN's 4096 blocks are genuine over-launch**;
-the **down GEMV's 8192 may be load-bearing occupancy** (collapsing it risks the
-B4 split-K coalescing/occupancy regression). Grid-reduction is only a win where
-the extra blocks carry *redundant* work, not where they fill the machine.
+**Resolved (2026-06-09, #96 — launcher source `launch_selected_dual_pack8` /
+`launch_selected_pack8` + on-model trace).** The GEMV grids are **genuine
+output×row parallelism**: every block computes a unique `(output_pack, row)`
+dot-product, the kernel loops the full `in_features` internally, and there is
+**no split-K and no redundant recompute**. This is categorically different from
+GDN, where 128 dv-blocks per v_head redid identical q/k loads, reductions, and 3
+transcendentals/t (free to collapse). The GEMV blocks are *not* over-launch in
+that sense.
+
+**But they are not occupancy-bound either.** W7900 = **96 CUs** (48 WGPs; the
+earlier "48 CUs" in this doc and ROOFLINE conflates WGP with CU), 32 max
+waves/CU. At VGPR=104 the GEMV reaches ~half occupancy (~14 WGs/CU), so the
+machine fills at **~1,350 WGs**. The verify grids run **49× (gate_up) to 97×
+(down)** that depth — far past the ~4–8 waves needed for memory-latency hiding.
+The excess parallelism is real **occupancy slack**.
+
+**Consequence.** The lever for these GEMVs is **output-tiling** (each block
+computes several output packs / rows, shrinking the grid into a cheaper dispatch
+class and cutting x re-loads) — *not* a free collapse like GDN's dv-tiling.
+Because output-tiling trades grid size for per-block serial work and must
+respect the **B4 coalescing lesson**, it belongs with the gate_up/down
+kernel-time work (§9.x / task #97), measured per-shape, not landed blind.
+Grid-reduction is a free win only where the extra blocks carry *redundant* work
+(GDN); here it is a kernel restructure with a real dispatch-vs-kernel tradeoff.
 
 ### 9.4 GDN chain recurrence — the dv-tiling lever (combined dispatch + kernel)
 

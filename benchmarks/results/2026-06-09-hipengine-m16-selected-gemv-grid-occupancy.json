@@ -1,0 +1,28 @@
+{
+  "name": "m16-selected-gemv-grid-occupancy",
+  "date": "2026-06-09",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "grid-occupancy-analysis",
+  "task": 96,
+  "purpose": "Assess whether the verify-path selected GEMV grids (gate_up/down, W4) are genuine over-launch (reducible like GDN) or occupancy/structure-driven. Source: launch_selected_dual_pack8 / launch_selected_pack8 in paro_awq_gemv.hip + on-model rocprof kernel trace.",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100", "compute_units": 96, "wgp": 48, "max_waves_per_cu": 32, "wavefront": 32},
+  "model": "Qwen3.6-35B-A3B-PARO MTP-BF16 (hidden=2048, moe_intermediate=512, num_experts=256, top_k=8, group_size=128)",
+  "grid_structure": "selected_* launchers use dim3(out_packed[_a+_b], rows); one block per unique (output_pack, row). No split-K; in_features looped internally per block. No redundant recompute across blocks.",
+  "kernels": {
+    "gemv_awq_selected_dual_pack8_strided (gate_up)": {"grid": [8192, 8], "total_wg": 65536, "wg": 64, "vgpr": 104, "lds": 512, "us_per_call": 29.84, "calls": 720},
+    "gemv_awq_selected_pack8_kernel (down)": {"grid": [16384, 8], "total_wg": 131072, "wg": 64, "vgpr": 104, "lds": 512, "us_per_call": 13.24, "calls": 440},
+    "gemv_awq_selected_pack8_silu_rotate_staged": {"grid": [2048, 256], "total_wg": 524288, "wg": 64, "vgpr": 104, "lds": 512, "us_per_call": 35.55, "calls": 280}
+  },
+  "occupancy": {
+    "fill_threshold_wg_est": 1350,
+    "basis": "96 CUs x ~14 WGs/CU at VGPR=104 (~half of the 32-wave/CU cap); WG=64 threads = 2 wave32/WG",
+    "gate_up_fill_multiple": 49,
+    "down_fill_multiple": 97,
+    "latency_hiding_need_waves": "4-8"
+  },
+  "finding": "NOT over-launch (every block does unique output x row work, no split-K, no redundant recompute -- categorically unlike GDN where 128 dv-blocks redid identical transcendentals). BUT large occupancy SLACK: grids run 49x-97x past the machine-fill threshold, far beyond latency-hiding need. The reduction lever is therefore output-tiling (multiple output packs/rows per block -> cheaper dispatch class + fewer x re-loads), which is a KERNEL RESTRUCTURE with a dispatch-vs-kernel-time tradeoff and B4 coalescing risk -- not a free grid collapse. Belongs with the gate_up/down kernel-time optimization (task #97), measured per-shape.",
+  "doc_correction": "W7900 is 96 CUs (48 WGPs); MEGAKERNEL/ROOFLINE 'fill 48 CUs' conflated WGP with CU. Noted in MEGAKERNEL §9.3.",
+  "conclusion": "Task #96 closed as analysis: selected GEMV grids are occupancy-slack output-tiling candidates, not GDN-style redundant over-launch. No standalone prototype; folded into #97.",
+  "related": ["docs/MEGAKERNEL.md §9.3", "benchmarks/results/2026-06-09-hipengine-m16-dispatch-grid-sweep-retest.json"]
+}
