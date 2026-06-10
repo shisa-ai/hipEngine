@@ -1,0 +1,152 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "diagnostic-expert-overlap",
+  "status": "retained",
+  "id": "2026-06-09-hipengine-mtp-expert-overlap-U",
+  "task": "#103",
+  "title": "P0 expert-overlap U: 35B-A3B speculative decode IS bandwidth-viable",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100/RDNA3",
+    "backend": "hip_gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "prompt": "quicksort (90 tokens)",
+  "decode_tokens": 24,
+  "runs": 3,
+  "top_k": 8,
+  "num_experts": 256,
+  "num_layers": 40,
+  "expert_byte_fraction_f": 0.3966,
+  "method": "Captured the TARGET verifier's per-layer routed-expert selections for the B+1 rows of REAL verify cycles (root + MTP-head drafts) via FP16/BF16 router monkey-patch (diagnostic only; HIPENGINE_MOE_C1_C_DISPATCH=0 forces the Python router path -- selections are dispatch-independent). BW floor = (1-f)+f*U, U=unique_experts/top_k; byte-weighted floor uses actual per-layer non-expert + unique*expert bytes from the safetensors header.",
+  "command": "python3 scripts/mtp_expert_overlap.py --prompt-tokens <quicksort> --candidate-budgets 1,2,3,5,7 --decode-tokens 24 --runs 3 --backend hip_gfx1100",
+  "results": [
+    {
+      "candidate_budget": 1,
+      "rows": 2,
+      "top_k": 8,
+      "cycles": 39,
+      "runs": 3,
+      "U_mean": 1.719,
+      "unique_experts_mean": 13.75,
+      "total_lanes": 16,
+      "dedup_fraction": 0.141,
+      "root_draft_jaccard_mean": 0.182,
+      "duplicate_savings_mean": 1.182,
+      "bw_floor_fmean": 1.285,
+      "bw_floor_byte_weighted": 1.284,
+      "bw_floor_no_dedup": 1.397,
+      "visible_tokens_per_cycle": 1.769,
+      "avg_accepted": 0.769,
+      "viable": true,
+      "headroom": 0.485
+    },
+    {
+      "candidate_budget": 2,
+      "rows": 3,
+      "top_k": 8,
+      "cycles": 33,
+      "runs": 3,
+      "U_mean": 2.166,
+      "unique_experts_mean": 17.33,
+      "total_lanes": 24,
+      "dedup_fraction": 0.278,
+      "root_draft_jaccard_mean": 0.21,
+      "duplicate_savings_mean": 1.378,
+      "bw_floor_fmean": 1.463,
+      "bw_floor_byte_weighted": 1.462,
+      "bw_floor_no_dedup": 1.793,
+      "visible_tokens_per_cycle": 2.091,
+      "avg_accepted": 1.091,
+      "viable": true,
+      "headroom": 0.629
+    },
+    {
+      "candidate_budget": 3,
+      "rows": 4,
+      "top_k": 8,
+      "cycles": 27,
+      "runs": 3,
+      "U_mean": 2.706,
+      "unique_experts_mean": 21.65,
+      "total_lanes": 32,
+      "dedup_fraction": 0.323,
+      "root_draft_jaccard_mean": 0.204,
+      "duplicate_savings_mean": 1.54,
+      "bw_floor_fmean": 1.677,
+      "bw_floor_byte_weighted": 1.675,
+      "bw_floor_no_dedup": 2.19,
+      "visible_tokens_per_cycle": 2.556,
+      "avg_accepted": 1.556,
+      "viable": true,
+      "headroom": 0.88
+    },
+    {
+      "candidate_budget": 5,
+      "rows": 6,
+      "top_k": 8,
+      "cycles": 30,
+      "runs": 3,
+      "U_mean": 3.334,
+      "unique_experts_mean": 26.67,
+      "total_lanes": 48,
+      "dedup_fraction": 0.444,
+      "root_draft_jaccard_mean": 0.189,
+      "duplicate_savings_mean": 1.825,
+      "bw_floor_fmean": 1.926,
+      "bw_floor_byte_weighted": 1.924,
+      "bw_floor_no_dedup": 2.983,
+      "visible_tokens_per_cycle": 2.3,
+      "avg_accepted": 1.3,
+      "viable": true,
+      "headroom": 0.376
+    }
+  ],
+  "skipped": [
+    {
+      "candidate_budget": 7,
+      "reason": "rows=8 not realizable by the native MTP proposer (allowed budgets {1,2,3,5})"
+    }
+  ],
+  "verdict": {
+    "viable": true,
+    "summary": "35B-A3B speculative decode is structurally BANDWIDTH-VIABLE at every realizable budget: visible_tokens_per_cycle > BW floor for B in {1,2,3,5}. It is NOT a research-only / persistent-kernel project on bandwidth grounds.",
+    "best_budget": 3,
+    "best_headroom": 0.88,
+    "b_sweet_spot": "B=3 has the best headroom (+0.88). B=5 headroom shrinks (+0.38) because visible saturates/drops (2.30 < B=3's 2.556, acceptance saturated) while the floor keeps rising -- matches #100's B=3-optimal. Higher B costs more expert bytes without more accepted tokens.",
+    "U_scaling": "U scales SUBLINEARLY with rows (dedup grows 14%->44% across B=1->5): experts partially overlap, more so at higher B. But root-vs-draft Jaccard is LOW (~0.18-0.21) -- root and drafts route to mostly DIFFERENT experts; the dedup is mostly among adjacent draft rows. f_mean approximation matches byte-weighted floor (1.677 vs 1.675).",
+    "binding_constraint": "Bandwidth is NOT the binding constraint (floor 1.3-1.9 << visible 1.8-2.6). Per #101 the verify is DISPATCH-bound (~40us/launch host gap), so M14.dispatch.1 (C-side dispatcher) -- not expert bandwidth -- is the lever."
+  },
+  "grouped_expert_gemm_decision": {
+    "exists": "run_moe_grouped_compact_fp16 already implemented; verify path FORCES c=1 (per-row) MoE because grouped's fixed setup cost exceeds c=1 at small B+1.",
+    "decision": "DEFERRED, not built-now. Dedup reaches 44% / 1.83x duplicate-savings at B=5, but (a) the verify is dispatch-bound not BW-bound (#101), so saving expert BYTES does not help wall time now; (b) grouped's fixed cost > c=1 at the small B+1 verify shapes. Revisit ONLY after M14.dispatch.1 lowers the dispatch floor AND at higher B where 44% dedup justifies the grouped fixed cost."
+  },
+  "forecast_seed_106": {
+    "f": 0.3966,
+    "U_by_B": {
+      "1": 1.719,
+      "2": 2.166,
+      "3": 2.706,
+      "5": 3.334
+    },
+    "bw_floor_by_B": {
+      "1": 1.284,
+      "2": 1.462,
+      "3": 1.675,
+      "5": 1.924
+    },
+    "visible_by_B": {
+      "1": 1.769,
+      "2": 2.091,
+      "3": 2.556,
+      "5": 2.3
+    },
+    "dedup_by_B": {
+      "1": 0.141,
+      "2": 0.278,
+      "3": 0.323,
+      "5": 0.444
+    },
+    "note": "marginal-row BW term = f*dU; viable since floor << visible. Binding constraint is dispatch (#101), not bandwidth."
+  }
+}

@@ -77693,3 +77693,42 @@ M13.C), NOT more launch reduction and NOT graph replay. A literal AR/verify
 code-merge would not move C_B (residual is dispatch overhead, not divergent
 structure) -- effort without payoff. #101 structural goal achieved & verified;
 C_B program redirects to M14.dispatch.1. #106 seed updated.
+
+## 2026-06-09 — #103: P0 expert-overlap U — 35B-A3B spec is bandwidth-VIABLE
+
+Built scripts/mtp_expert_overlap.py: captures the TARGET verifier's per-layer
+routed-expert selections for the B+1 rows of REAL verify cycles via an FP16/BF16
+router monkey-patch (diagnostic only; HIPENGINE_MOE_C1_C_DISPATCH=0 forces the
+Python router path so the patch fires -- the C-side dispatcher M14.dispatch.1 is
+default-on and otherwise launches the router from C; expert SELECTIONS are
+dispatch-independent). Byte model from the safetensors header: f=0.397 (linear
+0.385 / full-attn 0.43), 256 experts, top_k=8, per-expert 1.56MB (W4). Artifact:
+benchmarks/results/2026-06-09-hipengine-mtp-expert-overlap-U.json
+
+Sweep (hip_gfx1100, quicksort 90-tok, decode=24, runs=3). BW floor =
+(1-f)+f*U, U=unique_experts/top_k; byte-weighted floor matches f_mean floor:
+
+| B | rows | U    | dedup% | floor | visible | viable | headroom |
+|---|------|------|--------|-------|---------|--------|----------|
+| 1 | 2    | 1.72 | 14%    | 1.284 | 1.769   | Y      | +0.485   |
+| 2 | 3    | 2.17 | 28%    | 1.462 | 2.091   | Y      | +0.629   |
+| 3 | 4    | 2.71 | 32%    | 1.675 | 2.556   | Y      | +0.880   |
+| 5 | 6    | 3.33 | 44%    | 1.924 | 2.300   | Y      | +0.376   |
+(B=7 skipped: rows=8 not realizable by the native MTP proposer {1,2,3,5}.)
+
+VERDICT: 35B-A3B speculative decode is structurally BANDWIDTH-VIABLE at every
+realizable budget (visible > floor everywhere) -- NOT a research-only /
+persistent-kernel project on BW grounds. B=3 is the sweet spot (+0.88 headroom);
+B=5 headroom shrinks (+0.38) because visible saturates/drops (2.30 < B3's 2.556,
+acceptance saturated per #100) while the floor keeps rising. U scales
+SUBLINEARLY (dedup 14%->44%): experts partially overlap, more at higher B, but
+root-vs-draft Jaccard is LOW (~0.18-0.21) -- root and drafts route to mostly
+DIFFERENT experts; dedup is mainly among adjacent draft rows.
+
+Bandwidth is NOT the binding constraint (floor 1.3-1.9 << visible 1.8-2.6). Per
+#101 the verify is DISPATCH-bound -> M14.dispatch.1 is the lever, not expert BW.
+GROUPED-EXPERT GEMM: run_moe_grouped_compact_fp16 already exists; verify forces
+c=1 (per-row) MoE because grouped's fixed cost > c=1 at small B+1. DEFERRED:
+dedup hits 44%/1.83x at B=5, but saving expert BYTES does not help a
+dispatch-bound verify; revisit only after M14.dispatch.1 AND at higher B. #106
+seeded (f, U(B), floor(B), visible(B), dedup(B)).
