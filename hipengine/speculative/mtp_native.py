@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
+import os
+
 import numpy as np
 
 from hipengine.core.dtype import DType
@@ -20,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, lm_head_
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     build_dflash_drafter,
     dflash_dense_bf16_to_bf16,
+    dflash_dense_bf16_to_bf16_expert,
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
@@ -129,6 +132,13 @@ class NativeMtpChainProposer:
         self.closed = False
         self.hidden = int(self.config.hidden_size)
         self.vocab = int(self.config.vocab_size)
+        # Draft-only vocab cap: BPE token ids are merge-frequency-ordered, so
+        # the first N rows of lm_head cover the hot tokens. Draft argmax over a
+        # capped row range cuts the dominant per-advance GEMV bytes (~1.7 ms at
+        # full 248k vocab); exactness is unaffected (drafts only steer
+        # acceptance — verify commits target tokens over the FULL vocab).
+        cap = int(os.environ.get("HIPENGINE_MTP_DRAFT_VOCAB_CAP", "0") or 0)
+        self.draft_vocab = cap if 0 < cap < self.vocab else self.vocab
         self.q_heads = int(self.config.num_attention_heads)
         self.kv_heads = int(self.config.num_key_value_heads)
         self.head_dim = int(self.config.head_dim)
@@ -322,8 +332,9 @@ class NativeMtpChainProposer:
         truncation, without a vocab-sized D2H.
         """
 
+        valid = lm_head_argmax_stage1_blocks(self.draft_vocab, threads=256)
         copy_device_to_host(host_array_ptr(self.block_values_host), self.block_values_buf, self.block_values_host.nbytes, runtime=self.runtime)
-        vals = np.sort(self.block_values_host)[-int(k):].astype(np.float64)
+        vals = np.sort(self.block_values_host[:valid])[-int(k):].astype(np.float64)
         exp = np.exp(vals - vals.max())
         return float(exp[-1] / exp.sum())
 
@@ -414,15 +425,19 @@ class NativeMtpChainProposer:
         dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.gate.weight"].ptr, self.router_logits_buf.ptr, 1, self.hidden, int(self.config.num_experts), threads=128, library=self.dflash_lib)
         topk_f32_rows_i32(self.router_logits_buf.ptr, self.topk_values_buf.ptr, self.topk_ids_buf.ptr, 1, int(self.config.num_experts), self.top_k, threads=256, library=self.lm_lib)
         mtp_softmax_topk_f32(self.topk_values_buf.ptr, self.routing_buf.ptr, 1, self.top_k, library=self.mtp_lib)
-        copy_device_to_host(host_array_ptr(self.topk_ids_host), self.topk_ids_buf, self.topk_ids_host.nbytes, runtime=self.runtime)
-        copy_device_to_host(host_array_ptr(self.topk_values_host), self.topk_values_buf, self.topk_values_host.nbytes, runtime=self.runtime)
-        self.runtime.memset(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes)
-        for route, expert_id_value in enumerate(self.topk_ids_host.reshape(-1)):
-            expert_id = int(expert_id_value)
-            dflash_dense_bf16_to_bf16(
+        # Expert-indexed GEMVs read `topk_ids[route]` on-device, so the MoE
+        # loop no longer forces a mid-pass router D2H sync (graph-capture-safe;
+        # part of the #107 >1x proposer path). Host-visible ids/values are read
+        # once at the end of the pass alongside the argmax.
+        self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, 0)
+        for route in range(self.top_k):
+            dflash_dense_bf16_to_bf16_expert(
                 self.moe_in_buf.ptr,
-                self.gate_up_base + expert_id * self.gate_up_expert_bytes,
+                self.gate_up_base,
+                self.topk_ids_buf.ptr,
                 self.gate_up_buf.ptr,
+                route,
+                self.gate_up_expert_bytes // DType.BF16.itemsize,
                 1,
                 self.hidden,
                 2 * self.intermediate,
@@ -430,10 +445,13 @@ class NativeMtpChainProposer:
                 library=self.dflash_lib,
             )
             dflash_silu_mul_bf16(self.gate_up_buf.ptr, self.gate_up_buf.ptr + self.intermediate * DType.BF16.itemsize, self.expert_intermediate_buf.ptr, self.intermediate, threads=256, library=self.dflash_lib)
-            dflash_dense_bf16_to_bf16(
+            dflash_dense_bf16_to_bf16_expert(
                 self.expert_intermediate_buf.ptr,
-                self.down_base + expert_id * self.down_expert_bytes,
+                self.down_base,
+                self.topk_ids_buf.ptr,
                 self.expert_down_buf.ptr,
+                route,
+                self.down_expert_bytes // DType.BF16.itemsize,
                 1,
                 self.intermediate,
                 self.hidden,
@@ -458,7 +476,7 @@ class NativeMtpChainProposer:
             self.out_index_buf.ptr,
             self.out_value_buf.ptr,
             self.hidden,
-            self.vocab,
+            self.draft_vocab,
             threads=256,
             library=self.lm_lib,
         )
@@ -466,6 +484,8 @@ class NativeMtpChainProposer:
         # device_synchronize on top of it was pure host stall (#107 host-time trim).
         copy_device_to_host(host_array_ptr(self.out_index_host), self.out_index_buf, self.out_index_host.nbytes, runtime=self.runtime)
         copy_device_to_host(host_array_ptr(self.out_value_host), self.out_value_buf, self.out_value_host.nbytes, runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(self.topk_ids_host), self.topk_ids_buf, self.topk_ids_host.nbytes, runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(self.topk_values_host), self.topk_values_buf, self.topk_values_host.nbytes, runtime=self.runtime)
         self.cache_len += 1
         self.position = int(position)
         self.current = NativeMtpStepResult(

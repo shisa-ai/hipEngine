@@ -77896,3 +77896,19 @@ drafter-bound (8-layer BF16 drafter ~50ms/cycle), graph fix helps verify only.
 is expensive; 35B MTP break-even needs cycle 32.2->21.5ms (proposer drafting
 ~6ms lm-head-bound + verify busy 22.1 are next).
 Artifact: 2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json
+
+## 2026-06-11 — >1 path levers 1+2: draft vocab cap + device expert dispatch; 0.67 -> 0.76x
+
+Lever 1 (draft-only vocab cap 32768): BPE ids are frequency-ordered, so capping
+lm-head argmax rows cuts ~85% of draft GEMV bytes (~1.7 -> ~0.25 ms/advance).
+Exactness untouched by construction (drafts steer acceptance; verify commits
+full-vocab target tokens). Acceptance BYTE-IDENTICAL on quicksort; wall 32.2 ->
+28.3 ms (-3.9), tok/s 72.6 -> 81.7. Env HIPENGINE_MTP_DRAFT_VOCAB_CAP, off by
+default. Lever 2 (expert-indexed dense GEMV: dflash_dense_bf16_to_bf16_expert
+reads topk_ids[route] on-device; router/argmax D2H deferred to pass end): wall
+28.3 -> 27.8, tok/s 83.4, exact, acceptance identical. Graph-capture-safe MoE
+(prereq for proposer graphs). C_B 3.57 -> 3.08, MTP/AR 0.67 -> 0.758.
+Remaining: verify 22.0 + prop 2.3 + draft ~3.5. Break-even needs wall <=21.5 at
+vis 2.38 -> requires verify reduction (busy 14 + 5.2 node floor + ~2.8 tail);
+gated k=2 tree (vis 2.82) lifts break-even wall to 25.4 -> projected ~0.92 with
+tree wired persistent; both >1 only stacked + multi-stream verify.

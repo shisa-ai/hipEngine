@@ -417,6 +417,60 @@ def dflash_dense_bf16_to_bf16(
     _launch_dense(_SYMBOL_DENSE_BF16_TO_BF16, x_bf16_ptr, weight_bf16_ptr, out_bf16_ptr, rows, in_features, out_features, threads, stream, library, runtime)
 
 
+def dflash_dense_bf16_to_bf16_expert(
+    x_bf16_ptr: int,
+    expert_weights_base_ptr: int,
+    expert_ids_i32_ptr: int,
+    out_bf16_ptr: int,
+    route: int,
+    expert_stride_elems: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Expert-indexed dense GEMV: weight base resolved on-device from
+    ``expert_ids[route]``; no router D2H readback (graph-capture-safe)."""
+
+    _check_dense_shape(rows, in_features, out_features, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, "hipengine_dflash_dense_bf16_to_bf16_expert")
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_bf16_ptr),
+        ctypes.c_void_p(expert_weights_base_ptr),
+        ctypes.c_void_p(expert_ids_i32_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(route),
+        ctypes.c_int64(expert_stride_elems),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def dflash_dense_bf16_to_f32(
     x_bf16_ptr: int,
     weight_bf16_ptr: int,
