@@ -77824,3 +77824,47 @@ to find first divergent cycle; (3) audit _launch_verify_chain_forward_accept for
 host-baked per-cycle scalars (kv lens/positions/draft tokens) frozen at capture;
 fix via device buffers advanced on-stream (decode-graph piece C pattern).
 Gate: exact_ar 9-prompt + clean C_B artifact. Plan: MEGAKERNEL.md S11.
+
+## 2026-06-10 — #107 progress: replay divergence localized to verify root argmax, cycle 9
+
+Repro (quicksort B=1 decode=32): graph-off exact_ar=TRUE; graph-auto FALSE,
+diverging earlier than #101 noted: per-cycle proposal_trace diff shows off/auto
+byte-identical through cycle 8, first flip at cycle 9 (root_position 104):
+root/draft/acc all SAME (498/[87]/0), ONLY bonus (= verify root-row top1) flips
+19 vs 17 (knife-edge digit tokens). Drafts diverge after only as cascade. So
+replay is bit-correct for 7 replays then the root logits drift. Proposer is
+device-token-deterministic (capture width 0 — no taps in persistent_device).
+Per-cycle re-validation (HIPENGINE_VERIFY_GRAPH_REVALIDATE=1, debug env) hung
+first attempt at GPU 100%; re-running with phase markers, decode=8.
+
+## 2026-06-11 — #107 LANDED: verify graph replay made exact; B=3 verify -34%, C_B 4.83->3.57
+
+Root cause of the #101 graph-auto divergence (two bugs, both capture-frozen
+host state, NOT graph dispatch):
+
+1. KEYED BARRIER EPOCHS (the killer): the staged selected-down GEMV
+   (HIPENGINE_SELECTED_MOE_DOWN_STAGED default-on) syncs producer->consumer via
+   barrier[0] cumulative count + barrier[1] epoch, with host-side monotonic
+   (count,epoch) baked BY VALUE per launch (_next_shared_rotate_fuse_barrier_key).
+   Graph capture froze cycle-1 epochs: replays never wait (silent race -> 1.4-3.7
+   logit drift, run-to-run nondeterminism), direct passes after a replay spin
+   forever on an epoch the device never reaches (the GPU hangs at 100%).
+   Confirmed by A/B: SELECTED_MOE_DOWN_STAGED=0 -> exact under replay.
+   Fix: capture-safe memset-per-launch barrier mode (memset is captured into
+   the graph; auto-enabled when the verify graph path is used).
+2. SCRATCH REALLOC: _canonicalize_decode_scratch re-reserves rows=B+1 workspace
+   names at rows=1 each cycle, freeing buffers the graph holds; commit also
+   read tree_*_state from rows=1 maps. Fix: scratch snapshot in graph entry
+   (restored on replay) + keepalive while a graph is cached.
+
+Path (10 instrumented runs): off/auto identical thru cyc8 then root argmax flip;
+per-layer KV+conv+rec checksums identical -> not state; rocprof off pass2==pass3
+== auto replay kernel/grid sequence -> not variants; replay output ND run-to-run
+-> race -> keyed barrier A/B nailed it.
+
+Measured (quicksort 90-tok, decode 32, exact_ar=true B=1 AND B=3):
+verify ms/cycle B=1 40.88->17.4, B=3 33.3->22.1; B=3 cycle wall 43.3->32.2,
+C_B 4.83->3.57, MTP/AR 0.49->0.67x, 55.95->73.24 tok/s. Biggest single C_B
+move. NOT break-even (need <=2.38): ~10 ms/cycle proposer/drafts+host loop
+remain. Next: graph the proposer, p-min 0.5 (#100), gated tree (#99).
+Artifact: 2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix.json

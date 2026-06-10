@@ -555,7 +555,36 @@ is refuted: the big-grid kernels already run near HBM-effective BW; they are not
 
 ## 11. The next attack (#107) — graph-replay exactness on the batched verify path
 
-Status: **planned 2026-06-10**. Every structural lever is now measured-closed
+Status: **LANDED 2026-06-10/11 — graph replay is exact; verify wall −34% at B=3.**
+The divergence was never graph dispatch; it was two capture-frozen host-state
+channels, fixed in `qwen35_paro_runner.py` / `qwen35_paro.py`:
+
+1. **Keyed staged-rotate barriers** (`SELECTED_MOE_DOWN_STAGED`, default-on):
+   the host passes a cumulative `(count, epoch)` *by value*; replays reuse the
+   capture-cycle epoch, the consumer never waits (silent race, 1.4–3.7 logit
+   drift, run-to-run nondeterminism), and any direct pass after replays spins
+   forever (the GPU hangs we hit while instrumenting). Fix: capture-safe
+   memset-per-launch barrier mode whenever the verify graph path is active.
+2. **Scratch realloc churn:** `_canonicalize_decode_scratch` re-reserves the
+   rows=B+1 workspace names at rows=1 every cycle, freeing buffers the graph
+   holds raw pointers to. Fix: capture-time scratch snapshot in the graph
+   entry (restored before commit) + keepalive while a graph is cached.
+
+Measured (quicksort, decode 32, exact_ar=true at B=1/B=3):
+
+| config | verify ms/cyc | cycle wall | C_B | MTP/AR |
+|---|---:|---:|---:|---:|
+| B=3 graph-off | 33.3 | 43.3 | 4.83 | 0.49× |
+| **B=3 graph-auto fixed** | **22.1** | **32.2** | **3.57** | **0.67×** |
+| B=1 graph-auto fixed | 17.4 | — | — | — |
+
+Biggest single C_B move in the program. Break-even (C_B ≤ 2.38) still needs
+~10 ms/cycle: the gap is now **proposer drafting + host loop (~10 ms)** and
+verify busy. Next stacks: graph the MTP proposer steps, p_min=0.5 (#100),
+gated k=2 tree (#99). Artifact:
+`benchmarks/results/2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix.json`.
+
+Original plan (kept for record): every structural lever was measured-closed
 (megakernel §4/B4, persistent §10, native loop M16.2, staged glue §3, kernel
 time §9.4/§9.6). What remains open is the strongest single datum in the program:
 

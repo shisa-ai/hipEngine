@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-10
+
+- [hipEngine] Qwen3.6-35B-A3B PARO MTP / w4 / quicksort D32 B=3 batched: verify 33.3 -> 22.1 ms/cycle (-34%), MTP/AR 0.49 -> 0.67x, exact, by making verify graph replay exact (keyed-barrier capture-safe mode + scratch keepalive); `benchmarks/results/2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix.json`.
+
 ## 2026-06-09
 
 - [diagnostic] hipEngine / MTP economics C_B A/B (close T1) / W7900 gfx1100: **GDN dv-tiling does NOT move C_B; T1 safe on real prompts.** Same-prompt A/B (quicksort 90-tok, decode 32, B=3, 3 runs each), strict shuffle vs relaxed dv-tiled: **C_B 4.81 ± 0.14 -> 4.80 ± 0.28 (unchanged within noise)**, acceptance byte-identical (0.4615, std 0), `all_exact_ar_match=true` for ALL 6 runs. The `exact_ar_match` flip is degenerate-1-token-only; on the real prompt the ~1 ULP changes nothing. The -0.56 ms/pass kernel saving is below the cycle-wall noise (~0.6-1.2 ms) because the verify cycle is dispatch/host-bound (~19.4 ms floor), not kernel-bound -- reinforces MEGAKERNEL §9.2. dv-tiling = banked kernel-time headroom. First landed relaxed-mode profile fully characterized in docs/RELAXED.md §0.1 (FP reassociation, ~1-2 ULP, drift-tier T2, strict VTILE=1 fallback). `benchmarks/results/2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json`.

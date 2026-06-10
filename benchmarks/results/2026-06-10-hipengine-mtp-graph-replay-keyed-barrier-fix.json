@@ -1,0 +1,30 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "perf+correctness",
+  "status": "retained",
+  "id": "2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix",
+  "task": "#107",
+  "title": "Batched verify HIP-graph replay made exact: keyed-barrier epochs + stale scratch were the divergence; verify wall -34% at B=3",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100/RDNA3", "backend": "hip_gfx1100"},
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": "quicksort 90-tok prompt, decode 32, chain_attn_mode=batched, persistent_device, greedy",
+  "command": "python3 scripts/mtp_chain_e2e_smoke.py --backend hip_gfx1100 --proposal-impl persistent_device --chain-attn-mode batched --candidate-budget {B} --decode-tokens 32 --graph-mode {off|auto} --prompt-tokens $(cat quicksort-prompt-tokens.txt)",
+  "root_cause": {
+    "bug1_stale_scratch_commit": "_canonicalize_decode_scratch re-reserves workspace names at rows=1 after every cycle; replay cycles never re-reserve rows=B+1, so _commit_bulk_linear_states read tree_*_state from the wrong buffers. Fix: snapshot capture-time scratch maps into the graph entry, restore before commit; skip canonicalize while a verifier graph is cached.",
+    "bug2_keyed_barrier_epoch": "Keyed staged-rotate barriers (selected down staged GEMV, HIPENGINE_SELECTED_MOE_DOWN_STAGED default-on) pass a host-side cumulative (count,epoch) by value. Graph capture froze cycle-1 epochs: replays skip the producer->consumer spin (silent race, ~1.4-3.7 logit drift, run-to-run nondeterminism), and any direct pass after a replay spins forever (GPU hang). Fix: capture-safe memset-per-launch barrier mode whenever the verify graph path is active.",
+    "diagnostics": "off/auto byte-identical through cycle 8, first flip cycle 9 root argmax; trunk L1 drift from replay#2; per-layer KV/conv/recurrent slot checksums identical -> not state; off pass2==pass3 kernel sequence (rocprof) == auto replay sequence -> not variants; A/B SELECTED_MOE_DOWN_STAGED=0 -> exact -> keyed barrier confirmed"
+  },
+  "results": {
+    "b1": {"verify_ms_per_cycle": {"graph_off_101": 40.88, "graph_auto_prefix_rejected": 20.38, "graph_auto_fixed": 17.4}, "exact_ar_fixed": true},
+    "b3": {
+      "graph_off": {"verify_ms_per_cycle": 33.3, "cycle_wall_ms": 43.3, "C_B": 4.83, "mtp_over_ar": 0.49, "exact_ar": true},
+      "graph_auto_fixed": {"verify_ms_per_cycle": 22.1, "cycle_wall_ms": 32.2, "C_B": 3.57, "mtp_over_ar": 0.67, "exact_ar": true},
+      "visible_tokens_per_cycle": 2.38,
+      "ar_ms_per_token": 9.02,
+      "decode_tok_s": {"graph_off": 55.95, "graph_auto_fixed": 73.24}
+    }
+  },
+  "correctness_gate": "exact_ar_match=true (spec tokens == same-session AR greedy tokens) at B=1 and B=3, decode 32, quicksort prompt; acceptance pattern byte-identical to graph-off",
+  "claim": "Graph replay on the batched verify path is now exact and cuts verify wall 33.3->22.1 ms/cycle (B=3, -34%), C_B 4.83->3.57, MTP/AR 0.49->0.67x. NOT yet break-even (needs C_B<=2.38); remaining gap is proposer+draft host time (~10 ms/cycle) and verify busy.",
+  "next": "graph the MTP proposer drafts, p_min=0.5 (#100), gated k=2 tree (#99 visible 2.82)"
+}

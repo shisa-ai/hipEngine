@@ -182,6 +182,21 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 
 _SHARED_ROTATE_FUSE_BARRIER_STATE: dict[int, tuple[int, int]] = {}
 
+# When true, keyed staged-rotate barriers fall back to memset-per-launch
+# (zero the barrier on-stream, target=blocks, epoch=1). Cumulative host
+# epochs are baked by-value into HIP-graph captures, so replays skip the
+# producer/consumer sync (race) and later direct launches spin forever on
+# epochs the device never reaches (#107). Memset-per-launch is stream-ordered
+# and capture-safe: the memset is recorded into the graph with the kernel.
+_SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE = False
+
+
+def _set_shared_rotate_fuse_barrier_memset_mode(enabled: bool) -> None:
+    """Toggle capture-safe memset-per-launch keyed barriers (verify graph mode)."""
+
+    global _SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE
+    _SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE = bool(enabled)
+
 
 def _reset_shared_rotate_fuse_barrier_state() -> None:
     """Clear process-local keyed barrier counters for a new resident session."""
@@ -10375,6 +10390,14 @@ class Qwen35ParoDecodeState:
             raise ValueError("invalid keyed staged-rotate barrier shape")
         rotate_blocks = (in_features // group_size) * rotations * rows
         ptr = int(barrier.ptr)
+        if _SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE:
+            # Capture-safe mode (#107): zero the barrier on-stream before every
+            # staged launch so the captured graph replays a self-contained
+            # memset→produce→consume sequence. Reset host counters so a later
+            # keyed (non-capture) launch starts from a zeroed barrier.
+            self._memset_tensor(barrier, stream=stream, runtime=runtime)
+            self._shared_rotate_fuse_barrier_state[ptr] = (0, 0)
+            return rotate_blocks, 1
         count, epoch = self._shared_rotate_fuse_barrier_state.get(ptr, (0, 0))
         if count == 0 and epoch == 0:
             self._memset_tensor(barrier, stream=stream, runtime=runtime)

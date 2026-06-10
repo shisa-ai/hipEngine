@@ -10,6 +10,7 @@ import math
 import json
 import logging
 import os
+import sys
 
 import numpy as np
 from safetensors import safe_open
@@ -105,6 +106,7 @@ from hipengine.runtime.qwen35_paro import (
     Qwen35ParoLinearAttentionScratch,
     Qwen35ParoMoeScratch,
     _reset_shared_rotate_fuse_barrier_state,
+    _set_shared_rotate_fuse_barrier_memset_mode,
     _use_moe_grouped_compact_prefill,
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -1325,6 +1327,13 @@ class Qwen35ParoVerifierGraphEntry:
     stream: int
     validation_passed: bool
     replay_count: int = 0
+    # Capture-time per-layer verifier scratch (rows=B+1). The captured graph
+    # writes these buffers, but `_canonicalize_decode_scratch` swaps the live
+    # `self.linear_scratch` map to rows=1 decode handles after every cycle.
+    # Direct passes re-reserve rows scratch each cycle; replays do not, so the
+    # commit must restore these handles before reading `tree_*_state`.
+    linear_scratch: dict[int, Any] | None = None
+    moe_scratch: dict[int, Any] | None = None
 
 
 class Qwen35ParoResidentSession:
@@ -1479,21 +1488,7 @@ class Qwen35ParoResidentSession:
         # process.  Synchronize before releasing any device allocations.
         self.runtime.device_synchronize()
         self.closed = True
-        for entry in list(getattr(self, "_verify_graph_cache", {}).values()):
-            try:
-                self.runtime.graph_exec_destroy(entry.graph_exec)
-            except Exception:
-                pass
-            try:
-                self.runtime.graph_destroy(entry.graph)
-            except Exception:
-                pass
-            try:
-                self.runtime.stream_destroy(entry.stream)
-            except Exception:
-                pass
-        if hasattr(self, "_verify_graph_cache"):
-            self._verify_graph_cache.clear()
+        self._invalidate_verify_graph_cache()
         self._release_prefill_workspace()
         self._release_prefill_hidden_buffer()
         for state in reversed(self.states):
@@ -8471,7 +8466,14 @@ class Qwen35ParoResidentSession:
                 commit_row_ptr=int(self.verify_commit_rows.ptr),
             )
             self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
-            self._canonicalize_decode_scratch()
+            # Re-pointing the scratch maps to rows=1 decode views re-reserves
+            # workspace names with a different shape, which frees the rows=B+1
+            # buffers the captured verifier graph holds raw pointers to.
+            # Replays then read/write freed memory (#107 graph-auto drift).
+            # Keep the verifier-shaped scratch alive while any graph is cached;
+            # decode steps lazily re-reserve canonical c=1 views on demand.
+            if graph_mode == "off" or not self._verify_graph_cache:
+                self._canonicalize_decode_scratch()
             self.runtime.stream_synchronize(stream)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
             return Qwen35ParoBulkVerifyResult(
@@ -8702,12 +8704,72 @@ class Qwen35ParoResidentSession:
             str(linear_attn_mode),
         )
         entry = self._verify_graph_cache.get(key)
+        if (
+            entry is not None
+            and os.environ.get("HIPENGINE_VERIFY_GRAPH_RECAPTURE", "").strip() == "1"
+        ):
+            # Debug-only (#107): drop the cached graph each cycle so replay
+            # always executes a graph captured from the current state.
+            try:
+                self.runtime.graph_exec_destroy(entry.graph_exec)
+                self.runtime.graph_destroy(entry.graph)
+                self.runtime.stream_destroy(entry.stream)
+            except Exception:
+                pass
+            self._verify_graph_cache.pop(key, None)
+            entry = None
         if graph_mode == "auto" and entry is not None:
+            # Debug-only (#107): re-run the direct pass before each replay and
+            # compare per-row top1 + accept payload to localize replay drift.
+            revalidate = os.environ.get("HIPENGINE_VERIFY_GRAPH_REVALIDATE", "").strip() == "1"
+            direct_top1: tuple = ()
+            direct_payload = None
+            if revalidate:
+                print(f"[graph-revalidate] replay#{entry.replay_count + 1} direct-begin", file=sys.stderr, flush=True)
+                self._launch_verify_chain_forward_accept(
+                    batch,
+                    base_slot=base_slot,
+                    capture_ids=capture_ids,
+                    capture_hidden_concat=capture_hidden_concat,
+                    capture_row_start=capture_row_start,
+                    rows=rows,
+                    stream=stream,
+                    chain_attn_mode=chain_attn_mode,
+                    linear_attn_mode=linear_attn_mode,
+                )
+                self.runtime.stream_synchronize(stream)
+                direct_top1, _ = self._read_verify_top1(rows)
+                direct_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
+                print(f"[graph-revalidate] replay#{entry.replay_count + 1} direct-done, replay-begin", file=sys.stderr, flush=True)
+            # Restore the capture-time verifier scratch maps: the replayed
+            # graph writes the capture-time rows=B+1 tree_*_state buffers, but
+            # `_canonicalize_decode_scratch` re-pointed the live maps to rows=1
+            # decode scratch after the previous cycle. Without this, the
+            # post-replay `_commit_bulk_linear_states` reads the wrong buffers
+            # (stale decode rows) and poisons the GDN slot state — the #107
+            # graph-auto divergence.
+            if entry.linear_scratch is not None:
+                self.linear_scratch.update(entry.linear_scratch)
+            if entry.moe_scratch is not None:
+                self.moe_scratch.update(entry.moe_scratch)
             # Launch on the caller's stream so the subsequent accept-payload
             # read serializes naturally; avoids the extra cross-stream sync we
             # would pay if we launched on the (separate) capture stream.
             self.runtime.graph_launch(entry.graph_exec, stream)
             entry.replay_count += 1
+            if revalidate:
+                self.runtime.stream_synchronize(stream)
+                replay_top1, _ = self._read_verify_top1(rows)
+                replay_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
+                top1_match = tuple(replay_top1) == tuple(direct_top1)
+                payload_match = replay_payload == direct_payload
+                print(
+                    f"[graph-revalidate] replay#{entry.replay_count} rows={rows} "
+                    f"top1_match={top1_match} payload_match={payload_match} "
+                    f"direct_top1={tuple(direct_top1)} replay_top1={tuple(replay_top1)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
             return {
                 "mode": graph_mode,
                 "status": "replayed",
@@ -8730,6 +8792,13 @@ class Qwen35ParoResidentSession:
         # capture would either skip the recording or fault at replay.  The
         # direct pass also doubles as the cycle-1 forward; capture then
         # records a second (replayable) instance of the same kernel sequence.
+        #
+        # Keyed staged-rotate barriers must run in capture-safe memset mode for
+        # every pass that may be captured: the cumulative host epoch is baked
+        # by-value into the graph, so replays of a keyed capture skip the
+        # producer→consumer sync (#107 drift) and later keyed direct launches
+        # spin on epochs the device never reaches (#107 hang).
+        _set_shared_rotate_fuse_barrier_memset_mode(True)
         self._launch_verify_chain_forward_accept(
             batch,
             base_slot=base_slot,
@@ -8808,6 +8877,10 @@ class Qwen35ParoResidentSession:
                             "linear_attn_mode": str(linear_attn_mode),
                         },
                     }
+            if os.environ.get("HIPENGINE_VERIFY_GRAPH_RECAPTURE", "").strip() == "1":
+                # Debug-only (#107): execute the freshly captured graph so the
+                # accept payload comes from replay, not the direct pass.
+                self.runtime.graph_launch(graph_exec, stream)
             entry = Qwen35ParoVerifierGraphEntry(
                 rows=rows,
                 capture_width=int(capture_hidden_concat.shape[1]),
@@ -8817,6 +8890,8 @@ class Qwen35ParoResidentSession:
                 stream=graph_stream,
                 validation_passed=True,
                 replay_count=1,
+                linear_scratch=dict(self.linear_scratch),
+                moe_scratch=dict(self.moe_scratch),
             )
             self._verify_graph_cache[key] = entry
             return {
@@ -10247,6 +10322,25 @@ class Qwen35ParoResidentSession:
                 stream,
             )
 
+    def _invalidate_verify_graph_cache(self) -> None:
+        """Destroy cached verifier graphs (their baked scratch pointers may dangle)."""
+
+        for entry in list(getattr(self, "_verify_graph_cache", {}).values()):
+            try:
+                self.runtime.graph_exec_destroy(entry.graph_exec)
+            except Exception:
+                pass
+            try:
+                self.runtime.graph_destroy(entry.graph)
+            except Exception:
+                pass
+            try:
+                self.runtime.stream_destroy(entry.stream)
+            except Exception:
+                pass
+        if hasattr(self, "_verify_graph_cache"):
+            self._verify_graph_cache.clear()
+
     def _mlp_decode_scratch(
         self,
         layer_id: int,
@@ -10258,10 +10352,14 @@ class Qwen35ParoResidentSession:
         if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
             if isinstance(scratch, Qwen35ParoDenseMlpScratch) and scratch.normed.shape[0] == 1:
                 return scratch
+            # Re-reserving workspace names at a new shape frees the rows=B+1
+            # buffers any cached verifier graph holds raw pointers to (#107).
+            self._invalidate_verify_graph_cache()
             scratch = state.reserve_dense_mlp_scratch(tokens=1, activation_dtype=DType.FP16)
         else:
             if isinstance(scratch, Qwen35ParoMoeScratch) and scratch.normed.shape[0] == 1:
                 return scratch
+            self._invalidate_verify_graph_cache()
             scratch = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
         self.moe_scratch[layer_id] = scratch
         return scratch
@@ -10289,6 +10387,9 @@ class Qwen35ParoResidentSession:
 
         scratch = self.linear_scratch.get(layer_id)
         if not isinstance(scratch, Qwen35ParoLinearAttentionScratch):
+            # Re-reserving at rows=1 frees rows=B+1 buffers any cached verifier
+            # graph holds raw pointers to (#107).
+            self._invalidate_verify_graph_cache()
             scratch = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
             self.linear_scratch[layer_id] = scratch
             return scratch
