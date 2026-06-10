@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-11
+
+- [hipEngine] E2E speculative vs AR post-#107: 35B-A3B MTP 0.49 -> 0.67x, 35B DFlash 0.30x (drafter-bound), 27B-dense DFlash gated 1.164x (matches retained 1.1615x), all exact; `benchmarks/results/2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json`.
+
 ## 2026-06-10
 
 - [hipEngine] Qwen3.6-35B-A3B PARO MTP / w4 / quicksort D32 B=3 batched: verify 33.3 -> 22.1 ms/cycle (-34%), MTP/AR 0.49 -> 0.67x, exact, by making verify graph replay exact (keyed-barrier capture-safe mode + scratch keepalive); `benchmarks/results/2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix.json`.

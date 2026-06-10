@@ -77883,3 +77883,16 @@ exact, neutral (32.2 -> 32.2). Drafting is GPU-busy (lm-head 248k argmax/draft),
 not sync-bound. Conclusion: C_B floor 3.57 holds; next gap is proposer compute
 (~6ms drafting + 3.9ms update) -> needs device-resident chain advance, fp16 lm
 head — campaign item, not today. Run E2E suite next.
+
+## 2026-06-11 — E2E suite: MTP/DFlash vs AR, 27B + 35B (post-#107)
+
+W7900, all exact_ar: 35B-A3B MTP B=3 batched graph-auto 72.6 vs AR 111.2 tok/s
+= 0.67x (was 0.49x pre-#107). 35B DFlash B=4 gate0.65 graph-auto 0.30x —
+drafter-bound (8-layer BF16 drafter ~50ms/cycle), graph fix helps verify only.
+27B-dense DFlash gate0.90 branch_copy graph-auto 38.9 vs 32.7 = 1.164x
+(per-prompt 0.94-1.42; graph-auto neutral on gated lane; matches retained
+1.1615x). 27B has no MTP head. Models recovered to ~/.cache/huggingface
+(27B-PARO 84f86409, 27B-DFlash 09196886). Verdict: spec beats AR only where AR
+is expensive; 35B MTP break-even needs cycle 32.2->21.5ms (proposer drafting
+~6ms lm-head-bound + verify busy 22.1 are next).
+Artifact: 2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json

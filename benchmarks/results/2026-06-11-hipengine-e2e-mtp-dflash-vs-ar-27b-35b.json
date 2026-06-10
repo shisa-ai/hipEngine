@@ -1,0 +1,33 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "e2e-economics",
+  "status": "retained",
+  "id": "2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b",
+  "title": "E2E speculative vs AR after #107 graph-replay fix: 35B-A3B MTP 0.67x, 35B DFlash 0.30x, 27B-dense DFlash 1.16x",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100/RDNA3", "backend": "hip_gfx1100"},
+  "rows": [
+    {
+      "lane": "35B-A3B MTP B=3 batched graph-auto",
+      "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "command": "scripts/mtp_chain_e2e_smoke.py --proposal-impl persistent_device --chain-attn-mode batched --candidate-budget 3 --decode-tokens 32 --graph-mode auto (quicksort 90-tok)",
+      "ar_tok_s": 111.2, "spec_tok_s": 72.6, "speedup": 0.67, "exact_ar": true,
+      "note": "C_B 3.57, cycle wall 32.2 ms (verify 22.2 + prop 4 + drafting ~6). p_min and proposer sync trims measured neutral-to-negative."
+    },
+    {
+      "lane": "35B-A3B DFlash B=4 gate0.65 graph-auto",
+      "model": "target packed 35B + z-lab Qwen3.6-35B-A3B-DFlash drafter",
+      "command": "scripts/dflash_chain_e2e_bench.py --max-prompts 4 --decode-tokens 32 --draft-budgets 4 --draft-top-k 2 --whole-cycle-gate 0.65 --full-attn-chain-mode batched --verifier-graph auto",
+      "ar_tok_s": 110.9, "spec_tok_s": 34.1, "speedup": 0.302, "exact_ar": true,
+      "note": "Drafter-bound (8-layer BF16 drafter ~50 ms/cycle); graph fix helps verify only. avg_accept 1.47."
+    },
+    {
+      "lane": "27B-dense DFlash B=4 gate0.90 branch_copy graph-auto",
+      "model": "z-lab Qwen3.6-27B-PARO (84f86409) + z-lab Qwen3.6-27B-DFlash (09196886)",
+      "command": "scripts/dflash_chain_e2e_bench.py --max-prompts 4 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 --whole-cycle-gate 0.90 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off --verifier-graph auto",
+      "ar_tok_s": 32.7, "spec_tok_s": 38.9, "speedup": 1.164, "exact_ar": true,
+      "per_prompt_speedups": [1.193, 0.937, 1.418, 1.207],
+      "note": "Matches retained 1.1615x (graph-auto neutral on the gated lane: gated cycles are mostly root-verify). 27B has no MTP head; MTP n/a."
+    }
+  ],
+  "interpretation": "Speculative beats AR only where AR is expensive (27B dense, 1.16x). On 35B-A3B (3B-active AR ~111 tok/s), MTP after #107 is 0.67x (was 0.49x); break-even needs cycle 32.2->21.5 ms: proposer drafting (~6 ms, lm-head argmax bound) + verify busy. 35B DFlash drafter-bound at 0.30x."
+}
