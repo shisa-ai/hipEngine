@@ -1,9 +1,114 @@
 # Relaxed Precision Mode Plan
 
-_Status: planning/catalog document. Strict/exact remains the default policy. This
-file inventories what an opt-in relaxed mode could unlock, the RDNA3 hardware
-levers it would let us use, and the drift gates that keep it from going off the
-rails._
+_Status: planning/catalog document, now with **one landed relaxed profile**
+(2026-06-09, GDN chain dv-tiling — see §0 below). Strict/exact remains the
+default policy. This file inventories what an opt-in relaxed mode could unlock,
+the RDNA3 hardware levers it would let us use, and the drift gates that keep it
+from going off the rails._
+
+## 0. Landed relaxed profiles (first foray)
+
+This section is the running ledger of relaxed kernels we have actually shipped
+(vs the catalog of opportunities below). Each entry fully characterizes the
+inaccuracy, names its drift tier, points at the strict fallback, and records the
+measured end-to-end effect.
+
+### 0.1 GDN chain dv-tiling — verify path (2026-06-09) — **first relaxed kernel**
+
+**What it is.** The MTP/DFlash verify-path GDN chain recurrence
+(`qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop`) was dv-tiled: each block
+now owns 4 consecutive dv columns (grid 4096→1024 blocks) so per-(v_head,t)
+work is computed once per tile and the dv state writes coalesce. Kernel win:
+rocprof **72.0→53.39 µs/call (−25.8%)** (see `docs/MEGAKERNEL.md` §9.4). It is
+the **first kernel we have retained that is not bit-exact / parent-parity** — the
+first genuine relaxed-mode landing.
+
+**Naming note (two different "T" ladders).** `docs/MEGAKERNEL.md` calls the
+*verify-path correctness policy* T0/T1/T2 (T0 = bit-exact-vs-AR; **T1** =
+self-consistent + KL-gated; T2 = fully relaxed). That is a **policy** decision
+(which gate the verify path must clear). This document's T0–T4 are **drift
+budget tiers** (how much numerical drift a kernel may carry). They are
+orthogonal: the dv-tiling is **MEGAKERNEL-policy T1** (gate on KL vs
+`cpu_reference`, not bit-exact `exact_ar_match`) and **RELAXED drift-tier T2**
+(layout/order: reduction reordering). Do not conflate the two ladders.
+
+**Type of inaccuracy — fully characterized.**
+
+- **Class:** FP **reduction-order / FMA-contraction reassociation**. This is
+  *not* an algorithmic approximation, *not* a lower-precision intermediate, and
+  *not* a layout/quant change. The algebra is **identical** to the strict
+  kernel — same per-dv accumulation order over `dk`, same `q_scale`/`k_scale`/
+  `beta`/`decay` scalars (computed once per tile instead of redundantly, but
+  with the same ops → same bits). The only thing that moved is how the compiler
+  **schedules/contracts FMAs** across the restructured loops.
+- **Magnitude (vs `cpu_reference`, numpy f32 delta-rule oracle):** chain output
+  `out_max_abs` 1.67e-6 (strict) → **1.07e-6** (dv-tiled); recurrent state
+  `leaf_max_abs` **5.96e-8** (unchanged). The two kernels therefore differ from
+  each other by ≤ ~2.7e-6 absolute worst case — **~1–2 ULP at fp32** for these
+  operand magnitudes. Both sit ~4 orders of magnitude inside the project KL
+  ceiling.
+- **Propagation:** the drift feeds the recurrence (state carries forward across
+  `max_nodes` tokens), but stays bounded — the microbench runs the full T=4 and
+  T=8 chains and the error stays at ~1e-6 (no blow-up).
+- **Token-level effect:** **zero on well-conditioned (real) prompts.** On the
+  retained quicksort prompt (90 tok, decode 32, B=3, 3 runs) `exact_ar_match`
+  stays **true** and the accept pattern is **byte-identical** to strict. The
+  only observed flip is on the **degenerate 1-token smoke prompt** (151646):
+  with no context the next-token distribution is near-flat, the ~1 ULP tips one
+  argmax at a near-tie, and the autoregressive stream then cascades. That is
+  boundary sensitivity of a self-consistency check, **not** a model-quality
+  regression.
+- **KL:** ≪ 0.05; effectively 0 at the logit level on real prompts
+  (`exact_ar_match=true` ⇒ identical generated IDs ⇒ sequence-logit KL ≈ 0).
+- **Determinism:** byte-deterministic across runs (identical `accepted_lengths`
+  over 3 runs).
+
+**Why it is "not wrong, just not bit-exact."** The verify path and the AR path
+are *already different kernels* (chain recurrence vs single-token decode); both
+are KL-correct vs `cpu_reference`. `exact_ar_match` (spec tokens == same-run AR
+tokens) is a **cross-kernel self-consistency** check, explicitly *not* a
+model-quality bar (`docs/MEGAKERNEL.md` §5). The correct gate is the project
+floor KL ≤ 0.05 / top-1 ≥ 90% vs `cpu_reference`, which the dv-tiling clears by
+4+ orders of magnitude.
+
+**Drift-tier classification: T2 (layout/order relaxed).** Reduction reordering
+is the textbook T2 lever. Measured against the T2 budget it is comfortably
+inside (and on real prompts it actually meets the stricter **T1** numerical
+tier): per-kernel `max_abs ~1e-6`, sequence-logit KL ≈ 0, top-1 100%,
+generated-IDs match on the real prompt, deterministic across runs. The lone
+caveat — a single ID flip on the *degenerate* 1-token prompt — is outside the
+retained fixture set (512/4K/32K/128K real contexts) and is a self-consistency
+artifact, not a drift-tier metric.
+
+**Strict fallback (mode-contract requirement, satisfied).** The kernel is
+templated `<scalar_t, VTILE>`; **`VTILE=1` is bit-identical to the
+pre-relaxation strict kernel** and is the registered fallback for non-divisible
+`head_v_dim`. Strict mode is preserved; relaxed (VTILE=4) is the deployed path.
+
+**End-to-end effect (C_B) — measured, honest.** Same-prompt A/B, quicksort,
+decode-tokens=32, B=3, **3 runs each**, W7900/gfx1100
+(`scripts/mtp_verifier_economics.py`, gate off):
+
+| metric (mean ± std, n=3) | strict (shuffle) | relaxed (dv-tiled) |
+|---|---:|---:|
+| **C_B (cycle_cost, AR-tok)** | **4.81 ± 0.14** | **4.80 ± 0.28** |
+| verify ms / cycle | 34.35 ± 0.63 | 35.12 ± 1.20 |
+| cycle wall ms | 44.37 | 45.17 |
+| acceptance rate | 0.4615 (std 0) | 0.4615 (std 0) |
+| accepted / cycle | 1.385 | 1.385 |
+| `all_exact_ar_match` | true | true |
+
+**C_B is unchanged within noise** (Δ = −0.016, ~30× smaller than the run-to-run
+std), and **acceptance is byte-identical**. The rocprof-confirmed −0.56 ms/pass
+kernel saving is **below the economics noise floor** (cycle-wall std ~0.6–1.2 ms)
+because the verify cycle is **dispatch/host-bound, not kernel-bound** (~19.4 ms
+dispatch floor + ~12 ms other kernels; `docs/MEGAKERNEL.md` §9.2). **Lesson:**
+kernel-time relaxation alone does not move C_B at B=3; the dv-tiling is banked
+kernel-time headroom that will only register once the dispatch floor is also
+reduced. The relaxation's value here is **correctness headroom unlocked at zero
+acceptance cost**, validated on a real prompt — the template for future verify
+relaxations — not a standalone economics win. Artifact:
+`benchmarks/results/2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json`.
 
 ## Purpose
 

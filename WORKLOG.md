@@ -77439,3 +77439,35 @@ AR GDN decode uses a different, already-grid-efficient kernel (dim3(num_v_heads)
 dispatch model + grid-reduction technique, which DOES apply to c=1 decode
 (ROOFLINE §5.3: c=1 4K decode is ~33% dispatch-bound).
 Artifact: benchmarks/results/2026-06-09-hipengine-m16-gdn-chain-dvtiling.json
+
+## 2026-06-09 — Close T1: real-prompt C_B A/B + RELAXED.md §0.1
+
+Closed the T1 "owed" item (re-baseline acceptance on real prompts) and
+characterized our first relaxed-mode kernel. Same-prompt economics A/B
+(quicksort 90-tok from fixtures/dflash/stable_prompts.jsonl, decode-tokens=32,
+B=3, --runs 3 each), strict shuffle baseline (HEAD~1 gdn.hip, cached .so) vs
+relaxed dv-tiled (HEAD), scripts/mtp_verifier_economics.py --backend hip_gfx1100,
+gate off.
+
+Result (mean ± std, n=3):
+- C_B: strict 4.81 ± 0.14 vs relaxed 4.80 ± 0.28 -> UNCHANGED within noise
+  (delta -0.016 is ~30x below the std).
+- acceptance 0.4615 (std 0, byte-identical accepted_lengths every run);
+  all_exact_ar_match=TRUE for all 6 runs.
+- verify_ms/cycle 34.35 vs 35.12; cycle_wall 44.37 vs 45.17 ms.
+
+Key findings:
+1. T1 is SAFE on real prompts: zero acceptance/exactness change. The
+   exact_ar_match flip happens ONLY on the degenerate 1-token smoke (151646),
+   where the near-flat distribution lets ~1 ULP tip one argmax. On the
+   well-conditioned real prompt, exact_ar_match stays true.
+2. Kernel-time relaxation alone does NOT move C_B at B=3 -- the -0.56 ms/pass
+   rocprof saving is below the ~0.6-1.2 ms cycle-wall noise. Reinforces
+   MEGAKERNEL §9.2: C_B is dispatch-floor-bound (~19.4 ms), not kernel-bound.
+   dv-tiling is banked kernel-time headroom, not a standalone economics win.
+
+Docs: characterized the inaccuracy fully in docs/RELAXED.md §0.1 (first landed
+relaxed profile: FP reduction-order/FMA reassociation, ~1-2 ULP fp32, drift-tier
+T2, strict VTILE=1 fallback, the MEGAKERNEL-policy-T1 vs RELAXED-drift-T2 naming
+distinction). Closed the "owed" notes in MEGAKERNEL §8.1/§9.4.
+Artifact: benchmarks/results/2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json

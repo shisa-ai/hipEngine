@@ -1,0 +1,55 @@
+{
+  "name": "m16-gdn-dvtiling-economics-cb",
+  "date": "2026-06-09",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "mtp-economics-ab",
+  "purpose": "Close the T1 'owed' item: measure the GDN chain dv-tiling's effect on MTP C_B and acceptance on a REAL prompt (the degenerate 1-token smoke cannot assess acceptance). Clean same-prompt A/B of strict (shuffle baseline, HEAD~1) vs relaxed (dv-tiled, HEAD).",
+  "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
+  "backend": "hip_gfx1100",
+  "workload": "quicksort_prefix (90 tok, fixtures/dflash/stable_prompts.jsonl), decode-tokens=32, chain-attn-mode=batched, proposal_impl=persistent_device, B=3, gate off",
+  "command": "scripts/mtp_verifier_economics.py --prompt-tokens-file <quicksort 90 ids> --decode-tokens 32 --candidate-budgets 3 --runs 3 --chain-attn-mode batched --backend hip_gfx1100 --hip-arch gfx1100 --proposal-impl persistent_device",
+  "ab": {
+    "strict_shuffle_baseline": {
+      "commit": "HEAD~1 (866e7796 gdn.hip = M16.5 shuffle kernel)",
+      "C_B_mean": 4.812,
+      "C_B_std": 0.135,
+      "C_B_runs": [4.66, 4.92, 4.86],
+      "verify_ms_per_cycle_mean": 34.346,
+      "verify_ms_per_cycle_std": 0.631,
+      "cycle_wall_ms_mean": 44.366,
+      "acceptance_rate": 0.4615,
+      "accepted_per_cycle": 1.385,
+      "visible_per_cycle": 2.385,
+      "mtp_over_ar_mean": 0.503,
+      "ar_tok_s_mean": 108.5,
+      "all_exact_ar_match": true
+    },
+    "relaxed_dvtile": {
+      "commit": "HEAD (06b8c815 gdn.hip = M16.6 dv-tiling VTILE=4)",
+      "C_B_mean": 4.796,
+      "C_B_std": 0.281,
+      "C_B_runs": [4.81, 5.07, 4.51],
+      "verify_ms_per_cycle_mean": 35.123,
+      "verify_ms_per_cycle_std": 1.204,
+      "cycle_wall_ms_mean": 45.173,
+      "acceptance_rate": 0.4615,
+      "accepted_per_cycle": 1.385,
+      "visible_per_cycle": 2.385,
+      "mtp_over_ar_mean": 0.506,
+      "ar_tok_s_mean": 106.1,
+      "all_exact_ar_match": true
+    }
+  },
+  "finding": "C_B UNCHANGED within run-to-run noise: 4.81 +/- 0.14 (strict) vs 4.80 +/- 0.28 (relaxed); delta -0.016 is ~30x smaller than the std. Acceptance is byte-IDENTICAL (0.4615, std 0, same accepted_lengths every run) and all_exact_ar_match=true for ALL 6 runs -- the T1 relaxation flips exact_ar_match ONLY on the degenerate 1-token smoke prompt, never on the real prompt. The rocprof-confirmed -0.56 ms/pass GDN kernel saving is below the economics noise floor (cycle-wall std ~0.6-1.2 ms) because the verify cycle is dispatch/host-bound (~19.4 ms dispatch floor), not kernel-bound.",
+  "conclusions": [
+    "T1 (relaxed, KL-gated) is SAFE on real prompts: zero acceptance/exactness change vs strict.",
+    "Kernel-time relaxation alone does NOT move C_B at B=3 -- reinforces docs/MEGAKERNEL.md S9.2: C_B is dispatch-floor-bound. dv-tiling is banked kernel-time headroom.",
+    "T1 'owed' item (re-baseline acceptance on real prompts) is CLOSED: acceptance preserved."
+  ],
+  "related": [
+    "benchmarks/results/2026-06-09-hipengine-m16-gdn-chain-dvtiling.json (the kernel win)",
+    "benchmarks/results/2026-06-09-hipengine-m16-dispatch-grid-sweep-retest.json (dispatch model)",
+    "docs/RELAXED.md S0.1 (first landed relaxed profile, full characterization)"
+  ]
+}

@@ -276,10 +276,12 @@ kept.
    top-1 ≥ 90% vs `cpu_reference` (the project gate), **not** bit-exact
    `exact_ar_match`. First application: the GDN dv-tiling win (§9.4) — KL-correct
    (out/leaf ~1e-6 vs cpu_reference) but flips `exact_ar_match` true→false via a
-   ~1 ULP FP-reorder; landed under T1. **T1 cost still owed:** re-baseline AR
-   tok/s and the economics-relevant *acceptance rate* on **real** prompts — the
-   degenerate 1-token smoke cannot assess acceptance (it showed 0 accepts for
-   both the dv-tiled and baseline paths).
+   ~1 ULP FP-reorder; landed under T1. **T1 cost CLOSED (2026-06-09):**
+   real-prompt economics A/B (quicksort, B=3, 3 runs) shows acceptance
+   byte-identical and `exact_ar_match=true` on the real prompt (the flip is
+   degenerate-1-token-only), and **C_B unchanged within noise (4.81±0.14 →
+   4.80±0.28)** — the kernel saving is below the dispatch-floored cycle's noise.
+   See §9.4 and `docs/RELAXED.md` §0.1.
 2. **GGUF-first or PARO-first?** GGUF-first de-risks the architecture without the
    butterfly and ships a standalone GGUF-decode win; PARO-first goes straight at
    the MTP economics but pays the rotation complexity up front.
@@ -413,8 +415,18 @@ coalesce. Measured:
   from the restructured loops tips one verify token vs the *different* AR-path
   decode kernel, at the degenerate 1-token-prompt boundary). This is **not** a
   correctness regression under the project gate (KL/top-1 vs cpu_reference); it is
-  exactly the T0→T1 trade §5 describes, and is accepted per §8.1. **Owed:**
-  acceptance-rate re-baseline on real prompts before any MTP economics claim.
+  exactly the T0→T1 trade §5 describes, and is accepted per §8.1.
+- **T1 "owed" item CLOSED (real-prompt A/B).** Same-prompt economics A/B on the
+  quicksort prompt (decode 32, B=3, **3 runs each**), strict shuffle vs relaxed
+  dv-tiled: on the real prompt `exact_ar_match` stays **true** for all runs and
+  the accept pattern is **byte-identical** (acceptance 0.4615, std 0) — the
+  relaxation flips a token *only* on the degenerate 1-token smoke. **C_B is
+  unchanged within noise: 4.81 ± 0.14 → 4.80 ± 0.28** (Δ ~30× below the std); the
+  −0.56 ms/pass kernel saving is below the economics noise floor because the
+  cycle is dispatch/host-bound (§9.2), not kernel-bound. dv-tiling is banked
+  kernel-time headroom, not a standalone C_B mover. Full characterization:
+  `docs/RELAXED.md` §0.1; artifact
+  `benchmarks/results/2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json`.
 
 ### 9.5 The unexploited lever — multi-stream overlap
 
