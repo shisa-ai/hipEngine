@@ -77763,3 +77763,36 @@ number (per #101). The ~1.16x online-gated product figure (reviewer P4) needs
 the dispatch floor lowered (M14.dispatch.1 / batched path). The dense
 online-gated DFlash lane works correctly and is the near-term deployable product
 lane to HARDEN (P4, ongoing). Drafter weights NOT committed (model weights).
+
+## 2026-06-09 — #105 Phase 2 step 1: persistent-barrier microbench — NO-GO on 3-5x
+
+Built the reviewer's step-1 microbench (scripts/persistent_barrier_microbench.
+{hip,py}): N memory-bound stages as N HIP launches vs ONE persistent cooperative
+kernel with N in-kernel cg::this_grid().sync() barriers (hipLaunchCooperative
+Kernel from the C wrapper -- no Python coop bindings). gfx1100 W7900, occupancy
+ceiling 384 blocks, hipEvent timing. Artifact:
+benchmarks/results/2026-06-09-hipengine-persistent-barrier-microbench.json.
+Documented in docs/MEGAKERNEL.md S10 (+ S3 forward-pointer).
+
+RESULTS: grid.sync() barrier ~= 1us (nearly free). Persistent vs N-launch
+depends entirely on the L3 (64MB) cache boundary:
+- sub-cache (dispatch-bound): 6-13x @0.5-2MB, 1.48x @16MB, 1.08x @64MB edge.
+- >L3 HBM-bound: 0.93-0.96x (persistent LOSES) @128-256MB.
+AR-FAITHFUL (distinct fresh HBM slice/stage, weight-streaming, no reuse):
+1.27x @3MB, 1.15x @6MB, 1.08x @12MB -- both ~600 GB/s HBM-bound. The cache-reuse
+same-buffer test (2.58x @6MB) OVERSTATES the win.
+
+VERDICT (decisive): the persistent whole-pass / FFN-megakernel is NOT a 3-5x
+lever. AR decode streams fresh weights from HBM at ~600 GB/s effective -- the
+big-grid kernels are near-HBM-BW already, NOT 25%-utilised (the 25% is the TOKEN
+WALL incl. dispatch gaps, not the kernels). Only the ~3us/launch dispatch gap is
+recoverable = ~1.08-1.27x at AR working sets. The "25%->70% BW util" premise is
+refuted. Consistent with #101 (verify dispatch-bound), M12.1/M13.D (graph replay
+~= dispatch), MEGAKERNEL S3 (small-grid staging regresses C_B).
+
+REDIRECT: the lever is the dispatch-bound GLUE (rotations/norms/router/casts,
+~640/tok, sub-cache = the 6-13x column) -- FUSE/eliminate it (Phase 1) + lower
+per-launch dispatch (M14.dispatch.1). Realistic AR ceiling ~1.3-1.5x (close the
+3.6ms/tok gap toward the 7.06ms busy floor). Phase 2 persistent megakernel
+DROPPED. #105 stays open for Phase 1 glue fusion (next). AR baseline unchanged
+(no AR code touched this step): 920 launches/tok, 10.65ms wall (#98).

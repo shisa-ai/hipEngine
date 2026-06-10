@@ -1,0 +1,163 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "diagnostic-persistent-barrier-microbench",
+  "status": "retained",
+  "id": "2026-06-09-hipengine-persistent-barrier-microbench",
+  "task": "#105",
+  "title": "Persistent-barrier microbench: persistent whole-pass is NOT a 3-5x lever",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100/RDNA3",
+    "backend": "hip_gfx1100",
+    "coop_grid_max_blocks": 384,
+    "l3_infinity_cache_mb": 64
+  },
+  "method": "scripts/persistent_barrier_microbench.{hip,py}: N memory-bound stages as N HIP launches vs ONE persistent cooperative kernel with N in-kernel cg::this_grid().sync() barriers (launched via hipLaunchCooperativeKernel from the C wrapper). Same occupancy-filling grid (384 blocks). hipEvent timing, median of 12-20 reps. Read-modify-write dependency per stage.",
+  "barrier_cost_us": 1.0,
+  "barrier_isolation": [
+    {
+      "stage_mb": 0.5,
+      "n": 131072,
+      "n_stages": 1000,
+      "grid": 384,
+      "block": 256,
+      "nlaunch_ms": 19.5433,
+      "persistent_ms": 1.4525,
+      "nlaunch_us_per_stage": 19.543,
+      "persistent_us_per_stage": 1.453,
+      "per_stage_saving_us": 18.091,
+      "speedup": 13.455,
+      "nlaunch_GBps": 53.7,
+      "persistent_GBps": 721.9
+    }
+  ],
+  "cache_spanning_same_buffer": [
+    {
+      "stage_mb": 1.0,
+      "n": 262144,
+      "n_stages": 40,
+      "grid": 384,
+      "block": 256,
+      "nlaunch_ms": 0.8235,
+      "persistent_ms": 0.1074,
+      "nlaunch_us_per_stage": 20.587,
+      "persistent_us_per_stage": 2.684,
+      "per_stage_saving_us": 17.903,
+      "speedup": 7.67,
+      "nlaunch_GBps": 101.9,
+      "persistent_GBps": 781.4
+    },
+    {
+      "stage_mb": 16.0,
+      "n": 4194304,
+      "n_stages": 40,
+      "grid": 384,
+      "block": 256,
+      "nlaunch_ms": 0.7852,
+      "persistent_ms": 0.5313,
+      "nlaunch_us_per_stage": 19.631,
+      "persistent_us_per_stage": 13.282,
+      "per_stage_saving_us": 6.349,
+      "speedup": 1.478,
+      "nlaunch_GBps": 1709.3,
+      "persistent_GBps": 2526.3
+    },
+    {
+      "stage_mb": 64.0,
+      "n": 16777216,
+      "n_stages": 40,
+      "grid": 384,
+      "block": 256,
+      "nlaunch_ms": 2.2025,
+      "persistent_ms": 2.0369,
+      "nlaunch_us_per_stage": 55.062,
+      "persistent_us_per_stage": 50.923,
+      "per_stage_saving_us": 4.139,
+      "speedup": 1.081,
+      "nlaunch_GBps": 2437.6,
+      "persistent_GBps": 2635.7
+    },
+    {
+      "stage_mb": 128.0,
+      "n": 33554432,
+      "n_stages": 40,
+      "grid": 384,
+      "block": 256,
+      "nlaunch_ms": 18.2944,
+      "persistent_ms": 19.0675,
+      "nlaunch_us_per_stage": 457.36,
+      "persistent_us_per_stage": 476.687,
+      "per_stage_saving_us": -19.328,
+      "speedup": 0.959,
+      "nlaunch_GBps": 586.9,
+      "persistent_GBps": 563.1
+    },
+    {
+      "stage_mb": 256.0,
+      "n": 67108864,
+      "n_stages": 40,
+      "grid": 384,
+      "block": 256,
+      "nlaunch_ms": 39.9673,
+      "persistent_ms": 43.0216,
+      "nlaunch_us_per_stage": 999.183,
+      "persistent_us_per_stage": 1075.54,
+      "per_stage_saving_us": -76.356,
+      "speedup": 0.929,
+      "nlaunch_GBps": 537.3,
+      "persistent_GBps": 499.2
+    }
+  ],
+  "ar_faithful_distinct_hbm_slice": [
+    {
+      "slice_mb": 3.0,
+      "slice_n": 786432,
+      "n_stages": 160,
+      "total_mb": 1024.0,
+      "grid": 384,
+      "nlaunch_us_per_stage": 13.9,
+      "persistent_us_per_stage": 10.918,
+      "speedup": 1.273,
+      "nlaunch_GBps": 452.6,
+      "persistent_GBps": 576.2
+    },
+    {
+      "slice_mb": 6.0,
+      "slice_n": 1572864,
+      "n_stages": 160,
+      "total_mb": 1024.0,
+      "grid": 384,
+      "nlaunch_us_per_stage": 23.913,
+      "persistent_us_per_stage": 20.713,
+      "speedup": 1.154,
+      "nlaunch_GBps": 526.2,
+      "persistent_GBps": 607.5
+    },
+    {
+      "slice_mb": 12.0,
+      "slice_n": 3145728,
+      "n_stages": 160,
+      "total_mb": 1024.0,
+      "grid": 384,
+      "nlaunch_us_per_stage": 43.95,
+      "persistent_us_per_stage": 40.716,
+      "speedup": 1.079,
+      "nlaunch_GBps": 572.6,
+      "persistent_GBps": 618.1
+    }
+  ],
+  "findings": {
+    "barrier_nearly_free": "grid.sync() barrier ~= 1us (0.5MB x1000 stages = 1.45us/stage incl. tiny cache work).",
+    "regime_dependent": "Persistent beats N-launch ONLY for dispatch-bound (sub-L3-cache) stages: 6-13x at 0.5-2MB, 1.48x at 16MB, 1.08x at the 64MB cache edge, 0.93-0.96x (LOSES) at 128-256MB HBM-bound.",
+    "ar_faithful": "Distinct fresh-HBM-slice per stage (weight-streaming model, no cache reuse): 1.27x@3MB, 1.15x@6MB, 1.08x@12MB -- both ~600 GB/s HBM-bound. The cache-reuse same-buffer test (2.58x@6MB) OVERSTATES the win.",
+    "verdict_no_go": "The persistent whole-pass / FFN-megakernel is NOT a 3-5x lever. AR decode streams fresh weights from HBM at ~600 GB/s effective; the kernels are near-HBM-BW already, not 25%-utilised. Only the constant ~3us/launch dispatch gap is recoverable = ~1.08-1.27x at AR working sets. The '25%->70% BW util' premise is refuted (the 25% is the TOKEN WALL incl. dispatch gaps, not the kernels).",
+    "redirect": "Lever = the dispatch-bound GLUE (rotations/norms/router/casts, ~640/tok, sub-cache = the 6-13x column): fuse/eliminate it (Phase 1) + lower per-launch dispatch (M14.dispatch.1). Realistic AR ceiling ~1.3-1.5x (close the 3.6ms/tok gap toward the 7.06ms busy floor), NOT 3-5x. Consistent with #101, M12.1/M13.D."
+  },
+  "ar_baseline_ref": {
+    "launches_per_tok": 920,
+    "busy_ms": 7.06,
+    "wall_ms": 10.65,
+    "dispatch_gap_ms": 3.59,
+    "source": "#98 census"
+  }
+}

@@ -122,7 +122,11 @@ redundant LDS rotation) and M15.4 (occupancy trap).
 
 **Consequence:** the first true megakernel must consolidate **real big-grid GEMV
 work + HBM intermediate traffic**, not shuffle small-grid plumbing behind a
-barrier.
+barrier. **§10 (#105) makes this decisive in isolation:** a persistent-barrier
+microbench shows the grid barrier is ~free but persistent only beats N-launch for
+*dispatch-bound (sub-cache)* stages; for HBM-bound stages (the big GEMVs) it ties
+or loses (0.93–1.27×). The 3-5× persistent whole-pass is **not supported** — the
+lever is glue fusion + dispatch-floor reduction, not a megakernel.
 
 ---
 
@@ -484,3 +488,65 @@ verify kernel-time wins do not move C_B (dispatch-floored), so a speculative
 output-tiling rewrite of an already-tuned, memory-bound GEMV is not warranted.
 The C_B levers are §9.2 (dispatch floor) and §9.5 (multi-stream). Artifact:
 `benchmarks/results/2026-06-09-hipengine-m16-gateup-threadcount-ab.json`.
+
+---
+
+## 10. Persistent-barrier microbench (#105) — the persistent whole-pass is NOT a 3-5× lever (measured)
+
+Reviewer 2's prototype ORDER for the "persistent (3-5×)" track starts with step
+1: a persistent-barrier microbench — *N logical stages with in-kernel global
+barriers vs N HIP launches, same grid sizes as GDN/selected GEMV*. Built it
+standalone (`scripts/persistent_barrier_microbench.{hip,py}`, cooperative
+`cg::this_grid().sync()` launched via `hipLaunchCooperativeKernel`; the C wrapper
+does the cooperative launch so no Python-side bindings are needed). gfx1100
+W7900, occupancy ceiling = **384 resident blocks** (8/WGP × 48 WGP), `hipEvent`
+timing, median of 12-20 reps. Artifact:
+`benchmarks/results/2026-06-09-hipengine-persistent-barrier-microbench.json`.
+
+**The grid barrier is nearly free.** Barrier-isolation (0.5 MB ×1000 stages,
+cache-resident): persistent = **1.45 µs/stage**, i.e. `grid.sync()` ≈ **~1 µs** —
+far below a dispatch boundary.
+
+**But the win depends entirely on whether the stage is dispatch-bound or
+HBM-bound** — set by the L3 (64 MB Infinity Cache) boundary:
+
+| stage MB | regime | N-launch µs/st | persistent µs/st | speedup |
+|---:|---|---:|---:|---:|
+| 0.5–2 | sub-cache (dispatch-bound) | ~19.5 | 1.5–3 | **6–13×** |
+| 16 | sub-cache | 19.6 | 13.3 | 1.48× |
+| 64 | cache edge | 55 | 51 | 1.08× |
+| 128–256 | **>L3 → HBM-bound** | 457–999 | 477–1076 | **0.93–0.96×** |
+
+The first table re-reads one buffer (cache reuse) and **overstates** the win.
+The **AR-faithful** test streams a *distinct* fresh HBM slice per stage (1 GB
+buffer, 160 stages, no reuse — exactly weight-streaming decode):
+
+| slice MB (≈ AR kernel working set) | N-launch µs/st | persistent µs/st | speedup | GB/s |
+|---:|---:|---:|---:|---:|
+| 3 | 13.9 | 10.9 | **1.27×** | 453→576 |
+| 6 | 23.9 | 20.7 | **1.15×** | 526→608 |
+| 12 | 44.0 | 40.7 | **1.08×** | 573→618 |
+
+**Verdict (decisive, NO-GO on the persistent megakernel for 3-5×):** persistent
+beats N-launch **only when the stage is dispatch-bound** (sub-cache, tiny working
+set). For HBM-bandwidth-bound stages — which is what AR decode is: each
+GEMV/expert streams *fresh* weights from HBM at ~600 GB/s effective — the only
+recoverable slack is the constant ~3 µs/launch dispatch gap, worth **~1.08–1.27×**
+at AR's 3–12 MB per-kernel working set, *not* 3-5×. The "25% → 70% BW util" premise
+is refuted: the big-grid kernels already run near HBM-effective BW; they are not
+25%-utilised, the *token wall* is (because of the dispatch gap between kernels).
+
+**Consequence (redirects the program):**
+- The 3-5× persistent whole-pass / FFN-megakernel (§4) is **not supported** — it
+  would consolidate HBM-bound GEMV work that is already efficient, while paying
+  barrier + lost-launch-overlap cost. Consistent with §3, M12.1/M13.D (graph
+  replay ≈ direct dispatch), and #101 (verify is dispatch-bound, fix = dispatch).
+- The real lever is the **dispatch-bound GLUE** (rotations/norms/router/casts,
+  ~640/tok, tiny sub-cache working sets — the 6–13× column). **Fuse or eliminate
+  the glue** (Phase 1) and lower the per-launch dispatch cost (M14.dispatch.1
+  C-side dispatcher). Realistic AR ceiling ≈ **1.3–1.5×** (close the ~3.6 ms/tok
+  gap toward the 7.06 ms busy floor), not 3-5×.
+- A persistent kernel *would* help the glue (sub-cache), but so does plain fusion
+  with far less ABI/runtime risk — and §3 already showed naive small-grid staging
+  regresses `C_B`. So: **glue fusion + dispatch-floor reduction, not a
+  persistent megakernel.**
