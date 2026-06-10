@@ -3617,7 +3617,7 @@ class Qwen35ParoDecodeState:
         spans: KVLiveSpans,
         rows: int,
         ancestor_mask: Tensor,
-        tree_committed_count: int,
+        tree_committed_count_ptr: int,
         gate: Tensor | None = None,
         block_size: int = 256,
         scale: float | None = None,
@@ -3636,8 +3636,8 @@ class Qwen35ParoDecodeState:
 
         if ancestor_mask.dtype not in {DType.BOOL, DType.INT8} or ancestor_mask.shape != (rows, rows):
             raise ValueError("ancestor_mask must be a 1-byte tensor (BOOL or INT8) with shape (rows, rows)")
-        if tree_committed_count < 0:
-            raise ValueError("tree_committed_count must be non-negative")
+        if tree_committed_count_ptr == 0:
+            raise ValueError("tree_committed_count_ptr must be a device int64 scalar")
         gate_tensor = scratch.gate if gate is None else gate
         qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
             scratch.query.ptr,
@@ -3647,7 +3647,7 @@ class Qwen35ParoDecodeState:
             scratch.gated_attn.ptr,
             spans,
             ancestor_mask.ptr,
-            tree_committed_count,
+            tree_committed_count_ptr,
             rows,
             spans.max_live_count,
             block_size,

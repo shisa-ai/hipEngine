@@ -702,6 +702,9 @@ def _run_spec_persistent_device(
     chain_attn_mode: str,
     graph_mode: str = "off",
     draft_p_min: float = 0.0,
+    tree_mode: str = "chain",
+    tree_top_k: int = 2,
+    confidence_threshold: float = 0.0,
     rocprof_warmup_cycles: int = 0,
     rocprof_verify_cycles: int = 0,
 ) -> tuple[list[int], dict[str, Any]]:
@@ -804,19 +807,37 @@ def _run_spec_persistent_device(
                     cycle_t_ns_start = time.perf_counter_ns()
                     snapshots = [proposer.save_state(0)]
                     candidates = [int(proposer.current.token)]
-                    # DFlash-style per-position confidence floor (#100): stop
-                    # drafting at the first low-confidence depth. Unlike the
-                    # reload path we keep >=1 candidate (a 2-row verify costs
-                    # the same wall as B+1 rows on the row-invariant batched
-                    # path, while a mid-decode AR fallback would invalidate the
-                    # cached verify graphs every truncate-to-0 cycle).
-                    for draft_idx in range(1, active_budget):
-                        if draft_p_min > 0.0 and proposer.top1_prob_proxy() < draft_p_min:
-                            break
-                        proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
-                        snapshots.append(proposer.save_state(draft_idx))
-                        candidates.append(int(proposer.current.token))
-                    active_budget = len(candidates)
+                    # Gated branching tree (#99 -> persistent): on
+                    # low-confidence depth-1 cycles, spend the budget on a
+                    # root-sibling branch instead of a deeper chain. Tree and
+                    # chain use the SAME padded rows=B+1 verify shape (fixed
+                    # rows keeps the cached graphs valid; see #107).
+                    use_tree = False
+                    topk_per_depth: list[tuple[list[int], list[float]]] = []
+                    if tree_mode == "branching_topk" and confidence_threshold > 0.0 and active_budget >= 2:
+                        d1_ids, d1_vals = proposer.vocab_topk(k=8)
+                        topk_per_depth.append((d1_ids, d1_vals))
+                        # Per #99: spend the wider tree on confident cycles,
+                        # fall back to the deeper chain on low-confidence ones.
+                        use_tree = _topk_softmax_top1(d1_vals) >= confidence_threshold
+                    if use_tree:
+                        # Tree shape at budget B: depth-1 top-(tree_top_k) +
+                        # top-1 chain through depth B-1 (total B candidates).
+                        for _depth in range(2, active_budget):
+                            proposer.advance_with_previous_hidden(input_token=int(topk_per_depth[-1][0][0]), position=proposer.position + 1)
+                            topk_per_depth.append(proposer.vocab_topk(k=8))
+                        candidates = [int(ids[0]) for ids, _vals in topk_per_depth]
+                    else:
+                        # DFlash-style per-position confidence floor (#100):
+                        # stop drafting at the first low-confidence depth.
+                        # Keep >=1 candidate so the verify shape stays fixed.
+                        for draft_idx in range(1, active_budget):
+                            if draft_p_min > 0.0 and proposer.top1_prob_proxy() < draft_p_min:
+                                break
+                            proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
+                            snapshots.append(proposer.save_state(draft_idx))
+                            candidates.append(int(proposer.current.token))
+                        active_budget = len(candidates)
                     active_budgets.append(active_budget)
                     # Keep the verify at a FIXED rows=B+1 shape: each rows
                     # bucket re-reserves verifier scratch at its own shape,
@@ -824,23 +845,45 @@ def _run_spec_persistent_device(
                     # hang under p-min truncation). Padded rows are inert
                     # (active_mask) and the batched wall is row-invariant.
                     verify_budget = int(candidate_budget)
-                    target_batch = _target_batch(root, context, candidates, active_budget, candidate_budget=verify_budget)
                     t_verify = time.perf_counter()
                     rocprof_window.range_push(f"mtp_verify_pass_{cycles}")
-                    verify = session.verify_chain_bulk_and_commit(
-                        target_batch,
-                        base_slot=0,
-                        capture_layer_ids=(),
-                        capture_hidden_concat=verifier_no_capture,
-                        capture_row_start=0,
-                        chain_attn_mode=chain_attn_mode,
-                        graph_mode=graph_mode,
-                    )
+                    if use_tree:
+                        compiled = _build_branching_topk_tree_target_batch(
+                            root_token=root,
+                            root_position=context,
+                            topk_tokens=[ids for ids, _ in topk_per_depth],
+                            topk_values=[vals for _, vals in topk_per_depth],
+                            candidate_budget=verify_budget,
+                            tree_top_k=int(tree_top_k),
+                            max_depth=len(topk_per_depth),
+                        )
+                        target_batch = compiled.target_batch
+                        verify = session.verify_tree_bulk_and_commit(
+                            target_batch,
+                            base_slot=0,
+                            capture_layer_ids=(),
+                            capture_hidden_concat=verifier_no_capture,
+                            capture_row_start=0,
+                            graph_mode=graph_mode,
+                        )
+                        accepted_tokens = [int(t) for t in verify.accepted_tokens]
+                    else:
+                        target_batch = _target_batch(root, context, candidates, active_budget, candidate_budget=verify_budget)
+                        verify = session.verify_chain_bulk_and_commit(
+                            target_batch,
+                            base_slot=0,
+                            capture_layer_ids=(),
+                            capture_hidden_concat=verifier_no_capture,
+                            capture_row_start=0,
+                            chain_attn_mode=chain_attn_mode,
+                            graph_mode=graph_mode,
+                        )
+                        accepted_tokens = candidates[: int(verify.accepted_count)]
                     rocprof_window.range_pop()
                     verify_seconds += time.perf_counter() - t_verify
                     accepted = int(verify.accepted_count)
                     accepted_lengths.append(accepted)
-                    committed = [root, *candidates[:accepted]]
+                    committed = [root, *accepted_tokens]
                     generated.extend(committed)
                     bonus = int(verify.next_token) if verify.next_token is not None else int(verify.target_top1[min(accepted, len(verify.target_top1) - 1)])
                     if len(proposal_trace) < 16:
@@ -863,7 +906,13 @@ def _run_spec_persistent_device(
                         )
                     update_started = time.perf_counter()
                     if len(generated) < int(decode_tokens):
-                        if accepted < active_budget - 1:
+                        if use_tree:
+                            # Tree accepts may follow the sibling branch, so
+                            # replay the accepted path from the cycle root.
+                            proposer.restore_state(snapshots[0])
+                            for token in accepted_tokens:
+                                proposer.advance_with_previous_hidden(input_token=int(token), position=proposer.position + 1)
+                        elif accepted < active_budget - 1:
                             proposer.restore_state(snapshots[accepted])
                         elif accepted >= active_budget:
                             # After candidate generation, the live proposer state is
@@ -973,6 +1022,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             chain_attn_mode=str(args.chain_attn_mode),
             graph_mode=str(args.graph_mode),
             draft_p_min=float(getattr(args, "draft_p_min", 0.0)),
+            tree_mode=str(getattr(args, "tree_mode", "chain")),
+            tree_top_k=int(getattr(args, "tree_top_k", 2)),
+            confidence_threshold=float(getattr(args, "confidence_threshold", 0.0)),
             rocprof_warmup_cycles=int(getattr(args, "rocprof_warmup_cycles", 0)),
             rocprof_verify_cycles=int(getattr(args, "rocprof_verify_cycles", 0)),
         )

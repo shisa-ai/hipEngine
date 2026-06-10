@@ -139,6 +139,7 @@ class NativeMtpChainProposer:
         # acceptance — verify commits target tokens over the FULL vocab).
         cap = int(os.environ.get("HIPENGINE_MTP_DRAFT_VOCAB_CAP", "0") or 0)
         self.draft_vocab = cap if 0 < cap < self.vocab else self.vocab
+        self._vocab_topk_host: tuple | None = None
         self.q_heads = int(self.config.num_attention_heads)
         self.kv_heads = int(self.config.num_key_value_heads)
         self.head_dim = int(self.config.head_dim)
@@ -322,6 +323,26 @@ class NativeMtpChainProposer:
         self.cache_len = int(snapshot.cache_len)
         self.position = int(snapshot.position)
         self.current = snapshot.current
+
+    def vocab_topk(self, *, k: int = 8) -> tuple[list[int], list[float]]:
+        """Exact top-k tokens+logits over the (capped) draft vocab.
+
+        Runs the topk kernel over ``logits_buf`` (already populated by the
+        advance's lm-head pass) and reads ids+values in one small D2H pair.
+        Used for the gated branching tree (#99 -> persistent path).
+        """
+
+        if k <= 0 or k > 8:
+            raise ValueError("vocab_topk supports 1..8")
+        if self._vocab_topk_host is None:
+            ids, ids_buf = _empty_device((1, 8), np.int32, self.buffers, runtime=self.runtime)
+            vals, vals_buf = _empty_device((1, 8), np.float32, self.buffers, runtime=self.runtime)
+            self._vocab_topk_host = (ids, ids_buf, vals, vals_buf)
+        ids, ids_buf, vals, vals_buf = self._vocab_topk_host
+        topk_f32_rows_i32(self.logits_buf.ptr, vals_buf.ptr, ids_buf.ptr, 1, self.draft_vocab, 8, threads=256, library=self.lm_lib)
+        copy_device_to_host(host_array_ptr(ids), ids_buf, ids.nbytes, runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(vals), vals_buf, vals.nbytes, runtime=self.runtime)
+        return [int(x) for x in ids.reshape(-1)[:k]], [float(x) for x in vals.reshape(-1)[:k]]
 
     def top1_prob_proxy(self, *, k: int = 8) -> float:
         """Softmax weight of the current top-1 over the top-k lm-head block maxima.

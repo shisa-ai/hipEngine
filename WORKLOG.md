@@ -77912,3 +77912,18 @@ Remaining: verify 22.0 + prop 2.3 + draft ~3.5. Break-even needs wall <=21.5 at
 vis 2.38 -> requires verify reduction (busy 14 + 5.2 node floor + ~2.8 tail);
 gated k=2 tree (vis 2.82) lifts break-even wall to 25.4 -> projected ~0.92 with
 tree wired persistent; both >1 only stacked + multi-stream verify.
+
+## 2026-06-11 — tree wiring on persistent path + graph: LANDED, default-off (negative at B=3)
+
+Wired #99's gated branching tree onto persistent_device with verify_tree graph
+replay: vocab_topk on the native proposer; fixed rows=B+1 padded tree (keeps
+graph buckets valid); verify_tree_bulk_and_commit gains graph_mode; tree
+graph-capture fixes: sync H2D for uniform counts/positions hoisted into
+metadata phase (HIP 906), tree_committed_count moved to device scalar (frozen
+by-value at capture), tree spans max_live_count -> session bound (LDS/loop cap
+frozen). exact_ar TRUE with replay. Negative at B=3 on quicksort: tree spends
+budget on a depth-1 sibling and caps chain depth at 2 (chain accepts 3 on
+confident cycles): vis/cyc 2.21 vs 2.38, wall 31.6 vs 27.8 -> 0.61x vs 0.76x.
+#99's gain needs budget 5 depth headroom; at B=5 acceptance saturates (vis
+2.30 < B3 2.56) so chain B=3 remains best. Default off; wiring retained for
+higher-acceptance heads. Verify busy/floor is the remaining lever.

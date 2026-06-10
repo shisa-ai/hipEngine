@@ -878,7 +878,7 @@ def qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
     out_ptr: int,
     spans: KVLiveSpans,
     ancestor_mask_ptr: int,
-    tree_committed_count: int,
+    tree_committed_count_ptr: int,
     rows: int,
     max_context_len: int,
     block_size: int,
@@ -915,8 +915,8 @@ def qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
     )
     _check_positive(gate_stride1, "gate_stride1")
     _check_positive(gate_stride2, "gate_stride2")
-    if tree_committed_count < 0:
-        raise ValueError("tree_committed_count must be non-negative")
+    if tree_committed_count_ptr == 0:
+        raise ValueError("tree_committed_count_ptr must reference an int64 device scalar (graph-capture-safe)")
     if ancestor_mask_ptr == 0:
         raise ValueError("ancestor_mask_ptr must reference a [rows, rows] uint8 device buffer")
     library = library or build_qwen35_paged_attn_decode(load=True)
@@ -932,7 +932,7 @@ def qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
         ctypes.c_void_p,  # context_counts
         ctypes.c_void_p,  # row_positions
         ctypes.c_void_p,  # ancestor_mask
-        ctypes.c_int64,   # tree_committed_count
+        ctypes.c_void_p,  # tree_committed_count_ptr
         ctypes.c_int64,   # rows
         ctypes.c_int64,   # max_context_len
         ctypes.c_int64,   # block_size
@@ -957,7 +957,7 @@ def qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
         ctypes.c_void_p(spans.live_counts.ptr),
         ctypes.c_void_p(row_positions_ptr),
         ctypes.c_void_p(ancestor_mask_ptr),
-        ctypes.c_int64(tree_committed_count),
+        ctypes.c_void_p(tree_committed_count_ptr),
         ctypes.c_int64(rows),
         ctypes.c_int64(max_context_len),
         ctypes.c_int64(block_size),

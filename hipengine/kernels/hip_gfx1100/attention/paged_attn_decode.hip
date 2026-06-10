@@ -1485,7 +1485,7 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernel(
     const int64_t* __restrict__ context_counts,
     const int64_t* __restrict__ row_positions,
     const uint8_t* __restrict__ ancestor_mask,
-    int64_t tree_committed_count,
+    const int64_t* __restrict__ tree_committed_count_ptr,
     int64_t rows,
     int64_t max_context_len,
     int64_t block_size,
@@ -1501,6 +1501,9 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernel(
   if (q_head >= num_q_heads || row >= rows) {
     return;
   }
+  // Device-resident so HIP-graph replays see the per-cycle committed count
+  // (#107: a by-value count is frozen at capture).
+  const int64_t tree_committed_count = tree_committed_count_ptr[0];
   int64_t context_len = context_counts[row];
   if (context_len <= 0) {
     return;
@@ -2849,7 +2852,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans
     const int64_t* context_counts,
     const int64_t* row_positions,
     const uint8_t* ancestor_mask,
-    int64_t tree_committed_count,
+    const int64_t* tree_committed_count_ptr,
     int64_t rows,
     int64_t max_context_len,
     int64_t block_size,
@@ -2863,7 +2866,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans
     hipStream_t stream) {
   if (rows <= 0 || max_context_len <= 0 || block_size <= 0 || block_table_len <= 0 ||
       num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || gate_stride1 <= 0 || gate_stride2 <= 0 ||
-      (num_q_heads % num_kv_heads) != 0 || tree_committed_count < 0 || ancestor_mask == nullptr) {
+      (num_q_heads % num_kv_heads) != 0 || tree_committed_count_ptr == nullptr || ancestor_mask == nullptr) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   // Same thread/shared sizing as the chain GQA gate kernel.
@@ -2886,7 +2889,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans
       context_counts, \
       row_positions, \
       ancestor_mask, \
-      tree_committed_count, \
+      tree_committed_count_ptr, \
       rows, \
       max_context_len, \
       block_size, \

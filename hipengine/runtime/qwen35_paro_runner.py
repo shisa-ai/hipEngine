@@ -6260,6 +6260,9 @@ class Qwen35ParoResidentSession:
         # start).  Set per-cycle by ``_write_verify_chain_metadata`` when
         # ``batch.mode == 'verify_tree'``; chain mode leaves it at 0.
         self.verify_tree_committed_count: int = 0
+        # Device-resident copy: the tree GQA kernel reads it via pointer so a
+        # captured graph replays per-cycle counts instead of the frozen value.
+        self.verify_tree_committed_buf = malloc(DType.INT64.itemsize, runtime=self.runtime)
         self.verify_lm_logits = malloc(verify_rows * self.vocab_size * DType.FP32.itemsize, runtime=self.runtime)
         self.verify_lm_block_values = malloc(verify_rows * self.lm_head_stage1_blocks * DType.FP32.itemsize, runtime=self.runtime)
         self.verify_lm_block_indices = malloc(verify_rows * self.lm_head_stage1_blocks * DType.INT32.itemsize, runtime=self.runtime)
@@ -8507,6 +8510,7 @@ class Qwen35ParoResidentSession:
         capture_hidden_concat: Tensor,
         capture_row_start: int,
         stream: int = 0,
+        graph_mode: str = "off",
     ) -> Qwen35ParoBulkVerifyResult:
         """DDTree variant of ``verify_chain_bulk_and_commit``.
 
@@ -8555,27 +8559,57 @@ class Qwen35ParoResidentSession:
         if capture_row_start < 0 or capture_row_start + rows > capture_hidden_concat.shape[0]:
             raise ValueError("capture rows outside capture_hidden_concat")
 
+        if graph_mode not in {"off", "auto", "validate"}:
+            raise ValueError("graph_mode must be off, auto, or validate")
+        if graph_mode != "off" and capture_hidden_concat.shape[1] != 0:
+            raise NotImplementedError("verify_tree graph replay currently requires capture width 0 (persistent proposer)")
+        capture_target = capture_hidden_concat
+        capture_target_start = capture_row_start
+        if graph_mode != "off":
+            capture_target = self._verify_capture_staging_tensor(rows=rows, width=int(capture_hidden_concat.shape[1]))
+            capture_target_start = 0
+
         self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
-        graph_info: dict[str, Any] = {
-            "mode": "off",
-            "status": "disabled",
-            "replayed": False,
-            "validation_passed": None,
-            "chain_attn_mode": "tree_batched",
-            "verifier_mode": "verify_tree",
-        }
-        self._launch_verify_chain_forward_accept(
-            batch,
-            base_slot=base_slot,
-            capture_ids=capture_ids,
-            capture_hidden_concat=capture_hidden_concat,
-            capture_row_start=capture_row_start,
-            rows=rows,
-            stream=stream,
-            # chain_attn_mode is ignored for tree mode; the dispatcher
-            # checks batch.mode first and routes to the tree orchestrator.
-            chain_attn_mode="batched",
-        )
+        if graph_mode == "off":
+            graph_info: dict[str, Any] = {
+                "mode": "off",
+                "status": "disabled",
+                "replayed": False,
+                "validation_passed": None,
+                "chain_attn_mode": "tree_batched",
+                "verifier_mode": "verify_tree",
+            }
+            self._launch_verify_chain_forward_accept(
+                batch,
+                base_slot=base_slot,
+                capture_ids=capture_ids,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                rows=rows,
+                stream=stream,
+                # chain_attn_mode is ignored for tree mode; the dispatcher
+                # checks batch.mode first and routes to the tree orchestrator.
+                chain_attn_mode="batched",
+            )
+        else:
+            # Same one-capture-per-bucket replay as the chain path; tree
+            # topology (parent_rows/ancestor mask) is part of the metadata
+            # bucket and the cache key includes batch.mode, so chain and tree
+            # graphs never alias. Lazy buffers are allocated by the cycle-1
+            # direct pass before capture (same trick as chain).
+            graph_info = self._run_verify_graph_or_direct(
+                batch,
+                base_slot=base_slot,
+                capture_ids=capture_ids,
+                capture_hidden_concat=capture_target,
+                capture_row_start=capture_target_start,
+                rows=rows,
+                graph_mode=graph_mode,
+                chain_attn_mode="batched",
+                linear_attn_mode="tree_tloop",
+                stream=stream,
+            )
+            graph_info["verifier_mode"] = "verify_tree"
         gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
         if self._verify_gpu_accept_enabled():
             # Fast path: trust GPU accept-summary kernel, skip CPU top1 read + CPU accept.
@@ -8629,7 +8663,10 @@ class Qwen35ParoResidentSession:
             commit_row_ptr=int(self.verify_commit_rows.ptr),
         )
         self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
-        self._canonicalize_decode_scratch()
+        # Same #107 keepalive as chain: canonicalizing decode scratch frees the
+        # rows=B+1 buffers any cached verifier graph holds raw pointers to.
+        if graph_mode == "off" or not self._verify_graph_cache:
+            self._canonicalize_decode_scratch()
         self.runtime.stream_synchronize(stream)
         next_token = None if summary.next_tokens is None else summary.next_tokens[0]
         return Qwen35ParoBulkVerifyResult(
@@ -8702,6 +8739,7 @@ class Qwen35ParoResidentSession:
             int(base_slot),
             str(chain_attn_mode),
             str(linear_attn_mode),
+            str(batch.mode),
         )
         entry = self._verify_graph_cache.get(key)
         if (
@@ -9590,7 +9628,7 @@ class Qwen35ParoResidentSession:
             spans=prefill_spans,
             rows=rows,
             ancestor_mask=ancestor_mask,
-            tree_committed_count=int(self.verify_tree_committed_count),
+            tree_committed_count_ptr=int(self.verify_tree_committed_buf.ptr),
             gate=gate,
             block_size=self.block_size,
             library=self.libraries,
@@ -9681,10 +9719,12 @@ class Qwen35ParoResidentSession:
         counts_buf = self._ensure_verify_tree_uniform_buf(
             name="verify_tree_uniform_counts",
             host=uniform_counts_host,
+            populate=False,
         )
         positions_buf = self._ensure_verify_tree_uniform_buf(
             name="verify_tree_uniform_positions",
             host=uniform_positions_host,
+            populate=False,
         )
         uniform_counts = Tensor.from_handle(
             counts_buf.ptr, (rows,), DType.INT64, self.device,
@@ -9692,10 +9732,13 @@ class Qwen35ParoResidentSession:
         uniform_positions = Tensor.from_handle(
             positions_buf.ptr, (rows,), DType.INT64, self.device,
         )
+        # Use the session bound, not this cycle's total_len: max_live_count is
+        # baked by value into the kernel launch (LDS sizing/loop cap), so a
+        # captured graph would otherwise freeze the cycle-1 context length.
         append_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=cache_slots,
-            max_live_count=max(1, total_len),
+            max_live_count=self.max_sequence_length - 1,
             storage_dtype=DType.BF16,
             row_positions=cache_slots,
             span_role="verify_tree",
@@ -9703,20 +9746,25 @@ class Qwen35ParoResidentSession:
         prefill_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=uniform_counts,
-            max_live_count=total_len,
+            max_live_count=self.max_sequence_length,
             storage_dtype=DType.BF16,
             row_positions=uniform_positions,
             span_role="verify_tree",
         )
         return append_spans, prefill_spans
 
-    def _ensure_verify_tree_uniform_buf(self, *, name: str, host: np.ndarray):
+    def _ensure_verify_tree_uniform_buf(self, *, name: str, host: np.ndarray, populate: bool = True):
         """Reserve a small device buffer for the tree verifier uniform vectors.
 
         Tree verify needs two ``[rows]`` int64 vectors (uniform context counts
         and uniform row positions) per cycle.  Allocate them lazily and reuse
         the buffer across layers within a cycle.  The buffer is keyed by
         ``name`` so multiple tree-only auxiliary arrays can coexist.
+
+        ``populate=False`` returns the existing buffer without an H2D copy —
+        required inside the verifier forward, where a synchronous hipMemcpy
+        would invalidate HIP graph capture (error 906). Per-cycle population
+        happens in ``_write_verify_chain_metadata`` (outside the graph).
         """
 
         attr = f"_{name}_buf"
@@ -9725,9 +9773,10 @@ class Qwen35ParoResidentSession:
         existing = getattr(self, attr, None)
         existing_size = getattr(self, attr_size, 0)
         if existing is not None and existing_size >= nbytes:
-            copy_host_to_device(
-                existing, host_array_ptr(np.ascontiguousarray(host)), nbytes, runtime=self.runtime,
-            )
+            if populate:
+                copy_host_to_device(
+                    existing, host_array_ptr(np.ascontiguousarray(host)), nbytes, runtime=self.runtime,
+                )
             return existing
         buf = malloc(nbytes, runtime=self.runtime)
         copy_host_to_device(
@@ -9885,6 +9934,19 @@ class Qwen35ParoResidentSession:
             )
             copies.append((self.verify_ancestor_mask_u8, ancestor_mask))
             copies.append((self.verify_cache_slot_buf, cache_slot_i64))
+            copies.append((self.verify_tree_committed_buf, np.asarray([self.verify_tree_committed_count], dtype=np.int64)))
+            # Tree uniform context counts/positions are consumed by the
+            # verifier forward; populate here (outside any graph capture —
+            # a sync H2D inside the captured forward is HIP error 906).
+            total_len = int(self.verify_tree_committed_count) + rows
+            self._ensure_verify_tree_uniform_buf(
+                name="verify_tree_uniform_counts",
+                host=np.full((rows,), total_len, dtype=np.int64),
+            )
+            self._ensure_verify_tree_uniform_buf(
+                name="verify_tree_uniform_positions",
+                host=np.full((rows,), total_len - 1, dtype=np.int64),
+            )
         else:
             # Chain mode: leave the ancestor mask and cache-slot buffers
             # alone.  Recorded ``tree_committed_count`` is meaningless for
