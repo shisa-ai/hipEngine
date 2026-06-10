@@ -77732,3 +77732,34 @@ c=1 (per-row) MoE because grouped's fixed cost > c=1 at small B+1. DEFERRED:
 dedup hits 44%/1.83x at B=5, but saving expert BYTES does not help a
 dispatch-bound verify; revisit only after M14.dispatch.1 AND at higher B. #106
 seeded (f, U(B), floor(B), visible(B), dedup(B)).
+
+## 2026-06-09 — #104: recovered z-lab DFlash drafter; verified vs on-disk packed target
+
+Recovered ONLY the z-lab DFlash drafter (do NOT re-download the original
+shisa-ai target). Drafter z-lab/Qwen3.6-35B-A3B-DFlash = 0.95GB, ungated, an
+8-layer qwen3 BF16 model (NOT a full 35B; reads target hidden at
+target_layer_ids=[1,10,19,28,37] -> target_hidden_concat_size=10240).
+Downloaded to /models/hipengine/Qwen3.6-35B-A3B-DFlash (905M). Artifact:
+benchmarks/results/2026-06-09-hipengine-dflash-drafter-recovery-acceptance.json
+
+PRE-CHECKS all green: disk 227G free (95% full); CHECK1 our packed target
+reports num_hidden_layers=40 (MTP head mtp_num_hidden_layers=1 is SEPARATE, not
+double-counted); CHECK2 target_layer_ids [1,10,19,28,37] all < 40. validate_
+dflash_artifact_pair PASSED vs /models/hipengine/...-PARO-...-packed-MTP-BF16:
+hidden 2048==2048, vocab 248320==248320, layers 40==num_target_layers 40; drafter
+weights no missing/dtype/shape errors.
+
+E2E DFlash decode vs our packed target (hip_gfx1100, c1_loop, 4 prompts x 32
+tokens) -- ALL exact_match_ar=True, all_finite_logits=True, gpu_accept_match_cpu
+=True across plain / multi-prompt / online-gated runs. REALISTIC deployment
+acceptance (honest, vs our PARO-packed/quantized target -- lower than z-lab's
+FP-target figures because packing shifts the argmax): plain chain avg_accept
+B=2=1.27, B=4=1.89 (DFlash B=4 edges out the MTP head's #100 B=3 ~1.58);
+online-gated (--whole-cycle-gate 0.65 --draft-top-k 2) avg_accept=1.47 with the
+gate firing (low-confidence cycles drop to AR) and exact-AR preserved.
+
+speedup_vs_ar = 0.32-0.37x (c1_loop) is DISPATCH-bound, NOT the deployment
+number (per #101). The ~1.16x online-gated product figure (reviewer P4) needs
+the dispatch floor lowered (M14.dispatch.1 / batched path). The dense
+online-gated DFlash lane works correctly and is the near-term deployable product
+lane to HARDEN (P4, ongoing). Drafter weights NOT committed (model weights).

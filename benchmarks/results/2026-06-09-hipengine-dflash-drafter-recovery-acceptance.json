@@ -1,0 +1,55 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "diagnostic-dflash-acceptance",
+  "status": "retained",
+  "id": "2026-06-09-hipengine-dflash-drafter-recovery-acceptance",
+  "task": "#104",
+  "title": "z-lab DFlash drafter recovered + verified against on-disk packed PARO target",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100/RDNA3",
+    "backend": "hip_gfx1100"
+  },
+  "target_model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 (on-disk packed-PARO deployment target; MTP head unused by DFlash)",
+  "drafter_model": "z-lab/Qwen3.6-35B-A3B-DFlash -> /models/hipengine/Qwen3.6-35B-A3B-DFlash (905MB, 8-layer qwen3 BF16; NOT a full 35B)",
+  "recovery": {
+    "downloaded_gb": 0.95,
+    "ungated": true,
+    "pair_validation_passed": true,
+    "compat_assertions": {
+      "target_hidden_size_eq_drafter_target_hidden_size": "2048==2048",
+      "target_vocab_size_eq_drafter_vocab_size": "248320==248320",
+      "target_num_hidden_layers_eq_drafter_num_target_layers": "40==40"
+    },
+    "check1_num_hidden_layers": "40 (MTP head mtp_num_hidden_layers=1 is separate, not double-counted)",
+    "check2_target_layer_ids": [
+      1,
+      10,
+      19,
+      28,
+      37
+    ],
+    "check2_all_within_target": true,
+    "target_hidden_concat_size": 10240,
+    "drafter_weights": "no missing / dtype / shape errors"
+  },
+  "acceptance_against_packed_target": {
+    "note": "REALISTIC deployment acceptance vs our PARO-packed/quantized target. Lower than z-lab's FP-target figures (PARO packing shifts the target argmax vs the FP target the drafter trained on) -- the honest number we judge against.",
+    "plain_chain_avg_accept_by_budget": {
+      "2": 1.269,
+      "4": 1.891
+    },
+    "single_prompt_b4_avg_accept": 0.667,
+    "online_gated_b4_avg_accept": 1.471,
+    "online_gated_multi_token_rate": 0.49,
+    "prompts": 4,
+    "decode_tokens": 32
+  },
+  "correctness": {
+    "all_exact_match_ar": true,
+    "all_finite_logits": true,
+    "gpu_accept_match_cpu": true
+  },
+  "perf_note": "speedup_vs_ar = 0.32-0.37x (c1_loop) is dispatch-bound and NOT the deployment number; per #101 the verify is dispatch-bound. The ~1.16x online-gated product figure (reviewer P4) needs the dispatch floor lowered (M14.dispatch.1 / batched path). The gate FUNCTIONS here (low-confidence cycles drop to AR) with exact-AR preserved -- P4 hardening foundation.",
+  "verdict": "Drafter recovered (0.95GB) and structurally + E2E validated against our on-disk packed target: exact_match_ar=True across plain/multi-prompt/gated, gpu_accept_match_cpu=True. DFlash B=4 avg_accept ~1.89 edges out the MTP head (#100 B=3 ~1.58). The dense online-gated DFlash lane works correctly and is the near-term deployable product lane to harden (P4)."
+}
