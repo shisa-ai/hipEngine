@@ -77652,3 +77652,44 @@ AR's 920 launches/visible-token per the #98 model; realizing it as wall tok/s
 needs #101/#105. Proxy caveat: top-8 softmax overestimates true vocab prob, so a
 proxy p_min is milder than the same value on true prob — read measured truncation
 rates, not the bare threshold. #106 seed: best B=3/p0.5, 575 launches/visible-tok.
+
+## 2026-06-09 — #101: T1 row-invariant path — batched IS already row-invariant; C_B binds on dispatch overhead
+
+Re-ran the verify launch census in chain_attn_mode=batched (the #98 census
+measured c1_loop, the row-by-row path) at B=1 and B=5, windowed to
+mtp_verify_pass_* markers. Artifact:
+benchmarks/results/2026-06-09-hipengine-t1-rowinvariant-batched-census.json
+
+LAUNCH CENSUS DIFF (per mtp_verify_pass):
+| mode    | B1(2rows) | B5(6rows) | marginal/row |
+|---------|-----------|-----------|--------------|
+| c1_loop | 1191      | 2151      | 240          |
+| batched | 931       | 931       | 0            |
+| AR(#98) | 920 launches/tok                          |
+
+**batched verify launch count is ROW-INVARIANT (931 at B=1 AND B=5) and at
+AR-parity (931 vs 920).** residual_verify launches ~= residual_AR by
+construction -- T1's structural goal is ALREADY met by chain_attn_mode=batched
+(built in M12/M13.B). The #98 240/row marginal was the c1_loop path. The two
++10/row families are kernel-variant swaps (prefill-tile replacing c=1 at higher
+B); net launch count stays 931. GPU-busy still scales (10.75->17.71ms, expected);
+the LAUNCH residual is gone.
+
+CLEAN C_B (persistent_device verify_seconds/cycle, no rocprof; AR=10.65ms/tok #98):
+- batched graph-off: C_B 3.11 (B1, verify 40.88ms) -> 4.52 (B5, 48.07ms), exact_ar TRUE.
+- batched graph-auto B1: verify 20.38ms, C_B 2.27 BUT exact_ar=FALSE (diverges on
+  final token, status 'replayed', reproduced clean). REJECTED: faster but
+  incorrect; contradicts M12.1 'validated exact-AR' / M13.D 'graph=auto +3.9%
+  slower'. Graph replay already rejected as the C_B lever (M13.D).
+
+DIAGNOSIS: the row-invariant path collapses the LAUNCH residual (240/row -> 0,
+proven correct) but C_B=2.8 is NOT met by T1 alone. Correct-path C_B = 3.11-4.52
+because the verify WALL is bottlenecked by per-launch ctypes+HIP dispatch
+overhead (~40us/launch x 931 = host-gap-bound; busy only 10.75-17.71ms). The
+task's 2.8 target IS the busy-bound floor: (17.71 + proposer)/10.65 ~= 2.5-2.8,
+reachable only by CLOSING the ~26-30ms dispatch GAP -- i.e. M14.dispatch.1
+(C-side per-MoE-layer dispatcher, one ctypes call/layer vs 13, ~6-8ms/pass per
+M13.C), NOT more launch reduction and NOT graph replay. A literal AR/verify
+code-merge would not move C_B (residual is dispatch overhead, not divergent
+structure) -- effort without payoff. #101 structural goal achieved & verified;
+C_B program redirects to M14.dispatch.1. #106 seed updated.

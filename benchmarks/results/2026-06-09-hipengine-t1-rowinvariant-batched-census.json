@@ -1,0 +1,82 @@
+{
+  "schema": "hipengine-benchmark-1",
+  "kind": "diagnostic-rowinvariance",
+  "status": "retained",
+  "id": "2026-06-09-hipengine-t1-rowinvariant-batched-census",
+  "task": "#101",
+  "title": "T1 row-invariant verify path: batched launch-census diff + clean C_B",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100/RDNA3",
+    "backend": "hip_gfx1100"
+  },
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "max_layers": 40,
+  "method": "rocprofv3 --kernel-trace windowed to mtp_verify_pass_* markers (verify-only), warmup-cycles 3 outside the resume window; clean C_B from persistent_device verify_seconds (no rocprof).",
+  "launch_census_diff": {
+    "note": "#98 measured chain_attn_mode=c1_loop (row-by-row). This measures chain_attn_mode=batched (the row-batched path). Launch count is per mtp_verify_pass.",
+    "c1_loop_98": {
+      "b1_2rows": 1191,
+      "b5_6rows": 2151,
+      "fixed": 711,
+      "marginal_per_row": 240
+    },
+    "batched": {
+      "b1_2rows": 931,
+      "b5_6rows": 931,
+      "fixed": 931,
+      "marginal_per_row": 0,
+      "busy_ms_b1": 10.75,
+      "busy_ms_b5": 17.71,
+      "wall_ms_per_pass_rocprof": 37.0
+    },
+    "ar_98": {
+      "launches_per_tok": 920,
+      "busy_ms": 7.06,
+      "wall_ms": 10.65
+    },
+    "finding": "batched verify launch count is ROW-INVARIANT (931 at B=1 AND B=5, marginal 240->0) and at AR-parity (931 vs 920). residual_verify launches ~= residual_AR by construction -- T1's structural goal. The two +10/row families (router_logits_token_tile, awq_fusedw4_prefill) are kernel-VARIANT swaps (prefill-tile replacing c=1 at higher B); net launch count stays 931."
+  },
+  "clean_cb": {
+    "note": "persistent_device verify_seconds/cycle, no rocprof. AR step from #98 = 10.65ms wall/tok (warmed).",
+    "batched_graph_off": {
+      "b1": {
+        "verify_ms_per_cycle": 40.88,
+        "C_B_inrun": 3.11,
+        "exact_ar": true
+      },
+      "b5": {
+        "verify_ms_per_cycle": 48.07,
+        "C_B_inrun": 4.52,
+        "exact_ar": true
+      }
+    },
+    "batched_graph_auto": {
+      "b1": {
+        "verify_ms_per_cycle": 20.38,
+        "C_B_inrun": 2.27,
+        "exact_ar": false,
+        "graph_status": "replayed",
+        "note": "REJECTED: faster but exact_ar=False (diverges on final token), reproduced clean. Contradicts M12.1 'validated exact-AR' / M13.D 'graph=auto +3.9% slower'. Not adoptable; graph replay already rejected as the C_B lever (M13.D)."
+      }
+    }
+  },
+  "diagnosis": {
+    "structural_goal": "ACHIEVED & VERIFIED. The T1 row-invariant verify path = chain_attn_mode=batched. Launch census proves residual_verify (931) ~= residual_AR (920), marginal 240/row -> 0. exact_ar=TRUE at graph-off.",
+    "cb_target_not_met_by_T1": "C_B=2.8 is NOT met by the row-invariant path alone. Correct-path (batched graph-off) C_B = 3.11 (B1) -> 4.52 (B5). The launch-count residual is collapsed, but verify WALL is bottlenecked by per-launch ctypes+HIP dispatch overhead (~40us/launch x 931 = host-gap-bound; busy is only 10.75-17.71ms).",
+    "cb_floor_is_busy": "The task's 2.8 target = the busy-bound floor: verify busy at B=5 is 17.71ms (~ the assumed 18.5ms); (17.71 + proposer)/10.65 ~= 2.5-2.8. Reaching it requires CLOSING the ~26-30ms dispatch GAP, NOT more launch reduction.",
+    "binding_lever": "M14.dispatch.1 (C-side per-MoE-layer dispatcher: one .hip translation unit with all launchers, one ctypes call/layer instead of 13). Per M13.C cProfile, ctypes marshaling + hipLaunchKernelGGL dispatch dominate (~6-8ms/pass recoverable). Graph replay (M12.1/M13.D) does NOT help -- ROCm 7.x hipGraphLaunch per-node overhead ~= direct dispatch at >900 launches.",
+    "no_merge_needed": "AR (_run_layers_batch_decode rows=1) and verify (_launch_verify_chain_forward_accept rows=B+1) are separate functions but already row-batched and structurally equivalent (931~=920). A literal code-merge would not move C_B (the residual is dispatch overhead, not divergent structure), so it is effort without payoff."
+  },
+  "forecast_seed_106": {
+    "verify_launches_rowinvariant": 931,
+    "ar_launches": 920,
+    "verify_busy_ms_b1": 10.75,
+    "verify_busy_ms_b5": 17.71,
+    "verify_busy_marginal_ms_per_row": 1.74,
+    "cb_batched_graph_off_b1": 3.11,
+    "cb_batched_graph_off_b5": 4.52,
+    "cb_busy_floor_estimate": "~2.5-2.8 (needs M14.dispatch.1 to close the dispatch gap)",
+    "note": "T1 launch residual = 0 (achieved). C_B binding constraint = per-launch dispatch overhead -> M14.dispatch.1, not launch count or graph replay."
+  }
+}
