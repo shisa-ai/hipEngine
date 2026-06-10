@@ -77796,3 +77796,31 @@ per-launch dispatch (M14.dispatch.1). Realistic AR ceiling ~1.3-1.5x (close the
 3.6ms/tok gap toward the 7.06ms busy floor). Phase 2 persistent megakernel
 DROPPED. #105 stays open for Phase 1 glue fusion (next). AR baseline unchanged
 (no AR code touched this step): 920 launches/tok, 10.65ms wall (#98).
+
+## 2026-06-10 — #107: next attack chosen — graph-replay exactness on batched verify (C_B 2.27 measured, exactness is the only blocker)
+
+Campaign review (MEGAKERNEL.md + #98-#105): every structural C_B lever is now
+measured-closed — FFN megakernel (B4, 2.66x slower), persistent whole-pass
+(#105 NO-GO, big GEMVs already ~600 GB/s), native loop (M16.2 parity), staged
+glue (S3 regresses), kernel-time (dv-tiling below economics noise). The one
+measured sub-break-even verify wall in the whole program is #101's REJECTED row:
+batched graph_mode=auto B=1 verify 20.38ms vs 40.88 graph-off -> C_B 2.27 <
+2.385 break-even, rejected only on a final-token exact_ar flip.
+
+Reconciliation of "graphs are neutral" (M13.D/M16.1) vs #101's 2x: M16.1 proved
+graph == native C loop (GPU dispatch floor); M13.D measured the old bucket-churn
+re-capture path. The batched path is now row-invariant with a stable bucket key
+(931 launches at B=1 AND B=5) -> one capture replays all cycles, removing the
+Python+ctypes per-launch issue cost (~20-30us x 931) that M14.dispatch.1 only
+removed for c1 MoE, not batched verify. Replay wall 20.38 ~= busy 10.75 + 931 x
+5.6us node floor + tail — matches the M16.2 dispatch model.
+
+Projection if exact: B=3 cycle ~23ms -> C_B ~2.1-2.3 vs visible 2.556 (#103) ->
+~1.1-1.2x AR; +p_min 0.5 (#100) + gated k=2 tree (#99 visible 2.82) ->
+~1.25-1.35x AR. First MTP-positive lane.
+
+Attack: (1) repro graph-auto divergence B1/B3 decode 32; (2) graph_mode=validate
+to find first divergent cycle; (3) audit _launch_verify_chain_forward_accept for
+host-baked per-cycle scalars (kv lens/positions/draft tokens) frozen at capture;
+fix via device buffers advanced on-stream (decode-graph piece C pattern).
+Gate: exact_ar 9-prompt + clean C_B artifact. Plan: MEGAKERNEL.md S11.

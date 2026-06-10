@@ -550,3 +550,51 @@ is refuted: the big-grid kernels already run near HBM-effective BW; they are not
   with far less ABI/runtime risk — and §3 already showed naive small-grid staging
   regresses `C_B`. So: **glue fusion + dispatch-floor reduction, not a
   persistent megakernel.**
+
+---
+
+## 11. The next attack (#107) — graph-replay exactness on the batched verify path
+
+Status: **planned 2026-06-10**. Every structural lever is now measured-closed
+(megakernel §4/B4, persistent §10, native loop M16.2, staged glue §3, kernel
+time §9.4/§9.6). What remains open is the strongest single datum in the program:
+
+**#101 measured batched `graph_mode=auto` verify at 20.38 ms vs 40.88 graph-off
+(B=1, persistent_device, clean) — `C_B` 2.27, below break-even — rejected only
+because `exact_ar_match` flipped false on the final token.**
+
+Why this contradicts the M13.D / M16.1 "graph-neutral" verdicts, and why both
+are right: M16.1 proved a graph is 1.00× vs a *native C loop* (GPU dispatch is
+the floor), and M13.D measured graphs neutral-to-worse on the *old bucket-churn,
+per-cycle re-capture* path. But the production batched path is now
+**row-invariant with a stable bucket key** (#101: 931 launches at B=1 and B=5),
+so one capture replays for the whole decode — and the thing replay removes is
+the **Python+ctypes per-launch issue cost** (~20-30 µs × 931 ≈ 20-28 ms/pass),
+which M14.dispatch.1 only removed for the c1 MoE path, not the batched verify.
+The 20.38 ms replay wall ≈ busy (10.75) + graph-node floor (931 × 5.6 µs ≈ 5.2)
++ accept tail — i.e. the wall finally matches the M16.2 dispatch model.
+
+Economics if exactness is fixed (projection, B=3 batched): busy ~14 ms + ~5 ms
+node floor + proposer ~4 ms → cycle ~23 ms → `C_B` ≈ 2.1-2.3 vs visible 2.556
+(#103) → **~1.1-1.2× AR**; stacking p_min=0.5 (#100, free) and the gated k=2
+tree (#99, visible 2.82) → **~1.25-1.35× AR**. First MTP-positive lane.
+
+The bug surface (one capture per `(rows, capture_width, base_slot,
+chain_attn_mode, linear_attn_mode)` replayed every cycle): anything per-cycle
+that is **host-baked by value at capture** (context/kv lengths, span counts,
+positions, draft tokens passed as scalars instead of device buffers) replays
+stale. "Diverges on final token" smells boundary-shaped — candidates: lm-head /
+accept-payload reading a stale row count, last-cycle shorter draft, or a
+position counter not advanced on-stream.
+
+Plan (RED-first):
+1. Reproduce: `mtp_chain_e2e_smoke.py --backend hip_gfx1100 --proposal-impl
+   persistent_device --chain-attn-mode batched --graph-mode auto` B=1/B=3,
+   decode 32; per-cycle accepted-token dump vs graph-off.
+2. Localize: `graph_mode=validate` (compares replay vs direct per cycle) to find
+   the first divergent cycle + row.
+3. Audit `_launch_verify_chain_forward_accept` for by-value per-cycle scalars;
+   fix = route through device buffers advanced on-stream (decode-graph piece C
+   pattern already exists).
+4. Gate: exact_ar 9-prompt suite + clean B=1/B=3/B=5 `C_B` artifact; retain only
+   if exact AND `C_B` ≤ 2.6 at B=3.
