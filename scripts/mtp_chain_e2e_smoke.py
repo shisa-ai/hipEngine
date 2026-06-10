@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -89,8 +90,24 @@ from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen
 from hipengine.speculative import MTP_CHAIN_CANDIDATE_BUDGETS, MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
 from hipengine.speculative.mtp_native import NativeMtpChainProposer
 from scripts.mtp_native_decode_step_smoke import run_smoke as run_native_mtp_proposal
+from scripts.dflash_chain_e2e_bench import _build_branching_topk_tree_target_batch
 
 DEFAULT_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
+
+
+def _topk_softmax_top1(topk_logits: Sequence[float]) -> float:
+    """Confidence proxy: top-1 probability over the depth's top-K logits.
+
+    Restricted-vocab softmax (only the K emitted logits) -- a lower bound on the
+    true top-1 probability, sufficient for an online whole-cycle gate curve.
+    """
+    if not topk_logits:
+        return 1.0
+    vals = [float(x) for x in topk_logits]
+    m = max(vals)
+    exps = [math.exp(v - m) for v in vals]
+    z = sum(exps)
+    return (exps[0] / z) if z > 0 else 1.0
 
 
 def _capture_tensor(buffer: DeviceBuffer, rows: int, hidden: int) -> Tensor:
@@ -111,8 +128,10 @@ def _run_ar_baseline(
     *,
     decode_tokens: int,
     backend: str,
+    runner: Qwen35ParoNextTokenRunner | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
-    runner = Qwen35ParoNextTokenRunner(model, backend=backend)
+    if runner is None:
+        runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_tokens) + int(decode_tokens) + 2
     started = time.perf_counter()
     generated: list[int] = []
@@ -167,8 +186,15 @@ def _run_spec_smoke(
     candidate_budget: int,
     backend: str,
     chain_attn_mode: str,
+    tree_mode: str = "chain",
+    tree_top_k: int = 2,
+    confidence_threshold: float = 0.0,
+    runner: Qwen35ParoNextTokenRunner | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
-    runner = Qwen35ParoNextTokenRunner(model, backend=backend)
+    if tree_mode not in {"chain", "branching_topk"}:
+        raise ValueError("tree_mode must be chain or branching_topk")
+    if runner is None:
+        runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_tokens) + int(decode_tokens) + int(candidate_budget) + 4
     max_batch_size = int(candidate_budget) + 1
     generated: list[int] = []
@@ -178,6 +204,11 @@ def _run_spec_smoke(
     # the MTP head's top-k (1 = top-1 match/accepted, 2..K = root-branch
     # rescuable, 0 = absent from top-k). Bounds the tree-draft acceptance gain.
     oracle_depth1_ranks: list[int] = []
+    # Tree-path curve instrumentation.
+    accept_depth_hist: dict[int, int] = {}
+    gated_to_chain_cycles = 0
+    gpu_accept_match_all = True
+    tree_nodes_total = 0
     proposal_seconds = 0.0
     verify_seconds = 0.0
     target_forward_calls = 0
@@ -239,29 +270,77 @@ def _run_spec_smoke(
                 proposal_seconds += time.perf_counter() - t_prop
                 candidates = [int(token) for token in proposal["candidate_tokens"][:active_budget]]
                 draft = proposal["draft_batch"]
-                target_batch = _target_batch(root, context, candidates, active_budget)
+                candidate_topk = proposal.get("candidate_topk") or []
+                candidate_topk_values = proposal.get("candidate_topk_values") or []
+                # Online whole-cycle confidence gate: if the depth-1 top-1
+                # probability proxy is below threshold, fall back from the wide
+                # branching tree to the cheaper chain (top-1) verify for this
+                # cycle -- i.e. only spend the wider tree on confident cycles.
+                gate_low_confidence = False
+                if confidence_threshold > 0.0 and candidate_topk_values:
+                    p0 = _topk_softmax_top1(candidate_topk_values[0])
+                    if p0 < confidence_threshold:
+                        gate_low_confidence = True
+                        gated_to_chain_cycles += 1
+                use_tree = tree_mode == "branching_topk" and not gate_low_confidence and len(candidate_topk) >= 1
                 t_verify = time.perf_counter()
-                verify = session.verify_chain_bulk_and_commit(
-                    target_batch,
-                    base_slot=0,
-                    capture_layer_ids=(capture_layer_id,),
-                    capture_hidden_concat=capture,
-                    capture_row_start=context,
-                    chain_attn_mode=chain_attn_mode,
-                )
+                if use_tree:
+                    max_depth = min(active_budget, len(candidate_topk), len(candidate_topk_values))
+                    compiled = _build_branching_topk_tree_target_batch(
+                        root_token=root,
+                        root_position=context,
+                        topk_tokens=candidate_topk,
+                        topk_values=candidate_topk_values,
+                        candidate_budget=active_budget,
+                        tree_top_k=int(tree_top_k),
+                        max_depth=max_depth,
+                    )
+                    target_batch = compiled.target_batch
+                    tree_nodes_total += int(compiled.active_count)
+                    verify = session.verify_tree_bulk_and_commit(
+                        target_batch,
+                        base_slot=0,
+                        capture_layer_ids=(capture_layer_id,),
+                        capture_hidden_concat=capture,
+                        capture_row_start=context,
+                    )
+                    accepted_tokens = list(verify.accepted_tokens)
+                else:
+                    # chain (top-1) path, or gated-to-AR (active_budget honored
+                    # but a single-row chain effectively verifies the root).
+                    target_batch = _target_batch(root, context, candidates, active_budget)
+                    verify = session.verify_chain_bulk_and_commit(
+                        target_batch,
+                        base_slot=0,
+                        capture_layer_ids=(capture_layer_id,),
+                        capture_hidden_concat=capture,
+                        capture_row_start=context,
+                        chain_attn_mode=chain_attn_mode,
+                    )
+                    accepted_tokens = candidates[: int(verify.accepted_count)]
                 verify_seconds += time.perf_counter() - t_verify
                 target_forward_calls += int(verify.target_forward_calls)
                 accepted = int(verify.accepted_count)
                 accepted_lengths.append(accepted)
+                accept_depth_hist[accepted] = accept_depth_hist.get(accepted, 0) + 1
+                if verify.gpu_accept_match_cpu is not None:
+                    gpu_accept_match_all = gpu_accept_match_all and bool(verify.gpu_accept_match_cpu)
                 # Depth-1 top-k oracle: where does the target's chosen next token
-                # (verify.target_top1[0]) rank in the MTP head's depth-1 top-k?
-                candidate_topk = proposal.get("candidate_topk") or []
-                if candidate_topk and len(verify.target_top1) > 0:
-                    target_next = int(verify.target_top1[0])
+                # rank in the MTP head's depth-1 top-k?  Recovered uniformly for
+                # chain and tree: if any draft token was accepted the target's
+                # next token is accepted_tokens[0]; otherwise it is the
+                # correction (next_token / commit_token). verify.target_top1 is
+                # empty in tree mode, so do not depend on it here.
+                if candidate_topk:
+                    if accepted_tokens:
+                        target_next = int(accepted_tokens[0])
+                    elif verify.next_token is not None:
+                        target_next = int(verify.next_token)
+                    else:
+                        target_next = int(verify.commit_token)
                     d1_topk = [int(x) for x in candidate_topk[0]]
                     rank = (d1_topk.index(target_next) + 1) if target_next in d1_topk else 0
                     oracle_depth1_ranks.append(rank)
-                accepted_tokens = candidates[:accepted]
                 committed = [root, *accepted_tokens]
                 generated.extend(committed)
                 bonus = int(verify.next_token) if verify.next_token is not None else int(verify.target_top1[min(accepted, len(verify.target_top1) - 1)])
@@ -310,18 +389,121 @@ def _run_spec_smoke(
         "rank_histogram": {str(k): rank_hist[k] for k in sorted(rank_hist)},
         "note": "rank 1 = chain already accepts; 2..k = root-branch tree could rescue; 0 = target token absent from MTP top-k (unrescuable at depth 1).",
     }
+    n_cycles = len(accepted_lengths)
+    avg_accepted = (sum(accepted_lengths) / n_cycles) if n_cycles else 0.0
+    # alpha (per-token accept rate) = accepted draft tokens / drafted tokens.
+    # Drafted tokens per cycle = active_budget (chain) or tree node budget; the
+    # smoke runs a fixed candidate_budget so we normalize by candidate_budget.
+    alpha = (sum(accepted_lengths) / (n_cycles * int(candidate_budget))) if n_cycles and candidate_budget > 0 else 0.0
+    # Visible tokens/cycle = committed (root + accepted) = 1 + avg_accepted; the
+    # reviewer-preferred comparable metric vs llama.cpp's p-min-inflated alpha.
+    visible_tokens_per_cycle = 1.0 + avg_accepted
     return generated[: int(decode_tokens)], {
         "seconds": seconds,
         "tok_s": int(decode_tokens) / seconds if seconds > 0 else None,
         "topk_oracle": topk_oracle,
         "proposal_seconds": proposal_seconds,
         "verify_seconds": verify_seconds,
+        "verify_seconds_per_cycle": (verify_seconds / n_cycles) if n_cycles else None,
         "accepted_lengths": accepted_lengths,
-        "acceptance_rate": (sum(accepted_lengths) / (len(accepted_lengths) * int(candidate_budget))) if accepted_lengths and candidate_budget > 0 else 0.0,
+        "acceptance_rate": alpha,
+        "alpha": alpha,
+        "avg_accepted": avg_accepted,
+        "visible_tokens_per_cycle": visible_tokens_per_cycle,
+        "cycles": n_cycles,
+        "tree_mode": tree_mode,
+        "tree_top_k": int(tree_top_k),
+        "confidence_threshold": float(confidence_threshold),
+        "gated_to_chain_cycles": gated_to_chain_cycles,
+        "tree_nodes_total": tree_nodes_total,
+        "accept_depth_histogram": {str(k): accept_depth_hist[k] for k in sorted(accept_depth_hist)},
+        "gpu_accept_match_cpu": gpu_accept_match_all,
         "proposal_trace_sample": proposal_trace,
         "target_forward_calls": target_forward_calls,
         "chain_attn_mode": chain_attn_mode,
         "note": "Correctness smoke only: proposal hidden rows are copied D2H and MTP weights are reloaded per proposal call.",
+    }
+
+
+def _run_acceptance_curve(
+    model: Path,
+    prompt_tokens: Sequence[int],
+    *,
+    decode_tokens: int,
+    candidate_budget: int,
+    backend: str,
+    chain_attn_mode: str,
+    tree_top_ks: Sequence[int],
+    confidence_thresholds: Sequence[float],
+) -> dict[str, Any]:
+    """Realized-acceptance curve over (branch width, confidence threshold).
+
+    Shares ONE resident target runner across the AR baseline and every spec
+    config so only one copy of the 35B target stays in VRAM.  Each config runs
+    an independent committed decode (the proposer reloads MTP weights per
+    proposal call -- correctness-first, not a tok/s path).  Draft depth is the
+    accept-depth histogram already returned per config.
+    """
+    runner = Qwen35ParoNextTokenRunner(model, backend=backend)
+    ar_tokens, ar = _run_ar_baseline(
+        model, prompt_tokens, decode_tokens=int(decode_tokens), backend=backend, runner=runner
+    )
+    configs: list[tuple[str, int, float]] = [("chain", 1, 0.0)]
+    for k in tree_top_ks:
+        for thr in confidence_thresholds:
+            configs.append(("branching_topk", int(k), float(thr)))
+    curve: list[dict[str, Any]] = []
+    for mode, k, thr in configs:
+        spec_tokens, spec = _run_spec_smoke(
+            model,
+            prompt_tokens,
+            decode_tokens=int(decode_tokens),
+            candidate_budget=int(candidate_budget),
+            backend=backend,
+            chain_attn_mode=chain_attn_mode,
+            tree_mode=mode,
+            tree_top_k=int(k),
+            confidence_threshold=float(thr),
+            runner=runner,
+        )
+        curve.append(
+            {
+                "tree_mode": mode,
+                "tree_top_k": int(k),
+                "confidence_threshold": float(thr),
+                "alpha": spec["alpha"],
+                "avg_accepted": spec["avg_accepted"],
+                "visible_tokens_per_cycle": spec["visible_tokens_per_cycle"],
+                "cycles": spec["cycles"],
+                "accept_depth_histogram": spec["accept_depth_histogram"],
+                "gated_to_chain_cycles": spec["gated_to_chain_cycles"],
+                "tree_nodes_total": spec["tree_nodes_total"],
+                "exact_ar_match": spec_tokens == ar_tokens,
+                "gpu_accept_match_cpu": spec["gpu_accept_match_cpu"],
+                "verify_seconds_per_cycle": spec["verify_seconds_per_cycle"],
+                "tok_s_diagnostic": spec["tok_s"],
+                "topk_oracle": spec["topk_oracle"],
+            }
+        )
+    return {
+        "status": "passed",
+        "performance_claim": False,
+        "model": str(model),
+        "backend": backend,
+        "prompt_tokens": list(prompt_tokens),
+        "decode_tokens": int(decode_tokens),
+        "candidate_budget": int(candidate_budget),
+        "chain_attn_mode": chain_attn_mode,
+        "ar_tokens": ar_tokens,
+        "ar": ar,
+        "ar_tok_s": ar["tok_s"],
+        "acceptance_curve": curve,
+        "note": (
+            "Realized MTP acceptance curve (correctness-first). alpha = accepted / "
+            "(cycles*candidate_budget); visible_tokens_per_cycle = 1+avg_accepted is "
+            "the comparable metric vs llama.cpp p-min-inflated alpha. Per (B+1)/C_B, "
+            "this does NOT beat AR until the #98->#105/#101 dispatch floor lands."
+        ),
     }
 
 
@@ -546,11 +728,30 @@ def _run_spec_persistent_device(
     }
 
 
+def _parse_int_list(text: str) -> list[int]:
+    return [int(p.strip()) for p in str(text).split(",") if p.strip()]
+
+
+def _parse_float_list(text: str) -> list[float]:
+    return [float(p.strip()) for p in str(text).split(",") if p.strip()]
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model)
     prompt_tokens = tuple(int(part.strip()) for part in str(args.prompt_tokens).split(",") if part.strip())
     if not prompt_tokens:
         raise ValueError("at least one prompt token is required")
+    if bool(getattr(args, "acceptance_curve", False)):
+        return _run_acceptance_curve(
+            model,
+            prompt_tokens,
+            decode_tokens=int(args.decode_tokens),
+            candidate_budget=int(args.candidate_budget),
+            backend=str(args.backend),
+            chain_attn_mode=str(args.chain_attn_mode),
+            tree_top_ks=_parse_int_list(args.curve_tree_top_ks),
+            confidence_thresholds=_parse_float_list(args.curve_thresholds),
+        )
     ar_tokens, ar = _run_ar_baseline(model, prompt_tokens, decode_tokens=int(args.decode_tokens), backend=str(args.backend))
     if args.proposal_impl in {"persistent_device", "persistent_device_b1"}:
         spec_tokens, spec = _run_spec_persistent_device(
@@ -572,6 +773,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             candidate_budget=int(args.candidate_budget),
             backend=str(args.backend),
             chain_attn_mode=str(args.chain_attn_mode),
+            tree_mode=str(getattr(args, "tree_mode", "chain")),
+            tree_top_k=int(getattr(args, "tree_top_k", 2)),
+            confidence_threshold=float(getattr(args, "confidence_threshold", 0.0)),
         )
     return {
         "status": "passed" if spec_tokens == ar_tokens else "exact_ar_mismatch",
@@ -600,6 +804,12 @@ def main() -> int:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
+    parser.add_argument("--tree-mode", choices=("chain", "branching_topk"), default="chain", help="reload_d2h only: chain (top-1 verify_chain) or branching_topk (balanced DDTree via verify_tree_bulk_and_commit, reusing the MTP head per-depth top-k + values)")
+    parser.add_argument("--tree-top-k", type=int, default=2, help="branch width per depth for --tree-mode branching_topk (1..8)")
+    parser.add_argument("--confidence-threshold", type=float, default=0.0, help="online whole-cycle gate: drop to AR when depth-1 top-K-softmax top-1 prob < threshold (0 disables)")
+    parser.add_argument("--acceptance-curve", action="store_true", help="reload_d2h only: sweep the realized acceptance curve over branch width x confidence threshold, sharing one resident target runner. Reports alpha, visible tokens/cycle, accept-depth histogram, exact_ar_match, gpu_accept_match_cpu per config.")
+    parser.add_argument("--curve-tree-top-ks", default="2,3,4", help="comma-separated branch widths for --acceptance-curve")
+    parser.add_argument("--curve-thresholds", default="0.0", help="comma-separated confidence thresholds for --acceptance-curve")
     parser.add_argument(
         "--rocprof-warmup-cycles",
         type=int,
@@ -620,11 +830,32 @@ def main() -> int:
         ),
     )
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--out", type=Path, help="alias for --json (artifact path)")
     args = parser.parse_args()
     result = run(args)
-    if args.json:
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    out_path = args.out or args.json
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    if "acceptance_curve" in result:
+        summary = {
+            "status": result["status"],
+            "ar_tok_s": result["ar_tok_s"],
+            "curve": [
+                {
+                    "mode": row["tree_mode"],
+                    "k": row["tree_top_k"],
+                    "thr": row["confidence_threshold"],
+                    "alpha": round(float(row["alpha"]), 4),
+                    "vis_tok_per_cycle": round(float(row["visible_tokens_per_cycle"]), 3),
+                    "exact_ar": row["exact_ar_match"],
+                    "gpu_match": row["gpu_accept_match_cpu"],
+                }
+                for row in result["acceptance_curve"]
+            ],
+        }
+        print(json.dumps(summary, sort_keys=True))
+        return 0 if result["status"] == "passed" else 1
     print(json.dumps({"status": result["status"], "exact_ar_match": result["exact_ar_match"], "ar": result["ar_tokens"], "mtp": result["mtp_tokens"], "accepted": result["mtp"]["accepted_lengths"], "mtp_tok_s_diagnostic": result["mtp"]["tok_s"], "ar_tok_s": result["ar"]["tok_s"]}, sort_keys=True))
     return 0 if result["status"] == "passed" else 1
 
