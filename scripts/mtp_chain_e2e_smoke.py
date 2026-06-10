@@ -701,6 +701,7 @@ def _run_spec_persistent_device(
     backend: str,
     chain_attn_mode: str,
     graph_mode: str = "off",
+    draft_p_min: float = 0.0,
     rocprof_warmup_cycles: int = 0,
     rocprof_verify_cycles: int = 0,
 ) -> tuple[list[int], dict[str, Any]]:
@@ -803,12 +804,26 @@ def _run_spec_persistent_device(
                     cycle_t_ns_start = time.perf_counter_ns()
                     snapshots = [proposer.save_state(0)]
                     candidates = [int(proposer.current.token)]
+                    # DFlash-style per-position confidence floor (#100): stop
+                    # drafting at the first low-confidence depth. Unlike the
+                    # reload path we keep >=1 candidate (a 2-row verify costs
+                    # the same wall as B+1 rows on the row-invariant batched
+                    # path, while a mid-decode AR fallback would invalidate the
+                    # cached verify graphs every truncate-to-0 cycle).
                     for draft_idx in range(1, active_budget):
+                        if draft_p_min > 0.0 and proposer.top1_prob_proxy() < draft_p_min:
+                            break
                         proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
                         snapshots.append(proposer.save_state(draft_idx))
                         candidates.append(int(proposer.current.token))
+                    active_budget = len(candidates)
                     active_budgets.append(active_budget)
-                    verify_budget = active_budget if active_budget in MTP_CHAIN_CANDIDATE_BUDGETS else int(candidate_budget)
+                    # Keep the verify at a FIXED rows=B+1 shape: each rows
+                    # bucket re-reserves verifier scratch at its own shape,
+                    # freeing buffers other rows' cached graphs hold (#107
+                    # hang under p-min truncation). Padded rows are inert
+                    # (active_mask) and the batched wall is row-invariant.
+                    verify_budget = int(candidate_budget)
                     target_batch = _target_batch(root, context, candidates, active_budget, candidate_budget=verify_budget)
                     t_verify = time.perf_counter()
                     rocprof_window.range_push(f"mtp_verify_pass_{cycles}")
@@ -957,6 +972,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             backend=str(args.backend),
             chain_attn_mode=str(args.chain_attn_mode),
             graph_mode=str(args.graph_mode),
+            draft_p_min=float(getattr(args, "draft_p_min", 0.0)),
             rocprof_warmup_cycles=int(getattr(args, "rocprof_warmup_cycles", 0)),
             rocprof_verify_cycles=int(getattr(args, "rocprof_verify_cycles", 0)),
         )
@@ -1006,7 +1022,7 @@ def main() -> int:
     parser.add_argument("--acceptance-curve", action="store_true", help="reload_d2h only: sweep the realized acceptance curve over branch width x confidence threshold, sharing one resident target runner. Reports alpha, visible tokens/cycle, accept-depth histogram, exact_ar_match, gpu_accept_match_cpu per config.")
     parser.add_argument("--curve-tree-top-ks", default="2,3,4", help="comma-separated branch widths for --acceptance-curve")
     parser.add_argument("--curve-thresholds", default="0.0", help="comma-separated confidence thresholds for --acceptance-curve")
-    parser.add_argument("--draft-p-min", type=float, default=0.0, help="reload_d2h chain only: per-position draft confidence floor (DFlash analog). Stop drafting at the first depth whose head top-1 prob proxy < p_min; truncate-to-0 cycles become plain AR. 0 disables.")
+    parser.add_argument("--draft-p-min", type=float, default=0.0, help="chain paths (reload_d2h + persistent_device): per-position draft confidence floor (DFlash analog). Stop drafting at the first depth whose head top-1 prob proxy < p_min; truncate-to-0 cycles become plain AR. 0 disables.")
     parser.add_argument("--pmin-sweep", action="store_true", help="reload_d2h only: sweep per-position p-min x B (chain path), sharing one resident target runner. Reports zero-accept reduction, avg-accept, estimated C_B (#98 launch model), tok/s.")
     parser.add_argument("--sweep-budgets", default="1,2,3", help="comma-separated candidate budgets for --pmin-sweep (must be in {1,2,3,5})")
     parser.add_argument("--sweep-pmins", default="0.0,0.5,0.65", help="comma-separated p-min thresholds for --pmin-sweep")

@@ -236,7 +236,7 @@ class NativeMtpChainProposer:
         _, self.final_residual_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, self.logits_buf = _empty_device((1, self.vocab), np.float32, self.buffers, runtime=self.runtime)
         block_count = lm_head_argmax_stage1_blocks(self.vocab, threads=256)
-        _, self.block_values_buf = _empty_device((block_count,), np.float32, self.buffers, runtime=self.runtime)
+        self.block_values_host, self.block_values_buf = _empty_device((block_count,), np.float32, self.buffers, runtime=self.runtime)
         _, self.block_indices_buf = _empty_device((block_count,), np.int64, self.buffers, runtime=self.runtime)
         self.out_index_host, self.out_index_buf = _empty_device((1,), np.int64, self.buffers, runtime=self.runtime)
         self.out_value_host, self.out_value_buf = _empty_device((1,), np.float32, self.buffers, runtime=self.runtime)
@@ -290,26 +290,42 @@ class NativeMtpChainProposer:
     def save_state(self, slot: int) -> NativeMtpStateSnapshot:
         if slot < 0 or slot >= self.max_mtp_tokens:
             raise ValueError("snapshot slot outside capacity")
-        self.runtime.memcpy(
+        self.runtime.memcpy_async(
             self.snapshot_hidden_buf.ptr + int(slot) * self.hidden * DType.BF16.itemsize,
             self.final_hidden_buf.ptr,
             self.hidden * DType.BF16.itemsize,
             HipMemcpyKind.DEVICE_TO_DEVICE,
+            0,
         )
         return NativeMtpStateSnapshot(slot=int(slot), cache_len=int(self.cache_len), position=int(self.position), current=self.current)
 
     def restore_state(self, snapshot: NativeMtpStateSnapshot) -> None:
         if snapshot.slot < 0 or snapshot.slot >= self.max_mtp_tokens:
             raise ValueError("snapshot slot outside capacity")
-        self.runtime.memcpy(
+        self.runtime.memcpy_async(
             self.final_hidden_buf.ptr,
             self.snapshot_hidden_buf.ptr + int(snapshot.slot) * self.hidden * DType.BF16.itemsize,
             self.hidden * DType.BF16.itemsize,
             HipMemcpyKind.DEVICE_TO_DEVICE,
+            0,
         )
         self.cache_len = int(snapshot.cache_len)
         self.position = int(snapshot.position)
         self.current = snapshot.current
+
+    def top1_prob_proxy(self, *, k: int = 8) -> float:
+        """Softmax weight of the current top-1 over the top-k lm-head block maxima.
+
+        Each lm-head stage-1 block covers a distinct vocab slice, so the top-k
+        block maxima are a superset proxy for the vocab top-k logits — the same
+        DFlash-style confidence proxy #100 used for per-position p-min draft
+        truncation, without a vocab-sized D2H.
+        """
+
+        copy_device_to_host(host_array_ptr(self.block_values_host), self.block_values_buf, self.block_values_host.nbytes, runtime=self.runtime)
+        vals = np.sort(self.block_values_host)[-int(k):].astype(np.float64)
+        exp = np.exp(vals - vals.max())
+        return float(exp[-1] / exp.sum())
 
     def advance(self, *, input_token: int, target_hidden_ptr: int, position: int) -> NativeMtpStepResult:
         if self.closed:
@@ -377,8 +393,8 @@ class NativeMtpChainProposer:
             threads=128,
             library=self.dflash_lib,
         )
-        self.runtime.memcpy(self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE)
-        self.runtime.memcpy(self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE)
+        self.runtime.memcpy_async(self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
+        self.runtime.memcpy_async(self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
         context_len = self.cache_len + 1
         dflash_gqa_attention_f32_bf16(self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr, self.attn_out_buf.ptr, 1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim, threads=128, library=self.dflash_lib)
         mtp_gate_mul_bf16(self.attn_out_buf.ptr, self.gate_buf.ptr, self.gated_buf.ptr, self.q_features, threads=256, library=self.mtp_lib)
@@ -446,9 +462,10 @@ class NativeMtpChainProposer:
             threads=256,
             library=self.lm_lib,
         )
+        # Blocking D2H of the argmax pair implies a stream sync; the explicit
+        # device_synchronize on top of it was pure host stall (#107 host-time trim).
         copy_device_to_host(host_array_ptr(self.out_index_host), self.out_index_buf, self.out_index_host.nbytes, runtime=self.runtime)
         copy_device_to_host(host_array_ptr(self.out_value_host), self.out_value_buf, self.out_value_host.nbytes, runtime=self.runtime)
-        self.runtime.device_synchronize()
         self.cache_len += 1
         self.position = int(position)
         self.current = NativeMtpStepResult(

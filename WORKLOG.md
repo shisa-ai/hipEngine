@@ -77868,3 +77868,18 @@ C_B 4.83->3.57, MTP/AR 0.49->0.67x, 55.95->73.24 tok/s. Biggest single C_B
 move. NOT break-even (need <=2.38): ~10 ms/cycle proposer/drafts+host loop
 remain. Next: graph the proposer, p-min 0.5 (#100), gated tree (#99).
 Artifact: 2026-06-10-hipengine-mtp-graph-replay-keyed-barrier-fix.json
+
+## 2026-06-11 — C_B grind: p_min on persistent path negative; proposer trims neutral; C_B floor 3.57
+
+After 6f431815 (graph replay exact, B=3 wall 32.2ms, MTP/AR 0.67x): tried the
+next stacks. (1) p_min=0.5 via lm-head block-maxima proxy (top1_prob_proxy)
+wired into persistent_device (smoke --draft-p-min): truncation must keep >=1
+draft and verify must stay FIXED rows=B+1 — rows alternation re-reserves
+verifier scratch shape, freeing buffers cached graphs hold (hang); mid-decode
+AR fallback ditto. With fixed-rows: exact, but NEGATIVE on quicksort: 34.3 vs
+32.2ms wall (proxy D2H ~2ms/cycle, truncation fires 1/13 cycles). Default off.
+(2) proposer host trims (memcpy_async snapshot/KV, drop device_synchronize):
+exact, neutral (32.2 -> 32.2). Drafting is GPU-busy (lm-head 248k argmax/draft),
+not sync-bound. Conclusion: C_B floor 3.57 holds; next gap is proposer compute
+(~6ms drafting + 3.9ms update) -> needs device-resident chain advance, fp16 lm
+head — campaign item, not today. Run E2E suite next.

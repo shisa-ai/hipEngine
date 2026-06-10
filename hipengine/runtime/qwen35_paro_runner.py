@@ -10325,6 +10325,11 @@ class Qwen35ParoResidentSession:
     def _invalidate_verify_graph_cache(self) -> None:
         """Destroy cached verifier graphs (their baked scratch pointers may dangle)."""
 
+        if not getattr(self, "_verify_graph_cache", None):
+            return
+        # A replay may still be in flight on the default stream; freeing the
+        # scratch the graph writes (caller does so right after) corrupts it.
+        self.runtime.device_synchronize()
         for entry in list(getattr(self, "_verify_graph_cache", {}).values()):
             try:
                 self.runtime.graph_exec_destroy(entry.graph_exec)
