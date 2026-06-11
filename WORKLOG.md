@@ -79420,3 +79420,34 @@ live-tree corrections:
   removal.
 - Multi-stream overlap remains high-upside but should wait until the reduced-DAG
   work lands; the direct MoE branch overlap spike already regressed wall time.
+
+## 2026-06-11 - MTP selected-GEMV/shared rotate audit closed from existing evidence
+
+Audited the external-review item "M13.B.1+B.2: fuse rotate into selected GEMV".
+This is not fresh next-push work in the live tree:
+
+- M13.B.1 already exposed the transposed selected-dual rotate+GEMV wrapper,
+  routed it behind `HIPENGINE_MOE_FUSED_ROTATE`, and measured exact AR. It
+  removed 40 rotate launches/pass, but regressed kernel time/pass
+  `17.32 -> 29.76 ms` and suite cycle cost `3.613 -> 3.658` because the kernel
+  repeats the rotation per `(out_pack,row)` block.
+- M13.B.2 already tested the shared-expert staged rotate+dual GEMV path behind
+  `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE`. It was exact, but the saved rotate
+  launch was offset by barrier-reset overhead, so net launch delta was zero and
+  kernel time regressed `17.315 -> 17.407 ms/pass`.
+- M13.B.3 / M14.fuse.1 already tried a staged selected gate/up variant behind
+  `HIPENGINE_SELECTED_MOE_STAGED_ROTATE`; it stayed exact but regressed kernel
+  time in verifier-window evidence (`15.344 -> 15.611 ms/pass`). The down-side
+  staged variant was later flipped default-off on the current graph-auto D32
+  suite because barrier/fill overhead made the unfused fallback faster.
+
+Decision: close the top-table selected-GEMV/shared rotate audit as no-hold, not
+next work. Updated `docs/MTP.md` to mark this row closed and fixed the stale
+M13.B.0 implementation-track status from "Pending" to the retained 2026-05-23
+write-through result. Updated `docs/REFACTOR.md` to list
+`HIPENGINE_MOE_FUSED_ROTATE`, `HIPENGINE_SELECTED_MOE_STAGED_ROTATE`, and
+`HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` as rejected runtime gates for future
+cleanup/demotion.
+
+Next actual speed target remains full-layer C-dispatcher / reduced-DAG batching
+for the non-MoE surround, then proposer graph capture and fill/memset cleanup.
