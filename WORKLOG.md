@@ -79489,3 +79489,64 @@ corrections:
 
 No new benchmark was run for this entry; this is a planning/status correction,
 not a performance claim.
+
+## 2026-06-11 - MTP proposer route-0 accumulator init promoted
+
+Implemented a small proposer launch-removal slice: the first MTP sidecar MoE
+route now initializes the FP32 `moe_accum` buffer inside
+`mtp_accumulate_route_bf16_to_f32` (`reset_output=True`) instead of launching a
+separate `runtime.memset_async` before the expert loop. The old memset path is
+available with `HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT=0` for bisection.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/mtp.py hipengine/speculative/mtp_native.py tests/test_mtp_input_fusion_kernel.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-proposer-route0-accum-init-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-route0-accum-init-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-route0-accum-init-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-route0-accum-init-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-route0-accum-init-on-9prompt-d32.json
+```
+
+Results:
+
+- Unit test passed and proves `reset_output=True` overwrites a nonzero
+  accumulator before the shared gate accumulation.
+- Quicksort smoke stayed exact with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- 9-prompt D32 opt-out/default A/B stayed exact `9/9` with identical accepted
+  lengths and active budgets.
+- Aggregate cycle wall was effectively flat but non-regressive:
+  `27.081246 -> 27.079143 ms/cycle`.
+- Proposal/update improved `1.96299 -> 1.95303 ms/cycle` (-0.00996 ms,
+  -0.51%). AR-normalized ratio moved down/noisy (`0.6865x -> 0.6840x`) because
+  the same-session AR control changed.
+
+Decision: retain default-on. This is not a headline speed row, but it removes a
+real proposer launch and moves the proposal/update window down. Logged in
+`benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/MTP.md`, and
+`docs/REFACTOR.md`.

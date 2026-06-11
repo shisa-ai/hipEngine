@@ -249,17 +249,28 @@ def mtp_accumulate_route_bf16_to_f32(
     elements: int,
     route_index: int,
     *,
+    reset_output: bool = False,
     threads: int = 256,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Accumulate ``routing[route_index] * src`` into an FP32 MoE accumulator."""
+    """Accumulate ``routing[route_index] * src`` into an FP32 MoE accumulator.
+
+    When ``reset_output`` is true, the kernel writes the scaled route directly
+    instead of reading the previous accumulator value.  The MTP proposer uses
+    this for route 0 to remove a standalone memset launch.
+    """
 
     _check_elements(elements, threads)
     if route_index < 0:
         raise ValueError("route_index must be non-negative")
-    _launch(_SYMBOL_ACCUM_ROUTE, [src_bf16_ptr, routing_f32_ptr, accum_f32_ptr, elements, route_index, threads, stream], library, runtime)
+    _launch(
+        _SYMBOL_ACCUM_ROUTE,
+        [src_bf16_ptr, routing_f32_ptr, accum_f32_ptr, elements, route_index, int(bool(reset_output)), threads, stream],
+        library,
+        runtime,
+    )
 
 
 def mtp_accumulate_sigmoid_gate_bf16_to_f32(

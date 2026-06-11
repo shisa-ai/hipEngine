@@ -94,6 +94,10 @@ def _pack_token_position_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION", True)
 
 
+def _route0_accum_init_enabled() -> bool:
+    return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT", True)
+
+
 def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic], buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> tuple[np.ndarray, DeviceBuffer]:
     host = np.zeros(shape, dtype=dtype)
     buf = malloc(host.nbytes, runtime=runtime)
@@ -526,7 +530,9 @@ class NativeMtpChainProposer:
         # Expert-indexed GEMVs read `topk_ids[route]` on-device, so the MoE
         # loop no longer forces a mid-pass router D2H sync. Host-visible
         # ids/values are only read when the caller needs diagnostic metadata.
-        self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, 0)
+        route0_init = _route0_accum_init_enabled()
+        if not route0_init:
+            self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, 0)
         for route in range(self.top_k):
             dflash_dense_bf16_to_bf16_expert(
                 self.moe_in_buf.ptr,
@@ -555,7 +561,16 @@ class NativeMtpChainProposer:
                 threads=128,
                 library=self.dflash_lib,
             )
-            mtp_accumulate_route_bf16_to_f32(self.expert_down_buf.ptr, self.routing_buf.ptr, self.moe_accum_buf.ptr, self.hidden, route, threads=256, library=self.mtp_lib)
+            mtp_accumulate_route_bf16_to_f32(
+                self.expert_down_buf.ptr,
+                self.routing_buf.ptr,
+                self.moe_accum_buf.ptr,
+                self.hidden,
+                route,
+                reset_output=route0_init and route == 0,
+                threads=256,
+                library=self.mtp_lib,
+            )
         dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert_gate.weight"].ptr, self.shared_gate_buf.ptr, 1, self.hidden, 1, threads=128, library=self.dflash_lib)
         dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, self.shared_gate_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
         dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, self.shared_up_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)

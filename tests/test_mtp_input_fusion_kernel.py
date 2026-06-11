@@ -128,7 +128,7 @@ def test_mtp_decoder_helper_kernels_match_cpu_reference() -> None:
     gated_bits = np.zeros_like(attn_bits)
     topk_values = np.array([[2.0, 1.0, -1.0]], dtype=np.float32)
     routing = np.zeros_like(topk_values)
-    accum = np.zeros((1, 4), dtype=np.float32)
+    accum = np.full((1, 4), 7.0, dtype=np.float32)
     finalized = np.zeros((1, 4), dtype=np.uint16)
 
     arrays = [
@@ -171,7 +171,16 @@ def test_mtp_decoder_helper_kernels_match_cpu_reference() -> None:
         mtp_split_q_gate_f32_bf16(buffers[6].ptr, buffers[7].ptr, buffers[8].ptr, 1, 2, 2, threads=64, library=library)
         mtp_gate_mul_bf16(buffers[9].ptr, buffers[8].ptr, buffers[10].ptr, 4, threads=64, library=library)
         mtp_softmax_topk_f32(buffers[11].ptr, buffers[12].ptr, 1, 3, library=library)
-        mtp_accumulate_route_bf16_to_f32(buffers[10].ptr, buffers[12].ptr, buffers[13].ptr, 4, 0, threads=64, library=library)
+        mtp_accumulate_route_bf16_to_f32(
+            buffers[10].ptr,
+            buffers[12].ptr,
+            buffers[13].ptr,
+            4,
+            0,
+            reset_output=True,
+            threads=64,
+            library=library,
+        )
         mtp_accumulate_sigmoid_gate_bf16_to_f32(buffers[10].ptr, buffers[6].ptr, buffers[13].ptr, 4, threads=64, library=library)
         mtp_finalize_f32_to_bf16(buffers[13].ptr, buffers[14].ptr, 4, threads=64, library=library)
         for arr, buf in ((norm_bits, buffers[3]), (add_norm_bits, buffers[4]), (residual_out_bits, buffers[5]), (query, buffers[7]), (gate, buffers[8]), (gated_bits, buffers[10]), (routing, buffers[12]), (accum, buffers[13]), (finalized, buffers[14])):

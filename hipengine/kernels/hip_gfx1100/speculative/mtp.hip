@@ -240,11 +240,13 @@ __global__ void mtp_accumulate_route_bf16_to_f32_kernel(
     const float* __restrict__ routing,
     float* __restrict__ accum,
     int64_t elements,
-    int64_t route_index) {
+    int64_t route_index,
+    int64_t reset_output) {
   const float scale = routing[route_index];
   for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < elements;
        idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
-    accum[idx] += scale * bf16_bits_to_float(src[idx]);
+    const float value = scale * bf16_bits_to_float(src[idx]);
+    accum[idx] = reset_output ? value : accum[idx] + value;
   }
 }
 
@@ -446,6 +448,7 @@ extern "C" int hipengine_mtp_accumulate_route_bf16_to_f32(
     float* accum,
     int64_t elements,
     int64_t route_index,
+    int64_t reset_output,
     int64_t threads,
     hipStream_t stream) {
   if (elements <= 0 || route_index < 0 || !valid_threads(threads)) {
@@ -462,7 +465,8 @@ extern "C" int hipengine_mtp_accumulate_route_bf16_to_f32(
       routing,
       accum,
       elements,
-      route_index);
+      route_index,
+      reset_output);
   return static_cast<int>(hipGetLastError());
 }
 
