@@ -1,0 +1,860 @@
+{
+  "ar": {
+    "decode_seconds": 0.2854933829512447,
+    "decode_tok_s": 112.08666088581401,
+    "prefill_seconds": 0.7474717660807073,
+    "seconds": 22.26248931302689,
+    "tok_s": 1.4373954120788823
+  },
+  "ar_tokens": [
+    3841,
+    6646,
+    17145,
+    8,
+    478,
+    5956,
+    478,
+    3841,
+    6646,
+    26806,
+    8,
+    271,
+    3535,
+    283,
+    498,
+    19,
+    22,
+    11,
+    220,
+    24,
+    20,
+    11,
+    220,
+    23,
+    23,
+    11,
+    220,
+    22,
+    18,
+    11,
+    220,
+    17
+  ],
+  "candidate_budget": 3,
+  "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. persistent_device keeps MTP weights/cache resident, but artifacts remain diagnostic until acceptance and speed gates pass.",
+  "decode_tokens": 32,
+  "exact_ar_match": true,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "mtp": {
+    "acceptance_rate": 0.46153846153846156,
+    "accepted_lengths": [
+      3,
+      3,
+      2,
+      0,
+      2,
+      0,
+      0,
+      1,
+      3,
+      0,
+      2,
+      0,
+      2
+    ],
+    "active_budgets": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "chain_attn_mode": "batched",
+    "cycle_marker_ns": [
+      {
+        "cycle": 1,
+        "end_perf_ns": 1454105485498442,
+        "start_perf_ns": 1454105415117169
+      },
+      {
+        "cycle": 2,
+        "end_perf_ns": 1454105509909695,
+        "start_perf_ns": 1454105485505042
+      },
+      {
+        "cycle": 3,
+        "end_perf_ns": 1454105532817429,
+        "start_perf_ns": 1454105509913075
+      },
+      {
+        "cycle": 4,
+        "end_perf_ns": 1454105555529210,
+        "start_perf_ns": 1454105532820959
+      },
+      {
+        "cycle": 5,
+        "end_perf_ns": 1454105578064798,
+        "start_perf_ns": 1454105555532940
+      },
+      {
+        "cycle": 6,
+        "end_perf_ns": 1454105600508105,
+        "start_perf_ns": 1454105578067718
+      },
+      {
+        "cycle": 7,
+        "end_perf_ns": 1454105623043844,
+        "start_perf_ns": 1454105600510986
+      },
+      {
+        "cycle": 8,
+        "end_perf_ns": 1454105645559222,
+        "start_perf_ns": 1454105623046654
+      },
+      {
+        "cycle": 9,
+        "end_perf_ns": 1454105669796194,
+        "start_perf_ns": 1454105645561952
+      },
+      {
+        "cycle": 10,
+        "end_perf_ns": 1454105692281261,
+        "start_perf_ns": 1454105669798934
+      },
+      {
+        "cycle": 11,
+        "end_perf_ns": 1454105714982722,
+        "start_perf_ns": 1454105692283961
+      },
+      {
+        "cycle": 12,
+        "end_perf_ns": 1454105737708123,
+        "start_perf_ns": 1454105714985522
+      },
+      {
+        "cycle": 13,
+        "end_perf_ns": 1454105760517276,
+        "start_perf_ns": 1454105737710903
+      }
+    ],
+    "decode_seconds": 0.36477715289220214,
+    "decode_tok_s": 87.72479237332209,
+    "note": "Persistent native MTP provider: weights/cache resident and target hidden stays on device; selected expert ids are still host-orchestrated.",
+    "proposal_decode_update_seconds": 0.03021232085302472,
+    "proposal_impl": "persistent_device",
+    "proposal_prefill_seconds": 0.1478766300715506,
+    "proposal_trace_sample": [
+      {
+        "accepted": 3,
+        "bonus_token": 478,
+        "committed_tokens": [
+          3841,
+          6646,
+          17145,
+          8
+        ],
+        "cycle": 1,
+        "draft_candidates": [
+          6646,
+          17145,
+          8
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 92,
+        "root_position": 90,
+        "root_token": 3841,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 1,
+          "replayed": true,
+          "status": "captured_validated_miss",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 3,
+        "bonus_token": 6646,
+        "committed_tokens": [
+          478,
+          5956,
+          478,
+          3841
+        ],
+        "cycle": 2,
+        "draft_candidates": [
+          5956,
+          478,
+          3841
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 96,
+        "root_position": 94,
+        "root_token": 478,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 2,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 2,
+        "bonus_token": 271,
+        "committed_tokens": [
+          6646,
+          26806,
+          8
+        ],
+        "cycle": 3,
+        "draft_candidates": [
+          26806,
+          8,
+          198
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 100,
+        "root_position": 98,
+        "root_token": 6646,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 3,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 0,
+        "bonus_token": 3535,
+        "committed_tokens": [
+          271
+        ],
+        "cycle": 4,
+        "draft_candidates": [
+          262,
+          460,
+          2047
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 103,
+        "root_position": 101,
+        "root_token": 271,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 4,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 2,
+        "bonus_token": 19,
+        "committed_tokens": [
+          3535,
+          283,
+          498
+        ],
+        "cycle": 5,
+        "draft_candidates": [
+          283,
+          498,
+          87
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 104,
+        "root_position": 102,
+        "root_token": 3535,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 5,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 0,
+        "bonus_token": 22,
+        "committed_tokens": [
+          19
+        ],
+        "cycle": 6,
+        "draft_candidates": [
+          348,
+          830,
+          364
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 107,
+        "root_position": 105,
+        "root_token": 19,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 6,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 0,
+        "bonus_token": 11,
+        "committed_tokens": [
+          22
+        ],
+        "cycle": 7,
+        "draft_candidates": [
+          20,
+          25,
+          220
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 108,
+        "root_position": 106,
+        "root_token": 22,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 7,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 1,
+        "bonus_token": 24,
+        "committed_tokens": [
+          11,
+          220
+        ],
+        "cycle": 8,
+        "draft_candidates": [
+          220,
+          19,
+          22
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 109,
+        "root_position": 107,
+        "root_token": 11,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 8,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 3,
+        "bonus_token": 23,
+        "committed_tokens": [
+          24,
+          20,
+          11,
+          220
+        ],
+        "cycle": 9,
+        "draft_candidates": [
+          20,
+          11,
+          220
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 111,
+        "root_position": 109,
+        "root_token": 24,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 9,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 0,
+        "bonus_token": 23,
+        "committed_tokens": [
+          23
+        ],
+        "cycle": 10,
+        "draft_candidates": [
+          11,
+          220,
+          16
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 115,
+        "root_position": 113,
+        "root_token": 23,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 10,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 2,
+        "bonus_token": 22,
+        "committed_tokens": [
+          23,
+          11,
+          220
+        ],
+        "cycle": 11,
+        "draft_candidates": [
+          11,
+          220,
+          17
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 116,
+        "root_position": 114,
+        "root_token": 23,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 11,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 0,
+        "bonus_token": 18,
+        "committed_tokens": [
+          22
+        ],
+        "cycle": 12,
+        "draft_candidates": [
+          17,
+          11,
+          220
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 119,
+        "root_position": 117,
+        "root_token": 22,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 12,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      },
+      {
+        "accepted": 2,
+        "bonus_token": 17,
+        "committed_tokens": [
+          18,
+          11,
+          220
+        ],
+        "cycle": 13,
+        "draft_candidates": [
+          11,
+          220,
+          23
+        ],
+        "gpu_accept_match_cpu": true,
+        "proposer_cache_len_before_update": 120,
+        "root_position": 118,
+        "root_token": 18,
+        "target_parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "target_top1_path": [],
+        "target_top1_values": [],
+        "verify_graph": {
+          "bucket_key": {
+            "base_slot": 0,
+            "capture_width": 0,
+            "chain_attn_mode": "batched",
+            "linear_attn_mode": "chain_tloop",
+            "rows": 4
+          },
+          "chain_attn_mode": "batched",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "auto",
+          "replay_count": 13,
+          "replayed": true,
+          "status": "replayed",
+          "validation_passed": true
+        }
+      }
+    ],
+    "rocprof_window": {
+      "enabled": false,
+      "profiled_cycle_range": null,
+      "profiled_cycle_seconds": null,
+      "verify_cycles": 0,
+      "warmup_cycles": 0
+    },
+    "seconds": 23.890796429943293,
+    "tok_s": 1.339427929656339,
+    "verify_seconds": 0.2696458217687905
+  },
+  "mtp_tokens": [
+    3841,
+    6646,
+    17145,
+    8,
+    478,
+    5956,
+    478,
+    3841,
+    6646,
+    26806,
+    8,
+    271,
+    3535,
+    283,
+    498,
+    19,
+    22,
+    11,
+    220,
+    24,
+    20,
+    11,
+    220,
+    23,
+    23,
+    11,
+    220,
+    22,
+    18,
+    11,
+    220,
+    17
+  ],
+  "performance_claim": false,
+  "prompt_tokens": [
+    727,
+    3841,
+    6646,
+    19490,
+    1590,
+    198,
+    262,
+    4071,
+    5423,
+    264,
+    10300,
+    2880,
+    314,
+    2663,
+    71483,
+    198,
+    262,
+    413,
+    2343,
+    19490,
+    8,
+    2564,
+    220,
+    16,
+    25,
+    198,
+    285,
+    460,
+    2663,
+    198,
+    262,
+    25212,
+    283,
+    2663,
+    23915,
+    19490,
+    8,
+    434,
+    220,
+    17,
+    60,
+    198,
+    262,
+    2047,
+    283,
+    498,
+    87,
+    364,
+    830,
+    303,
+    2663,
+    413,
+    830,
+    361,
+    25212,
+    60,
+    198,
+    262,
+    5956,
+    283,
+    498,
+    87,
+    364,
+    830,
+    303,
+    2663,
+    413,
+    830,
+    606,
+    25212,
+    60,
+    198,
+    262,
+    1245,
+    283,
+    498,
+    87,
+    364,
+    830,
+    303,
+    2663,
+    413,
+    830,
+    835,
+    25212,
+    60,
+    198,
+    262,
+    460,
+    220
+  ],
+  "proposal_impl": "persistent_device",
+  "status": "passed"
+}

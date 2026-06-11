@@ -41,7 +41,7 @@ command, hardware, workload shape, and correctness gate.
 | P0 | Re-artifact locked baseline | 0 ms | Rerun exact B=3 chain graph-auto + cap32768 + device-expert-dispatch config and emit a compact artifact. | Exact same-session AR; ratio within noise of `0.758x`; wall near `27.8 ms`. | **Done 2026-06-11.** Fresh audit row: `84.314` vs `111.769 tok/s` = `0.754x`; accepted lengths unchanged. Keep `0.758x / 27.8 ms` as the sprint's best locked baseline. |
 | P0 | Current verify profile refresh | Diagnostic | Run `scripts/mtp_verifier_rocprof.py` on the locked config with callsite/family rollup. | Family split reconciles with `22.0 ms` verify wall; no unexpected fallback kernels. | **Done 2026-06-11.** Post-warmup verify profile: `19.73 ms/pass` host window, `15.33 ms/pass` kernel, `972` calls/pass. |
 | P1 | Finish M16.4 dual output-tiling | -0.46 ms/pass kernel / -0.57 ms/pass host measured; more only if split-output coverage broadens | Add a split-output output-column-tiled dual W4 kernel for prefill-style ABIs, then route only exact-suite-safe sites. | Byte-exact W4 gates; same-session exact B=3 smoke; rocprof shows `w4_dual_prefill_smallbatch` and remaining single-prefill shrink. | **Banked diagnostic 2026-06-11, default-off.** Split-output kernel is byte-exact and C-dispatch-routed for linear-attn shared gate/up under `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1`. Quicksort exact; `w4_dual_prefill_smallbatch` `0.917 -> 0 ms/pass`, replaced by 30 output-tiled dual calls at `0.438 ms/pass`; net steady profile `15.33 -> 14.87 ms/pass` kernel and `19.73 -> 19.16 ms/pass` host. Broader exact-suite gate needed before default-on. |
-| P1 | Remove glue launches / copy-cast floor | -1.5 to -2.2 ms | Fuse or alias producer outputs into the next RMSNorm/rotate/GEMV inputs; eliminate pure `copyBuffer`/format-cast nodes from verifier hot path. | RED layout/lifetime tests; exact B=3 smoke; launch count and cycle wall both drop. | Still the highest total reach: current locked profile is `972` calls/pass, including `190` rotate launches/pass plus `125` "other" small launches/pass. |
+| P1 | Remove glue launches / copy-cast floor | -1.5 to -2.2 ms full target; -0.27 ms/pass host measured for first slice | Fuse or alias producer outputs into the next RMSNorm/rotate/GEMV inputs; eliminate pure `copyBuffer`/format-cast nodes from verifier hot path. | RED layout/lifetime tests; exact B=3 smoke; launch count and cycle wall both drop. | **First slice banked diagnostic 2026-06-11, default-off.** Linear-attn out-proj `f32_to_fp16 + paro_rotate1` fusion is byte-exact vs the old chain and removes 30 launches/pass (`972 -> 942`), but kernel time is neutral (`15.33 -> 15.31 ms/pass`) and host only `19.73 -> 19.45 ms/pass`. Stacked with M16.4 split-output: exact quicksort, `87.725 tok/s` (`0.783x`), host `19.02 ms/pass`, kernel `14.86 ms/pass`, calls `942`. Continue with higher-reach glue: capture-safe barrier/fill elimination, rotate launch consolidation, and overlap. |
 | P1 | Proposer-side rotate-into-RMSNorm fusion | -0.5 to -1 ms | Implement producer-side fusion where it reduces launches without repeating full rotation per output tile. | Bit-exact proposal candidates; no acceptance drift; net proposer/draft wall decreases. | Avoid the prior consumer-side rotate trap that regressed occupancy. |
 | P2 | Multi-stream overlap spike | -1 to -3 ms if real | Prototype verifier-layer dispatch on 2/4 streams with event dependencies around independent W4/MoE/GDN work. | Microbench shows measurable overlap before runtime integration; exact smoke after integration. | W7900 has idle ACEs, but dependency shape may cap useful overlap. |
 | P2 | Device-resident proposer chain advance | -0.5 to -1.5 ms | Use the graph-safe device expert dispatch to keep proposer update/advance in device-resident batches. | Candidate token sequence identical to baseline; cycle wall improves. | p_min and sync trims were neutral; only do work that removes real GPU/launch cost. |
@@ -136,6 +136,48 @@ Decision: this is useful banked headroom, not the break-even move. If the
 break-even gap by roughly `0.5-0.9 ms/cycle`; otherwise keep it as a
 quicksort-only diagnostic. The next higher-yield work remains glue launch
 removal and multi-stream overlap.
+
+### P1 Linear Out Cast+Rotate Slice (2026-06-11)
+
+Artifacts:
+
+- Exact smoke:
+  [`2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-smoke.json`](../benchmarks/results/2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-smoke.json)
+- Verifier profile:
+  [`2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-rocprof.json`](../benchmarks/results/2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-rocprof.json)
+- Stacked with M16.4:
+  [`smoke`](../benchmarks/results/2026-06-11-hipengine-mtp-p1-stacked-split-output-cast-rotate-smoke.json),
+  [`rocprof`](../benchmarks/results/2026-06-11-hipengine-mtp-p1-stacked-split-output-cast-rotate-rocprof.json)
+
+Implementation:
+
+- Added `paro_rotate1_f32_to_fp16`, a single-output PARO rotate kernel that first
+  rounds each FP32 input element to FP16 exactly like `f32_to_fp16`, then runs the
+  same FP16 rotate body. The RED gate compares raw FP16 output bits against
+  `f32_to_fp16 + paro_rotate1_fp16` for rows `{1,2,4}`.
+- Routed only `project_linear_attention_out_fp16(..., tokens>1)` through this
+  kernel when `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1`. AR `tokens=1` keeps
+  the old `cast -> rotate` chain.
+
+Measurement:
+
+- Isolated exact quicksort smoke: AR `110.761 tok/s`, MTP `86.045 tok/s`
+  (`0.777x`), accepted lengths unchanged. This smoke was run after rebuilding
+  the touched rotate library, so the retained decision uses the profile deltas.
+- Isolated post-warmup profile (`11` verifier passes): calls/pass `972 -> 942`,
+  host `19.73 -> 19.45 ms/pass`, kernel `15.33 -> 15.31 ms/pass`.
+  The removed `f32_to_fp16` launch was `30 calls/pass` at `0.050 ms/pass`; the
+  fused rotate costs `30 calls/pass` at `0.158 ms/pass`, so kernel-side saving is
+  nearly neutral and the win is mostly host launch count.
+- Stacked with M16.4 split-output: exact quicksort smoke AR `112.087 tok/s`,
+  MTP `87.725 tok/s` (`0.783x`), verifier `269.6 ms` over 13 cycles. Profile
+  host `19.02 ms/pass`, kernel `14.86 ms/pass`, calls/pass `942`.
+
+Decision: keep default-off. This is a clean launch-count cleanup and useful
+evidence for the glue bucket, but it is not a major break-even lever. The next
+P1 work should target the larger capture-safe barrier/fill bucket, remaining
+rotate consolidation that does not repeat rotation per output tile, or a P2
+overlap/proposer win.
 
 ## Thesis
 

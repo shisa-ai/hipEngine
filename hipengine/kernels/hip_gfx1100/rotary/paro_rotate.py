@@ -16,6 +16,7 @@ _SYMBOL_ROTATE1 = "hipengine_paro_rotate1_bf16"
 _SYMBOL_ROTATE2 = "hipengine_paro_rotate2_bf16"
 _SYMBOL_ROTATE3 = "hipengine_paro_rotate3_bf16"
 _SYMBOL_ROTATE1_FP16 = "hipengine_paro_rotate1_fp16"
+_SYMBOL_ROTATE1_F32_TO_FP16 = "hipengine_paro_rotate1_f32_to_fp16"
 _SYMBOL_ROTATE2_FP16 = "hipengine_paro_rotate2_fp16"
 _SYMBOL_ROTATE3_FP16 = "hipengine_paro_rotate3_fp16"
 _SYMBOL_ROTATE1_BF16_GATE_FP16 = "hipengine_paro_rotate1_bf16_gate_fp16"
@@ -220,6 +221,32 @@ def paro_rotate1_fp16(
     _check_launch(runtime, err)
 
 
+def paro_rotate1_f32_to_fp16(
+    x_ptr: int,
+    out_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    scales_ptr: int,
+    tokens: int,
+    hidden: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Round FP32 input to FP16, then launch PARO rotate1 into FP16 output."""
+
+    _check_rotate_shape(tokens, hidden, group_size, krot)
+    library = library or build_paro_rotate(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE1_F32_TO_FP16, _ARGTYPES_ROTATE1, ctypes.c_int)
+    err = fn(x_ptr, out_ptr, pairs_ptr, theta_ptr, scales_ptr,
+             tokens, hidden, group_size, krot, stream)
+    _check_launch(runtime, err)
+
+
 def paro_rotate1_bf16_gate_fp16(
     x_ptr: int,
     gate_ptr: int,
@@ -377,6 +404,11 @@ def register_paro_rotate_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paro_rotate1", "w4_paro", "fp16"),
         paro_rotate1_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paro_rotate1", "w4_paro", "f32_to_fp16"),
+        paro_rotate1_f32_to_fp16,
         replace=replace,
     )
     register(

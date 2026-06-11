@@ -4,6 +4,7 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.rotary import (
     paro_rotate1_bf16_gate_fp16,
+    paro_rotate1_f32_to_fp16,
     paro_rotate1_fp16,
     paro_rotate2_bf16,
     paro_rotate2_fp16,
@@ -33,6 +34,10 @@ def test_paro_rotate_registers_pairwise_variants() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="paro_rotate1", quant="w4_paro", variant="fp16")
         is paro_rotate1_fp16
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="paro_rotate1", quant="w4_paro", variant="f32_to_fp16")
+        is paro_rotate1_f32_to_fp16
     )
     assert (
         resolve(
@@ -81,6 +86,8 @@ def test_paro_rotate_wrappers_validate_before_gpu_load() -> None:
         paro_rotate3_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 8, 8, -1)
     with pytest.raises(ValueError, match="tokens must be positive"):
         paro_rotate1_fp16(0, 0, 0, 0, 0, 0, 8, 8, 1)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        paro_rotate1_f32_to_fp16(0, 0, 0, 0, 0, 0, 8, 8, 1)
     with pytest.raises(ValueError, match="tokens must be positive"):
         paro_rotate1_bf16_gate_fp16(0, 0, 0, 0, 0, 0, 0, 8, 8, 1)
     with pytest.raises(ValueError, match="group_size must be even"):

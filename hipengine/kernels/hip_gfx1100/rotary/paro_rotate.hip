@@ -103,6 +103,57 @@ __global__ void paro_rotate1_kernel(
   out[row_base + col1] = float_to_scalar<scalar_t>(buf[lane + half_group]);
 }
 
+__global__ void paro_rotate1_f32_to_fp16_kernel(
+    const float* __restrict__ x,
+    half_t* __restrict__ out,
+    const int16_t* __restrict__ pairs,
+    const half_t* __restrict__ theta,
+    const half_t* __restrict__ scales,
+    int64_t tokens,
+    int64_t hidden,
+    int group_size,
+    int krot) {
+  const int row = blockIdx.x;
+  const int group = blockIdx.y;
+  const int lane = threadIdx.x;
+  const int half_group = group_size / 2;
+  extern __shared__ float buf[];
+
+  if (row >= tokens || lane >= half_group) {
+    return;
+  }
+
+  const int base = group * group_size;
+  const int col0 = base + lane;
+  const int col1 = col0 + half_group;
+  const int64_t row_base = static_cast<int64_t>(row) * hidden;
+
+  const half_t h0 = static_cast<half_t>(x[row_base + col0]);
+  const half_t h1 = static_cast<half_t>(x[row_base + col1]);
+  float v0 = static_cast<float>(h0) * static_cast<float>(scales[col0]);
+  float v1 = static_cast<float>(h1) * static_cast<float>(scales[col1]);
+  buf[lane] = v0;
+  buf[lane + half_group] = v1;
+  __syncthreads();
+
+  for (int r = 0; r < krot; ++r) {
+    const int pair_base = r * static_cast<int>(hidden) + base + 2 * lane;
+    const int i = static_cast<int>(pairs[pair_base + 0]);
+    const int j = static_cast<int>(pairs[pair_base + 1]);
+    const float angle = static_cast<float>(theta[r * (hidden / 2) + group * half_group + lane]);
+    float s, c;
+    sincosf(angle, &s, &c);
+    const float xi = buf[i];
+    const float xj = buf[j];
+    buf[i] = fmaf(xj, s, xi * c);
+    buf[j] = fmaf(xi, -s, xj * c);
+    __syncthreads();
+  }
+
+  out[row_base + col0] = static_cast<half_t>(buf[lane]);
+  out[row_base + col1] = static_cast<half_t>(buf[lane + half_group]);
+}
+
 __global__ void paro_rotate1_bf16_gate_fp16_kernel(
     const uint16_t* __restrict__ x,
     const half_t* __restrict__ gate,
@@ -565,6 +616,38 @@ extern "C" int hipengine_paro_rotate1_fp16(
   }
   hipLaunchKernelGGL(
       (paro_rotate1_kernel<half_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size)),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      x,
+      out,
+      pairs,
+      theta,
+      scales,
+      tokens,
+      hidden,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_rotate1_f32_to_fp16(
+    const float* x,
+    half_t* out,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* scales,
+    int64_t tokens,
+    int64_t hidden,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (!valid_rotate_shape(tokens, hidden, group_size, krot)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      paro_rotate1_f32_to_fp16_kernel,
       dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size)),
       dim3(static_cast<unsigned int>(group_size / 2)),
       static_cast<unsigned int>(group_size * sizeof(float)),

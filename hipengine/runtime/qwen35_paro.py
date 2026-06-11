@@ -156,6 +156,7 @@ from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
     paro_rmsnorm_rotate2_fp16,
     paro_rotate1_bf16,
     paro_rotate1_bf16_gate_fp16,
+    paro_rotate1_f32_to_fp16,
     paro_rotate1_fp16,
     paro_rotate2_bf16,
     paro_rotate2_fp16,
@@ -6629,29 +6630,45 @@ class Qwen35ParoDecodeState:
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn.out_proj"
         width = scratch.recurrent_out.shape[-1]
-        f32_to_fp16(
-            scratch.recurrent_out.ptr,
-            scratch.recurrent_bf16.ptr,
-            tokens * width,
-            stream=stream,
-            library=_library_for(library, "cast"),
-            runtime=self.runtime,
-        )
         pairs = self.tensor(f"{prefix}.pairs")
-        paro_rotate1_fp16(
-            scratch.recurrent_bf16.ptr,
-            scratch.out_rot.ptr,
-            pairs.ptr,
-            self.tensor(f"{prefix}.theta").ptr,
-            self.tensor(f"{prefix}.channel_scales").ptr,
-            tokens,
-            width,
-            group_size,
-            _rotation_krot(pairs),
-            stream=stream,
-            library=_library_for(library, "rotate"),
-            runtime=self.runtime,
-        )
+        if _linear_out_cast_rotate_fused_enabled(tokens):
+            paro_rotate1_f32_to_fp16(
+                scratch.recurrent_out.ptr,
+                scratch.out_rot.ptr,
+                pairs.ptr,
+                self.tensor(f"{prefix}.theta").ptr,
+                self.tensor(f"{prefix}.channel_scales").ptr,
+                tokens,
+                width,
+                group_size,
+                _rotation_krot(pairs),
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+        else:
+            f32_to_fp16(
+                scratch.recurrent_out.ptr,
+                scratch.recurrent_bf16.ptr,
+                tokens * width,
+                stream=stream,
+                library=_library_for(library, "cast"),
+                runtime=self.runtime,
+            )
+            paro_rotate1_fp16(
+                scratch.recurrent_bf16.ptr,
+                scratch.out_rot.ptr,
+                pairs.ptr,
+                self.tensor(f"{prefix}.theta").ptr,
+                self.tensor(f"{prefix}.channel_scales").ptr,
+                tokens,
+                width,
+                group_size,
+                _rotation_krot(pairs),
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
         self.project_pack8_fp16(
             scratch.out_rot,
             scratch.out_proj,
@@ -10928,6 +10945,12 @@ def _fused_rmsnorm_rotate_enabled() -> bool:
     """
 
     return _env_enabled("HIPENGINE_FUSED_RMSNORM_ROTATE", default=False)
+
+
+def _linear_out_cast_rotate_fused_enabled(tokens: int) -> bool:
+    """Fuse verifier linear-attention out-proj FP32->FP16 cast into PARO rotate1."""
+
+    return int(tokens) > 1 and _env_flag("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", False)
 
 
 def _fused_rmsnorm_rotate2_shape_ok(tokens: int, hidden: int, group_size: int) -> bool:

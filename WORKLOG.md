@@ -78115,3 +78115,100 @@ output-tiled dual path, but the verifier input fragility history means it still
 needs the 9-prompt exact suite before default-on. Even if promoted, this only
 shaves roughly `0.5-0.9 ms/cycle`; break-even still needs glue launch removal
 and at least one P2 overlap/proposer win.
+
+## 2026-06-11 — P1 glue slice: linear out cast+rotate fusion is exact but small
+
+Implemented an opt-in verifier launch cleanup for the linear-attention out-proj
+path:
+
+- Added `paro_rotate1_f32_to_fp16` in
+  `hipengine/kernels/hip_gfx1100/rotary/paro_rotate.{hip,py}`. The kernel first
+  casts each FP32 input element to FP16 exactly like `f32_to_fp16`, then runs the
+  same FP16 PARO rotate body, writing FP16 output.
+- Exported/registered the wrapper as `KernelKey("hip_gfx1100", "paro_rotate1",
+  "w4_paro", "f32_to_fp16")`.
+- Routed `Qwen35ParoDecodeState.project_linear_attention_out_fp16` through the
+  fused kernel only for `tokens > 1` and only when
+  `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1`. Default remains the old
+  `f32_to_fp16 -> paro_rotate1_fp16` chain; AR `tokens=1` is untouched.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/kernels/hip_gfx1100/rotary/paro_rotate.py hipengine/kernels/hip_gfx1100/rotary/__init__.py tests/test_paro_rotate_plan.py tests/test_qwen35_decode_state.py tests/test_paro_rotate_f32_to_fp16.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_rotate_plan.py tests/test_qwen35_decode_state.py -k "paro_rotate or linear_attention"
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_rotate_f32_to_fp16.py
+
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Results: py_compile passed; targeted pytest `13 passed`; raw-bit fused-vs-chain
+GPU test `3 passed`; lineage reported only the known parent DRIFT entries.
+
+Exact smoke (isolated gate):
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json benchmarks/results/2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-smoke.json
+```
+
+Result: exact same-session AR, accepted lengths unchanged
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`; AR `110.761 tok/s`, MTP `86.045 tok/s`
+(`0.777x`). The process included a touched rotate-library rebuild, so the
+decision uses the profile deltas rather than the cold total wall.
+
+Profile (isolated gate):
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-p1-linear-cast-rotate-fused-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-rocprof.json
+```
+
+Result: exact smoke under profiler, `11` verifier passes, calls/pass
+`972 -> 942`, host `19.73 -> 19.45 ms/pass`, kernel `15.33 -> 15.31 ms/pass`.
+The old `f32_to_fp16` launch was `30 calls/pass` at `0.050 ms/pass`; the new
+fused rotate kernel is `30 calls/pass` at `0.158 ms/pass`, so kernel time is
+effectively neutral and the saving is mostly host launch overhead.
+
+Stacked with M16.4 split-output:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1 HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json benchmarks/results/2026-06-11-hipengine-mtp-p1-stacked-split-output-cast-rotate-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1 HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-p1-stacked-split-output-cast-rotate-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-p1-stacked-split-output-cast-rotate-rocprof.json
+```
+
+Result: exact quicksort smoke, AR `112.087 tok/s`, MTP `87.725 tok/s`
+(`0.783x`), verifier `269.6 ms` over 13 cycles. Stacked profile:
+host `19.02 ms/pass`, kernel `14.86 ms/pass`, calls/pass `942`.
+
+Decision: bank as default-off diagnostic. This is a clean launch-count cleanup
+but too small to move break-even by itself. The next P1 targets should be the
+larger capture-safe barrier/fill bucket, remaining rotate consolidation that
+does not repeat rotations per output tile, or a P2 overlap/proposer win.
