@@ -78036,3 +78036,82 @@ dual-prefill slice is useful but small. `docs/MTP.md` now records the P0 refresh
 and updates the next-push table: dual output tiling needs a split-output
 output-tiled kernel, while the broader sprint still hinges on launch/glue
 reduction and one P2-class overlap/proposer win.
+
+## 2026-06-11 — M16.4 split-output dual output-tiled W4: banked diagnostic, default-off
+
+Implemented the M16.4 split-output follow-up for the remaining linear-attention
+shared gate/up W4 prefill slice:
+
+- Added `gemv_awq_dual_pack8_output_tiled_split_transposed_fp16` in
+  `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.{hip,py}`. It reuses the
+  existing output-column-tiled dual GEMV body but writes separate gate/up output
+  buffers, matching the `awq_fusedw4_prefill_dual_fp16` ABI used by the verifier
+  C dispatcher.
+- Exported the wrapper from `hipengine/kernels/hip_gfx1100/quant/__init__.py`.
+- Added byte-exact RED coverage in `tests/test_paro_awq_output_tiled_gemv.py`:
+  split-output fp16 rows `{2,4,8}` across the existing dual shapes and thread
+  choices compare byte-for-byte against slices of the packed output-tiled dual
+  kernel.
+- Routed `hipengine/kernels/hip_gfx1100/dispatch/moe_c1_dispatch.hip` through
+  the split-output symbol for linear-attention shared gate/up only when
+  `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1` and `tokens in {2,4,8}`.
+  The runtime function-pointer table leaves the pointer null by default, so the
+  existing WMMA prefill path remains default.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/moe_c1_dispatch.py hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py hipengine/runtime/qwen35_paro.py hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_output_tiled_gemv.py -k "dual_output_tiled_split_transposed or dual_output_tiled_bitexact_fp16"
+```
+
+Result: py_compile passed; pytest `72 passed`.
+Lineage check `python3 scripts/check_lineage.py --kind kernel --diff stat`
+also ran; it reports the known nano-vllm-amd parent DRIFT entries only. This
+change is an in-tree derivative of the already-landed output-tiled pack8 path,
+not a fresh external port.
+
+Exact smoke command (W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16,
+stable quicksort D32 B=3, graph auto, draft vocab cap 32768):
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json benchmarks/results/2026-06-11-hipengine-mtp-m16.4-dual-split-output-tiled-cdispatch-smoke.json
+```
+
+Smoke result: exact same-session AR, accepted lengths unchanged
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`; AR `112.109 tok/s`, MTP `87.537 tok/s`
+= `0.781x` diagnostic. Verifier time `270.6 ms` over 13 cycles versus locked
+baseline `282.8 ms` over 13 cycles.
+
+Profile command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-rocprof-mtp-m16.4-dual-split-output-tiled-cdispatch \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-m16.4-dual-split-output-tiled-cdispatch-rocprof.json
+```
+
+Profile result: exact smoke under profiler, `11` verifier passes, same `972`
+kernel calls/pass. Host window `19.73 -> 19.16 ms/pass` (-0.57); summed kernel
+time `15.33 -> 14.87 ms/pass` (-0.46). `w4_dual_prefill_smallbatch` is gone
+(`30 calls/pass`, `0.917 -> 0 ms/pass`) and replaced by `30 calls/pass` of the
+split output-tiled dual kernel inside `w4_dual_gemv` at `0.438 ms/pass`.
+
+Decision: bank useful headroom, but do not promote/default-on yet. It is exact
+on the quicksort gate and the kernel is byte-exact against the existing
+output-tiled dual path, but the verifier input fragility history means it still
+needs the 9-prompt exact suite before default-on. Even if promoted, this only
+shaves roughly `0.5-0.9 ms/cycle`; break-even still needs glue launch removal
+and at least one P2 overlap/proposer win.

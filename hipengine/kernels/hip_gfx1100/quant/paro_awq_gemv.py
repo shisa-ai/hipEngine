@@ -135,6 +135,7 @@ _SYMBOL_PACK8_OUTPUT_TILED_TRANSPOSED = "hipengine_gemv_awq_pack8_output_tiled_t
 _SYMBOL_PACK8_OUTPUT_TILED_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_output_tiled_transposed_fp16"
 _SYMBOL_DUAL_PACK8_OUTPUT_TILED_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_output_tiled_transposed_bf16"
 _SYMBOL_DUAL_PACK8_OUTPUT_TILED_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_output_tiled_transposed_fp16"
+_SYMBOL_DUAL_PACK8_OUTPUT_TILED_SPLIT_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_output_tiled_split_transposed_fp16"
 _SYMBOL_DUAL_PACK8_OUTPUT_TILED_STRIDED = "hipengine_gemv_awq_dual_pack8_output_tiled_strided_bf16"
 _SYMBOL_DUAL_PACK8_OUTPUT_TILED_STRIDED_FP16 = "hipengine_gemv_awq_dual_pack8_output_tiled_strided_fp16"
 _SYMBOL_FUSEDW4_PREFILL_FP16 = "hipengine_awq_fusedw4_prefill_fp16"
@@ -464,6 +465,39 @@ def gemv_awq_dual_pack8_output_tiled_transposed_fp16(
         x_a_ptr, x_b_ptr, qweight_a_ptr, qzeros_a_ptr, scales_a_ptr,
         qweight_b_ptr, qzeros_b_ptr, scales_b_ptr, out_ptr, rows, in_features,
         out_packed_a, out_packed_b, group_size,
+        threads=threads, stream=stream, library=library, runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_output_tiled_split_transposed_fp16(
+    x_a_ptr: int,
+    x_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """FP16 output-column-tiled c>1 dual GEMV with split outputs."""
+
+    _launch_dual_pack8_multi_row_split_transposed_fp16(
+        _SYMBOL_DUAL_PACK8_OUTPUT_TILED_SPLIT_TRANSPOSED_FP16,
+        x_a_ptr, x_b_ptr, qweight_a_ptr, qzeros_a_ptr, scales_a_ptr,
+        qweight_b_ptr, qzeros_b_ptr, scales_b_ptr, out_a_ptr, out_b_ptr,
+        rows, in_features, out_packed_a, out_packed_b, group_size,
         threads=threads, stream=stream, library=library, runtime=runtime,
     )
 

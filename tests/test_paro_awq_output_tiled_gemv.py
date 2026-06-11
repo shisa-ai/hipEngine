@@ -26,6 +26,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     build_paro_awq_gemv,
     gemv_awq_dual_pack8_output_tiled_strided_bf16,
     gemv_awq_dual_pack8_output_tiled_strided_fp16,
+    gemv_awq_dual_pack8_output_tiled_split_transposed_fp16,
     gemv_awq_dual_pack8_output_tiled_transposed_bf16,
     gemv_awq_dual_pack8_output_tiled_transposed_fp16,
     gemv_awq_dual_pack8_strided_bf16,
@@ -232,3 +233,69 @@ def test_dual_output_tiled_bitexact_bf16(rows, in_features, out_packed_a, out_pa
 @pytest.mark.parametrize("threads", [64, 128])
 def test_dual_output_tiled_bitexact_fp16(rows, in_features, out_packed_a, out_packed_b, threads, layout):
     _run_dual_case(rows, in_features, out_packed_a, out_packed_b, threads, dtype="fp16", layout=layout)
+
+
+def _run_dual_split_case(rows, in_features, out_packed_a, out_packed_b, threads):
+    rng = np.random.default_rng(707 + rows * 17 + in_features + out_packed_a * 3 + out_packed_b * 5 + threads)
+    group_size = 128
+    groups = in_features // group_size
+    out_features_a = out_packed_a * 8
+    out_features_b = out_packed_b * 8
+    out_features = out_features_a + out_features_b
+    x_a = _fp16_bits(rng.standard_normal((rows, in_features)).astype(np.float32))
+    x_b = _fp16_bits(rng.standard_normal((rows, in_features)).astype(np.float32))
+    qweight_a = rng.integers(0, 2**32, size=(out_packed_a, in_features), dtype=np.uint32).view(np.int32)
+    qweight_b = rng.integers(0, 2**32, size=(out_packed_b, in_features), dtype=np.uint32).view(np.int32)
+    qzeros_a = rng.integers(0, 2**32, size=(groups, out_packed_a), dtype=np.uint32).view(np.int32)
+    qzeros_b = rng.integers(0, 2**32, size=(groups, out_packed_b), dtype=np.uint32).view(np.int32)
+    scales_a = _fp16_bits((0.01 * rng.standard_normal((groups, out_features_a))).astype(np.float32))
+    scales_b = _fp16_bits((0.01 * rng.standard_normal((groups, out_features_b))).astype(np.float32))
+    out_packed_ref = np.zeros((rows, out_features), dtype=np.uint16)
+    out_a = np.full((rows, out_features_a), 0xDEAD, dtype=np.uint16)
+    out_b = np.full((rows, out_features_b), 0xBEEF, dtype=np.uint16)
+
+    library = build_paro_awq_gemv(load=True)
+    bufs = []
+    try:
+        xa_d = _dev(np.ascontiguousarray(x_a)); bufs.append(xa_d)
+        xb_d = _dev(np.ascontiguousarray(x_b)); bufs.append(xb_d)
+        qwa_d = _dev(np.ascontiguousarray(qweight_a)); bufs.append(qwa_d)
+        qwb_d = _dev(np.ascontiguousarray(qweight_b)); bufs.append(qwb_d)
+        qza_d = _dev(np.ascontiguousarray(qzeros_a)); bufs.append(qza_d)
+        qzb_d = _dev(np.ascontiguousarray(qzeros_b)); bufs.append(qzb_d)
+        sca_d = _dev(np.ascontiguousarray(scales_a)); bufs.append(sca_d)
+        scb_d = _dev(np.ascontiguousarray(scales_b)); bufs.append(scb_d)
+        packed_d = _dev(out_packed_ref); bufs.append(packed_d)
+        out_a_d = _dev(out_a); bufs.append(out_a_d)
+        out_b_d = _dev(out_b); bufs.append(out_b_d)
+        args = (qwa_d.ptr, qza_d.ptr, sca_d.ptr, qwb_d.ptr, qzb_d.ptr, scb_d.ptr)
+        tail = (rows, in_features, out_packed_a, out_packed_b, group_size)
+        common = dict(threads=threads, library=library)
+        gemv_awq_dual_pack8_output_tiled_transposed_fp16(xa_d.ptr, xb_d.ptr, *args, packed_d.ptr, *tail, **common)
+        gemv_awq_dual_pack8_output_tiled_split_transposed_fp16(
+            xa_d.ptr, xb_d.ptr, *args, out_a_d.ptr, out_b_d.ptr, *tail, **common
+        )
+        copy_device_to_host(host_array_ptr(out_packed_ref), packed_d, out_packed_ref.nbytes)
+        copy_device_to_host(host_array_ptr(out_a), out_a_d, out_a.nbytes)
+        copy_device_to_host(host_array_ptr(out_b), out_b_d, out_b.nbytes)
+    finally:
+        for b in bufs:
+            free(b)
+
+    np.testing.assert_array_equal(
+        out_a,
+        out_packed_ref[:, :out_features_a],
+        err_msg=f"split output-tiled A != packed output ({rows=}, {in_features=}, {out_packed_a=}, {threads=})",
+    )
+    np.testing.assert_array_equal(
+        out_b,
+        out_packed_ref[:, out_features_a:],
+        err_msg=f"split output-tiled B != packed output ({rows=}, {in_features=}, {out_packed_b=}, {threads=})",
+    )
+
+
+@pytest.mark.parametrize("rows", [2, 4, 8])
+@pytest.mark.parametrize("in_features,out_packed_a,out_packed_b", _DUAL_SHAPES)
+@pytest.mark.parametrize("threads", [64, 128])
+def test_dual_output_tiled_split_transposed_bitexact_fp16(rows, in_features, out_packed_a, out_packed_b, threads):
+    _run_dual_split_case(rows, in_features, out_packed_a, out_packed_b, threads)

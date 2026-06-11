@@ -3,7 +3,7 @@
 Bridges the ``Qwen35ParoLayerRuntime.run_moe_c1_fp16`` Python path to the
 two extern-C dispatcher entry points in
 ``hipengine/kernels/hip_gfx1100/dispatch/moe_c1_dispatch.hip``.  Resolves all
-13 underlying kernel-launcher function pointers once at warmup, snapshots all
+14 underlying kernel-launcher function pointers once at warmup, snapshots all
 layer-constant weight pointers and dims into a ``MoeC1Args`` struct, and at
 runtime updates only the per-call variables before making a single ctypes
 call.
@@ -70,6 +70,15 @@ def moe_c1_c_dispatch_enabled() -> bool:
     if value is None or value.strip() == "":
         return True
     return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
+
+
+def _w4_dual_output_tiled_split_prefill_enabled() -> bool:
+    """Default-off M16.4 experiment for linear-attn shared gate/up prefill."""
+
+    value = os.environ.get("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL")
+    if value is None or value.strip() == "":
+        return False
+    return value.strip().lower() in {"1", "on", "yes", "true", "enable", "enabled"}
 
 
 def prewarm_moe_c1_c_dispatch() -> None:
@@ -281,6 +290,10 @@ def _build_fns_table() -> MoeC1Fns:
     fns.awq_fusedw4_prefill_dual_fp16 = addr(
         awq_lib, "hipengine_awq_fusedw4_prefill_dual_fp16",
     )
+    if _w4_dual_output_tiled_split_prefill_enabled():
+        fns.gemv_awq_dual_pack8_output_tiled_split_transposed_fp16 = addr(
+            awq_lib, "hipengine_gemv_awq_dual_pack8_output_tiled_split_transposed_fp16",
+        )
     fns.awq_fusedw4_prefill_fp16 = addr(
         awq_lib, "hipengine_awq_fusedw4_prefill_fp16",
     )

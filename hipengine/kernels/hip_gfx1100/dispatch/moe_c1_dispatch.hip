@@ -131,6 +131,14 @@ typedef hipengine_err_t (*awq_fusedw4_prefill_dual_fp16_fn)(
     int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
     void*);
 
+// gemv_awq_dual_pack8_output_tiled_split_transposed_fp16:
+//   x_a, x_b, qw_a, qz_a, s_a, qw_b, qz_b, s_b, out_a, out_b,
+//   rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream
+typedef hipengine_err_t (*gemv_awq_dual_pack8_output_tiled_split_transposed_fp16_fn)(
+    void*, void*, void*, void*, void*, void*, void*, void*, void*, void*,
+    int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+    void*);
+
 // awq_fusedw4_prefill_fp16:
 //   x, qw, qz, s, out,
 //   rows, in_features, out_packed, group_size, tile_m, tile_n, stream
@@ -176,6 +184,7 @@ struct MoeC1Fns {
     void* silu_mul_dual_rotate_out_fp16;
     void* silu_mul_separate_out_fp16;
     void* awq_fusedw4_prefill_dual_fp16;       // linear-attn only
+    void* gemv_awq_dual_pack8_output_tiled_split_transposed_fp16; // linear-attn opt-in
     void* awq_fusedw4_prefill_fp16;            // linear-attn only
     void* gemv_awq_dual_pack8_transposed_fp16; // full-attn only
     void* gemv_awq_pack8_transposed_fp16;      // full-attn only
@@ -459,22 +468,42 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
             args->stream));
     }
 
-    // ---- 7a. Shared gate+up fused-W4 prefill (separate outputs, linear-attn) ----
+    // ---- 7a. Shared gate+up W4 prefill (separate outputs, linear-attn) ----
     {
-        auto fn = reinterpret_cast<awq_fusedw4_prefill_dual_fp16_fn>(
-            fns->awq_fusedw4_prefill_dual_fp16);
-        DISPATCH_CHECK(fn(
-            args->shared_gate_input, args->shared_up_input,
-            args->shared_gate_qweight, args->shared_gate_qzeros,
-            args->shared_gate_scales,
-            args->shared_up_qweight, args->shared_up_qzeros,
-            args->shared_up_scales,
-            args->shared_gate_out, args->shared_up_out,
-            args->tokens, args->hidden_size,
-            args->out_packed_shared_gate, args->out_packed_shared_up,
-            args->group_size,
-            args->shared_prefill_tile_m, args->shared_prefill_tile_n,
-            args->stream));
+        const bool output_tiled_rows =
+            args->tokens == 2 || args->tokens == 4 || args->tokens == 8;
+        if (fns->gemv_awq_dual_pack8_output_tiled_split_transposed_fp16 != nullptr &&
+            output_tiled_rows) {
+            auto fn = reinterpret_cast<gemv_awq_dual_pack8_output_tiled_split_transposed_fp16_fn>(
+                fns->gemv_awq_dual_pack8_output_tiled_split_transposed_fp16);
+            DISPATCH_CHECK(fn(
+                args->shared_gate_input, args->shared_up_input,
+                args->shared_gate_qweight, args->shared_gate_qzeros,
+                args->shared_gate_scales,
+                args->shared_up_qweight, args->shared_up_qzeros,
+                args->shared_up_scales,
+                args->shared_gate_out, args->shared_up_out,
+                args->tokens, args->hidden_size,
+                args->out_packed_shared_gate, args->out_packed_shared_up,
+                args->group_size,
+                128,
+                args->stream));
+        } else {
+            auto fn = reinterpret_cast<awq_fusedw4_prefill_dual_fp16_fn>(
+                fns->awq_fusedw4_prefill_dual_fp16);
+            DISPATCH_CHECK(fn(
+                args->shared_gate_input, args->shared_up_input,
+                args->shared_gate_qweight, args->shared_gate_qzeros,
+                args->shared_gate_scales,
+                args->shared_up_qweight, args->shared_up_qzeros,
+                args->shared_up_scales,
+                args->shared_gate_out, args->shared_up_out,
+                args->tokens, args->hidden_size,
+                args->out_packed_shared_gate, args->out_packed_shared_up,
+                args->group_size,
+                args->shared_prefill_tile_m, args->shared_prefill_tile_n,
+                args->stream));
+        }
     }
 
     // ---- 8a. Shared silu/mul separate: gate_out, up_out -> intermediate ----

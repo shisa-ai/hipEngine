@@ -2831,7 +2831,8 @@ int launch_pack8_output_tiled(
 // as gemv_awq_pack8_output_tiled_kernel plus the a/b output-group prologue from
 // gemv_awq_dual_pack8_kernel: one block per global output pack loads its weight
 // pack once and accumulates all C columns.  Bit-exact vs gemv_awq_dual_pack8_kernel.
-template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int C>
+// OUT_LAYOUT: 0 = packed gate||up output, 1 = split output buffers.
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT, int C>
 __launch_bounds__(128, 2) __global__ void gemv_awq_dual_pack8_output_tiled_kernel(
     const scalar_t* __restrict__ x_a,
     const scalar_t* __restrict__ x_b,
@@ -2841,7 +2842,8 @@ __launch_bounds__(128, 2) __global__ void gemv_awq_dual_pack8_output_tiled_kerne
     const int32_t* __restrict__ qweight_b,
     const int32_t* __restrict__ qzeros_b,
     const scalar_t* __restrict__ scales_b,
-    scalar_t* __restrict__ out,
+    scalar_t* __restrict__ out_a,
+    scalar_t* __restrict__ out_b,
     int64_t in_features,
     int64_t out_packed_a,
     int64_t out_packed_b,
@@ -2852,13 +2854,14 @@ __launch_bounds__(128, 2) __global__ void gemv_awq_dual_pack8_output_tiled_kerne
   const int64_t local_pack = use_b ? (global_pack - out_packed_a) : global_pack;
   const int64_t local_out_packed = use_b ? out_packed_b : out_packed_a;
   const int64_t local_out_features = local_out_packed << 3;
-  const int64_t out_features = (out_packed_a + out_packed_b) << 3;
-  const int64_t out_col = global_pack << 3;
   const int64_t local_out_col = local_pack << 3;
   const scalar_t* __restrict__ x = (separate_inputs && use_b) ? x_b : x_a;
   const int32_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
   const int32_t* __restrict__ qzeros = use_b ? qzeros_b : qzeros_a;
   const scalar_t* __restrict__ scales = use_b ? scales_b : scales_a;
+  scalar_t* __restrict__ out = (OUT_LAYOUT == 0 || !use_b) ? out_a : out_b;
+  const int64_t out_features = (OUT_LAYOUT == 0) ? ((out_packed_a + out_packed_b) << 3) : local_out_features;
+  const int64_t out_col = (OUT_LAYOUT == 0) ? (global_pack << 3) : local_out_col;
   const int64_t qweight_base = qweight_transposed ? (local_pack * in_features) : local_pack;
 
   float acc[C][8];
@@ -2970,7 +2973,7 @@ __launch_bounds__(128, 2) __global__ void gemv_awq_dual_pack8_output_tiled_kerne
   }
 }
 
-template <typename scalar_t, bool qweight_transposed, bool separate_inputs>
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT>
 int launch_dual_pack8_output_tiled(
     const scalar_t* x_a,
     const scalar_t* x_b,
@@ -2980,7 +2983,8 @@ int launch_dual_pack8_output_tiled(
     const int32_t* qweight_b,
     const int32_t* qzeros_b,
     const scalar_t* scales_b,
-    scalar_t* out,
+    scalar_t* out_a,
+    scalar_t* out_b,
     int64_t rows,
     int64_t in_features,
     int64_t out_packed_a,
@@ -2995,9 +2999,9 @@ int launch_dual_pack8_output_tiled(
   const dim3 grid(static_cast<unsigned int>(out_packed_a + out_packed_b));
   const dim3 block(static_cast<unsigned int>(threads));
 #define PARO_LAUNCH_DUAL_PACK8_OT(CVAL) \
-  hipLaunchKernelGGL((gemv_awq_dual_pack8_output_tiled_kernel<scalar_t, qweight_transposed, separate_inputs, CVAL>), \
+  hipLaunchKernelGGL((gemv_awq_dual_pack8_output_tiled_kernel<scalar_t, qweight_transposed, separate_inputs, OUT_LAYOUT, CVAL>), \
       grid, block, 0, stream, x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b, \
-      out, in_features, out_packed_a, out_packed_b, static_cast<int>(group_size))
+      out_a, out_b, in_features, out_packed_a, out_packed_b, static_cast<int>(group_size))
   switch (rows) {
     case 2: PARO_LAUNCH_DUAL_PACK8_OT(2); break;
     case 4: PARO_LAUNCH_DUAL_PACK8_OT(4); break;
@@ -4591,9 +4595,32 @@ extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_transposed_fp16(
     int64_t group_size,
     int64_t threads,
     hipStream_t stream) {
-  return launch_dual_pack8_output_tiled<half_t, true, true>(
+  return launch_dual_pack8_output_tiled<half_t, true, true, 0>(
       x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
-      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+      out, nullptr, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_split_transposed_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out_a,
+    half_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_output_tiled<half_t, true, true, 1>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out_a, out_b, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
 }
 
 extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_transposed_bf16(
@@ -4613,9 +4640,9 @@ extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_transposed_bf16(
     int64_t group_size,
     int64_t threads,
     hipStream_t stream) {
-  return launch_dual_pack8_output_tiled<uint16_t, true, true>(
+  return launch_dual_pack8_output_tiled<uint16_t, true, true, 0>(
       x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
-      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+      out, nullptr, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
 }
 
 extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_strided_fp16(
@@ -4635,9 +4662,9 @@ extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_strided_fp16(
     int64_t group_size,
     int64_t threads,
     hipStream_t stream) {
-  return launch_dual_pack8_output_tiled<half_t, false, false>(
+  return launch_dual_pack8_output_tiled<half_t, false, false, 0>(
       x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
-      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+      out, nullptr, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
 }
 
 extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_strided_bf16(
@@ -4657,8 +4684,7 @@ extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_strided_bf16(
     int64_t group_size,
     int64_t threads,
     hipStream_t stream) {
-  return launch_dual_pack8_output_tiled<uint16_t, false, false>(
+  return launch_dual_pack8_output_tiled<uint16_t, false, false, 0>(
       x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
-      out, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+      out, nullptr, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
 }
-

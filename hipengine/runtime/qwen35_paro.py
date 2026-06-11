@@ -136,6 +136,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16,
     gemv_awq_pack8_output_tiled_bf16,
     gemv_awq_pack8_output_tiled_fp16,
+    gemv_awq_dual_pack8_output_tiled_split_transposed_fp16,
     gemv_awq_dual_pack8_output_tiled_transposed_fp16,
     gemv_awq_pack8_output_tiled_transposed_bf16,
     gemv_awq_pack8_output_tiled_transposed_fp16,
@@ -8557,6 +8558,38 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "silu"),
                 runtime=self.runtime,
             )
+        elif _w4_dual_output_tiled_split_site_eligible("shared_gate_up", tokens, cfg.hidden_size, group_size):
+            # M16.4 follow-up: output-column-tiled dual GEMV for split gate/up buffers.
+            gemv_awq_dual_pack8_output_tiled_split_transposed_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                tokens,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+            silu_mul_separate_out_fp16(
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                cfg.shared_expert_intermediate_size,
+                stream=stream,
+                library=_library_for(library, "silu"),
+                runtime=self.runtime,
+            )
         elif _w4_multi_row_dual_site_eligible("shared_gate_up", tokens, cfg.hidden_size, group_size):
             # M12.6: shared-expert gate/up multi-row dual W4 GEMV.
             gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
@@ -10717,6 +10750,35 @@ def _w4_output_tiled_prefill_enabled() -> bool:
     (13.60 -> 12.15) with exact-AR preserved.  Opt out with ``=0``.
     """
     return _env_enabled("HIPENGINE_W4_OUTPUT_TILED_PREFILL", default=True)
+
+
+_W4_DUAL_OUTPUT_TILED_SPLIT_DEFAULT_SITES = frozenset({"shared_gate_up"})
+
+
+def _w4_dual_output_tiled_split_prefill_enabled(site: str) -> bool:
+    """M16.4 follow-up: opt-in split-output dual output-tiled W4 prefill path."""
+
+    if not _env_enabled("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", default=False):
+        return False
+    raw = os.environ.get("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES")
+    if raw is None or raw.strip() == "":
+        sites = _W4_DUAL_OUTPUT_TILED_SPLIT_DEFAULT_SITES
+    else:
+        sites = {part.strip().lower() for part in raw.split(",") if part.strip()}
+        if "none" in sites:
+            return False
+        if "all" in sites:
+            return True
+    return site.lower() in sites
+
+
+def _w4_dual_output_tiled_split_site_eligible(site: str, tokens: int, in_features: int, group_size: int) -> bool:
+    return (
+        _w4_output_tiled_prefill_enabled()
+        and _w4_dual_output_tiled_split_prefill_enabled(site)
+        and int(tokens) in _PACK8_OUTPUT_TILED_ROWS
+        and int(in_features) % int(group_size) == 0
+    )
 
 
 def _w4_multi_row_pack8_enabled() -> bool:
