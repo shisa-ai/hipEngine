@@ -78836,3 +78836,71 @@ and `docs/REFACTOR.md`. Artifacts:
 `benchmarks/results/2026-06-11-hipengine-mtp-accept-payload-off-9prompt-d32.json`
 and
 `benchmarks/results/2026-06-11-hipengine-mtp-accept-payload-on-9prompt-d32.json`.
+
+## 2026-06-11 - MTP fused verifier LM-head no-hold
+
+Re-profiled the current default MTP verifier stack after the packed accept
+payload commit, then retested the existing opt-in fused W8A16 LM-head + argmax
+path (`HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on`). The idea was exact-safe on
+paper and already had a focused RED test, so it was worth checking against the
+fresh profile: the unfused verifier LM-head still shows up as a large
+`w8a16_linear` bucket (`1.4435 ms/pass`) plus a tiny argmax pair.
+
+Validation:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_w8a16_lm_head_argmax_rows.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens <locked-quicksort-tokens> \
+  --decode-tokens 32 \
+  --candidate-budget 3 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --json /tmp/hipengine-mtp-fused-lm-head-quicksort-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 3600 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens <locked-quicksort-tokens> \
+  --decode-tokens 32 \
+  --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --steady-state-skip 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-current-default-after-packed-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on PYTHONPATH=. timeout 3600 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens <locked-quicksort-tokens> \
+  --decode-tokens 32 \
+  --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --steady-state-skip 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-fused-lm-head-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-fused-lm-head-rocprof.json
+```
+
+Result: focused wrapper tests passed, and the fused quicksort smoke stayed exact
+with the locked accepted lengths `[3,3,2,0,2,0,0,1,3,0,2,0,2]`. Performance
+does not hold on the current MTP stack:
+
+- calls/pass `935.0 -> 934.0` (only one launch removed);
+- kernel time/pass `14.594 -> 15.236 ms` (`+0.642 ms`);
+- host window/pass `18.621 -> 19.234 ms` (`+0.613 ms`);
+- `lm_head_argmax` shrinks `2 -> 1` calls/pass and `0.0140 -> 0.0039 ms/pass`;
+- but fused `w8a16_linear` family grows `1.4435 -> 2.0953 ms/pass`.
+
+Decision: no-hold for MTP. Keep `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` default
+off; do not spend break-even sprint time here unless a new fused kernel lowers
+the W8A16 body time, not just the argmax launch count. Artifacts:
+`benchmarks/results/2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json`
+and `benchmarks/results/2026-06-11-hipengine-mtp-fused-lm-head-rocprof.json`.

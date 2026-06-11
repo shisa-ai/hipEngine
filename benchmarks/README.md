@@ -262,6 +262,15 @@ actual speed `0.6699x -> 0.6784x` AR, cycle wall `27.648 -> 27.408 ms`, verify
 [`selected-down default-off`](results/2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json).
 
 Current MTP no-hold diagnostic: on the 2026-06-11 P1-default stack,
+`HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` remains exact on locked quicksort
+with unchanged accepted lengths, but regresses the verifier profile: calls/pass
+`935 -> 934`, kernel `14.594 -> 15.236 ms/pass`, host window
+`18.621 -> 19.234 ms/pass`. It saves one argmax launch but makes the fused
+W8A16 body slower (`1.4435 -> 2.0953 ms/pass`), so keep it default-off for MTP.
+Artifacts: [`current default after packed`](results/2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json),
+[`fused LM-head rocprof`](results/2026-06-11-hipengine-mtp-fused-lm-head-rocprof.json).
+
+Also no-hold: on the same P1-default stack,
 `HIPENGINE_FUSED_RMSNORM_ROTATE=1` remained exact but regressed verifier kernel
 `13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass` despite calls
 `943.0 -> 915.9/pass`; keep the M15.4 RMSNorm+PARO rotate2 gate default-off.
