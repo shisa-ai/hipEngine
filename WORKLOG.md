@@ -79451,3 +79451,41 @@ cleanup/demotion.
 
 Next actual speed target remains full-layer C-dispatcher / reduced-DAG batching
 for the non-MoE surround, then proposer graph capture and fill/memset cleanup.
+
+## 2026-06-11 - MTP status check and external ranking folded into plan
+
+Status/progress check:
+
+- Branch state: `mpt-dflash` tracked tree is clean; `origin/mpt-dflash` and
+  `origin/main` both point at `fb9b9389`.
+- The MTP goal is still active. We have not crossed `>1.0x`; the locked planning
+  baseline remains `0.758x / 27.8 ms`, with the latest exact default wall lower
+  at about `26.869 ms/cycle` after retained micro-wins.
+- The needle moved in the right metric: cycle wall / verifier-proposer wall.
+  Today retained exact improvements include P1 stacked launch cleanup, selected
+  down staged default-off, accept-payload packing, C-dispatch shared-down
+  output-tiling, M12.6 `single_linear_out`/`single_full_v`, proposer unused-read
+  skips, async scalar H2D, and token+position H2D packing.
+- New routed-expert WMMA proposer dense work was exact but not retained because
+  it regressed the D32 9-prompt suite (`27.011 -> 27.149 ms/cycle`,
+  proposal/update `1.980 -> 2.068 ms/cycle`).
+- Selected-GEMV/shared rotate fusion from the external review is closed/no-hold
+  from existing M13.B.1/B.2/B.3 evidence, not a pending easy win.
+
+Folded the colleague's priority ranking into `docs/MTP.md` with live-tree
+corrections:
+
+- `single_linear_out` is already promoted default-on; `single_full_v` is too.
+- Full-layer C-dispatch remains the highest new design priority only if it is
+  reduced-DAG batching that removes launches/fills/copies. A pure C-side host
+  loop around the same kernels is no-hold: M14.dispatch.1 measured parity and
+  M16.2 showed the residual is GPU workgroup-scheduling, not Python/ctypes.
+- M12.7 proposer graph capture stays P2, after the scalar/readback trims already
+  landed.
+- Per-layer memset/fill elimination stays a low-risk cleanup lane with explicit
+  write-before-read proof required.
+- Multi-stream overlap should wait until the DAG is smaller; the direct MoE
+  branch-overlap attempt already regressed all-cycle wall.
+
+No new benchmark was run for this entry; this is a planning/status correction,
+not a performance claim.
