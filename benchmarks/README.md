@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-12 (27B dense DFlash accepted 1.231x; 35B-A3B MTP current best is now `decode_batched + graph_off + MTP canonicalize skip` at 0.825x, 21.661 ms/cycle, 16.511 ms verify; stacked P1/proposer/host-cache wins retained; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, proposer shared-gate finalize fusion, async packed verify-metadata H2D, full-QKV split+key-cast fusion, and graph-off selected-down staged compound no-hold, still WIP)
+Last updated: 2026-06-12 (27B dense DFlash accepted 1.231x; 35B-A3B MTP current best is now `decode_batched + graph_off + MTP canonicalize skip` at 0.825x, 21.661 ms/cycle, 16.511 ms verify; stacked P1/proposer/host-cache wins retained; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, proposer shared-gate finalize fusion, async packed verify-metadata H2D, full-QKV split+key-cast fusion, graph-off selected-down staged compound, and thread-0 shared-down+combine epilogue no-hold, still WIP)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the

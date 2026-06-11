@@ -80810,3 +80810,74 @@ Decision: no-hold and no speed promotion. Keep
 we do not repeat this compound unless a new barrier-free staged design or graph
 path changes the cost model. Updated `docs/MTP.md`, `docs/REFACTOR.md`,
 `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP shared-down combine prototype no-hold
+
+Tried the first Rank-1 reduced-DAG kernel candidate: fuse linear-attn shared
+down output-tiled W4 GEMV with the shared-gate/residual combine epilogue inside
+the MoE C dispatcher. The prototype preserved the output-tiled GEMV reduction
+and FP16 rounding point, then applied the existing
+`weighted_sum_shared_gate_combine_residual_batch_out` semantics in the same
+block. It was gated as `HIPENGINE_MOE_C1_SHARED_DOWN_COMBINE_FUSED=1` only for
+the experiment.
+
+Validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py hipengine/runtime/moe_c1_dispatch.py tests/test_moe_c1_dispatch.py
+PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+lib = build_paro_awq_gemv(load=True)
+print(bool(getattr(lib, 'hipengine_gemv_awq_pack8_output_tiled_shared_combine_transposed_fp16', None)))
+PY
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.dispatch.moe_c1 import build_moe_c1_dispatch
+lib = build_moe_c1_dispatch(load=True)
+print(bool(getattr(lib, 'hipengine_moe_c1_dispatch_linear_fp16', None)))
+PY
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MOE_C1_SHARED_DOWN_COMBINE_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-shared-down-combine-fused-smoke.json
+```
+
+Smoke result: exact AR, accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Same-tree quicksort rocprof A/B:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MOE_C1_SHARED_DOWN_COMBINE_FUSED=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-shared-down-combine-fused-off-quicksort-rocprof \
+  --out /tmp/hipengine-mtp-shared-down-combine-fused-off-quicksort-rocprof.json
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MOE_C1_SHARED_DOWN_COMBINE_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-shared-down-combine-fused-on-quicksort-rocprof \
+  --out /tmp/hipengine-mtp-shared-down-combine-fused-on-quicksort-rocprof.json
+```
+
+Result: exact on/off with identical accepted lengths, and launch count dropped
+`942 -> 912/pass`, but performance regressed. Kernel time moved
+`12.8598 -> 13.2550 ms/pass`, host window `16.8318 -> 17.0759 ms/pass`, and
+the smoke verify slice `0.24418 -> 0.24565 s`. Family split explains it:
+`moe_combine` saved `0.1237 -> 0.0318 ms/pass` by removing the 30 linear-attn
+combine calls, but the fused linear shared-down output-tiled kernel grew
+`0.3479 -> 0.8143 ms/pass` because the selected accumulation was serialized in
+thread 0 for each output pack.
+
+Decision: no-hold. Removed the prototype code and did not keep a runtime flag.
+The reduced-DAG lesson is specific: shared-down+combine is only worth reopening
+with a parallel combine epilogue or a broader layer composite that keeps the
+epilogue parallel. Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-shared-down-combine-fused-nohold.json`.
