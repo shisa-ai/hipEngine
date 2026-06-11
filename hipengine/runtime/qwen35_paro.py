@@ -10757,8 +10757,7 @@ def _w4_output_tiled_prefill_enabled() -> bool:
     pack8 GEMV (``tests/test_paro_awq_output_tiled_gemv.py``) -- i.e. byte-exact
     to AR's rows==1 projection -- so exact-AR cannot regress; only throughput is
     at stake.  The WMMA prefill kernel starves at tokens=4 (the B+1 verifier
-    shape), so the amortized GEMV is the M16.4 lever.  Default-off until the
-    rocprof + exact-AR gate promotes it.
+    shape), so the amortized GEMV is the M16.4 lever.
 
     Default-on (2026-06-09): W7900/gfx1100 B=3 verifier rocprof shows the
     single-output W4 projections move from ``awq_fusedw4_prefill_fp16`` to the
@@ -10773,9 +10772,16 @@ _W4_DUAL_OUTPUT_TILED_SPLIT_DEFAULT_SITES = frozenset({"shared_gate_up"})
 
 
 def _w4_dual_output_tiled_split_prefill_enabled(site: str) -> bool:
-    """M16.4 follow-up: opt-in split-output dual output-tiled W4 prefill path."""
+    """M16.4 follow-up: split-output dual output-tiled W4 prefill path.
 
-    if not _env_enabled("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", default=False):
+    Default-on for the prompt-suite-safe ``shared_gate_up`` site after the
+    2026-06-11 W7900 D32 9-prompt gate: stacked with linear out cast+rotate,
+    exact ``9/9`` and same acceptance as the off baseline, with mean verify
+    wall ``22.98 -> 22.37 ms/cycle``. Opt out with
+    ``HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=0``.
+    """
+
+    if not _env_enabled("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", default=True):
         return False
     raw = os.environ.get("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES")
     if raw is None or raw.strip() == "":
@@ -10948,9 +10954,15 @@ def _fused_rmsnorm_rotate_enabled() -> bool:
 
 
 def _linear_out_cast_rotate_fused_enabled(tokens: int) -> bool:
-    """Fuse verifier linear-attention out-proj FP32->FP16 cast into PARO rotate1."""
+    """Fuse verifier linear-attention out-proj FP32->FP16 cast into PARO rotate1.
 
-    return int(tokens) > 1 and _env_flag("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", False)
+    Default-on for verifier shapes after the 2026-06-11 W7900 D32 prompt-suite
+    gate. The fused kernel is raw-FP16 bit-exact vs ``f32_to_fp16`` followed by
+    ``paro_rotate1_fp16`` and removes 30 launches/pass in the B=3 verifier.
+    Opt out with ``HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=0``.
+    """
+
+    return int(tokens) > 1 and _env_flag("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", True)
 
 
 def _fused_rmsnorm_rotate2_shape_ok(tokens: int, hidden: int, group_size: int) -> bool:

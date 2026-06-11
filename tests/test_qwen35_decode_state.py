@@ -2770,7 +2770,7 @@ def test_qwen35_decode_state_can_fuse_linear_attention_cast_rotate(monkeypatch) 
     scratch = state.reserve_linear_attention_scratch(tokens=2, activation_dtype="fp16")
     order = []
 
-    monkeypatch.setenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", "1")
+    monkeypatch.delenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", raising=False)
     monkeypatch.setattr(qwen_runtime, "f32_to_fp16", lambda *a, **k: order.append("unexpected_cast"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("unexpected_rotate1"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_f32_to_fp16", lambda *a, **k: order.append("cast_rotate"))
@@ -2790,6 +2790,46 @@ def test_qwen35_decode_state_can_fuse_linear_attention_cast_rotate(monkeypatch) 
 
     assert out is scratch.out_proj
     assert order == ["cast_rotate", "pack8"]
+
+
+def test_qwen35_decode_state_can_opt_out_of_linear_attention_cast_rotate_fusion(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    scratch = state.reserve_linear_attention_scratch(tokens=2, activation_dtype="fp16")
+    order = []
+
+    monkeypatch.setenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", "0")
+    monkeypatch.setattr(qwen_runtime, "f32_to_fp16", lambda *a, **k: order.append("cast"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_f32_to_fp16", lambda *a, **k: order.append("unexpected_cast_rotate"))
+    for name in (
+        "gemv_awq_pack8_strided_fp16",
+        "gemv_awq_pack8_output_tiled_fp16",
+        "gemv_awq_pack8_multi_row_strided_fp16",
+        "awq_fusedw4_prefill_strided_fp16",
+        "gemv_awq_pack8_transposed_fp16",
+        "gemv_awq_pack8_output_tiled_transposed_fp16",
+        "gemv_awq_pack8_multi_row_transposed_fp16",
+        "awq_fusedw4_prefill_fp16",
+    ):
+        monkeypatch.setattr(qwen_runtime, name, lambda *a, **k: order.append("pack8"))
+
+    out = state.project_linear_attention_out_fp16(scratch, tokens=2)
+
+    assert out is scratch.out_proj
+    assert order == ["cast", "rotate1", "pack8"]
+
+
+def test_qwen35_w4_dual_output_tiled_split_prefill_default_and_optout(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", raising=False)
+    monkeypatch.delenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES", raising=False)
+
+    assert qwen_runtime._w4_dual_output_tiled_split_site_eligible("shared_gate_up", 2, 4096, 128)
+    assert not qwen_runtime._w4_dual_output_tiled_split_site_eligible("dense_gate_up", 2, 4096, 128)
+
+    monkeypatch.setenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", "0")
+
+    assert not qwen_runtime._w4_dual_output_tiled_split_site_eligible("shared_gate_up", 2, 4096, 128)
 
 
 def test_qwen35_decode_state_selected_output_uses_prefill_lowp_after_segment_state(monkeypatch) -> None:

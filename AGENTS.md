@@ -13,6 +13,8 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details.
 - **Evidence policy:** every performance claim carries model + quant + workload shape + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`).
 - **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
+- **Performance wins are first-class.** Every measured, exact, non-regressive performance improvement is kept and promoted to the default path unless there is a concrete blocker recorded in `WORKLOG.md`. Do not leave real wins behind optional flags merely because the win is small; microseconds compound.
+- **Refactor debt is tracked.** Temporary flags, rejected paths, duplicate dispatch routes, and fallback chains that should disappear after the optimal path is proven go in `docs/REFACTOR.md`. Add to it while the context is fresh instead of relying on future archeology.
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
 - **Kernel work happens in this tree.** hipEngine is not a thin port of `~/amd-gpu-tuning/`; it is substantively different (torch-free runtime, four-axis registry, `KVLiveSpans` ABI, verifier-shaped kernels). New kernels, fused variants, small-batch/verifier-shaped kernels, micro-tuning, and `rocprofv3` iteration loops all live here under `kernels/<backend>/` with a bit-exact RED test plus the correctness gate. `~/amd-gpu-tuning/` and `nano-vllm-amd` remain read-only *references* for kernel lineage, prior evidence, and the device-code gotcha catalog — cite source file + commit when porting an idea, but do the development and measurement in-tree.
@@ -39,6 +41,7 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/KERNELS.md` | Kernel catalog, source-lineage drift workflow, Qwen3.5/PARO optimal path map, port playbook, JIT cache gotcha, build profiles. |
 | `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
+| `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Append-only cross-session journal. |
 | `benchmarks/README.md` | Human-readable current-fastest benchmark rollup and comparison tables. |
@@ -64,6 +67,8 @@ Do not drift these casually. They define what hipEngine is.
 
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
 - Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
+- If a performance path is exact and same-suite non-regressive, make it the default and keep the old path as an opt-out only when rollback/bisection still has value. If a path remains gated off, record the concrete blocker, not a vague "needs more evidence".
+- When adding an env flag or retaining a default-off/default-on experiment, add or update a `docs/REFACTOR.md` entry that says when the flag/path should be removed.
 - When adding tests that call HIP/ROCm runtime, `hipcc`, or GPU kernels, add an explicit HIP-availability guard (for example `ctypes.CDLL("libamdhip64.so")` + `pytest.skip`) so no-ROCm CI/publish runners skip them instead of failing release validation.
 - Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.
 - When profiling Python/ctypes JIT-built kernels with `rocprofv3`, prebuild the `.so` outside the profiler and run the profiled command with a precomputed compiler-version file plus `require_cached`; do not let the profiled process spawn `hipcc`/clang.

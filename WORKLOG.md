@@ -78253,3 +78253,82 @@ quicksort correctness diagnostic. It still stays default-off because it is not
 positive and does not move the locked sprint baseline. The next push remains the
 same: hold `0.758x / 27.8 ms`, cut wall toward `<21.5 ms` with higher-reach
 glue removal, overlap, or proposer/device-resident work.
+
+## 2026-06-11 — Promote exact P1 micro-wins to default-on
+
+Revisited the policy after the "every microsecond counts" correction. The right
+bar is not "large enough to headline"; it is "exact and same-suite
+non-regressive." Real wins should be defaults, with opt-outs only for rollback
+and bisection.
+
+Forced-off same-suite baseline:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=0 HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-p1-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-p1-off-9prompt-d32.json
+```
+
+No-env default-on verification after changing defaults:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-p1-defaulton-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-p1-defaulton-9prompt-d32.json
+```
+
+Result: off and default-on both exact `9/9`; visible tokens/cycle and acceptance
+were identical. Default-on moved actual speed `0.652x -> 0.671x` AR (+3.0%
+relative), cycle wall `28.43 -> 27.83 ms/cycle`, verify `22.98 -> 22.37
+ms/cycle`, and C_B `3.128 -> 3.049`. This is only `~0.6 ms/cycle`, but it is
+real and keeps the sprint moving toward `<21.5 ms`.
+
+Code changes:
+
+- `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL` now defaults on for the proven
+  `shared_gate_up` split-output dual W4 route; `=0` opts out.
+- `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` now defaults on for verifier
+  `tokens > 1`; `=0` opts out.
+- Added `docs/REFACTOR.md` as the cleanup ledger for temporary flags and dead
+  dispatch paths, and updated `AGENTS.md` to require promoting exact
+  non-regressive wins plus logging cleanup debt.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/moe_c1_dispatch.py tests/test_qwen35_decode_state.py tests/test_moe_c1_dispatch.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_qwen35_decode_state.py tests/test_moe_c1_dispatch.py -k "linear_attention_cast_rotate or dual_output_tiled_split or moe_c1_dispatch_split"
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_qwen35_decode_state.py tests/test_moe_c1_dispatch.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_rotate_f32_to_fp16.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_output_tiled_gemv.py -k "dual_output_tiled_split_transposed or dual_output_tiled_bitexact_fp16"
+```
+
+Results: py_compile passed; targeted pytest `4 passed`; full focused routing
+tests `64 passed`; fused cast+rotate GPU bit-exact tests `3 passed`;
+split-output W4 output-tiled GPU tests `72 passed`.

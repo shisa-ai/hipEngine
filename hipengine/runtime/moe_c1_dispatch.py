@@ -73,11 +73,15 @@ def moe_c1_c_dispatch_enabled() -> bool:
 
 
 def _w4_dual_output_tiled_split_prefill_enabled() -> bool:
-    """Default-off M16.4 experiment for linear-attn shared gate/up prefill."""
+    """M16.4 split-output shared gate/up prefill route.
+
+    Default-on after the 2026-06-11 W7900 D32 9-prompt gate proved the stacked
+    P1 route exact and non-regressive. Keep the opt-out for bisection.
+    """
 
     value = os.environ.get("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL")
     if value is None or value.strip() == "":
-        return False
+        return True
     return value.strip().lower() in {"1", "on", "yes", "true", "enable", "enabled"}
 
 
