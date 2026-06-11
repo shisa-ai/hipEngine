@@ -78760,3 +78760,79 @@ Decision: no-hold. The extra D2D stores plus one batched candidate-id D2H do not
 beat the existing per-depth token path on the D32 prompt suite. Experiment code
 removed; artifact retained with `decision.status=no_hold`:
 `benchmarks/results/2026-06-11-hipengine-mtp-proposer-device-chain-9prompt-d32.json`.
+
+## 2026-06-11 - MTP verifier accept packed payload retained
+
+Scoped the next verifier host/D2H cleanup. The GPU accept kernel already writes
+seven per-request outputs for commit and host bookkeeping (`accepted_counts`,
+`commit_rows`, `commit_tokens`, `commit_positions`, `next_tokens`,
+`full_accept`, and `committed_output_lengths`). The runner previously
+synchronized and read those seven tiny buffers separately. I added
+`hipengine_dflash_accept_chain_i32_packed`, which keeps the legacy output
+buffers intact but also writes a seven-int32 packed payload per request. The MTP
+runner defaults to reading the packed payload once per cycle; set
+`HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD=0` to restore the old readback path for
+bisection.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/dflash_accept.py hipengine/runtime/qwen35_paro_runner.py tests/test_dflash_accept_kernels.py
+
+PYTHONPATH=. pytest -q tests/test_dflash_accept_kernels.py::test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hip
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-accept-payload-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-accept-payload-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-accept-payload-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-accept-payload-on-9prompt-d32.json
+```
+
+Result: exact `9/9` on both off/on runs, with identical accepted lengths,
+active budgets, visible tokens, avg accepted/cycle, and acceptance rate. Same-tree
+A/B aggregate:
+
+- actual ratio `0.6800386x -> 0.6805427x` (flat/noisy because AR moved);
+- cycle wall `27.2786 -> 27.1216 ms/cycle` (`-0.1570 ms`, `-0.58%`);
+- verify `22.1617 -> 21.9967 ms/cycle` (`-0.1650 ms`, `-0.74%`);
+- proposal/update `1.9807 -> 1.9782 ms/cycle` (flat);
+- avg visible tokens/cycle unchanged at `2.0234713`;
+- acceptance rate unchanged at `0.3550241`.
+
+Earlier quicksort rocprof evidence showed the intended launch/readback effect:
+runtime copy bucket `12.0 -> 6.75` calls/pass and `0.0352 -> 0.0209 ms/pass`,
+but that profile was diagnostic only because acceptance/pass count differed
+under the profiled one-prompt run. The 9-prompt suite above is the retained
+gate.
+
+Decision: retain default-on. This is a small verifier/cycle-wall improvement
+with exact same-suite acceptance, so it should not be left opt-in. Rollup/docs
+updated in `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/MTP.md`,
+and `docs/REFACTOR.md`. Artifacts:
+`benchmarks/results/2026-06-11-hipengine-mtp-accept-payload-off-9prompt-d32.json`
+and
+`benchmarks/results/2026-06-11-hipengine-mtp-accept-payload-on-9prompt-d32.json`.

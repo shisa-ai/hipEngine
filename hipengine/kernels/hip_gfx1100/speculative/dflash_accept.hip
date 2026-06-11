@@ -42,6 +42,7 @@ __global__ void dflash_accept_chain_i32_kernel(
     uint8_t* __restrict__ full_accept,
     int32_t* __restrict__ committed_output_ids,
     int32_t* __restrict__ committed_output_lengths,
+    int32_t* __restrict__ packed_payload,
     int64_t rows,
     int64_t request_count,
     int64_t output_stride) {
@@ -109,6 +110,16 @@ __global__ void dflash_accept_chain_i32_kernel(
   next_tokens[request_index] = (budget >= 0 && accepted >= budget) ? -1 : target_top1[row];
   full_accept[request_index] = accepted == max_depth ? 1 : 0;
   committed_output_lengths[request_index] = accepted + 1;
+  if (packed_payload != nullptr) {
+    const int64_t payload_base = request_index * 7;
+    packed_payload[payload_base + 0] = accepted;
+    packed_payload[payload_base + 1] = static_cast<int32_t>(row);
+    packed_payload[payload_base + 2] = token_ids[row];
+    packed_payload[payload_base + 3] = positions[row];
+    packed_payload[payload_base + 4] = next_tokens[request_index];
+    packed_payload[payload_base + 5] = static_cast<int32_t>(full_accept[request_index]);
+    packed_payload[payload_base + 6] = accepted + 1;
+  }
 }
 
 bool valid_accept_shape(int64_t rows, int64_t request_count, int64_t output_stride) {
@@ -163,6 +174,61 @@ extern "C" int hipengine_dflash_accept_chain_i32(
       full_accept,
       committed_output_ids,
       committed_output_lengths,
+      nullptr,
+      rows,
+      request_count,
+      output_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_accept_chain_i32_packed(
+    const int32_t* token_ids,
+    const int32_t* positions,
+    const int32_t* parent_rows,
+    const int32_t* draft_depths,
+    const uint8_t* active_mask,
+    const int32_t* target_top1,
+    const int32_t* remaining_decode,
+    int32_t* accepted_counts,
+    int32_t* commit_rows,
+    int32_t* commit_tokens,
+    int32_t* commit_positions,
+    int32_t* next_tokens,
+    uint8_t* full_accept,
+    int32_t* committed_output_ids,
+    int32_t* committed_output_lengths,
+    int32_t* packed_payload,
+    int64_t rows,
+    int64_t request_count,
+    int64_t output_stride,
+    hipStream_t stream) {
+  if (!valid_accept_shape(rows, request_count, output_stride) || packed_payload == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const int blocks = static_cast<int>((request_count + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      dflash_accept_chain_i32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      token_ids,
+      positions,
+      parent_rows,
+      draft_depths,
+      active_mask,
+      target_top1,
+      remaining_decode,
+      accepted_counts,
+      commit_rows,
+      commit_tokens,
+      commit_positions,
+      next_tokens,
+      full_accept,
+      committed_output_ids,
+      committed_output_lengths,
+      packed_payload,
       rows,
       request_count,
       output_stride);

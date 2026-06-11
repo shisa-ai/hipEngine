@@ -1,8 +1,10 @@
 """gfx1100 speculative decoding kernel wrappers."""
 
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
+    ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
     dflash_accept_chain_i32,
+    dflash_accept_chain_i32_packed,
     plan_dflash_accept_build,
     register_dflash_accept_kernels,
 )
@@ -49,9 +51,11 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp import (
 
 __all__ = [
     "build_dflash_accept",
+    "ACCEPT_PACKED_PAYLOAD_FIELDS",
     "build_dflash_commit",
     "build_dflash_drafter",
     "dflash_accept_chain_i32",
+    "dflash_accept_chain_i32_packed",
     "dflash_add_bf16",
     "dflash_concat_rows_bf16",
     "dflash_concat_rows_f32",

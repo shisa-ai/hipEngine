@@ -14,6 +14,7 @@ from hipengine.kernels.hip_gfx1100.linear import (
 )
 from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32,
+    dflash_accept_chain_i32_packed,
     dflash_add_bf16,
     dflash_commit_chain_i32,
     dflash_concat_rows_bf16,
@@ -278,6 +279,28 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
             rows=2,
             request_count=1,
             output_stride=0,
+        )
+    with pytest.raises(ValueError, match="packed_payload_i32_ptr"):
+        dflash_accept_chain_i32_packed(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            None,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            rows=2,
+            request_count=1,
+            output_stride=2,
         )
 
 
