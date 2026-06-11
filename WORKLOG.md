@@ -80047,3 +80047,111 @@ throughput row. The work removal is real, exact, and local: two D2D submissions
 per proposer advance are gone, and the measured proposal/update window improves.
 Track the opt-out in `docs/REFACTOR.md` for removal after the next retained
 defaults-only gate.
+
+## 2026-06-11 - MTP accept-position fused update no-hold; host-cache pivot
+
+Tested a launch-removal micro-slice in the verifier accept/commit path: a new
+packed accept entry point can write the resident base-slot `position_buf` and
+`context_buf` directly from the chosen `commit_position`, allowing
+`verify_chain_bulk_and_commit()` to skip the later scalar
+`set_decode_position_i64` launch. The code is retained behind the opt-in
+`HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION=1`, but the default remains off
+because the exact prompt-suite gate did not show a wall-time improvement.
+
+Validation and measurement:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_accept.py \
+  hipengine/kernels/hip_gfx1100/speculative/__init__.py \
+  hipengine/runtime/qwen35_paro_runner.py \
+  tests/test_dflash_accept_kernels.py
+
+PYTHONPATH=. pytest -q \
+  tests/test_dflash_accept_kernels.py::test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hip
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import build_dflash_accept
+lib = build_dflash_accept(load=True)
+print('dflash_accept loaded', bool(lib))
+print('has update state', hasattr(lib, 'hipengine_dflash_accept_chain_i32_packed_update_state'))
+PY
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-accept-update-position-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-accept-update-position-off-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-accept-update-position-off-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-accept-update-position-on-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-accept-update-position-on-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-accept-update-position-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-accept-update-position-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-accept-update-position-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-accept-update-position-on-9prompt-d32.json
+```
+
+Results:
+
+- `py_compile` passed, targeted wrapper validation test passed, and the HIP
+  accept library loaded with the new
+  `hipengine_dflash_accept_chain_i32_packed_update_state` symbol.
+- Quicksort smoke passed exact AR with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- Locked rocprof off/on: `kernel_calls_per_pass` `932 -> 931`, and
+  `set_decode_position_i64_kernel` disappears from the compact profile JSON.
+  Kernel time was neutral/slightly worse (`14.327 -> 14.332 ms/pass`) and the
+  host window also worsened slightly (`0.200431 -> 0.201044 s` over 11 passes).
+- D32 9-prompt off/on stayed exact `9/9` with identical visible tokens/cycle,
+  accepted/cycle, snapshot saves/skips, and active budgets, but wall/verify
+  regressed: cycle wall `27.0383 -> 27.1352 ms/cycle`, verify
+  `21.8841 -> 21.9688 ms/cycle`, proposal/update
+  `1.9839 -> 1.9886 ms/cycle`. Actual ratio moved
+  `0.6847x -> 0.6872x` only because the same-session AR control slowed
+  (`9.034 -> 9.113 ms/token).
+
+Decision: no-hold for default promotion. This was exact and launch-count
+positive, but the measured host/window and prompt-suite economics did not move
+in the right direction. Keep the opt-in gate temporarily for possible reuse in a
+broader accept/commit composite; track removal in `docs/REFACTOR.md`.
+
+Plan pivot from external review:
+
+- Promote fixed-shape verifier host caching to the top of `docs/MTP.md`: cache
+  per-`(layer_id, rows)` scratch objects and constant non-MoE weight pointers.
+  This targets pure Python recompute in the `~5 ms/pass` host/kernel gap and is
+  numerically identical if keyed correctly.
+- Checked lower-priority review notes against the current locked profile:
+  `w4_single_prefill_smallbatch` is gone (`single_linear_out`/`single_full_v`
+  already default-on), current raw traces show `fillBufferAligned=0`, and
+  `linear_state_pair_commit_chunked_i32` is already down to about
+  `0.202 ms/pass` from the retained chunked commit work.

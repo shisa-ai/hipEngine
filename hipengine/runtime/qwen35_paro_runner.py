@@ -46,6 +46,7 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_commit,
     dflash_accept_chain_i32,
     dflash_accept_chain_i32_packed,
+    dflash_accept_chain_i32_packed_update_state,
     dflash_commit_chain_i32,
     linear_state_pair_commit_chunked_i32,
     linear_state_pair_commit_i32,
@@ -6825,6 +6826,11 @@ class Qwen35ParoResidentSession:
             runtime=self.runtime,
         )
 
+    def _record_slot_position_host(self, position: int, *, slot: int) -> None:
+        if hasattr(self, "position_arr") and hasattr(self, "context_arr"):
+            self.position_arr[int(slot)] = int(position)
+            self.context_arr[int(slot)] = int(position) + 1
+
     def _check_position(self, position: int) -> None:
         if position < 0 or position >= self.max_sequence_length:
             raise ValueError(f"position {position} outside session capacity {self.max_sequence_length}")
@@ -8307,6 +8313,17 @@ class Qwen35ParoResidentSession:
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
+    def _verify_accept_updates_position_enabled(self, batch: TargetVerifyBatch) -> bool:
+        if batch.mode != "verify_chain":
+            return False
+        if len(batch.request_ids) != 1:
+            return False
+        if not self._verify_gpu_accept_enabled():
+            return False
+        if not self._verify_accept_packed_payload_enabled():
+            return False
+        return _env_flag("HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION", False)
+
     def _verify_packed_dynamic_metadata_enabled(self, batch: TargetVerifyBatch) -> bool:
         if batch.mode != "verify_chain":
             return False
@@ -8494,7 +8511,10 @@ class Qwen35ParoResidentSession:
                 stream=stream,
                 commit_row_ptr=int(self.verify_commit_rows.ptr),
             )
-            self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+            if self._verify_accept_updates_position_enabled(batch) and gpu_accept_match:
+                self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
+            else:
+                self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
             # Re-pointing the scratch maps to rows=1 decode views re-reserves
             # workspace names with a different shape, which frees the rows=B+1
             # buffers the captured verifier graph holds raw pointers to.
@@ -8688,7 +8708,10 @@ class Qwen35ParoResidentSession:
             stream=stream,
             commit_row_ptr=int(self.verify_commit_rows.ptr),
         )
-        self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+        if self._verify_accept_updates_position_enabled(batch) and gpu_accept_match:
+            self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
+        else:
+            self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
         # Same #107 keepalive as chain: canonicalizing decode scratch frees the
         # rows=B+1 buffers any cached verifier graph holds raw pointers to.
         if graph_mode == "off" or not self._verify_graph_cache:
@@ -9147,7 +9170,7 @@ class Qwen35ParoResidentSession:
                     runtime=self.runtime,
                 )
         self._sample_verify_rows_from_hidden(hidden, rows, stream=stream)
-        self._launch_verify_accept_summary(batch, rows=rows, stream=stream)
+        self._launch_verify_accept_summary(batch, rows=rows, base_slot=base_slot, stream=stream)
 
     def _run_full_attention_chain_c1_loop(
         self,
@@ -10115,7 +10138,14 @@ class Qwen35ParoResidentSession:
         copy_device_to_host(host_array_ptr(values), DeviceBuffer(self.verify_top1_values.ptr, values.nbytes), runtime=self.runtime)
         return tuple(int(item) for item in ids.tolist()), tuple(float(item) for item in values.tolist())
 
-    def _launch_verify_accept_summary(self, batch: TargetVerifyBatch, *, rows: int, stream: int = 0) -> None:
+    def _launch_verify_accept_summary(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        rows: int,
+        base_slot: int | None = None,
+        stream: int = 0,
+    ) -> None:
         request_count = len(batch.request_ids)
         accept_args = (
             self.verify_token_ids_i32.ptr,
@@ -10135,6 +10165,20 @@ class Qwen35ParoResidentSession:
             self.verify_committed_output_lengths.ptr,
         )
         if self._verify_accept_packed_payload_enabled():
+            if self._verify_accept_updates_position_enabled(batch) and base_slot is not None:
+                dflash_accept_chain_i32_packed_update_state(
+                    *accept_args,
+                    self.verify_accept_payload_i32.ptr,
+                    self.position_buf.ptr + int(base_slot) * DType.INT64.itemsize,
+                    self.context_buf.ptr + int(base_slot) * DType.INT64.itemsize,
+                    rows,
+                    request_count,
+                    rows,
+                    stream=stream,
+                    library=self.libraries["dflash_accept"],
+                    runtime=self.runtime,
+                )
+                return
             dflash_accept_chain_i32_packed(
                 *accept_args,
                 self.verify_accept_payload_i32.ptr,

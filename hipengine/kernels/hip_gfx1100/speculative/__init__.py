@@ -5,6 +5,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     build_dflash_accept,
     dflash_accept_chain_i32,
     dflash_accept_chain_i32_packed,
+    dflash_accept_chain_i32_packed_update_state,
     plan_dflash_accept_build,
     register_dflash_accept_kernels,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "build_dflash_drafter",
     "dflash_accept_chain_i32",
     "dflash_accept_chain_i32_packed",
+    "dflash_accept_chain_i32_packed_update_state",
     "dflash_add_bf16",
     "dflash_concat_rows_bf16",
     "dflash_concat_rows_f32",
