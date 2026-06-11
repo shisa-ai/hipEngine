@@ -395,7 +395,7 @@ def dflash_dense_bf16_to_bf16(
 ) -> None:
     """Project BF16 rows with BF16 weights and write BF16 output rows.
 
-    Honors ``HIPENGINE_DFLASH_DRAFTER_DENSE={naive,wmma}`` (default ``naive``)
+    Honors ``HIPENGINE_DFLASH_DRAFTER_DENSE={naive,wmma}`` (default ``wmma``)
     so the WMMA variant can be A/B tested without touching call sites.  The
     WMMA variant requires ``in_features % 16 == 0``; otherwise it transparently
     falls back to the naive kernel.

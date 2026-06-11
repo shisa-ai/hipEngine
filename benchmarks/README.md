@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, and GDN VTILE=8 no-hold, still WIP)
+Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, and routed-expert proposer WMMA no-hold, still WIP)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the

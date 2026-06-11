@@ -79330,3 +79330,93 @@ Profile vs the prior `single_full_v` retained profile: kernel
 `14.448 -> 14.372 ms/pass`, host marker `18.465 -> 18.369 ms/pass`, calls/pass
 unchanged at `935`. Treat those as consistency evidence, not the reason for
 promotion.
+
+## 2026-06-11 - MTP routed-expert WMMA proposer dense no-hold; next ranking updated
+
+Status/progress check after the proposer token+position packing win:
+
+- 27B dense DFlash remains the deployable positive row: `1.231x` AR, exact
+  `9/9`, documented in README/changelog/DFLASH notes.
+- 35B-A3B MTP is still WIP. The sprint baseline stays locked at
+  `0.758x / 27.8 ms`; the latest exact 9-prompt D32 default wall is lower
+  (`26.869 ms/cycle` after token+position packing), but the ratio is noisy
+  because the same-session AR denominator also moved. Track wall/cycle progress.
+- Retained MTP movement today is mostly launch/round-trip compression:
+  P1 stacked gates `28.43 -> 27.83 ms`, selected-down staged default-off,
+  proposer read/result/snapshot/logit-value skips, async scalar H2D, packed
+  accept payload, C-dispatch shared-down output-tiling, M12.6
+  `single_linear_out`/`single_full_v`, and token+position H2D packing.
+- No-holds include B=3 tree, p_min/sync trims, M15.4 RMSNorm+rotate, selected
+  FFN megakernel, MoE branch overlap, partial-accept replay, device-chain
+  candidate buffering, fused verifier LM-head, GDN VTILE=8, and now
+  routed-expert proposer WMMA dense.
+
+Tested the hypothesis that the MTP sidecar proposer's expert-indexed BF16 dense
+path should share the generic DFlash drafter WMMA dense kernel. The implementation
+was exact in unit coverage and on the quicksort smoke, but the full D32 suite
+regressed, so the experiment code was removed rather than kept as a dormant flag.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py tests/test_dflash_dense_wmma.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_dflash_dense_wmma.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-proposer-expert-wmma-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_DFLASH_DRAFTER_EXPERT_DENSE=naive PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-expert-wmma-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-expert-wmma-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-expert-wmma-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-expert-wmma-on-9prompt-d32.json
+```
+
+Results:
+
+- Quicksort exact smoke passed with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- 9-prompt D32 baseline/default-style expert naive row was exact `9/9`:
+  wall `27.011 ms/cycle`, verify `21.831`, proposal/update `1.980`,
+  actual ratio `0.6855x`.
+- 9-prompt D32 routed-expert WMMA row was exact `9/9`, but regressed:
+  wall `27.149 ms/cycle`, verify `21.783`, proposal/update `2.068`,
+  actual ratio `0.6848x`.
+
+Decision: no-hold. The remaining gap is dominated by dispatch/host overhead, so
+do not chase isolated proposer GEMV microkernels unless a new profile shows a
+real bottleneck.
+
+Updated `docs/MTP.md` with the external review's useful priority ordering, with
+live-tree corrections:
+
+- `single_linear_out` and `single_full_v` exact W4 multi-row routes are already
+  default-on, so that row is done.
+- Next P1 audit: M13.B.1+B.2 selected-GEMV rotate fusion, but only if the live
+  call graph still has an unfused `GEMV -> rotate` pair distinct from the
+  no-held M15.4 producer RMSNorm+rotate and the promoted linear-out cast+rotate.
+- Highest new design priority: full-layer C-dispatcher / reduced-DAG batching
+  for the non-MoE surround, because launch-count and Python/ctypes round trips
+  are the current bottleneck.
+- Then M12.7 graph-capture proposer loop and low-risk per-layer fill/memset
+  removal.
+- Multi-stream overlap remains high-upside but should wait until the reduced-DAG
+  work lands; the direct MoE branch overlap spike already regressed wall time.
