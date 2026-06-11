@@ -10665,12 +10665,13 @@ def _selected_moe_down_staged_enabled() -> bool:
 
     Replaces ``silu_mul_dual_rotate_out_fp16`` +
     ``gemv_awq_selected_pack8_transposed_fp16`` with a single HBM-staged kernel
-    for verifier ``tokens > 1``.  Enabled by default after W7900 rocprof showed
-    a net win when paired with the 64-thread selected GEMV verifier profile;
-    use ``HIPENGINE_SELECTED_MOE_DOWN_STAGED=0`` for the unfused fallback.
+    for verifier ``tokens > 1``.  This was default-on after an early verifier
+    rocprof win, but the current graph-auto MTP stack pays capture-safe
+    barrier/fill overhead and the unfused fallback is faster on the D32
+    9-prompt exact suite.  Keep the staged path opt-in for bisection.
     """
 
-    return _env_enabled("HIPENGINE_SELECTED_MOE_DOWN_STAGED", default=True)
+    return _env_enabled("HIPENGINE_SELECTED_MOE_DOWN_STAGED", default=False)
 
 
 _PARO_FFN_MEGAKERNEL_LIBRARY = None

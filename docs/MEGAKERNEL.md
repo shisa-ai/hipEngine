@@ -570,12 +570,16 @@ Status: **LANDED 2026-06-10/11 — graph replay is exact; verify wall −34% at 
 The divergence was never graph dispatch; it was two capture-frozen host-state
 channels, fixed in `qwen35_paro_runner.py` / `qwen35_paro.py`:
 
-1. **Keyed staged-rotate barriers** (`SELECTED_MOE_DOWN_STAGED`, default-on):
+1. **Keyed staged-rotate barriers** (`SELECTED_MOE_DOWN_STAGED`, then
+   default-on; opt-in after the 2026-06-11 exact-suite refresh):
    the host passes a cumulative `(count, epoch)` *by value*; replays reuse the
    capture-cycle epoch, the consumer never waits (silent race, 1.4–3.7 logit
    drift, run-to-run nondeterminism), and any direct pass after replays spins
    forever (the GPU hangs we hit while instrumenting). Fix: capture-safe
    memset-per-launch barrier mode whenever the verify graph path is active.
+   The later graph-auto prompt-suite gate showed that memset/fill cost now
+   outweighs the staged-down launch saving, so the staged path is retained only
+   behind `HIPENGINE_SELECTED_MOE_DOWN_STAGED=1`.
 2. **Scratch realloc churn:** `_canonicalize_decode_scratch` re-reserves the
    rows=B+1 workspace names at rows=1 every cycle, freeing buffers the graph
    holds raw pointers to. Fix: capture-time scratch snapshot in the graph

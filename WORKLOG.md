@@ -78505,3 +78505,40 @@ suite, and proposal/update moved `2.0519 -> 2.0450 ms/cycle`. Cycle wall moved
 therefore a retained default-on dead-work removal, not a claimed large
 throughput row. Artifact:
 `benchmarks/results/2026-06-11-hipengine-mtp-proposer-snapshot-skip-default-9prompt-d32.json`.
+
+## 2026-06-11 - MTP selected-down staged path flipped default-off
+
+The current graph-auto MTP stack makes the earlier selected-MoE down staged path
+pay capture-safe barrier/fill overhead. A locked quicksort B=3 D32 A/B first
+showed identical acceptance and exact AR while `HIPENGINE_SELECTED_MOE_DOWN_STAGED=0`
+trimmed steady cycle markers by about `0.19 ms/cycle` versus the prior default,
+so ran the full 9-prompt exact suite before changing the default.
+
+Validation:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_SELECTED_MOE_DOWN_STAGED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-selected-down-staged-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json
+```
+
+Result: exact `9/9`, accepted lengths and visible tokens identical to the prior
+default artifact, and every prompt improved cycle wall. Aggregate actual ratio
+`0.6699x -> 0.6784x` AR, cycle wall `27.6479 -> 27.4081 ms/cycle`, verify
+`22.3773 -> 22.1312 ms/cycle`, proposal/update `2.0450 -> 2.0351 ms/cycle`.
+
+Decision: flip `HIPENGINE_SELECTED_MOE_DOWN_STAGED` to opt-in (`=1`) and keep
+the staged path only for bisection/historical comparison. This is a retained
+exact micro-win; 35B-A3B MTP remains WIP below AR. Artifact:
+`benchmarks/results/2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json`.
