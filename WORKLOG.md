@@ -79765,3 +79765,13 @@ Results:
 
 Decision: no-hold. Code removed. Do not retry async packed metadata H2D by
 itself; the retained sync packed copy remains the default.
+
+## 2026-06-11 - MTP next-push priority order clarified
+
+Folded the external review ranking into `docs/MTP.md` as a corrected live
+priority table. The useful takeaway is host/dispatch compression: reduced-DAG
+full-layer batching, proposer graph capture, fill/memset elimination, then
+multi-stream overlap after the DAG is smaller. The plan explicitly marks the
+review's selected-rotate item as hold/no-hold because M13.B.1/B.2/B.3 already
+measured exact-but-negative variants, and marks `single_linear_out`/`single_full_v`
+as done/default-on rather than pending work. Docs-only change; no GPU run.

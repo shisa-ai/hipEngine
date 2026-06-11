@@ -36,6 +36,23 @@ wall is lower or acceptance depth changes.
 Planning estimates below are not performance claims until artifacted with exact
 command, hardware, workload shape, and correctness gate.
 
+Current priority order after folding in the external review:
+
+| Rank | Work item | Expected wall effect | Risk / readiness | Live-plan correction |
+| --- | --- | ---: | --- | --- |
+| 1 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, or Python/ctypes round trips outright. |
+| 2 | M12.7 graph-capture proposer loop | -0.5 to -1.0 ms estimated | Medium; design needed after recent scalar/readback trims | Lower than reduced-DAG verifier work, but still attractive because it targets proposal/update host round trips rather than GPU compute. |
+| 3 | Per-layer memset/fill elimination | -0.1 to -0.3 ms estimated | Low if the lifetime proof is local | Good interstitial lane. Require write-before-read evidence and an exact D32 gate before promoting. |
+| 4 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-3 shrink synchronization and graph-capture overhead. |
+| Hold | New selected-GEMV/shared rotate design | Only if it avoids prior redundant rotate/barrier costs | Template exists, but the measured M13.B family is no-hold | The colleague ranking is directionally right about launch-count compression, but M13.B.1/B.2/B.3 already closed the current rotate-fusion designs as exact-but-negative. Reopen only with a rotate-once/no-barrier-reset design. |
+| Done | `single_linear_out` / `single_full_v` exact multi-row routing | Already retained | Default-on after exact D32 gates | Not pending next work; keep the retained paths and remove their opt-outs after the follow-up defaults-only gates in `docs/REFACTOR.md`. |
+
+Meta-bias for this sprint: prefer launch-count reduction, host round-trip
+compression, graph capture, and C-side batching only when it removes actual DAG
+nodes. VTILE=8 GDN, fused LM-head, refreshed RMSNorm+rotate, and current
+selected-rotate experiments all showed that isolated kernel-body wins are mostly
+noise or negative on this stack.
+
 | Priority | Lever | Target saving | First action | Gate | Status / notes |
 | --- | --- | ---: | --- | --- | --- |
 | P0 | Re-artifact locked baseline | 0 ms | Rerun exact B=3 chain graph-auto + cap32768 + device-expert-dispatch config and emit a compact artifact. | Exact same-session AR; ratio within noise of `0.758x`; wall near `27.8 ms`. | **Done 2026-06-11.** Fresh audit row: `84.314` vs `111.769 tok/s` = `0.754x`; accepted lengths unchanged. Keep `0.758x / 27.8 ms` as the sprint's best locked baseline. |
