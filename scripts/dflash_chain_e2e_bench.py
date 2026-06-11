@@ -3420,6 +3420,27 @@ def main(argv: list[str] | None = None) -> int:
             else "full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier"
         ),
     )
+    aggregate = artifact["measurements"]["aggregate"]
+    native_bulk_promotable = args.verifier_mode == "native_bulk_bplus1"
+    gates_passed = bool(aggregate["all_correctness_passed"] and aggregate["speed_gate_gt_1p10"])
+    if native_bulk_promotable and gates_passed:
+        decision_reason = "correctness and speed gate passed on native bulk verifier"
+        artifact["status"] = "accepted"
+        artifact["performance_claim"] = True
+        artifact["decision_reason"] = decision_reason
+        artifact["decision"]["accepted"] = True
+        artifact["decision"]["reason"] = decision_reason
+        artifact["workload"]["promotion_blocker"] = None
+    elif native_bulk_promotable and not aggregate["all_correctness_passed"]:
+        decision_reason = "one or more rows failed exact/finite correctness gates"
+        artifact["decision_reason"] = decision_reason
+        artifact["decision"]["reason"] = decision_reason
+        artifact["workload"]["promotion_blocker"] = decision_reason
+    elif native_bulk_promotable:
+        decision_reason = "speed gate >1.10x AR not met"
+        artifact["decision_reason"] = decision_reason
+        artifact["decision"]["reason"] = decision_reason
+        artifact["workload"]["promotion_blocker"] = decision_reason
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"rows": len(rows), "all_correctness_passed": artifact["measurements"]["aggregate"]["all_correctness_passed"], "speedup_vs_ar": artifact["measurements"]["aggregate"].get("speedup_vs_ar"), "performance_claim": artifact["performance_claim"]}, sort_keys=True))

@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-11 (E2E after #107: 35B MTP 0.67x, 35B DFlash 0.30x, 27B DFlash gated 1.164x — all exact)
+Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP remains WIP at 0.758x baseline)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -209,6 +209,27 @@ git diff --check
 | Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 512/128 fast-bulk prefill (legacy decode) | 1505.969 | 62.688 | 20.886 | P9.A2 CPU-reference GDN fixture passed (`18 passed`); E2E GDN-isolated parity bit-exact (KL `0.0`, token `4469`); finite deterministic logits in 3 graph runs; cumulative compact-MoE WMMA drift carried over from P8 (KL `0.707`) tracked under tasks #28/#30 | [`2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json`](results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json) | 2026-05-18 | Opt-in `--use-wmma-prefill` on the available RX 7900 XTX/gfx1100. P9.A1 GDN chain (prepare + k2_segments + fused RMSNorm-gate) drops the GDN bucket from `666.9 ms / 30 disp` to `56.3 ms / 90 disp` (~11.85x) and total prefill kernel time `907.8 -> 296.8 ms` (~3.06x). 512/0 wall prefill `534.4 -> 1508.7 tok/s` median (+182.3%). Decode unchanged (`62.6 tok/s`) as expected; the P9.B7 decode-repack row above is the decode-focused successor. W7900 not rerun. |
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 512/128 | 3279.030 | 179.044 | 0.937 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +33.8% vs Qwen3.6 packed PARO comparison row (`2451.2 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 4K/128 | 3599.717 | 85.702 | 1.608 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +35.0% vs Qwen3.6 packed PARO comparison row (`2666.7 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
+
+## MTP / DFlash Speculative Decode
+
+| Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
+| --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
+| Qwen3.6-27B dense PARO + z-lab DFlash | **accepted / positive** | W7900/gfx1100, 9 prompts, D64, `B=4`, `top_k=2`, `whole_cycle_gate=0.90`, `native_bulk_bplus1`, `full_attn_chain_mode=batched`, `canonical_commit_mode=branch_copy`, verifier graph `auto` | 32.569 | 40.101 | **1.231x** | exact `9/9`; finite AR/draft/verify logits; native bulk correctness and speed gates passed | [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json) | Current deployable dense-DFlash row. Rows/output `1.160`, avg accept `2.237`, multi-token acceptance `0.616`; supersedes the earlier 1.1615-1.164x gate rows. |
+| Qwen3.6-35B-A3B PARO + MTP-BF16 | **WIP / not positive yet** | W7900/gfx1100, B=3 persistent chain, `chain_attn_mode=batched`, verifier graph `auto`, draft vocab cap 32768, device expert dispatch; tree default-off after negative B=3 replay | ~110 | 83.4 | 0.758x | exact quicksort B=3; broader retained artifact pending | `WORKLOG.md` 2026-06-11 and [`docs/MTP.md`](../docs/MTP.md) | Locked break-even sprint baseline: 27.8 ms/cycle = 22.0 ms verify + 5.8 ms proposer/draft. Target is >1.0x and <21.5 ms/cycle, so the next push must shave about 6 ms, mostly from verifier busy/floor. |
+
+Accepted 27B dense DFlash rerun:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 \
+  --whole-cycle-gate 0.90 --verifier-mode native_bulk_bplus1 --verifier-graph auto \
+  --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json
+```
 
 ## Concurrency decode snapshot (non-retained)
 

@@ -379,6 +379,27 @@ Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json), and
 [`2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json).
 
+### 2026-06-11 hardening rerun: 27B dense DFlash accepted
+
+After the verify graph-capture fixes landed for the shared MTP/DFlash verifier,
+the deployable 27B dense lane was rerun on W7900/gfx1100 with the production
+native-bulk settings: Qwen3.6-27B-PARO dense target, z-lab Qwen3.6-27B-DFlash
+drafter, 9 prompts, D64, `B=4`, `top_k=2`, `whole_cycle_gate=0.90`,
+`native_bulk_bplus1`, `full_attn_chain_mode=batched`, `branch_copy`, and verifier
+graph `auto`.
+
+Result: **`40.10 tok/s` DFlash vs `32.57 tok/s` same-session AR = `1.231x`**,
+with exact AR equality on `9/9` rows and finite AR/draft/verify logits. Aggregate
+rows/output is `1.160`, average accept length is `2.237`, and multi-token
+acceptance is `0.616`. This supersedes the previous retained `1.1615x`/`1.164x`
+deployable gate rows for the same lane.
+
+The rerun also fixed the artifact decision metadata for native-bulk rows:
+`scripts/dflash_chain_e2e_bench.py` now promotes a native bulk artifact to
+`status=accepted` and `performance_claim=true` when all exact/finite correctness
+gates pass and aggregate speedup exceeds the `>1.10x` rule. Artifact:
+[`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](../benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json).
+
 ### 2026-06-08 deployable routing: online whole-cycle drafter-confidence gate
 
 The 27B profile-route reaches `1.35x` but is **non-deployable** — it routes whole

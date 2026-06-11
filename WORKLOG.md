@@ -77927,3 +77927,52 @@ confident cycles): vis/cyc 2.21 vs 2.38, wall 31.6 vs 27.8 -> 0.61x vs 0.76x.
 #99's gain needs budget 5 depth headroom; at B=5 acceptance saturates (vis
 2.30 < B3 2.56) so chain B=3 remains best. Default off; wiring retained for
 higher-acceptance heads. Verify busy/floor is the remaining lever.
+
+## 2026-06-11 — 27B dense DFlash hardening rerun accepted: 1.231x exact
+
+Reran the deployable 27B dense DFlash lane after the shared verify graph fixes.
+First `--require-cached-build` attempt correctly failed before measurement
+because the DFlash drafter `.so` cache key had changed; reran without cached-build
+requirement to rebuild, then reran the full 9-prompt measurement after fixing
+the artifact decision metadata.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --draft-top-k 2 \
+  --whole-cycle-gate 0.90 --verifier-mode native_bulk_bplus1 --verifier-graph auto \
+  --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json
+```
+
+Result: accepted native-bulk artifact, `performance_claim=true`, exact `9/9`,
+finite AR/draft/verify logits, same-session AR `32.569 tok/s`, DFlash
+`40.101 tok/s`, speedup `1.231x` (+23.1% vs AR). Aggregate rows/output
+`1.160`, avg accept `2.237`, multi-token acceptance `0.616`, steps `177`,
+accepted output tokens `396`, accept histogram `{0:56, 1:12, 2:21, 3:10, 4:78}`.
+This supersedes the retained 27B gated `1.1615x`/E2E `1.164x` rows for the dense
+lane. Updated benchmark rollup/changelog and DFlash notes. Script fix:
+`dflash_chain_e2e_bench.py` now promotes `native_bulk_bplus1` artifacts to
+`accepted` only when exact/finite correctness and `>1.10x` aggregate speed gates
+pass.
+
+## 2026-06-11 — MTP next-push gameplan locked to 0.758x / 27.8 ms
+
+Updated `docs/MTP.md` top status and added the break-even sprint section. Locked
+baseline: 35B-A3B PARO + MTP-BF16, W7900/gfx1100, B=3 persistent chain,
+`chain_attn_mode=batched`, verifier graph auto, draft vocab cap 32768, device
+expert dispatch, tree off. Current best remains `83.4 tok/s` vs `~110 tok/s`
+= `0.758x`; cycle wall `27.8 ms = 22.0 verify + 5.8 proposer/draft`.
+Break-even target is `<21.5 ms/cycle`, so the next push needs about `6.3 ms`.
+
+Prioritized table in `docs/MTP.md`: P0 re-artifact/profile locked baseline;
+P1 finish dual output-tiling, remove glue/copy/cast floor, and try safe
+proposer-side rotate/RMSNorm fusion; P2 multi-stream overlap and device-resident
+proposer chain advance; P3 revisit tree/top-k only after wall is lower. Explicit
+no-go list for this sprint: `p_min`, whole-pass persistent, and consumer-side
+rotate fusion unless new evidence changes the bottleneck.

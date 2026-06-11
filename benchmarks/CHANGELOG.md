@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-11
 
+- [hipEngine] Qwen3.6-27B-PARO dense + z-lab DFlash / W7900 9-prompt D64 B=4: deployable online-gated DFlash `1.1615x -> 1.2313x` AR (+6.0% relative, `40.10` vs `32.57 tok/s`) after post-#107 hardening rerun with `native_bulk_bplus1`, `branch_copy`, verifier graph auto, and whole-cycle gate `0.90`; exact `9/9`, `performance_claim=true`; `benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`.
 - [hipEngine] E2E speculative vs AR post-#107: 35B-A3B MTP 0.49 -> 0.67x, 35B DFlash 0.30x (drafter-bound), 27B-dense DFlash gated 1.164x (matches retained 1.1615x), all exact; `benchmarks/results/2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json`.
 
 ## 2026-06-10

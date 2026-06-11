@@ -1,20 +1,56 @@
 # hipEngine MTP Native Implementation Plan
 
-> Status (2026-05-21): shared ABI + metadata/loading scaffold landed; a local
-> PARO+MTP-BF16 artifact is assembled for bring-up. Native MTP proposal and
-> shared target verification are exact at B=1/2/3/5 on the stable quicksort
-> prompt. M7.C.6 fixed the row-stride-aliased small-batch dispatch path and
-> improved B=3 MTP wall throughput by +15.8%, but the M12.0 economics sweep
-> shows the verifier cycle still costs **3.2–6.9 AR-token equivalents** across
-> B=1/2/3/5. llama.cpp-style MTP benefits require ~2 AR-token equivalents.
+> Status (2026-06-11): shared ABI, local PARO+MTP-BF16 weights, persistent
+> native proposal, exact B=3 chain verification, verify graph replay, draft vocab
+> cap, and device expert dispatch are landed. The current W7900/gfx1100 35B-A3B
+> MTP baseline is **0.758x AR**: `83.4 tok/s` vs `~110 tok/s`, with a
+> **27.8 ms/cycle** wall split of `22.0 ms` verifier + `5.8 ms` proposer/draft.
 > This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 
-> **Top priority for the next push:** M12 true-batched verifier economics. Stop
-> optimizing isolated kernel families until the loop is measured and shaped as a
-> llama.cpp-style verifier cycle: `cycle_cost_ar_tokens <= ~2.0` for small B,
-> with exact AR equality preserved. See ["M12 — true batched verifier loop pivot"](#m12--true-batched-verifier-loop-pivot-2026-05-21).
+> **Top priority for the next push:** MTP break-even sprint. Hold the current
+> exact B=3 chain baseline fixed, cut cycle wall from `27.8 ms` to `<21.5 ms`,
+> and promote only same-session AR-correct rows. See ["Next Push: 35B MTP
+> Break-Even Sprint"](#next-push-35b-mtp-break-even-sprint-2026-06-11).
+
+## Next Push: 35B MTP Break-Even Sprint (2026-06-11)
+
+Locked baseline:
+
+- Model/workload: Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar,
+  W7900/gfx1100, stable quicksort B=3 chain path.
+- Runtime config: `proposal_impl=persistent_device`,
+  `chain_attn_mode=batched`, verifier graph `auto`, draft vocab cap `32768`,
+  device expert dispatch, exact chain verifier; branching tree default-off.
+- Current speed: **`83.4 tok/s` MTP vs `~110 tok/s` AR = `0.758x`**.
+- Current wall: **`27.8 ms/cycle = 22.0 ms verify + 5.8 ms proposer/draft`**.
+- Break-even target at current visible tokens/cycle: **`<21.5 ms/cycle`** for
+  `>1.0x`, so the next push must remove about **6.3 ms/cycle**.
+
+Tree status is explicit: the B=3 gated tree path is exact and graph-replayed, but
+negative (`0.61x` vs chain `0.76x`) because it spends budget on a depth-1 sibling
+and caps depth where the chain often accepts 3. Keep tree off until the verifier
+wall is lower or acceptance depth changes.
+
+Planning estimates below are not performance claims until artifacted with exact
+command, hardware, workload shape, and correctness gate.
+
+| Priority | Lever | Target saving | First action | Gate | Status / notes |
+| --- | --- | ---: | --- | --- | --- |
+| P0 | Re-artifact locked baseline | 0 ms | Rerun exact B=3 chain graph-auto + cap32768 + device-expert-dispatch config and emit a compact artifact. | Exact same-session AR; ratio within noise of `0.758x`; wall near `27.8 ms`. | Makes the sprint baseline auditable before more kernel work. |
+| P0 | Current verify profile refresh | Diagnostic | Run `scripts/mtp_verifier_rocprof.py` on the locked config with callsite/family rollup. | Family split reconciles with `22.0 ms` verify wall; no unexpected fallback kernels. | Required before touching more W4 or glue paths. |
+| P1 | Finish M16.4 dual output-tiling | -1 to -2 ms | Route remaining hot W4 dual/single verifier prefill sites through byte-exact output-column-tiled kernels where coverage already exists. | Byte-exact W4 gates; same-session exact B=3 smoke; rocprof shows `w4_dual_prefill_smallbatch` and remaining single-prefill shrink. | Highest-confidence GPU-busy cut. |
+| P1 | Remove glue launches / copy-cast floor | -1.5 to -2.2 ms | Fuse or alias producer outputs into the next RMSNorm/rotate/GEMV inputs; eliminate pure `copyBuffer`/format-cast nodes from verifier hot path. | RED layout/lifetime tests; exact B=3 smoke; launch count and cycle wall both drop. | This is the observed small-launch floor, not host Python overhead. |
+| P1 | Proposer-side rotate-into-RMSNorm fusion | -0.5 to -1 ms | Implement producer-side fusion where it reduces launches without repeating full rotation per output tile. | Bit-exact proposal candidates; no acceptance drift; net proposer/draft wall decreases. | Avoid the prior consumer-side rotate trap that regressed occupancy. |
+| P2 | Multi-stream overlap spike | -1 to -3 ms if real | Prototype verifier-layer dispatch on 2/4 streams with event dependencies around independent W4/MoE/GDN work. | Microbench shows measurable overlap before runtime integration; exact smoke after integration. | W7900 has idle ACEs, but dependency shape may cap useful overlap. |
+| P2 | Device-resident proposer chain advance | -0.5 to -1.5 ms | Use the graph-safe device expert dispatch to keep proposer update/advance in device-resident batches. | Candidate token sequence identical to baseline; cycle wall improves. | p_min and sync trims were neutral; only do work that removes real GPU/launch cost. |
+| P3 | Revisit top-k/tree after wall cut | Acceptance margin | Re-run gated tree/top-k only after verify wall is materially lower or a better acceptance head is available. | Tree beats chain on the same wall and same prompt suite. | Current B=3 tree is default-off negative. |
+| No-go | p_min / whole-pass persistent / consumer rotate fusion | 0 ms | Do not spend sprint time here unless new evidence changes the bottleneck. | n/a | Measured neutral or negative on this stack. |
+
+Break-even accounting: stacked P1 wins must get close to `27.8 -> 23-24 ms`; one
+additional P2 overlap/proposer win is likely needed for `<21.5 ms`. Any acceptance
+uplift is margin, not the primary plan.
 
 ## Thesis
 
