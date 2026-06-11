@@ -98,6 +98,10 @@ def _route0_accum_init_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT", True)
 
 
+def _direct_kv_write_enabled() -> bool:
+    return _env_flag("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", True)
+
+
 def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic], buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> tuple[np.ndarray, DeviceBuffer]:
     host = np.zeros(shape, dtype=dtype)
     buf = malloc(host.nbytes, runtime=runtime)
@@ -451,6 +455,11 @@ class NativeMtpChainProposer:
                 HipMemcpyKind.HOST_TO_DEVICE,
                 0,
             )
+        key_cache_dst = self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize
+        value_cache_dst = self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize
+        direct_kv_write = _direct_kv_write_enabled()
+        v_out_ptr = value_cache_dst if direct_kv_write else self.v_proj_buf.ptr
+        key_out_ptr = key_cache_dst if direct_kv_write else self.key_rot_buf.ptr
         mtp_fuse_inputs_f16_bf16(
             self.token_buf.ptr,
             self.weights["embed_tokens.weight"].ptr,
@@ -474,7 +483,7 @@ class NativeMtpChainProposer:
             self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
             self.q_proj_buf.ptr,
             self.k_proj_buf.ptr,
-            self.v_proj_buf.ptr,
+            v_out_ptr,
             1,
             self.hidden,
             self.q_proj_features,
@@ -493,7 +502,7 @@ class NativeMtpChainProposer:
             self.position_buf.ptr,
             self.position_buf.ptr,
             self.query_rot_buf.ptr,
-            self.key_rot_buf.ptr,
+            key_out_ptr,
             1,
             1,
             1,
@@ -506,8 +515,9 @@ class NativeMtpChainProposer:
             threads=128,
             library=self.dflash_lib,
         )
-        self.runtime.memcpy_async(self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
-        self.runtime.memcpy_async(self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
+        if not direct_kv_write:
+            self.runtime.memcpy_async(key_cache_dst, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
+            self.runtime.memcpy_async(value_cache_dst, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
         context_len = self.cache_len + 1
         dflash_gqa_attention_f32_bf16(self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr, self.attn_out_buf.ptr, 1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim, threads=128, library=self.dflash_lib)
         mtp_gate_mul_bf16(self.attn_out_buf.ptr, self.gate_buf.ptr, self.gated_buf.ptr, self.q_features, threads=256, library=self.mtp_lib)

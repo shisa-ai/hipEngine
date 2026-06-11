@@ -79984,3 +79984,66 @@ not promote a launch-only cleanup that repeatedly loses the actual MTP economics
 Keep the bit-exact fused kernel and opt-in gate temporarily for future
 full-layer composite experiments; track the flag in `docs/REFACTOR.md` for
 removal/demotion after the sprint if no broader design uses it profitably.
+
+## 2026-06-11 - MTP proposer direct K/V cache writes default-on
+
+Implemented the next P2 proposer reduced-DAG slice: in
+`NativeMtpChainProposer.advance()`, the V projection producer now writes directly
+to the current BF16 value-cache row, and the K RMSNorm+rotary producer writes
+directly to the current FP32 key-cache row. This removes the old temp-buffer
+materialization plus two D2D `memcpy_async` submissions per proposer advance.
+The old path is available with `HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE=0` until
+the next defaults-only cleanup pass.
+
+Validation and measurement:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py scripts/mtp_chain_e2e_smoke.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-proposer-direct-kv-write-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-direct-kv-write-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-direct-kv-write-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-direct-kv-write-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-direct-kv-write-on-9prompt-d32.json
+```
+
+Results:
+
+- `py_compile` passed.
+- Quicksort smoke passed exact AR with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- D32 9-prompt off/on stayed exact `9/9` with identical acceptance, visible
+  tokens/cycle, accepted/cycle, snapshot saves/skips, and active budgets.
+- Targeted proposal/update improved `1.995467 -> 1.980085 ms/cycle`
+  (-0.015 ms/cycle, -0.77%); 8 of 9 prompts improved this slice.
+- Whole-cycle wall was flat/noisy-negative
+  `26.955949 -> 26.970488 ms/cycle`, and verify moved
+  `21.780373 -> 21.818121 ms/cycle` even though this change does not touch the
+  verifier path. Actual ratio was noisy/down
+  `0.687990x -> 0.682982x` because same-session AR also moved.
+
+Decision: retain default-on as a proposer sub-window micro-slice, not a headline
+throughput row. The work removal is real, exact, and local: two D2D submissions
+per proposer advance are gone, and the measured proposal/update window improves.
+Track the opt-out in `docs/REFACTOR.md` for removal after the next retained
+defaults-only gate.
