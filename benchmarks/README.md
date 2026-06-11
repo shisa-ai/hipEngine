@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, packed verify dynamic metadata, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, and proposer shared-gate finalize fusion no-hold, still WIP)
+Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, packed verify dynamic metadata, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, proposer shared-gate finalize fusion, and async packed verify-metadata H2D no-hold, still WIP)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -287,6 +287,12 @@ one-prompt shared-path smoke passed. Opt out with
 [`pack dynamic metadata off`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-off-9prompt-d32.json),
 [`pack dynamic metadata on`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-on-9prompt-d32.json),
 [`pack dynamic metadata rocprof`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-rocprof.json).
+No-hold follow-up: stream-ordering that packed H2D from a persistent host buffer
+stayed exact `9/9` with identical acceptance, but regressed actual ratio
+`0.68634x -> 0.68161x`, cycle wall `26.9165 -> 27.0911 ms/cycle`, and verify
+`21.7799 -> 21.9470 ms/cycle`; the experiment code was removed. Artifacts:
+[`async off`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-off-9prompt-d32.json),
+[`async on`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-on-9prompt-d32.json).
 
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is now opt-in after the current graph-auto
 suite proved the unfused fallback faster: exact `9/9`, identical acceptance,

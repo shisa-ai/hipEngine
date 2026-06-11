@@ -79713,3 +79713,55 @@ Results:
 Decision: retain default-on. This is a micro wall/verify slice, not a headline
 break-even move, but it is exact, same-suite non-regressive, positive on wall,
 and keeps the docs/REFACTOR opt-out removal trigger explicit.
+
+## 2026-06-11 - MTP verifier packed metadata async H2D no-hold
+
+Followed up the retained packed dynamic metadata path by trying to replace the
+blocking packed H2D copy with a persistent host buffer plus
+`runtime.memcpy_async(..., HOST_TO_DEVICE, stream)` before the same unpack
+kernel. Quicksort smoke stayed exact, but the same-suite D32 aggregate regressed,
+so the experiment code was removed and the retained sync packed copy remains.
+
+Validation and measurement:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-verify-pack-dynamic-metadata-async-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA_ASYNC=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-verify-pack-dynamic-metadata-async-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-verify-pack-dynamic-metadata-async-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-on-9prompt-d32.json
+```
+
+Results:
+
+- quicksort smoke exact with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`;
+- 9-prompt D32 exact `9/9` on both rows with identical accepted lengths,
+  active budgets, visible tokens/cycle, and accepted/cycle;
+- actual ratio regressed `0.6863358463x -> 0.6816050622x`;
+- cycle wall regressed `26.916525 -> 27.091106 ms/cycle` (+0.17458 ms);
+- verify regressed `21.779911 -> 21.946999 ms/cycle` (+0.16709 ms);
+- proposal/update regressed `1.951349 -> 1.958369 ms/cycle` (+0.00702 ms).
+
+Decision: no-hold. Code removed. Do not retry async packed metadata H2D by
+itself; the retained sync packed copy remains the default.

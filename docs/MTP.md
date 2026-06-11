@@ -123,6 +123,12 @@ identical, and moved cycle wall `27.02196 -> 26.99252 ms/cycle`, verify
 `1.95733 -> 1.95069 ms/cycle`, and actual ratio `0.68417x -> 0.68898x`.
 Rocprof confirms the unpack kernel runs; a 27B dense DFlash D16 one-prompt
 shared-verifier smoke passed.
+No-hold: trying to make that packed H2D stream-ordered from a persistent host
+buffer stayed exact `9/9` with identical acceptance, but regressed cycle wall
+`26.9165 -> 27.0911 ms/cycle`, verify `21.7799 -> 21.9470 ms/cycle`, and
+actual ratio `0.68634x -> 0.68161x`; experiment code removed. Keep the retained
+sync packed copy unless a broader metadata/graph design changes the lifetime and
+ordering model.
 Routing the C-dispatch linear shared-down projection through the existing W4
 output-tiled policy adds another exact kernel-choice slice on the locked
 profile: the residual 30/pass `awq_fusedw4_prefill` bucket disappears, verifier
