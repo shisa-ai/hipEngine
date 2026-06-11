@@ -175,6 +175,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
     qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32,
     qwen35_split_qgate_bf16,
     qwen35_split_qgate_fp16,
+    qwen35_split_qgate_fp16_key_f32,
 )
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
@@ -2797,28 +2798,44 @@ class Qwen35ParoDecodeState:
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         cfg = self.config
         kv_width = cfg.num_key_value_heads * cfg.head_dim
-        qwen35_split_qgate_fp16(
-            scratch.q_proj.ptr,
-            scratch.query_raw.ptr,
-            scratch.gate.ptr,
-            tokens,
-            cfg.num_attention_heads,
-            cfg.head_dim,
-            stream=stream,
-            library=_library_for(library, "qwen_rotary"),
-            runtime=self.runtime,
-        )
+        if _full_qkv_split_key_fused_enabled(tokens):
+            qwen35_split_qgate_fp16_key_f32(
+                scratch.q_proj.ptr,
+                scratch.key_bf16.ptr,
+                scratch.query_raw.ptr,
+                scratch.key_raw.ptr,
+                scratch.gate.ptr,
+                tokens,
+                cfg.num_attention_heads,
+                cfg.num_key_value_heads,
+                cfg.head_dim,
+                stream=stream,
+                library=_library_for(library, "qwen_rotary"),
+                runtime=self.runtime,
+            )
+        else:
+            qwen35_split_qgate_fp16(
+                scratch.q_proj.ptr,
+                scratch.query_raw.ptr,
+                scratch.gate.ptr,
+                tokens,
+                cfg.num_attention_heads,
+                cfg.head_dim,
+                stream=stream,
+                library=_library_for(library, "qwen_rotary"),
+                runtime=self.runtime,
+            )
+            fp16_to_f32(
+                scratch.key_bf16.ptr,
+                scratch.key_raw.ptr,
+                tokens * kv_width,
+                stream=stream,
+                library=_library_for(library, "cast"),
+                runtime=self.runtime,
+            )
         if producer_trace is not None:
             producer_trace("query_raw_after_split", scratch.query_raw)
             producer_trace("gate_after_split", scratch.gate)
-        fp16_to_f32(
-            scratch.key_bf16.ptr,
-            scratch.key_raw.ptr,
-            tokens * kv_width,
-            stream=stream,
-            library=_library_for(library, "cast"),
-            runtime=self.runtime,
-        )
         if producer_trace is not None:
             producer_trace("key_raw_after_cast", scratch.key_raw)
         if query_bf16_out is not None:
@@ -10971,6 +10988,20 @@ def _linear_out_cast_rotate_fused_enabled(tokens: int) -> bool:
     """
 
     return int(tokens) > 1 and _env_flag("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", True)
+
+
+def _full_qkv_split_key_fused_enabled(tokens: int) -> bool:
+    """Fuse verifier full-attention Q/Gate split with the FP16->FP32 key cast.
+
+    The fused kernel writes the same FP32 query, FP32 key, and FP16 gate buffers
+    as ``qwen35_split_qgate_fp16`` followed by ``fp16_to_f32``. It is verifier-
+    only so same-session AR remains on the old c=1 launch chain. Default-off:
+    the 2026-06-11 profile removed 10 launches/pass, but two exact 9-prompt
+    D32 A/B pairs both regressed aggregate wall/verify. Opt in with
+    ``HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED=1`` for diagnostics.
+    """
+
+    return int(tokens) > 1 and _env_flag("HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED", False)
 
 
 def _fused_rmsnorm_rotate2_shape_ok(tokens: int, hidden: int, group_size: int) -> bool:

@@ -79885,3 +79885,102 @@ not a headline throughput row, but it is exact, keeps acceptance identical,
 directly reduces the commit kernel and verifier profile, and does not change
 semantics. Track the opt-out in `docs/REFACTOR.md` for removal after the next
 defaults-only MTP/DFlash gates.
+
+## 2026-06-11 - MTP full-QKV split/key-cast fusion no-hold
+
+Tested a narrow P1 reduced-DAG verifier slice in the full-attention prelude:
+fuse `qwen35_split_qgate_fp16` and the following `fp16_to_f32(key)` into one
+`qwen35_split_qgate_fp16_key_f32` launch for verifier shapes (`tokens > 1`).
+The fused kernel is bit-exact vs the old split+cast chain and remains available
+behind `HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED=1`, but it is default-off after the
+prompt-suite gate repeated a wall/verify regression.
+
+Validation and measurement:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/qwen35_rotary.py hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py tests/test_qwen35_rotary_plan.py tests/test_qwen35_rotary_split_key_fused.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_qwen35_rotary_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_rotary_split_key_fused.py -k 'rotary_registers_full_attention_prelude_variants or rotary_wrappers_validate_before_gpu_load or prepare_full_attention_qkv_fp16_tokens_uses_vector_positions or split_key_fuse_can_opt_in or runs_full_attention_fp16_pre_moe_chain or split_qgate_fp16_key_f32_matches'
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
+lib = build_qwen35_rotary(load=True, compiler_version=open('/tmp/hipengine-hipcc-version.txt').read())
+print('qwen35_rotary build/load OK', bool(lib))
+PY
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-full-qkv-split-key-fused-smoke.json
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-full-qkv-split-key-fused-off-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-full-qkv-split-key-fused-off-rocprof-seq --top 50
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-full-qkv-split-key-fused-on-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-full-qkv-split-key-fused-on-rocprof-seq --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-full-qkv-split-key-fused-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-full-qkv-split-key-fused-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-full-qkv-split-key-fused-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-full-qkv-split-key-fused-on-9prompt-d32.json
+```
+
+The first rocprof A/B was invalid because I accidentally ran two profiler
+sessions on the same GPU concurrently; the retained artifacts above were
+rerun sequentially. The `on` commands shown above are the reproduction commands
+for the final default-off tree; the artifacts were captured before the gate was
+flipped back off, when the same fused path was briefly default-on. Results:
+
+- `py_compile` passed; targeted unit/GPU tests passed `7/7`.
+- HIP qwen35 rotary build/load passed.
+- Fused quicksort smoke stayed exact with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- Clean locked rocprof off/on: calls/pass `932 -> 922`, host window
+  `18.269142 -> 18.234314 ms/pass`, total kernel
+  `14.367223 -> 14.365901 ms/pass`. The old split+cast kernels
+  (`0.035397 + 0.016764 ms/pass`) are replaced by
+  `qwen35_split_qgate_fp16_key_f32` at `0.037597 ms/pass`.
+- First 9-prompt D32 A/B: exact `9/9`, identical accepted lengths and active
+  budgets, but wall `26.9273 -> 26.9883 ms/cycle` and verify
+  `21.7562 -> 21.8126 ms/cycle` regressed.
+- Rerun 9-prompt D32 A/B: exact `9/9`, identical accepted lengths and active
+  budgets, but wall `26.9224 -> 27.0308 ms/cycle` and verify
+  `21.7518 -> 21.8443 ms/cycle` regressed.
+- Mean over both pairs: wall `26.9249 -> 27.0096 ms/cycle`, verify
+  `21.7540 -> 21.8284 ms/cycle`, actual ratio
+  `0.68884x -> 0.68710x`.
+
+Decision: no-hold for default promotion despite the launch-count/profile slice.
+This is exactly the distinction we need: take every real suite-level win, but do
+not promote a launch-only cleanup that repeatedly loses the actual MTP economics.
+Keep the bit-exact fused kernel and opt-in gate temporarily for future
+full-layer composite experiments; track the flag in `docs/REFACTOR.md` for
+removal/demotion after the sprint if no broader design uses it profitably.
