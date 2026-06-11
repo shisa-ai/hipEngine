@@ -78332,3 +78332,52 @@ HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE
 Results: py_compile passed; targeted pytest `4 passed`; full focused routing
 tests `64 passed`; fused cast+rotate GPU bit-exact tests `3 passed`;
 split-output W4 output-tiled GPU tests `72 passed`.
+
+## 2026-06-11 — M15.4 RMSNorm+PARO rotate re-test remains no-hold on current P1 stack
+
+Before moving past the `docs/MTP.md` P1 producer-side rotate/RMSNorm row, reran
+the existing `HIPENGINE_FUSED_RMSNORM_ROTATE` gate against today's P1 defaults
+instead of relying on the pre-P1 neutral row.
+
+Current P1-default verifier profile:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 24 \
+  --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-p1-current-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-p1-current-rocprof.json
+```
+
+Fused RMSNorm+rotate profile:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_FUSED_RMSNORM_ROTATE=1 PYTHONPATH=. timeout 3600 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 24 \
+  --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-p1-fused-rmsrotate-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-p1-fused-rmsrotate-rocprof.json
+```
+
+Result: exact AR stayed true in both runs, but the gate is still not a real
+performance win. Calls/pass improved `943.0 -> 915.9` and
+`moe_paro_rotate_in` dropped `190.0 -> 162.9` calls/pass, but verifier kernel
+time regressed `13.41 -> 14.09 ms/pass` and host verifier window regressed
+`18.45 -> 19.05 ms/pass`. The fused kernel itself costs `0.921 ms/pass`,
+more than the standalone rotate launch saving it replaces.
+
+Decision: keep `HIPENGINE_FUSED_RMSNORM_ROTATE` default-off and do not spend
+more sprint time on exact PARO rotate-pair fusion unless a new implementation
+avoids the one-block RMSNorm occupancy trap. The live MTP proposer uses RoPE
+RMS+rotary, so this table row is now closed as a refreshed no-hold; next sprint
+work should move to overlap and device-resident proposer/update levers.

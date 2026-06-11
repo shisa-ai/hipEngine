@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 promoted default-on after exact 9-prompt A/B, still WIP)
+Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 promoted default-on; M15.4 RMSNorm+rotate re-test no-hold, still WIP)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -216,6 +216,13 @@ git diff --check
 | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
 | Qwen3.6-27B dense PARO + z-lab DFlash | **accepted / positive** | W7900/gfx1100, 9 prompts, D64, `B=4`, `top_k=2`, `whole_cycle_gate=0.90`, `native_bulk_bplus1`, `full_attn_chain_mode=batched`, `canonical_commit_mode=branch_copy`, verifier graph `auto` | 32.569 | 40.101 | **1.231x** | exact `9/9`; finite AR/draft/verify logits; native bulk correctness and speed gates passed | [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json) | Current deployable dense-DFlash row. Rows/output `1.160`, avg accept `2.237`, multi-token acceptance `0.616`; supersedes the earlier 1.1615-1.164x gate rows. |
 | Qwen3.6-35B-A3B PARO + MTP-BF16 | **WIP / not positive yet** | W7900/gfx1100, B=3 persistent chain, `chain_attn_mode=batched`, verifier graph `auto`, draft vocab cap 32768, device expert dispatch, P1 split-output + cast/rotate defaults on; tree default-off after negative B=3 replay | 111.769 locked audit; 112.087 stacked P1 diagnostic | 84.314 locked audit; 87.725 stacked P1 diagnostic | 0.754x fresh rerun; 0.758x best locked; 0.783x stacked quicksort diagnostic; 0.652x off 9-prompt D32 -> 0.671x default-on 9-prompt D32 | exact quicksort B=3; accepted lengths `[3,3,2,0,2,0,0,1,3,0,2,0,2]`; default-on P1 D32 prompt suite exact `9/9`; off/default A/B had identical acceptance and no prompt regressions | [`baseline`](results/2026-06-11-hipengine-mtp-b3-locked-baseline.json), [`rocprof`](results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json), [`M16.4 smoke`](results/2026-06-11-hipengine-mtp-m16.4-dual-split-output-tiled-cdispatch-smoke.json), [`M16.4 rocprof`](results/2026-06-11-hipengine-mtp-m16.4-dual-split-output-tiled-cdispatch-rocprof.json), [`cast+rotate smoke`](results/2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-smoke.json), [`cast+rotate rocprof`](results/2026-06-11-hipengine-mtp-p1-linear-cast-rotate-fused-rocprof.json), [`P1 stacked smoke`](results/2026-06-11-hipengine-mtp-p1-stacked-split-output-cast-rotate-smoke.json), [`P1 stacked rocprof`](results/2026-06-11-hipengine-mtp-p1-stacked-split-output-cast-rotate-rocprof.json), [`P1 off 9-prompt D32`](results/2026-06-11-hipengine-mtp-p1-off-9prompt-d32.json), [`P1 stacked 9-prompt D32`](results/2026-06-11-hipengine-mtp-p1-stacked-9prompt-d32.json), [`P1 default-on 9-prompt D32`](results/2026-06-11-hipengine-mtp-p1-defaulton-9prompt-d32.json), [`docs/MTP.md`](../docs/MTP.md) | Locked break-even sprint baseline remains 0.758x / 27.8 ms best. Fresh locked profile is `19.73 ms/pass` host, `15.33 ms/pass` kernel, `972` calls/pass. Promoted P1 stack is exact and same-suite positive: actual speed `0.652x -> 0.671x` (+3.0% relative), cycle wall `28.43 -> 27.83 ms`, verify `22.98 -> 22.37 ms`; quicksort stacked profile host `19.02 ms/pass`, kernel `14.86 ms/pass`, calls `942`. Still needs overlap/proposer/higher-reach glue for >1.0x / <21.5 ms. |
+
+Current MTP no-hold diagnostic: on the 2026-06-11 P1-default stack,
+`HIPENGINE_FUSED_RMSNORM_ROTATE=1` remained exact but regressed verifier kernel
+`13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass` despite calls
+`943.0 -> 915.9/pass`; keep the M15.4 RMSNorm+PARO rotate2 gate default-off.
+Artifacts: [`current P1 rocprof`](results/2026-06-11-hipengine-mtp-p1-current-rocprof.json),
+[`fused RMSNorm+rotate rocprof`](results/2026-06-11-hipengine-mtp-p1-fused-rmsrotate-rocprof.json).
 
 Accepted 27B dense DFlash rerun:
 
