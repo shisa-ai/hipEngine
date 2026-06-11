@@ -41,12 +41,15 @@ Current priority order after folding in the external review:
 | Rank | Work item | Expected wall effect | Risk / readiness | Live-plan correction |
 | --- | --- | ---: | --- | --- |
 | 1 | Resident state/cache Tensor view caching | -0.1 to -0.6 ms estimated host/object churn | Low/medium; numerically identical if caches invalidate on `reset()` and any `linear_states` / `full_caches` rebuild | Fresh review found repeated `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` `Tensor.from_handle` view construction across verifier/commit paths. This is a cleaner next host-cache micro-slice than another weight lookup tweak. |
-| 2 | Scratch-cache generation stamp | -0.05 to -0.3 ms estimated host metadata checks | Low/medium; preserve stale-pointer protection | Do not blindly remove `_workspace_tensor_matches`. Add a session scratch-cache generation/version, bump it on `_clear_verify_scratch_caches()` / prefill restore / graph-cache invalidation, and return cached scratch directly only when the generation matches. |
-| 3 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. |
-| 4 | M12.7 graph-capture proposer loop | -0.5 to -1.0 ms estimated | Medium; design needed after recent scalar/readback trims | Still attractive because it targets proposal/update host round trips rather than GPU compute. The proposer's much smaller DAG makes this more plausible than whole-verifier graph replay. |
-| 5 | Verifier/proposer inter-cycle overlap design | -0.5 to -1.0 ms possible if commit is hideable | Medium/high; must prove proposer dependencies do not read committed canonical verifier state or shared scratch | Worth a design audit, but not a quick flip. Insert events only after proving accepted token/hidden row, proposer state repair, and commit buffers are independent until the next verifier cycle. |
-| 6 | Per-layer memset/fill/copy enumeration | -0.1 to -0.3 ms estimated if any live copy/fill family remains | Low if the lifetime proof is local | Current locked profile shows `fillBufferAligned=0`, so this is a profile-driven cleanup lane, not a presumed win. Require write-before-read evidence and an exact D32 gate before promoting. |
-| 7 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-6 shrink synchronization and graph-capture overhead. |
+| 2 | Verifier MLP scratch policy alignment | -0.1 to -0.5 ms estimated host/allocator churn, likely larger graph-off than graph-auto | Low/medium; numerically identical if the scratch class matches the existing MoE policy | The runner's `_reserve_mlp_scratch(tokens=rows)` still reserves grouped MoE scratch for every `rows > 1`, while chain/tree t-loop MoE uses c1 scratch until `_verify_moe_grouped_min_tokens()` (default `16`). At B=3 (`rows=4`) this can waste grouped scratch and force c1 re-reserve churn. Match the scratch reservation policy to the actual verifier MoE policy. |
+| 3 | MTP-only graph-off canonicalize-after-verify skip | -0.05 to -0.3 ms estimated allocator churn | Medium; must preserve real c=1 decode handoff correctness | Graph-auto already skips `_canonicalize_decode_scratch()` when a verifier graph cache exists. Graph-off still canonicalizes after every verify, even when the next MTP step is another verify/proposer update. Add a narrow `canonicalize_after` control only after proving where true AR/c1 handoff needs canonical scratch. |
+| 4 | Scratch-cache generation stamp | -0.05 to -0.3 ms estimated host metadata checks | Low/medium; preserve stale-pointer protection | Do not blindly remove `_workspace_tensor_matches`. Add a session scratch-cache generation/version, bump it on `_clear_verify_scratch_caches()` / prefill restore / graph-cache invalidation, and return cached scratch directly only when the generation matches. |
+| 5 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. The best concrete kernel-shaped candidate is shared-down + shared-gate/residual combine for the verifier C dispatcher, because it can remove one launch/layer plus `shared_out` traffic if FP16 rounding matches exactly. |
+| 6 | M12.7 graph-capture proposer loop | -0.5 to -1.0 ms estimated | Medium; design needed after recent scalar/readback trims | Still attractive because it targets proposal/update host round trips rather than GPU compute. The proposer's much smaller DAG makes this more plausible than whole-verifier graph replay. |
+| 7 | Route-batched proposer expert loop | -0.3 to -1.0 ms possible after profiling | Medium/high; requires new route-batched expert kernels and larger `[top_k, ...]` scratch | Do not treat this as a host-only batching change. Current sidecar dense expert kernels take scalar routes, so batching routes must preserve route accumulation order with new gate/up, activation/down, and accumulation plumbing. Try after proposer graph capture/profiling identifies the expert loop as the live bottleneck. |
+| 8 | Verifier/proposer inter-cycle overlap design | -0.5 to -1.0 ms possible if commit is hideable | Medium/high; must prove proposer dependencies do not read committed canonical verifier state or shared scratch | Worth a design audit, but not a quick flip. Insert events only after proving accepted token/hidden row, proposer state repair, and commit buffers are independent until the next verifier cycle. |
+| 9 | Per-layer memset/fill/copy enumeration | -0.1 to -0.3 ms estimated if any live copy/fill family remains | Low if the lifetime proof is local | Current locked profile shows `fillBufferAligned=0`, so this is a profile-driven cleanup lane, not a presumed win. Require write-before-read evidence and an exact D32 gate before promoting. |
+| 10 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-9 shrink synchronization and graph-capture overhead. |
 | Hold | New selected-GEMV/shared rotate design | Only if it avoids prior redundant rotate/barrier costs | Template exists, but the measured M13.B family is no-hold | The colleague ranking is directionally right about launch-count compression, but M13.B.1/B.2/B.3 already closed the current rotate-fusion designs as exact-but-negative. Reopen only with a rotate-once/no-barrier-reset design. |
 | Done | `single_linear_out` / `single_full_v` exact multi-row routing | Already retained | Default-on after exact D32 gates | Not pending next work; keep the retained paths and remove their opt-outs after the follow-up defaults-only gates in `docs/REFACTOR.md`. |
 
@@ -126,6 +129,28 @@ Live-tree corrections to the external review ranking:
 - The same review's `_workspace_tensor_matches` bypass should be treated as a
   generation-stamp optimization, not as deleting validation. Keep stale-pointer
   protection by bumping a cache version when scratch caches are cleared.
+- The follow-up scratch review found one concrete policy mismatch: verifier MLP
+  scratch reservation in the runner is grouped for every `rows > 1`, while the
+  actual chain/tree t-loop MoE path stays on c1 scratch until
+  `_verify_moe_grouped_min_tokens()` (default `16`). This is fresh and worth
+  measuring before broader reduced-DAG work because it is numerically identical
+  and targets allocator/scratch churn at the locked `rows=4` shape.
+- The MTP-only graph-off `_canonicalize_decode_scratch()` skip is plausible but
+  coupled to scratch policy and real AR handoff semantics. Treat it as a narrow
+  follow-up after the MLP scratch policy is fixed; graph-auto already avoids the
+  canonicalize churn while a verifier graph cache is live.
+- Shared-down + shared-gate/residual combine is the strongest concrete
+  "full-layer C-dispatcher" kernel candidate: it is only useful if it removes
+  the shared-down output launch/traffic and preserves FP16/W4 rounding exactly.
+  It belongs in the reduced-DAG lane, not the stale rotate-fusion lane.
+- Proposer route batching is plausible later, but it needs real kernel work.
+  The existing dense expert helper is route-scalar, so any batched version must
+  preserve route accumulation order with route-batched gate/up, activation/down,
+  and accumulation kernels.
+- Final RMSNorm+cast fusion is a low-priority micro. Existing BF16 RMSNorm
+  wrappers are not a complete drop-in for every final-norm/LM-head path, but the
+  expected saving is too small to outrank scratch policy, resident view caching,
+  reduced-DAG batching, or proposer graph capture.
 
 External review ranking, folded into the live plan:
 
@@ -135,10 +160,14 @@ External review ranking, folded into the live plan:
 | Current-stack `decode_batched` validation | Closed/no-hold 2026-06-12. Exact `9/9` with identical acceptance, but graph-off wall regressed `26.643 -> 36.154 ms/cycle` vs current batched graph-auto defaults. |
 | Resident state/cache Tensor view caching | Fresh and worth a measured host-cache pass. Cache `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` views with explicit invalidation. |
 | Scratch cache generation stamp | Worth later as a guarded version of bypassing `_workspace_tensor_matches`; do not remove stale-pointer validation without a generation check. |
+| Verifier MLP scratch policy mismatch | Fresh and worth a measured pass. Make runner scratch reservation choose c1 vs grouped with the same threshold the chain/tree t-loop MoE path already uses. |
+| Graph-off canonicalize-after-verify skip | Worth later, paired with scratch policy. Graph-auto already skips it when graph cache is live; graph-off can skip only when the next step cannot require canonical c=1 decode scratch. |
 | M13.B.1+B.2 selected-GEMV/shared rotate fusion | Closed/no-hold from prior exact evidence. Reopen only with a new rotate-once/no-barrier-reset design. |
 | Full-layer C-dispatcher | Accepted only as reduced-DAG batching. Do not build a C-only wrapper that launches the same kernels. |
+| Shared-down + shared-gate/residual combine | Accepted as a concrete reduced-DAG candidate, not as a wrapper. Needs an exact W4/FP16 rounding-compatible kernel that removes a real launch and `shared_out` traffic. |
 | `single_linear_out` exact multi-row path | Already default-on after current-stack 9-prompt exactness; not pending. |
 | M12.7 proposer graph capture | Keep as P2 after launch-count compression and scalar/readback trims. |
+| Batch proposer expert loop | Plausible later, but requires new route-batched expert kernels; do after proposer graph/profile work, not as a quick host-only change. |
 | Verifier/proposer stream overlap | Plausible but dependency-risky; audit accepted-token, hidden-row, proposer-repair, and commit-buffer dependencies before prototyping events. |
 | Per-layer memset/fill elimination | Keep as a profile-driven cleanup lane, but the current locked raw trace has `fillBufferAligned=0`; require a fresh live fill bucket, local write-before-read proof, and exact D32 gate. |
 | Multi-stream overlap | High-upside but blocked until the verifier DAG is smaller; prior branch-overlap attempt regressed all-cycle wall. |

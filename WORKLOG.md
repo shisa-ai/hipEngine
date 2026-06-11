@@ -80414,3 +80414,32 @@ Triage on the newer host-cache review:
   allocate transient non-owning Tensor views. Cache by `(layer_id, slot)` /
   `layer_id`, but invalidate on `reset()` and any `linear_states` /
   `full_caches` rebuild.
+
+Follow-up fresh-review triage:
+
+- Current-stack `decode_batched` is already closed/no-hold above. It is exact
+  `9/9`, including `translation`, but graph-off loses too much wall; do not
+  spend time on the `decode_batched + HIPENGINE_SELECTED_MOE_DOWN_STAGED=1`
+  compound unless graph-off becomes competitive or decode_batched gains graph
+  capture.
+- Verifier MLP scratch policy mismatch is fresh and worth measuring. The runner
+  `_reserve_mlp_scratch(tokens=rows)` currently chooses grouped scratch for
+  every `rows > 1`, while `run_linear_attention_moe_chain_tloop_layer_fp16` and
+  tree t-loop use c1 scratch until `_verify_moe_grouped_min_tokens()` (default
+  `16`). At the locked B=3 shape (`rows=4`) that can waste grouped scratch and
+  force a c1 re-reserve. It is numerically identical if the runner reservation
+  policy is made to match the actual verifier MoE policy.
+- Graph-off `_canonicalize_decode_scratch()` skip is plausible but coupled to
+  real c=1 decode handoff semantics. Graph-auto already skips canonicalization
+  while a verifier graph cache is live. Treat graph-off skip as a narrow
+  follow-up after MLP scratch policy alignment.
+- True shared-down + shared-gate/residual combine is a legitimate reduced-DAG
+  candidate: it must remove a real shared-down/combine launch and `shared_out`
+  traffic while preserving exact W4/FP16 rounding. This belongs in the
+  full-layer reduced-DAG lane, not in the already no-held rotate-fusion lane.
+- Proposer graph capture remains real P2. Route-batched proposer expert work is
+  plausible later but needs new route-batched kernels; the current dense expert
+  helper is route-scalar, so it is not a host-only batching change.
+- Final RMSNorm+cast fusion is low priority. BF16 RMSNorm wrappers exist but
+  are not a complete drop-in for every final-norm/LM-head path, and the likely
+  saving is below the scratch/reduced-DAG/proposer items.
