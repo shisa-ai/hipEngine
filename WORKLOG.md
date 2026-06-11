@@ -81365,3 +81365,70 @@ Decision:
 - Updated `docs/MTP.md` to mark final RMSNorm+cast as checked/no-hold and to
   keep acceptance-density policy as an endgame backlog after reduced-DAG and
   proposer work.
+
+## 2026-06-12 - MTP MoE C-dispatch keyed router no-hold
+
+Tested the next reduced-DAG verifier micro-slice: replace the C-dispatch MoE
+router's two-launch `qwen35_router_topk_shared_out_fp16` path with a single
+keyed cooperative logits+select kernel behind `HIPENGINE_MOE_C1_ROUTER_KEYED=1`.
+The prototype was exact in isolation and in quicksort, but slower in the
+verifier profile.
+
+Validation during experiment:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/moe/router.py hipengine/kernels/hip_gfx1100/moe/__init__.py hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py hipengine/runtime/moe_c1_dispatch.py hipengine/runtime/qwen35_paro.py tests/test_qwen35_router_plan.py tests/test_moe_c1_dispatch.py
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_qwen35_router_plan.py tests/test_moe_c1_dispatch.py
+```
+
+- Targeted tests during experiment: `9 passed`.
+- Added unit comparison for keyed FP16 router vs the current two-launch router
+  at verifier shape (`tokens=4`); logits/top-k/routing matched.
+
+Exact quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MOE_C1_ROUTER_KEYED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-moe-router-keyed-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Profile command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MOE_C1_ROUTER_KEYED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-moe-router-keyed-on-rocprof \
+  --out /tmp/hipengine-mtp-moe-router-keyed-on-rocprof.json
+```
+
+Compared against retained current-best profile
+`benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json`:
+
+- Calls/pass: `902 -> 862` (`router` `80 -> 40`).
+- Router kernel: `0.501616 -> 0.877238 ms/pass`.
+- Total verifier kernel: `12.714393 -> 13.080354 ms/pass`.
+- Host window: `16.481617 -> 16.717029 ms/pass`.
+
+Decision:
+
+- No-hold. Removing 40 launches/pass is directionally right, but this topology
+  serializes all token selections in the final block and loses more GPU time
+  than it saves in launch count.
+- Experiment code removed. Added
+  `benchmarks/results/2026-06-12-hipengine-mtp-moe-router-keyed-nohold.json`.
+- Updated `docs/MTP.md` with the no-hold row and sharpened the endgame B-sweep
+  acceptance-density gate: added rows must improve visible tokens faster than
+  AR's current `~0.111 tokens/ms` denominator.

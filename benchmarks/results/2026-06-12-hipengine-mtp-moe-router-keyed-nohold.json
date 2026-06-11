@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-06-12",
+  "status": "no_hold",
+  "performance_claim": false,
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "quicksort prompt tokens from /tmp/quicksort-prompt-tokens.txt",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "experiment": {
+    "name": "HIPENGINE_MOE_C1_ROUTER_KEYED",
+    "intent": "Replace the verifier MoE two-launch router logits+select path with one keyed cooperative router kernel inside the C dispatcher.",
+    "decision": "Rejected. Removed experiment code after exact quicksort held but rocprof showed verifier kernel and host time regressed.",
+    "reason": "The final block serialized all token selections, so the removed router_select launches were more than offset by a slower router kernel."
+  },
+  "correctness": {
+    "targeted_unit": "HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_qwen35_router_plan.py tests/test_moe_c1_dispatch.py",
+    "targeted_unit_result": "9 passed during experiment",
+    "exact_smoke_command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MOE_C1_ROUTER_KEYED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-moe-router-keyed-smoke.json",
+    "exact_ar_match": true,
+    "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+  },
+  "profile": {
+    "baseline_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json",
+    "experiment_artifact": "/tmp/hipengine-mtp-moe-router-keyed-on-rocprof.json",
+    "command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MOE_C1_ROUTER_KEYED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-moe-router-keyed-on-rocprof --out /tmp/hipengine-mtp-moe-router-keyed-on-rocprof.json",
+    "verifier_passes": 11,
+    "baseline": {
+      "kernel_calls_per_pass": 902.0,
+      "kernel_ms_per_pass": 12.714392727272726,
+      "host_ms_per_pass": 16.481617,
+      "router_calls_per_pass": 80.0,
+      "router_ms_per_pass": 0.5016160909090909
+    },
+    "experiment": {
+      "kernel_calls_per_pass": 862.0,
+      "kernel_ms_per_pass": 13.08035409090909,
+      "host_ms_per_pass": 16.717028999999997,
+      "router_calls_per_pass": 40.0,
+      "router_ms_per_pass": 0.8772377272727273
+    },
+    "delta": {
+      "kernel_calls_per_pass": -40.0,
+      "kernel_ms_per_pass": 0.3659613636363641,
+      "host_ms_per_pass": 0.23541199999999662,
+      "router_calls_per_pass": -40.0,
+      "router_ms_per_pass": 0.3756216363636364
+    }
+  }
+}
