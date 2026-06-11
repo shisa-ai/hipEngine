@@ -83,6 +83,17 @@ def _device_array(array: np.ndarray, buffers: list[DeviceBuffer], *, runtime: Hi
     return buf
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _pack_token_position_enabled() -> bool:
+    return _env_flag("HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION", True)
+
+
 def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic], buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> tuple[np.ndarray, DeviceBuffer]:
     host = np.zeros(shape, dtype=dtype)
     buf = malloc(host.nbytes, runtime=runtime)
@@ -182,10 +193,15 @@ class NativeMtpChainProposer:
         self.q_norm_oneplus = self._load_oneplus_bf16_weight("mtp.layers.0.self_attn.q_norm.weight")
         self.k_norm_oneplus = self._load_oneplus_bf16_weight("mtp.layers.0.self_attn.k_norm.weight")
         cos, sin = _rope_tables(self.max_positions, self.rotary_dim, float(self.config.rope_theta))
-        self.token_host = np.zeros((1,), dtype=np.int64)
-        self.position_host = np.zeros((1,), dtype=np.int32)
-        self.token_buf = _device_array(self.token_host, self.buffers, runtime=self.runtime)
-        self.position_buf = _device_array(self.position_host, self.buffers, runtime=self.runtime)
+        self.token_position_host = np.zeros((2,), dtype=np.int64)
+        self.token_host = self.token_position_host[:1]
+        self.position_host = self.token_position_host[1:].view(np.int32)[:1]
+        self.token_position_buf = _device_array(self.token_position_host, self.buffers, runtime=self.runtime)
+        self.token_buf = DeviceBuffer(self.token_position_buf.ptr, np.dtype(np.int64).itemsize)
+        self.position_buf = DeviceBuffer(
+            self.token_position_buf.ptr + np.dtype(np.int64).itemsize,
+            np.dtype(np.int32).itemsize,
+        )
         self.cos_buf = _device_array(cos, self.buffers, runtime=self.runtime)
         self.sin_buf = _device_array(sin, self.buffers, runtime=self.runtime)
         self._allocate_scratch()
@@ -408,20 +424,29 @@ class NativeMtpChainProposer:
             raise ValueError("position outside MTP RoPE table")
         self.token_host[0] = int(input_token)
         self.position_host[0] = int(position)
-        self.runtime.memcpy_async(
-            self.token_buf.ptr,
-            host_array_ptr(self.token_host),
-            self.token_host.nbytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
-            0,
-        )
-        self.runtime.memcpy_async(
-            self.position_buf.ptr,
-            host_array_ptr(self.position_host),
-            self.position_host.nbytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
-            0,
-        )
+        if _pack_token_position_enabled():
+            self.runtime.memcpy_async(
+                self.token_position_buf.ptr,
+                host_array_ptr(self.token_position_host),
+                self.token_position_host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                0,
+            )
+        else:
+            self.runtime.memcpy_async(
+                self.token_buf.ptr,
+                host_array_ptr(self.token_host),
+                self.token_host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                0,
+            )
+            self.runtime.memcpy_async(
+                self.position_buf.ptr,
+                host_array_ptr(self.position_host),
+                self.position_host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                0,
+            )
         mtp_fuse_inputs_f16_bf16(
             self.token_buf.ptr,
             self.weights["embed_tokens.weight"].ptr,

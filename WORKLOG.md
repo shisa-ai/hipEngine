@@ -79238,3 +79238,95 @@ Artifacts:
 `benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-default-9prompt-d32.json`,
 and
 `benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-default-rocprof.json`.
+
+## 2026-06-11 - MTP proposer token+position H2D packing promoted default-on
+
+Trimmed another small persistent-proposer metadata path.  Each
+`NativeMtpChainProposer.advance()` used to submit two tiny H2D copies, one int64
+token id and one int32 absolute position.  The proposer now stores both values in
+one 16-byte host/device slab and passes `token_buf` plus an offset `position_buf`
+to the existing kernels, so the device values and kernel math are unchanged
+while one H2D submission per advance is removed.  Opt out with
+`HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION=0`.
+
+Syntax gate:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py
+```
+
+Locked quicksort smoke, default packed path:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-proposer-packed-token-position-smoke.json
+```
+
+Result: exact AR, accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`. The opt-out smoke also passed exact with the same
+accepted lengths:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-proposer-packed-token-position-off-smoke.json
+```
+
+Same-tree 9-prompt D32 A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-pack-token-position-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-pack-token-position-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-pack-token-position-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-pack-token-position-on-9prompt-d32.json
+```
+
+Both rows were exact `9/9` with identical visible/accepted-token statistics and
+snapshot counts. Opt-out → default packed:
+
+- cycle wall `26.922 -> 26.869 ms/cycle` (`-0.053 ms`, `-0.20%`);
+- verify `21.797 -> 21.751 ms/cycle` (`-0.046 ms`);
+- proposal/update `1.9766 -> 1.9758 ms/cycle` (`-0.0008 ms`);
+- actual MTP/AR ratio `0.6911x -> 0.6875x` because the packed row's AR control
+  was faster (`9.056 -> 9.008 ms/token`), so this is retained as wall/proposer
+  micro progress rather than a ratio win.
+
+The locked verifier rocprof row is diagnostic only because the edit is on the
+proposer side, but it stayed exact and did not expose a verifier regression:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-proposer-packed-token-position-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-pack-token-position-rocprof.json
+```
+
+Profile vs the prior `single_full_v` retained profile: kernel
+`14.448 -> 14.372 ms/pass`, host marker `18.465 -> 18.369 ms/pass`, calls/pass
+unchanged at `935`. Treat those as consistency evidence, not the reason for
+promotion.
