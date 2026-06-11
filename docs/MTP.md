@@ -1,18 +1,20 @@
 # hipEngine MTP Native Implementation Plan
 
-> Status (2026-06-11): shared ABI, local PARO+MTP-BF16 weights, persistent
+> Status (2026-06-12): shared ABI, local PARO+MTP-BF16 weights, persistent
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab
 > cap, and device expert dispatch are landed. The current W7900/gfx1100 35B-A3B
-> MTP baseline is **0.758x AR**: `83.4 tok/s` vs `~110 tok/s`, with a
-> **27.8 ms/cycle** wall split of `22.0 ms` verifier + `5.8 ms` proposer/draft.
+> MTP sprint baseline remains **0.758x AR** at **27.8 ms/cycle**. The current
+> exact 9-prompt D32 best is now **0.825x AR** with `chain_attn_mode=decode_batched`,
+> `graph_mode=off`, MTP verify canonicalize skip default-on, **21.66 ms/cycle**
+> wall, and **16.51 ms/cycle** verifier time.
 > This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 
-> **Top priority for the next push:** MTP break-even sprint. Hold the current
-> exact B=3 chain baseline fixed, cut cycle wall from `27.8 ms` to `<21.5 ms`,
-> and promote only same-session AR-correct rows. See ["Next Push: 35B MTP
-> Break-Even Sprint"](#next-push-35b-mtp-break-even-sprint-2026-06-11).
+> **Top priority for the next push:** MTP break-even sprint. Hold every exact
+> same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,
+> and push the active `0.825x / 21.66 ms` row below `<21.5 ms` and ultimately
+> above `1.0x`. See ["Next Push: 35B MTP Break-Even Sprint"](#next-push-35b-mtp-break-even-sprint-2026-06-11).
 
 ## Next Push: 35B MTP Break-Even Sprint (2026-06-11)
 
@@ -28,6 +30,20 @@ Locked baseline:
 - Break-even target at current visible tokens/cycle: **`<21.5 ms/cycle`** for
   `>1.0x`, so the next push must remove about **6.3 ms/cycle**.
 
+Current best retained stack after the 2026-06-12 host/cache cleanup:
+
+- Runtime config: `proposal_impl=persistent_device`,
+  `chain_attn_mode=decode_batched`, verifier graph `off`, MTP
+  canonicalize-after-verify skip default-on, draft vocab cap `32768`, device
+  expert dispatch, exact chain verifier; branching tree default-off.
+- Current speed: **`0.825x` AR** on the 9-prompt D32 suite, exact `9/9`, with
+  identical accepted lengths and active budgets relative to the batched graph-off
+  control.
+- Current wall: **`21.66 ms/cycle = 16.51 ms verify + 1.97 ms proposal/update`**.
+- Immediate wall target: **`<21.5 ms/cycle`**, only about **0.16 ms/cycle** away
+  at the current visible-token density. The throughput target still needs
+  acceptance/proposer/overlap work because the row is `0.825x`, not `>1.0x`.
+
 Tree status is explicit: the B=3 gated tree path is exact and graph-replayed, but
 negative (`0.61x` vs chain `0.76x`) because it spends budget on a depth-1 sibling
 and caps depth where the chain often accepts 3. Keep tree off until the verifier
@@ -40,15 +56,16 @@ Current priority order after folding in the external review:
 
 | Rank | Work item | Expected wall effect | Risk / readiness | Live-plan correction |
 | --- | --- | ---: | --- | --- |
-| 1 | MTP-only graph-off canonicalize-after-verify skip | -0.05 to -0.3 ms estimated allocator churn | Medium; must preserve real c=1 decode handoff correctness | Graph-auto already skips `_canonicalize_decode_scratch()` when a verifier graph cache exists. Graph-off still canonicalizes after every verify, even when the next MTP step is another verify/proposer update. Add a narrow `canonicalize_after` control only after proving where true AR/c1 handoff needs canonical scratch. |
-| 2 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. The best concrete kernel-shaped candidate is shared-down + shared-gate/residual combine for the verifier C dispatcher, because it can remove one launch/layer plus `shared_out` traffic if FP16 rounding matches exactly. |
-| 3 | M12.7 graph-capture proposer loop | -0.5 to -1.0 ms estimated | Medium; design needed after recent scalar/readback trims | Still attractive because it targets proposal/update host round trips rather than GPU compute. The proposer's much smaller DAG makes this more plausible than whole-verifier graph replay. |
-| 4 | Route-batched proposer expert loop | -0.3 to -1.0 ms possible after profiling | Medium/high; requires new route-batched expert kernels and larger `[top_k, ...]` scratch | Do not treat this as a host-only batching change. Current sidecar dense expert kernels take scalar routes, so batching routes must preserve route accumulation order with new gate/up, activation/down, and accumulation plumbing. Try after proposer graph capture/profiling identifies the expert loop as the live bottleneck. |
-| 5 | Verifier/proposer inter-cycle overlap design | -0.5 to -1.0 ms possible if commit is hideable | Medium/high; must prove proposer dependencies do not read committed canonical verifier state or shared scratch | Worth a design audit, but not a quick flip. Insert events only after proving accepted token/hidden row, proposer state repair, and commit buffers are independent until the next verifier cycle. |
-| 6 | Per-layer memset/fill/copy enumeration | -0.1 to -0.3 ms estimated if any live copy/fill family remains | Low if the lifetime proof is local | Current locked profile shows `fillBufferAligned=0`, so this is a profile-driven cleanup lane, not a presumed win. Require write-before-read evidence and an exact D32 gate before promoting. |
-| 7 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-6 shrink synchronization and graph-capture overhead. |
+| 1 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. The best concrete kernel-shaped candidate is shared-down + shared-gate/residual combine for the verifier C dispatcher, because it can remove one launch/layer plus `shared_out` traffic if FP16 rounding matches exactly. |
+| 2 | M12.7 graph-capture proposer loop | -0.5 to -1.0 ms estimated | Medium; design needed after recent scalar/readback trims | Now higher priority because the active verifier wall is near the `<21.5 ms` target and proposal/update is a stable ~2 ms slice. The proposer's much smaller DAG makes this more plausible than whole-verifier graph replay. |
+| 3 | Route-batched proposer expert loop | -0.3 to -1.0 ms possible after profiling | Medium/high; requires new route-batched expert kernels and larger `[top_k, ...]` scratch | Do not treat this as a host-only batching change. Current sidecar dense expert kernels take scalar routes, so batching routes must preserve route accumulation order with new gate/up, activation/down, and accumulation plumbing. Try after proposer graph capture/profiling identifies the expert loop as the live bottleneck. |
+| 4 | Verifier/proposer inter-cycle overlap design | -0.5 to -1.0 ms possible if commit is hideable | Medium/high; must prove proposer dependencies do not read committed canonical verifier state or shared scratch | Worth a design audit, but not a quick flip. Insert events only after proving accepted token/hidden row, proposer state repair, and commit buffers are independent until the next verifier cycle. |
+| 5 | Per-layer memset/fill/copy enumeration | -0.1 to -0.3 ms estimated if any live copy/fill family remains | Low if the lifetime proof is local | Current locked profile shows `fillBufferAligned=0`, so this is a profile-driven cleanup lane, not a presumed win. Require write-before-read evidence and an exact D32 gate before promoting. |
+| 6 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-5 shrink synchronization and graph-capture overhead. |
 | Hold | New selected-GEMV/shared rotate design | Only if it avoids prior redundant rotate/barrier costs | Template exists, but the measured M13.B family is no-hold | The colleague ranking is directionally right about launch-count compression, but M13.B.1/B.2/B.3 already closed the current rotate-fusion designs as exact-but-negative. Reopen only with a rotate-once/no-barrier-reset design. |
 | Done | Scratch-cache generation stamp | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP=1` stores verifier scratch cache entries with a generation bumped by `_clear_verify_scratch_caches()` and uses the generation match to skip workspace-pointer revalidation on hits. Exact `9/9`, identical accepted lengths/active budgets, wall `25.7085 -> 25.5955 ms/cycle`, verify `20.5460 -> 20.4342 ms/cycle`, ratio `0.7145x -> 0.7252x`; graph-auto profile kept `932` calls/pass and moved host `18.322 -> 18.298 ms/pass`; graph-off host `32.659 -> 31.971 ms/pass`. |
+| Done | MTP graph-off canonicalize-after-verify skip | Retained default-on for the MTP harness | Exact D32 same-suite positive | `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1` keeps verifier-shaped scratch live between MTP graph-off verify cycles. Exact `9/9`, identical accepted lengths/active budgets, graph-off batched wall `37.207 -> 24.076 ms/cycle`, verify `32.069 -> 18.933 ms/cycle`, ratio `0.4969x -> 0.7730x`; rocprof calls and kernel stayed flat (`932/pass`, ~`14.33 ms/pass`) while host moved `32.505 -> 18.272 ms/pass`. |
+| Done | Current-stack `decode_batched` with graph-off skip | Current best retained MTP verifier mode | Exact D32 same-suite positive | After canonicalize skip made graph-off competitive, `chain_attn_mode=decode_batched` is exact `9/9` and improves over graph-off batched skip with identical accepted lengths/active budgets: ratio `0.7730x -> 0.8252x`, wall `24.076 -> 21.661 ms/cycle`, verify `18.933 -> 16.511 ms/cycle`; profile calls `932 -> 942`, kernel `14.330 -> 12.922 ms/pass`, host `18.272 -> 16.849 ms/pass`. |
 | Done | Verifier MLP scratch policy alignment | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=1` makes verifier MLP scratch reservation use the same c1/grouped threshold as the chain/tree t-loop MoE path and keys the cache by expected policy. Exact `9/9`, identical accepted lengths/active budgets, wall `26.309 -> 25.690 ms/cycle`, verify `21.176 -> 20.523 ms/cycle`, ratio `0.7003x -> 0.7172x`; graph-auto profile kept `932` calls/pass and moved host `18.314 -> 18.246 ms/pass`; graph-off host `32.445 -> 32.273 ms/pass`. |
 | Done | Resident state/cache Tensor view caching | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=1` caches `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` non-owning Tensor views with explicit invalidation. Exact `9/9`, identical acceptance, wall `26.642 -> 26.426 ms/cycle`, verify `21.506 -> 21.278 ms/cycle`, ratio `0.6924x -> 0.6986x`; graph-off host control `32.52 -> 31.70 ms/pass`. |
 | Done | `single_linear_out` / `single_full_v` exact multi-row routing | Already retained | Default-on after exact D32 gates | Not pending next work; keep the retained paths and remove their opt-outs after the follow-up defaults-only gates in `docs/REFACTOR.md`. |
@@ -71,7 +88,7 @@ noise or negative on this stack.
 | P1 | M13.B.1+B.2 selected-GEMV/shared rotate fusion audit | 0 ms retained | Confirm whether the review item is fresh work or an already-measured rotate path. | Evidence must identify a live `GEMV -> rotate` pair that is not covered by M13.B.1/B.2/B.3, M15.4, or the promoted linear-out cast+rotate slice. | **Closed/no-hold from existing evidence.** M13.B.1 already added the transposed selected-dual rotate extern/wrapper and stayed exact, but launch savings were overwhelmed by redundant in-LDS rotate work: kernel time/pass `17.32 -> 29.76 ms`, `moe_gate_up_dual_gemv` `1.86 -> 14.21 ms`, suite cycle cost `3.613 -> 3.658`. M13.B.2 shared-expert staged rotate also stayed exact but net launch delta was zero because a barrier memset replaced the saved rotate launch. M13.B.3 staged selected gate/up was later exact but still kernel-negative. Do not reopen this class without a new design that rotates once per row and avoids per-launch barrier/reset overhead. |
 | P1 | Full-layer reduced-DAG batching, not a C-only loop | -1.5 to -3.0 ms estimated if launches/fills/copies disappear | Audit the non-MoE layer surround and pick one launch-removing unit first. Use C-side batching only as a vehicle for fewer real DAG nodes, not as a wrapper around the same `hipLaunchKernelGGL` sequence. | Exact 9-prompt D32 with same acceptance; host marker, call count, and named launch families fall; graph-auto and graph-off controls do not regress. | **Second design priority after host-cache.** The external ranking is right to bias toward dispatch/host compression, but M14.dispatch.1/M16.2 already show pure C-side reissue of the same kernels is parity. The next work must remove launches or synchronization/fill/copy nodes: a layer-surround megakernel, a structural MoE/attention composite, or a proven write-before-read fill elimination. Do this before another multi-stream overlap attempt. |
 | P1 | Producer-side RMSNorm+rotate re-test | 0 ms retained; prior target was -0.5 to -1 ms | Re-test the existing M15.4 producer-side input RMSNorm + PARO rotate2 fusion on the current P1-default stack before spending new kernel time here. | Bit-exact candidates/AR output; launch count, verifier kernel time, and host window all improve before promotion. | **No-hold refreshed 2026-06-11.** `HIPENGINE_FUSED_RMSNORM_ROTATE=1` stayed exact, but reduced calls only `943.0 -> 915.9/pass` while worsening verifier kernel `13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass`; keep default-off. The live MTP sidecar uses RoPE RMS+rotary rather than PARO rotates, so the next retained levers are overlap and device-resident proposer/update work. |
-| P1 | Current-stack `decode_batched` graph-off validation | 0 ms retained | Retest the old quicksort-positive full-attention decode kernel path after current exactness/default fixes. | Exact D32 9-prompt suite; compare against current batched graph-auto defaults. | **No-hold 2026-06-12.** `chain_attn_mode=decode_batched` still requires `graph_mode=off`; it is exact `9/9` with identical accepted lengths/active budgets and closes the stale `translation` exactness question, but loses badly to current batched graph-auto defaults: actual ratio `0.6920x -> 0.5043x`, wall `26.643 -> 36.154 ms/cycle`, verify `21.498 -> 31.012 ms/cycle`, and cycle cost `2.940 -> 3.992`. Do not retest the compound `HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` graph-off path unless `decode_batched` gains graph capture or a new graph-off baseline becomes competitive. |
+| P1 | Current-stack `decode_batched` graph-off validation | -2.415 ms/cycle vs graph-off batched skip | Retest the old quicksort-positive full-attention decode kernel path after graph-off canonicalize skip removes the host penalty. | Exact D32 9-prompt suite; identical acceptance vs graph-off batched skip; profile kernel/host both drop. | **Promoted 2026-06-12.** `chain_attn_mode=decode_batched` still requires `graph_mode=off`, but graph-off is now competitive after MTP skips post-verify canonicalization. Exact `9/9`, identical accepted lengths/active budgets, ratio `0.7730x -> 0.8252x`, wall `24.076 -> 21.661 ms/cycle`, verify `18.933 -> 16.511 ms/cycle`, profile calls `932 -> 942/pass`, kernel `14.330 -> 12.922 ms/pass`, and host `18.272 -> 16.849 ms/pass`. Use this as the current exact B=3 verifier baseline. |
 | P2 | Multi-stream overlap spike | 0 ms retained; prior target was -1 to -3 ms | Prototype verifier-layer dispatch on 2/4 streams with event dependencies around independent W4/MoE/GDN work. | Microbench shows measurable overlap before runtime integration; exact smoke after integration. | **No-hold C-dispatch branch split 2026-06-11.** Selected/shared MoE branch overlap inside the real C dispatcher stayed exact only after restricting the gate to verifier-sized batches; the naive version also touched linear-attn prompt prefill and changed the AR continuation. Verifier-only graph-auto D32 kept locked acceptance but worsened target all-cycle wall `26.10 -> 28.29 ms/cycle` and verify `0.266 -> 0.295 s`, despite steady markers improving `22.60 -> 21.30 ms`. Graph-off also worsened (`37.77 -> 44.22 ms/cycle`). Do not retain the code; revisit only with a graph-capture/amortization design that preserves all-cycle D32 economics. |
 | P2 | Device-resident proposer chain advance | -0.5 to -1.5 ms | Use the graph-safe device expert dispatch to keep proposer update/advance in device-resident batches. | Candidate token sequence identical to baseline; cycle wall improves. | **First slices promoted default-on 2026-06-11.** Persistent proposer now skips discarded expert-topk host reads, skips intermediate lm-head/argmax for update-only accepted-token state advances, and skips the final draft snapshot save because the live proposer state already is that snapshot. Same-suite D32 9-prompt off/default A/B is exact `9/9` with identical acceptance and visible tokens; read/result skip moved actual speed `0.664x -> 0.670x` AR, cycle wall `27.94 -> 27.68 ms`, proposal/update `2.145 -> 2.052 ms`. Snapshot skip refresh stayed exact `9/9`, skipped `142` final snapshot saves, and moved cycle wall `27.676 -> 27.648 ms` plus proposal/update `2.052 -> 2.045 ms`; actual MTP/AR ratio was flat within run noise (`0.6701 -> 0.6699`). Per-advance token/position scalar H2D copies are now stream-ordered `memcpy_async`, preserving exact `9/9` while moving cycle wall `27.408 -> 27.253 ms/cycle` and proposal/update `2.035 -> 1.999 ms/cycle`; AR-normalized ratio is flat within noise (`0.67845 -> 0.67830`). The persistent chain now also skips the unused lm-head top-1 logit-value D2H while still reading the required token id, improving the D32 suite to `0.6876x` with cycle wall `27.201 ms/cycle` and proposal/update `1.973 ms/cycle`. The proposer token+position metadata H2D is now packed into one 16-byte copy per advance (`HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION=0` restores the old two-copy path); same-tree D32 A/B stayed exact `9/9` and nudged wall `26.922 -> 26.869 ms/cycle` plus proposal/update `1.9766 -> 1.9758 ms/cycle`, with AR-normalized ratio noisy/down because the AR control was faster. Route 0 now initializes the FP32 MoE accumulator in the first accumulation kernel instead of launching a standalone memset (`HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT=0` restores the old path); same-suite D32 A/B stayed exact `9/9`, identical acceptance, wall `27.081246 -> 27.079143 ms/cycle`, and proposal/update `1.96299 -> 1.95303 ms/cycle`, while ratio was noisy/down because AR changed. K rotary and V projection producers now write directly into the sidecar cache slots (`HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE=0` restores the old temp-buffer plus two-D2D-copy path); exact quicksort and exact D32 `9/9` held identical acceptance, proposal/update moved `1.9955 -> 1.9801 ms/cycle` with 8/9 prompts improving, and total wall was flat/noisy-negative because verify moved independently. Opt out of the read/result/snapshot/logit-value skips with `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS=0`. **No-hold:** partial-accept replay removed more D2D snapshot saves (`285 -> 148`) but worsened proposal/update `2.035 -> 2.340 ms/cycle` and cycle wall `27.408 -> 27.680 ms/cycle`, so the experiment code was removed. Device-chain candidate buffering stayed exact and ran for all `142` draft cycles, but regressed speed `0.6876x -> 0.6795x`, cycle `27.201 -> 27.244 ms`, and proposal/update `1.973 -> 1.978 ms`; that experiment code was also removed. Continue with real batched proposer/update work rather than per-depth token-pointer chaining. |
 | P2 | M12.7 graph-capture proposer loop | -0.5 to -1.0 ms estimated | Capture the stable sidecar proposer/update loop after the scalar/readback trims, keeping the exact persistent-chain candidate sequence and graph cache keys explicit. | Exact 9-prompt D32 with same acceptance; proposal/update drops; no capture-freeze or stale scalar state across prompts. | Design needed. Lower priority than P1 launch-count compression, but still useful if it removes Python/ctypes round trips around the proposer. |
@@ -112,11 +129,11 @@ Live-tree corrections to the external review ranking:
   is gone (`single_linear_out`/`single_full_v` are already default-on), and
   current raw traces show `fillBufferAligned=0`. Keep both as stale-profile
   corrections unless a fresh profile reintroduces those buckets.
-- The 2026-06-12 review added one quick worthwhile check: current-stack
-  `decode_batched` graph-off validation after the `single_linear_out` /
-  `single_full_v` exactness repairs. It is now exact `9/9`, including
-  `translation`, but no-held because graph-off loses far more wall than the
-  decode-style attention path saves (`26.643 -> 36.154 ms/cycle`).
+- The 2026-06-12 review's `decode_batched` item was first no-held against the
+  old graph-off baseline, then promoted after the MTP-only canonicalize skip
+  removed the graph-off host penalty. Current best is now exact `9/9` with
+  `chain_attn_mode=decode_batched`, graph `off`, wall `21.661 ms/cycle`, verify
+  `16.511 ms/cycle`, and ratio `0.8252x`.
 - The same review's final-norm BF16-output item is stale: BF16 RMSNorm output
   kernels/wrappers already exist in the runtime. The GDN tile-left item is also
   stale for the suggested VTILE path: `VTILE=8` was exact but no-held on
@@ -135,10 +152,10 @@ Live-tree corrections to the external review ranking:
   (`_verify_moe_grouped_min_tokens()`, default `16`) and keys cached scratch by
   expected policy. Exact D32 improved wall `26.309 -> 25.690 ms/cycle` with
   identical acceptance.
-- The MTP-only graph-off `_canonicalize_decode_scratch()` skip is plausible but
-  coupled to scratch policy and real AR handoff semantics. Treat it as a narrow
-  follow-up after the MLP scratch policy is fixed; graph-auto already avoids the
-  canonicalize churn while a verifier graph cache is live.
+- The MTP-only graph-off `_canonicalize_decode_scratch()` skip is promoted
+  default-on in the MTP harness via `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY`.
+  It is narrow: AR/c1 handoff paths still can request canonical scratch, while
+  steady MTP verify cycles keep verifier-shaped scratch live.
 - Shared-down + shared-gate/residual combine is the strongest concrete
   "full-layer C-dispatcher" kernel candidate: it is only useful if it removes
   the shared-down output launch/traffic and preserves FP16/W4 rounding exactly.
@@ -157,11 +174,11 @@ External review ranking, folded into the live plan:
 | Review item | Disposition in this sprint |
 | --- | --- |
 | Fixed-shape scratch object + non-MoE weight-pointer caching | Scratch-object cache and the first model tensor lookup cache are promoted default-on after exact D32 evidence plus graph-off host controls. Deeper raw pointer structs should be folded into reduced-DAG/full-layer batching, not pursued as another standalone cache micro-slice. |
-| Current-stack `decode_batched` validation | Closed/no-hold 2026-06-12. Exact `9/9` with identical acceptance, but graph-off wall regressed `26.643 -> 36.154 ms/cycle` vs current batched graph-auto defaults. |
+| Current-stack `decode_batched` validation | Promoted 2026-06-12 after canonicalize skip made graph-off competitive. Exact `9/9` with identical acceptance, ratio `0.7730x -> 0.8252x`, wall `24.076 -> 21.661 ms/cycle`, verify `18.933 -> 16.511 ms/cycle`; current best verifier mode is `decode_batched + graph_off + MTP canonicalize skip`. |
 | Resident state/cache Tensor view caching | Promoted default-on 2026-06-12. Exact D32 `9/9`, identical accepted lengths, wall `26.642 -> 26.426 ms/cycle`, verify `21.506 -> 21.278 ms/cycle`, ratio `0.6924x -> 0.6986x`; graph-off host `32.52 -> 31.70 ms/pass`. |
 | Scratch cache generation stamp | Promoted default-on 2026-06-12. Exact D32 `9/9`, identical accepted lengths/active budgets, wall `25.7085 -> 25.5955 ms/cycle`, verify `20.5460 -> 20.4342 ms/cycle`, ratio `0.7145x -> 0.7252x`; graph-auto host `18.322 -> 18.298 ms/pass`, graph-off host `32.659 -> 31.971 ms/pass`. |
 | Verifier MLP scratch policy mismatch | Promoted default-on 2026-06-12. Exact D32 `9/9`, identical accepted lengths/active budgets, wall `26.309 -> 25.690 ms/cycle`, verify `21.176 -> 20.523 ms/cycle`, ratio `0.7003x -> 0.7172x`; graph-auto host `18.314 -> 18.246 ms/pass`, graph-off host `32.445 -> 32.273 ms/pass`. |
-| Graph-off canonicalize-after-verify skip | Worth later, paired with scratch policy. Graph-auto already skips it when graph cache is live; graph-off can skip only when the next step cannot require canonical c=1 decode scratch. |
+| Graph-off canonicalize-after-verify skip | Promoted default-on in the MTP harness. Exact `9/9`, identical accepted lengths/active budgets, graph-off batched wall `37.207 -> 24.076 ms/cycle`, verify `32.069 -> 18.933 ms/cycle`; profile proves this is host scratch canonicalization, not kernel math (`932/pass`, kernel ~`14.33 ms/pass` unchanged). |
 | M13.B.1+B.2 selected-GEMV/shared rotate fusion | Closed/no-hold from prior exact evidence. Reopen only with a new rotate-once/no-barrier-reset design. |
 | Full-layer C-dispatcher | Accepted only as reduced-DAG batching. Do not build a C-only wrapper that launches the same kernels. |
 | Shared-down + shared-gate/residual combine | Accepted as a concrete reduced-DAG candidate, not as a wrapper. Needs an exact W4/FP16 rounding-compatible kernel that removes a real launch and `shared_out` traffic. |
@@ -173,10 +190,14 @@ External review ranking, folded into the live plan:
 | Multi-stream overlap | High-upside but blocked until the verifier DAG is smaller; prior branch-overlap attempt regressed all-cycle wall. |
 | Final RMSNorm+cast fusion | Defer/low priority. Existing BF16 RMSNorm wrappers are not enough to make this a broad drop-in, and the likely saving is too small to outrank scratch policy, resident view caching, reduced-DAG batching, or proposer graph capture. |
 
-Break-even accounting: stacked P1 wins must get close to `27.8 -> 23-24 ms`; one
-additional P2 overlap/proposer win is likely needed for `<21.5 ms`. Any acceptance
-uplift is margin, not the primary plan. The D32 9-prompt off/on A/B confirms the
-stacked P1 gates are exact and worth keeping by default, and the first P2
+Break-even accounting: the retained stack has already moved the exact 9-prompt
+D32 row from the locked sprint baseline `27.8 ms/cycle` to the current
+`21.661 ms/cycle`. That is within about `0.16 ms/cycle` of the wall target, but
+the row is still `0.825x` AR because visible-token density is only about
+`2.012/cycle`. The next push must keep every retained wall win while also
+attacking proposal/update and acceptance-density levers. The D32 9-prompt
+off/on A/B confirms the stacked P1 gates are exact and worth keeping by default,
+and the first P2
 proposer skip removes another `0.26 ms/cycle`; the follow-on final-snapshot skip
 removes dead D2D snapshot work and trims proposal/update by another
 `0.007 ms/cycle`. Disabling the superseded selected-down staged path by default
@@ -257,9 +278,11 @@ dispatcher work rather than chased as standalone cache polish.
 The GDN follow-up tried widening dv-tiling from `VTILE=4` to `VTILE=8`; exactness
 held, but the locked profile worsened because the narrower grid did not offset
 extra register pressure. Keep the current `VTILE=4` GDN default.
-The remaining exact D32 row is around `25.60 ms/cycle`, leaving roughly
-`4.10 ms/cycle` to the `<21.5 ms` break-even target. The gap still needs
-higher-reach wall-time cuts.
+The remaining exact D32 row is now `21.661 ms/cycle` with `16.511 ms/cycle`
+verify after promoting the MTP graph-off canonicalize skip and current-stack
+`decode_batched`. The wall gap to `<21.5 ms` is only about `0.16 ms/cycle`, but
+the throughput gap remains large enough that we still need proposer/overlap work
+and any deployable acceptance uplift we can get.
 Partial-accept proposer replay is not one of them: it stayed exact and cut
 snapshot saves, but the 9-prompt D32 suite regressed aggregate wall and
 proposal/update time, so do not re-add that flag without a new batching design.
@@ -318,6 +341,47 @@ and verifier `21.75 -> 21.34 ms/cycle`. That is only about `0.4 ms/cycle`, and
 the broader prompt suite previously found fragile sites, so do not default it on
 without a 9-prompt exact-suite pass. Treat it as evidence that the next M16.4
 packet is useful but not sufficient for break-even.
+
+### Graph-Off Canonicalize Skip + Decode-Batched Current Best (2026-06-12)
+
+Artifacts:
+
+- Canonicalize control:
+  [`D32`](../benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-after-on-graphoff-9prompt-d32.json),
+  [`rocprof`](../benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-after-on-graphoff-rocprof.json)
+- Canonicalize skip:
+  [`D32`](../benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-after-skip-graphoff-9prompt-d32.json),
+  [`rocprof`](../benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-after-skip-graphoff-rocprof.json)
+- Current best:
+  [`decode_batched + skip D32`](../benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-skip-decode-batched-9prompt-d32.json),
+  [`decode_batched + skip rocprof`](../benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-skip-decode-batched-rocprof.json)
+
+Implementation:
+
+- Added `canonicalize_after` to chain/tree verify commit entry points and wired
+  the MTP harness to pass `False` by default through
+  `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1`.
+- The default is intentionally MTP-scoped. Real AR/c1 handoff can still request
+  canonical scratch by leaving `canonicalize_after=True`.
+
+Measurement:
+
+- Graph-off batched canonicalize control vs skip: exact `9/9`, identical
+  accepted lengths/active budgets, ratio `0.4969x -> 0.7730x`, wall
+  `37.207 -> 24.076 ms/cycle`, verify `32.069 -> 18.933 ms/cycle`.
+- Rocprof for that A/B proves the win is host-side: calls/pass remain `932`,
+  kernel remains ~`14.33 ms/pass`, and host moves `32.505 -> 18.272 ms/pass`.
+- With graph-off fixed, `decode_batched` becomes current best: exact `9/9`,
+  identical accepted lengths/active budgets versus graph-off batched skip, ratio
+  `0.7730x -> 0.8252x`, wall `24.076 -> 21.661 ms/cycle`, verify
+  `18.933 -> 16.511 ms/cycle`, profile kernel `14.330 -> 12.922 ms/pass`, host
+  `18.272 -> 16.849 ms/pass`.
+
+Decision: promote the MTP canonicalize skip default-on and use
+`chain_attn_mode=decode_batched`, graph `off` as the current exact B=3 MTP
+baseline. The wall target is now close (`21.661 ms` vs `<21.5 ms`), but the
+throughput target still needs proposer/overlap work and any deployable acceptance
+uplift because the current row is `0.825x`, not `>1.0x`.
 
 ### M16.4 Split-Output Follow-Up (2026-06-11)
 

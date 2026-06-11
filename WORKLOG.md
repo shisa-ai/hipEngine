@@ -80691,3 +80691,90 @@ The current exact D32 row is now `25.60 ms/cycle` with `20.43 ms` verify,
 leaving roughly `4.10 ms` to the `<21.5 ms` break-even target. Next live items:
 graph-off canonicalize skip if staying in host-cache cleanup, otherwise
 full-layer reduced-DAG batching.
+
+## 2026-06-12 - MTP graph-off canonicalize skip + decode_batched current best
+
+Implemented the MTP-only graph-off canonicalize-after-verify skip:
+
+- `verify_chain_bulk_and_commit()` and `verify_tree_bulk_and_commit()` now accept
+  `canonicalize_after=True`.
+- `scripts/mtp_chain_e2e_smoke.py` passes `canonicalize_after=False` by default
+  for MTP verify cycles through
+  `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1`.
+- The default is narrow: real AR/c1 handoff can still request canonical scratch,
+  while steady MTP verify/proposer loops keep verifier-shaped scratch live.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/mtp_chain_e2e_smoke.py
+git diff --check
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode off \
+  --json /tmp/hipengine-mtp-canonicalize-skip-smoke.json
+```
+
+Passed exact AR with accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]` and
+`canonicalize_after_verify=false`.
+
+D32 graph-off batched A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=<0-or-1> PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-canonicalize-after-<on-or-skip>-graphoff-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-after-<on-or-skip>-graphoff-9prompt-d32.json
+```
+
+Result: exact `9/9` with identical accepted lengths and active budgets.
+Canonicalize control -> skip moved actual ratio `0.49693x -> 0.77296x`, cycle
+wall `37.2073 -> 24.0762 ms/cycle`, verify
+`32.0694 -> 18.9326 ms/cycle`, and proposal/update
+`2.0605 -> 1.9686 ms/cycle`.
+
+Graph-off batched rocprof:
+
+- Control: exact, `932` calls/pass, kernel `14.332 ms/pass`, host
+  `32.505 ms/pass`.
+- Skip: exact, `932` calls/pass, kernel `14.330 ms/pass`, host
+  `18.272 ms/pass`.
+
+Then retested `decode_batched` on top of the canonicalize skip:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-canonicalize-skip-decode-batched-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-skip-decode-batched-9prompt-d32.json
+```
+
+Result: exact `9/9`, identical accepted lengths and active budgets versus
+batched graph-off skip. `decode_batched` moved actual ratio
+`0.77296x -> 0.82521x`, cycle wall `24.0762 -> 21.6612 ms/cycle`, verify
+`18.9326 -> 16.5110 ms/cycle`, proposal/update
+`1.9686 -> 1.9721 ms/cycle`, and cycle cost
+`2.6663 -> 2.4107` AR-token equivalents.
+
+Rocprof for `decode_batched + skip`: exact, `942` calls/pass, kernel
+`12.922 ms/pass`, host `16.849 ms/pass`. Top families: gate/up `1.892`,
+W4 dual `1.835`, GDN `1.761`, LM-head `1.454`, W4 single `1.401`, MoE down
+`1.204`, rotate `0.957`, router `0.499`, decode attention `0.428`, RMSNorm
+`0.401` ms/pass.
+
+Decision: promote `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1` default-on and
+make `chain_attn_mode=decode_batched`, graph `off` the current exact B=3 MTP
+baseline. The wall target is now very close (`21.661 ms/cycle` vs `<21.5 ms`),
+but the row is still `0.825x`, so `>1.0x` still needs proposer/overlap and any
+deployable acceptance uplift. Updated `docs/MTP.md`, `docs/REFACTOR.md`,
+`benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.

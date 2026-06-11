@@ -124,6 +124,12 @@ def _mtp_proposer_skip_unused_reads_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS", True)
 
 
+def _mtp_skip_canonicalize_after_verify_enabled() -> bool:
+    """Keep verifier-shaped scratch live after MTP verify cycles when requested."""
+
+    return _env_flag("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", True)
+
+
 def _capture_tensor(buffer: DeviceBuffer, rows: int, hidden: int) -> Tensor:
     return Tensor.from_handle(buffer.ptr, (int(rows), int(hidden)), DType.BF16, Device("hip", 0))
 
@@ -235,6 +241,7 @@ def _run_spec_smoke(
     capture_rows = max_sequence + int(candidate_budget) + 2
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
+    canonicalize_after_verify = not _mtp_skip_canonicalize_after_verify_enabled()
     with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_batch_size=max_batch_size) as session:
         hidden = int(session.config.hidden_size)
         capture_layer_id = int(session.layer_limit) - 1
@@ -373,6 +380,7 @@ def _run_spec_smoke(
                         capture_layer_ids=(capture_layer_id,),
                         capture_hidden_concat=capture,
                         capture_row_start=context,
+                        canonicalize_after=canonicalize_after_verify,
                     )
                     accepted_tokens = list(verify.accepted_tokens)
                 else:
@@ -386,6 +394,7 @@ def _run_spec_smoke(
                         capture_hidden_concat=capture,
                         capture_row_start=context,
                         chain_attn_mode=chain_attn_mode,
+                        canonicalize_after=canonicalize_after_verify,
                     )
                     accepted_tokens = candidates[: int(verify.accepted_count)]
                 verify_seconds += time.perf_counter() - t_verify
@@ -501,6 +510,7 @@ def _run_spec_smoke(
         "proposal_trace_sample": proposal_trace,
         "target_forward_calls": target_forward_calls,
         "chain_attn_mode": chain_attn_mode,
+        "canonicalize_after_verify": bool(canonicalize_after_verify),
         "note": "Correctness smoke only: proposal hidden rows are copied D2H and MTP weights are reloaded per proposal call.",
     }
 
@@ -737,6 +747,7 @@ def _run_spec_persistent_device(
     started = time.perf_counter()
     active_budgets: list[int] = []
     skip_unused_proposer_reads = _mtp_proposer_skip_unused_reads_enabled()
+    canonicalize_after_verify = not _mtp_skip_canonicalize_after_verify_enabled()
     # Always load libroctx64 so range_push/pop markers fire even when the
     # selected-region window is off (rocprofv3 1.1.0 path). The resume/pause
     # path is still gated on rocprof_verify_cycles>0 below.
@@ -903,6 +914,7 @@ def _run_spec_persistent_device(
                             capture_hidden_concat=verifier_no_capture,
                             capture_row_start=0,
                             graph_mode=graph_mode,
+                            canonicalize_after=canonicalize_after_verify,
                         )
                         accepted_tokens = [int(t) for t in verify.accepted_tokens]
                     else:
@@ -915,6 +927,7 @@ def _run_spec_persistent_device(
                             capture_row_start=0,
                             chain_attn_mode=chain_attn_mode,
                             graph_mode=graph_mode,
+                            canonicalize_after=canonicalize_after_verify,
                         )
                         accepted_tokens = candidates[: int(verify.accepted_count)]
                     rocprof_window.range_pop()
@@ -1026,6 +1039,7 @@ def _run_spec_persistent_device(
         "chain_attn_mode": chain_attn_mode,
         "proposal_impl": "persistent_device",
         "proposer_skip_unused_reads": bool(skip_unused_proposer_reads),
+        "canonicalize_after_verify": bool(canonicalize_after_verify),
         "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results/snapshots are skipped by default.",
         "rocprof_window": rocprof_window_meta,
         "cycle_marker_ns": [

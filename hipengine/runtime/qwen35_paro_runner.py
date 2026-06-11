@@ -8535,6 +8535,7 @@ class Qwen35ParoResidentSession:
         stream: int = 0,
         graph_mode: str = "off",
         chain_attn_mode: str = "c1_loop",
+        canonicalize_after: bool = True,
     ) -> Qwen35ParoBulkVerifyResult:
         """Run one native root+candidate verifier forward and commit the selected row.
 
@@ -8686,7 +8687,7 @@ class Qwen35ParoResidentSession:
             # Replays then read/write freed memory (#107 graph-auto drift).
             # Keep the verifier-shaped scratch alive while any graph is cached;
             # decode steps lazily re-reserve canonical c=1 views on demand.
-            if graph_mode == "off" or not self._verify_graph_cache:
+            if bool(canonicalize_after) and (graph_mode == "off" or not self._verify_graph_cache):
                 self._canonicalize_decode_scratch()
             self.runtime.stream_synchronize(stream)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
@@ -8722,6 +8723,7 @@ class Qwen35ParoResidentSession:
         capture_row_start: int,
         stream: int = 0,
         graph_mode: str = "off",
+        canonicalize_after: bool = True,
     ) -> Qwen35ParoBulkVerifyResult:
         """DDTree variant of ``verify_chain_bulk_and_commit``.
 
@@ -8879,7 +8881,7 @@ class Qwen35ParoResidentSession:
             self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
         # Same #107 keepalive as chain: canonicalizing decode scratch frees the
         # rows=B+1 buffers any cached verifier graph holds raw pointers to.
-        if graph_mode == "off" or not self._verify_graph_cache:
+        if bool(canonicalize_after) and (graph_mode == "off" or not self._verify_graph_cache):
             self._canonicalize_decode_scratch()
         self.runtime.stream_synchronize(stream)
         next_token = None if summary.next_tokens is None else summary.next_tokens[0]
