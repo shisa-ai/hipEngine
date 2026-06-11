@@ -17,6 +17,7 @@ _SYMBOL_ADD_RMSNORM_ONEPLUS = "hipengine_mtp_add_rmsnorm_bf16_oneplus"
 _SYMBOL_SPLIT_Q_GATE = "hipengine_mtp_split_q_gate_f32_bf16"
 _SYMBOL_GATE_MUL_BF16 = "hipengine_mtp_gate_mul_bf16"
 _SYMBOL_SOFTMAX_TOPK = "hipengine_mtp_softmax_topk_f32"
+_SYMBOL_ROUTER_TOPK_SOFTMAX = "hipengine_mtp_router_topk_softmax_256x8_f32"
 _SYMBOL_ACCUM_ROUTE = "hipengine_mtp_accumulate_route_bf16_to_f32"
 _SYMBOL_ACCUM_SIGMOID_GATE = "hipengine_mtp_accumulate_sigmoid_gate_bf16_to_f32"
 _SYMBOL_FINALIZE_F32_TO_BF16 = "hipengine_mtp_finalize_f32_to_bf16"
@@ -28,6 +29,7 @@ _PTR_ARG_COUNTS = {
     _SYMBOL_SPLIT_Q_GATE: 3,
     _SYMBOL_GATE_MUL_BF16: 3,
     _SYMBOL_SOFTMAX_TOPK: 2,
+    _SYMBOL_ROUTER_TOPK_SOFTMAX: 4,
     _SYMBOL_ACCUM_ROUTE: 3,
     _SYMBOL_ACCUM_SIGMOID_GATE: 3,
     _SYMBOL_FINALIZE_F32_TO_BF16: 2,
@@ -242,6 +244,32 @@ def mtp_softmax_topk_f32(
     _launch(_SYMBOL_SOFTMAX_TOPK, [values_f32_ptr, routing_f32_ptr, rows, top_k, stream], library, runtime)
 
 
+def mtp_router_topk_softmax_f32(
+    logits_f32_ptr: int,
+    out_values_f32_ptr: int,
+    out_indices_i32_ptr: int,
+    routing_f32_ptr: int,
+    num_experts: int,
+    top_k: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fused proposer router top-k + softmax for the Qwen MTP 256-expert/top-8 shape."""
+
+    if num_experts != 256:
+        raise ValueError("num_experts must be 256 for fused MTP proposer router top-k")
+    if top_k != 8:
+        raise ValueError("top_k must be 8 for fused MTP proposer router top-k")
+    _launch(
+        _SYMBOL_ROUTER_TOPK_SOFTMAX,
+        [logits_f32_ptr, out_values_f32_ptr, out_indices_i32_ptr, routing_f32_ptr, num_experts, top_k, stream],
+        library,
+        runtime,
+    )
+
+
 def mtp_accumulate_route_bf16_to_f32(
     src_bf16_ptr: int,
     routing_f32_ptr: int,
@@ -318,6 +346,7 @@ def register_mtp_speculative_kernels(*, replace: bool = True) -> None:
         register(KernelKey(backend, "mtp_split_q_gate", "f32", "bf16_gate"), mtp_split_q_gate_f32_bf16, replace=replace)
         register(KernelKey(backend, "mtp_gate_mul", "bf16", "bf16"), mtp_gate_mul_bf16, replace=replace)
         register(KernelKey(backend, "mtp_softmax_topk", "f32", "rows"), mtp_softmax_topk_f32, replace=replace)
+        register(KernelKey(backend, "mtp_router_topk_softmax", "f32", "256x8"), mtp_router_topk_softmax_f32, replace=replace)
         register(KernelKey(backend, "mtp_accumulate_route", "bf16", "f32"), mtp_accumulate_route_bf16_to_f32, replace=replace)
         register(KernelKey(backend, "mtp_accumulate_sigmoid_gate", "bf16", "f32"), mtp_accumulate_sigmoid_gate_bf16_to_f32, replace=replace)
         register(KernelKey(backend, "mtp_finalize", "f32", "bf16"), mtp_finalize_f32_to_bf16, replace=replace)
@@ -382,6 +411,7 @@ __all__ = [
     "mtp_fuse_inputs_f16_bf16",
     "mtp_gate_mul_bf16",
     "mtp_rmsnorm_bf16_oneplus",
+    "mtp_router_topk_softmax_f32",
     "mtp_softmax_topk_f32",
     "mtp_split_q_gate_f32_bf16",
     "plan_mtp_speculative_build",

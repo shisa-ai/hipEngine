@@ -38,6 +38,7 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp import (
     mtp_fuse_inputs_f16_bf16,
     mtp_gate_mul_bf16,
     mtp_rmsnorm_bf16_oneplus,
+    mtp_router_topk_softmax_f32,
     mtp_softmax_topk_f32,
     mtp_split_q_gate_f32_bf16,
 )
@@ -100,6 +101,10 @@ def _route0_accum_init_enabled() -> bool:
 
 def _direct_kv_write_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", True)
+
+
+def _router_topk_fused_enabled() -> bool:
+    return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED", True)
 
 
 def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic], buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> tuple[np.ndarray, DeviceBuffer]:
@@ -535,8 +540,19 @@ class NativeMtpChainProposer:
             library=self.mtp_lib,
         )
         dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.gate.weight"].ptr, self.router_logits_buf.ptr, 1, self.hidden, int(self.config.num_experts), threads=128, library=self.dflash_lib)
-        topk_f32_rows_i32(self.router_logits_buf.ptr, self.topk_values_buf.ptr, self.topk_ids_buf.ptr, 1, int(self.config.num_experts), self.top_k, threads=256, library=self.lm_lib)
-        mtp_softmax_topk_f32(self.topk_values_buf.ptr, self.routing_buf.ptr, 1, self.top_k, library=self.mtp_lib)
+        if _router_topk_fused_enabled() and int(self.config.num_experts) == 256 and int(self.top_k) == 8:
+            mtp_router_topk_softmax_f32(
+                self.router_logits_buf.ptr,
+                self.topk_values_buf.ptr,
+                self.topk_ids_buf.ptr,
+                self.routing_buf.ptr,
+                int(self.config.num_experts),
+                self.top_k,
+                library=self.mtp_lib,
+            )
+        else:
+            topk_f32_rows_i32(self.router_logits_buf.ptr, self.topk_values_buf.ptr, self.topk_ids_buf.ptr, 1, int(self.config.num_experts), self.top_k, threads=256, library=self.lm_lib)
+            mtp_softmax_topk_f32(self.topk_values_buf.ptr, self.routing_buf.ptr, 1, self.top_k, library=self.mtp_lib)
         # Expert-indexed GEMVs read `topk_ids[route]` on-device, so the MoE
         # loop no longer forces a mid-pass router D2H sync. Host-visible
         # ids/values are only read when the caller needs diagnostic metadata.

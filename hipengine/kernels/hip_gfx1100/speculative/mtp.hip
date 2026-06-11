@@ -6,6 +6,7 @@
 // existing dense BF16 GEMV kernel can apply mtp.fc.
 
 #include <hip/hip_runtime.h>
+#include <limits.h>
 #include <stdint.h>
 
 using half_t = _Float16;
@@ -70,6 +71,31 @@ bool valid_threads(int64_t threads) {
 
 __device__ inline float sigmoid_f32(float x) {
   return 1.0f / (1.0f + expf(-x));
+}
+
+constexpr int kMtpRouterExperts = 256;
+constexpr int kMtpRouterTopK = 8;
+
+__device__ inline bool better_pair_i32(float value, int32_t index, float best_value, int32_t best_index) {
+  return value > best_value || (value == best_value && index < best_index);
+}
+
+__device__ inline void insert_topk_pair_i32(
+    float value,
+    int32_t index,
+    float* top_values,
+    int32_t* top_indices) {
+  for (int pos = 0; pos < kMtpRouterTopK; ++pos) {
+    if (better_pair_i32(value, index, top_values[pos], top_indices[pos])) {
+      for (int shift = kMtpRouterTopK - 1; shift > pos; --shift) {
+        top_values[shift] = top_values[shift - 1];
+        top_indices[shift] = top_indices[shift - 1];
+      }
+      top_values[pos] = value;
+      top_indices[pos] = index;
+      return;
+    }
+  }
 }
 
 __global__ void mtp_fuse_inputs_f16_bf16_kernel(
@@ -232,6 +258,45 @@ __global__ void mtp_softmax_topk_f32_kernel(
   const float inv = 1.0f / denom;
   for (int64_t i = 0; i < top_k; ++i) {
     routing[base + i] *= inv;
+  }
+}
+
+__global__ void mtp_router_topk_softmax_256x8_f32_kernel(
+    const float* __restrict__ logits,
+    float* __restrict__ out_values,
+    int32_t* __restrict__ out_indices,
+    float* __restrict__ routing) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+
+  float top_values[kMtpRouterTopK];
+  int32_t top_indices[kMtpRouterTopK];
+  for (int i = 0; i < kMtpRouterTopK; ++i) {
+    top_values[i] = -3.4028234663852886e+38F;
+    top_indices[i] = INT32_MAX;
+  }
+
+  for (int i = 0; i < kMtpRouterExperts; ++i) {
+    insert_topk_pair_i32(logits[i], static_cast<int32_t>(i), top_values, top_indices);
+  }
+
+  float max_value = top_values[0];
+  for (int i = 1; i < kMtpRouterTopK; ++i) {
+    max_value = fmaxf(max_value, top_values[i]);
+  }
+
+  float denom = 0.0f;
+  for (int i = 0; i < kMtpRouterTopK; ++i) {
+    out_values[i] = top_values[i];
+    out_indices[i] = top_indices[i];
+    const float e = expf(top_values[i] - max_value);
+    routing[i] = e;
+    denom += e;
+  }
+  const float inv = 1.0f / denom;
+  for (int i = 0; i < kMtpRouterTopK; ++i) {
+    routing[i] *= inv;
   }
 }
 
@@ -439,6 +504,30 @@ extern "C" int hipengine_mtp_softmax_topk_f32(
       routing,
       rows,
       top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_mtp_router_topk_softmax_256x8_f32(
+    const float* logits,
+    float* out_values,
+    int32_t* out_indices,
+    float* routing,
+    int64_t num_experts,
+    int64_t top_k,
+    hipStream_t stream) {
+  if (num_experts != kMtpRouterExperts || top_k != kMtpRouterTopK) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      mtp_router_topk_softmax_256x8_f32_kernel,
+      dim3(1U),
+      dim3(1U),
+      0,
+      stream,
+      logits,
+      out_values,
+      out_indices,
+      routing);
   return static_cast<int>(hipGetLastError());
 }
 

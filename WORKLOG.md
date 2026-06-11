@@ -80957,3 +80957,123 @@ single-row router top-k path is already `~1.7 ms/cycle` of real GPU time.
 Move specialized/fused proposer router top-k ahead of generic M12.7 graph
 capture. Route-batched expert work remains plausible but is smaller
 (`~0.67 ms/cycle`) and requires new route-batched expert kernels.
+
+## 2026-06-12 - MTP fused proposer router top-k promoted default-on
+
+Implemented a fused proposer-router kernel for the actual sidecar shape:
+256 experts, `top_k=8`. The fused path replaces the generic single-row
+`topk_rows_i32` router selection plus `mtp_softmax_topk_f32` with one exact
+kernel under default-on `HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED=1`.
+
+Implementation notes:
+
+- Added `hipengine_mtp_router_topk_softmax_256x8_f32` in
+  `hipengine/kernels/hip_gfx1100/speculative/mtp.hip`.
+- Added the Python wrapper and registry entry as
+  `KernelKey("hip_gfx1100", "mtp_router_topk_softmax", "f32", "256x8")`.
+- Wired `NativeMtpChainProposer.advance()` to use the fused path only when
+  `num_experts == 256` and `top_k == 8`; otherwise it falls back to the old
+  generic top-k plus softmax chain.
+- The kernel preserves the generic comparator's semantics: larger logit wins,
+  and lower expert id wins ties.
+- Updated the proposer rocprof classifier so the fused kernel remains in the
+  `proposer_topk_router` family.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/mtp.py hipengine/kernels/hip_gfx1100/speculative/__init__.py hipengine/speculative/mtp_native.py tests/test_mtp_input_fusion_kernel.py scripts/mtp_verifier_rocprof.py
+git diff --check
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-router-topk-fused-256-smoke.json
+```
+
+Results:
+
+- Targeted GPU test: `3 passed`.
+- Quicksort smoke exact AR with unchanged current-best accepted lengths:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- 9-prompt D32 suite control command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-router-topk-fused-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-off-9prompt-d32.json
+```
+
+- 9-prompt D32 suite fused command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-router-topk-fused-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-on-9prompt-d32.json
+```
+
+Suite result:
+
+- Exact `9/9`.
+- Accepted lengths and active budgets identical across all prompts.
+- Actual MTP/AR ratio: `0.824440778 -> 0.880631421` (+6.816% relative).
+- Cycle cost: `2.414534693 -> 2.258835332` AR-token equivalents.
+- Visible tokens/cycle unchanged: `2.011851852`.
+- Accepted draft tokens/cycle unchanged: `1.011851852`.
+- Wall: `21.686198461 -> 20.379385821 ms/cycle` (-1.306812640 ms).
+- Verify: `16.536968606 -> 16.578236661 ms/cycle` (neutral/noisy).
+- Proposal/update: `1.973545090 -> 1.459951972 ms/cycle`
+  (-0.513593118 ms).
+
+Proposer marker profile:
+
+- Control profile artifact:
+  `benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-off-rocprof.json`.
+- Fused profile artifact:
+  `benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-on-rocprof.json`.
+- `proposer_all` host window: `5.578 -> 4.248 ms/cycle`.
+- Kernel time: `4.676 -> 3.379 ms/cycle`.
+- Calls: `181.45 -> 178.36/cycle`.
+- Router family: `1.714 -> 0.373 ms/cycle`, calls `6.18 -> 3.09/cycle`.
+- Post-fusion top proposer families are now route-scalar expert dense
+  (`0.674 ms/cycle`), LM-head/argmax (`0.567`), attention (`0.561`), and dense
+  BF16 (`0.547`).
+
+Retained artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-retained.json`.
+
+Decision:
+
+- Promote `HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED=1` default-on.
+- The original `<21.5 ms` wall milestone is crossed (`20.379 ms/cycle`), but
+  the row is still below break-even because acceptance density stayed
+  `2.012` visible tokens/cycle.
+- At the current AR denominator (`9.018 ms/token`), unchanged acceptance would
+  need about `18.1 ms/cycle`; at the current wall, break-even needs about
+  `2.26` visible tokens/cycle.
+
+Next grind order after router fusion:
+
+1. Reduced-DAG verifier batching remains the highest-ceiling wall lever.
+2. Re-profile the post-fusion proposer before choosing M12.7 graph capture
+   versus route-batched expert kernels; graph capture is now bounded by about a
+   `0.87 ms/cycle` host/kernel gap, while expert dense is the biggest remaining
+   proposer GPU family.
+3. Save acceptance-density policy for the endgame, but add diagnostics to the
+   plan now: B=4/B=5 economics with per-position histograms, vocab-cap rejection
+   census for `32768 -> 65536/full`, adaptive B / AR fallback for zero-accept
+   streaks, and a later tree/rejection-boundary sibling retest. Relaxed
+   speculative sampling remains out of sprint scope because it changes the
+   accept contract and needs distribution access.

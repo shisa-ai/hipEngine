@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, topk_f32_rows_i32
 from hipengine.kernels.hip_gfx1100.speculative.mtp import (
     build_mtp_speculative,
     mtp_accumulate_route_bf16_to_f32,
@@ -15,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp import (
     mtp_fuse_inputs_f16_bf16,
     mtp_gate_mul_bf16,
     mtp_rmsnorm_bf16_oneplus,
+    mtp_router_topk_softmax_f32,
     mtp_softmax_topk_f32,
     mtp_split_q_gate_f32_bf16,
 )
@@ -209,3 +211,60 @@ def test_mtp_decoder_helper_kernels_match_cpu_reference() -> None:
     accum_ref = routing_ref[0, 0] * _bf16_bits_to_f32(gated_bits) + (1.0 / (1.0 + np.exp(-q_proj[0, 0]))) * _bf16_bits_to_f32(gated_bits)
     assert np.allclose(accum, accum_ref, atol=1.0e-6)
     assert np.array_equal(finalized, _f32_to_bf16_bits(accum_ref))
+
+
+@pytest.mark.skipif(not _hip_available(), reason="ROCm runtime not available")
+def test_mtp_router_topk_softmax_matches_generic_topk_path() -> None:
+    rng = np.random.default_rng(12345)
+    logits = rng.normal(loc=0.0, scale=1.0, size=(1, 256)).astype(np.float32)
+    # Tie values prove the fused path keeps the generic lower-index tiebreak.
+    logits[0, 5] = np.float32(7.0)
+    logits[0, 17] = np.float32(7.0)
+    logits[0, 63] = np.float32(6.5)
+    logits[0, 64] = np.float32(6.5)
+    top_k = 8
+    generic_values = np.zeros((1, top_k), dtype=np.float32)
+    generic_ids = np.zeros((1, top_k), dtype=np.int32)
+    generic_routing = np.zeros((1, top_k), dtype=np.float32)
+    fused_values = np.zeros((1, top_k), dtype=np.float32)
+    fused_ids = np.zeros((1, top_k), dtype=np.int32)
+    fused_routing = np.zeros((1, top_k), dtype=np.float32)
+
+    arrays = [
+        logits,
+        generic_values,
+        generic_ids,
+        generic_routing,
+        fused_values,
+        fused_ids,
+        fused_routing,
+    ]
+    buffers = []
+    try:
+        for arr in arrays:
+            buf = malloc(arr.nbytes)
+            copy_host_to_device(buf, host_array_ptr(np.ascontiguousarray(arr)), arr.nbytes)
+            buffers.append(buf)
+        lm_lib = build_lm_head(load=True)
+        mtp_lib = build_mtp_speculative(load=True)
+        topk_f32_rows_i32(buffers[0].ptr, buffers[1].ptr, buffers[2].ptr, 1, 256, top_k, threads=256, library=lm_lib)
+        mtp_softmax_topk_f32(buffers[1].ptr, buffers[3].ptr, 1, top_k, library=mtp_lib)
+        mtp_router_topk_softmax_f32(buffers[0].ptr, buffers[4].ptr, buffers[5].ptr, buffers[6].ptr, 256, top_k, library=mtp_lib)
+        for arr, buf in (
+            (generic_values, buffers[1]),
+            (generic_ids, buffers[2]),
+            (generic_routing, buffers[3]),
+            (fused_values, buffers[4]),
+            (fused_ids, buffers[5]),
+            (fused_routing, buffers[6]),
+        ):
+            copy_device_to_host(host_array_ptr(arr), buf, arr.nbytes)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+    assert np.array_equal(fused_ids, generic_ids)
+    assert np.array_equal(fused_values, generic_values)
+    assert np.array_equal(fused_routing, generic_routing)
+    assert fused_ids[0, 0] == 5
+    assert fused_ids[0, 1] == 17

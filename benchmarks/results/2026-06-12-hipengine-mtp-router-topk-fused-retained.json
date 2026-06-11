@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "llama.cpp mtp-bench 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "router_shape": "256 experts, top_k=8"
+  },
+  "change": {
+    "flag": "HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED",
+    "default": true,
+    "description": "Fuse the proposer router's single-row 256-expert top-8 selection and routing softmax into one exact kernel, replacing generic topk_rows_i32 plus mtp_softmax_topk_f32 for this shape."
+  },
+  "commands": {
+    "control_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-router-topk-fused-off-9prompt-d32 --out benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-off-9prompt-d32.json",
+    "fused_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-router-topk-fused-on-9prompt-d32 --out benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-on-9prompt-d32.json",
+    "targeted_test": "HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py",
+    "profile_region": "scripts/mtp_verifier_rocprof.py --region proposer_all, run off with HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED=0 and on with the default fused path"
+  },
+  "correctness": {
+    "suite_exact_prompts": "9/9",
+    "accepted_lengths_identical": true,
+    "active_budgets_identical": true,
+    "targeted_kernel_test": "3 passed",
+    "quicksort_smoke_exact": true,
+    "quicksort_accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+  },
+  "suite_delta": {
+    "actual_decode_speedup_vs_ar": {
+      "control": 0.824440778,
+      "fused": 0.880631421,
+      "relative_delta_pct": 6.816
+    },
+    "cycle_cost_ar_tokens": {
+      "control": 2.414534693,
+      "fused": 2.258835332,
+      "relative_delta_pct": -6.448
+    },
+    "visible_tokens_per_cycle": {
+      "control": 2.011851852,
+      "fused": 2.011851852
+    },
+    "accepted_tokens_per_cycle": {
+      "control": 1.011851852,
+      "fused": 1.011851852
+    },
+    "cycle_wall_ms": {
+      "control": 21.686198461,
+      "fused": 20.379385821,
+      "delta_ms": -1.30681264,
+      "relative_delta_pct": -6.026
+    },
+    "verify_ms": {
+      "control": 16.536968606,
+      "fused": 16.578236661,
+      "delta_ms": 0.041268055
+    },
+    "proposal_update_ms": {
+      "control": 1.97354509,
+      "fused": 1.459951972,
+      "delta_ms": -0.513593118,
+      "relative_delta_pct": -26.024
+    },
+    "ar_decode_ms_per_token": {
+      "control": 8.976331876,
+      "fused": 9.018106108
+    }
+  },
+  "proposer_profile_delta": {
+    "host_window_ms_per_cycle": {
+      "control": 5.578125,
+      "fused": 4.248324,
+      "delta_ms": -1.329801
+    },
+    "kernel_ms_per_cycle": {
+      "control": 4.676471,
+      "fused": 3.379336,
+      "delta_ms": -1.297134
+    },
+    "kernel_calls_per_cycle": {
+      "control": 181.454545,
+      "fused": 178.363636,
+      "delta": -3.090909
+    },
+    "proposer_topk_router_ms_per_cycle": {
+      "control": 1.714225,
+      "fused": 0.373105,
+      "delta_ms": -1.34112
+    },
+    "post_fusion_top_families_ms_per_cycle": {
+      "proposer_expert_dense": 0.674238,
+      "lm_head_argmax": 0.566922,
+      "proposer_attention": 0.561434,
+      "proposer_dense_bf16": 0.547408,
+      "proposer_topk_router": 0.373105
+    }
+  },
+  "artifacts": {
+    "suite_control": "benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-off-9prompt-d32.json",
+    "suite_fused": "benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-on-9prompt-d32.json",
+    "profile_control": "benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-off-rocprof.json",
+    "profile_fused": "benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-on-rocprof.json"
+  },
+  "decision": "Promote fused proposer router top-k+softmax default-on. The original <21.5 ms wall milestone is crossed, but the row remains below 1.0x because visible-token density is unchanged at about 2.012/cycle."
+}

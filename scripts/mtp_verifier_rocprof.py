@@ -564,7 +564,7 @@ def _family(kernel: str) -> str:
         return "proposer_finalize"
     if "mtp_fuse_inputs" in k:
         return "proposer_input_fuse"
-    if "topk_rows_i32" in k or "mtp_softmax_topk" in k:
+    if "router_topk_softmax" in k or "topk_rows_i32" in k or "mtp_softmax_topk" in k:
         return "proposer_topk_router"
     if "dense_dual_gemv" in k or "dense_gemv" in k:
         return "dense_gemv"
