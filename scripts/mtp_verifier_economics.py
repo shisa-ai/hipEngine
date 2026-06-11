@@ -105,6 +105,8 @@ def _economics_from_smoke(smoke: dict[str, Any], *, llama_target_cycle_cost: flo
     verify_seconds = float(mtp.get("verify_seconds") or 0.0)
     proposal_update_seconds = float(mtp.get("proposal_decode_update_seconds") or 0.0)
     proposal_prefill_seconds = float(mtp.get("proposal_prefill_seconds") or 0.0)
+    proposal_snapshot_saves = int(mtp.get("proposal_snapshot_saves") or 0)
+    proposal_snapshot_skips = int(mtp.get("proposal_snapshot_skips") or 0)
 
     # Each successful speculative verify cycle commits the root target token plus
     # the accepted draft prefix.  The harness may finish with a terminal AR token
@@ -160,6 +162,10 @@ def _economics_from_smoke(smoke: dict[str, Any], *, llama_target_cycle_cost: flo
         "verify_ms_per_cycle": avg_verify_seconds * 1000.0,
         "proposal_update_ms_per_cycle": avg_proposal_update_seconds * 1000.0,
         "proposal_prefill_seconds": proposal_prefill_seconds,
+        "proposal_snapshot_saves": proposal_snapshot_saves,
+        "proposal_snapshot_skips": proposal_snapshot_skips,
+        "proposal_snapshot_saves_per_cycle": proposal_snapshot_saves / cycles,
+        "proposal_snapshot_skips_per_cycle": proposal_snapshot_skips / cycles,
         "cycle_cost_ar_tokens": cycle_cost_ar_tokens,
         "verify_cost_ar_tokens": verify_cost_ar_tokens,
         "proposal_update_cost_ar_tokens": proposal_update_cost_ar_tokens,
@@ -192,6 +198,10 @@ def _aggregate_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "cycle_cost_ar_tokens",
         "verify_cost_ar_tokens",
         "proposal_update_cost_ar_tokens",
+        "proposal_snapshot_saves",
+        "proposal_snapshot_skips",
+        "proposal_snapshot_saves_per_cycle",
+        "proposal_snapshot_skips_per_cycle",
         "observed_cycle_speedup_vs_ar",
         "perfect_accept_speedup_ceiling_vs_ar",
         "required_avg_visible_tokens_for_1x",

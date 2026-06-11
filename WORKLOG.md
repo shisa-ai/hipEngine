@@ -78466,3 +78466,42 @@ verify change, and the smoke exited `status=exact_ar_mismatch`.
 Decision: keep `HIPENGINE_PARO_FFN_MEGAKERNEL` default-off. This is not a
 promotable speed row because it fails the current exact-AR gate. Artifact:
 `benchmarks/results/2026-06-11-hipengine-mtp-paro-ffn-megakernel-exact-blocked.json`.
+
+## 2026-06-11 - MTP proposer final snapshot skip promoted default-on
+
+Extended the default-on `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` cleanup to
+skip saving the final draft snapshot in each proposal cycle. That snapshot is
+not read by the commit/update path: if all draft tokens before the last one are
+accepted, the live proposer state already equals the final draft snapshot; if
+the full budget is accepted, the code advances from that live state before the
+bonus check. Earlier snapshots are still saved for rollback to partial accepts.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py scripts/mtp_prompt_suite_economics.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-snapshot-skip-default-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-snapshot-skip-default-9prompt-d32.json
+```
+
+Result: exact `9/9`, identical acceptance/visible-token counts to the prior
+default-on proposer-skip row, `142` final snapshot D2D saves skipped across the
+suite, and proposal/update moved `2.0519 -> 2.0450 ms/cycle`. Cycle wall moved
+`27.6765 -> 27.6479 ms/cycle`. Actual MTP/AR ratio was flat within run noise
+(`0.6701x -> 0.6699x`) because the same-session AR denominator moved; this is
+therefore a retained default-on dead-work removal, not a claimed large
+throughput row. Artifact:
+`benchmarks/results/2026-06-11-hipengine-mtp-proposer-snapshot-skip-default-9prompt-d32.json`.

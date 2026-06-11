@@ -730,6 +730,8 @@ def _run_spec_persistent_device(
     verify_seconds = 0.0
     proposal_prefill_seconds = 0.0
     proposal_decode_update_seconds = 0.0
+    proposal_snapshot_saves = 0
+    proposal_snapshot_skips = 0
     capture_rows = max_sequence + 2
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
@@ -826,6 +828,7 @@ def _run_spec_persistent_device(
                     rocprof_window.range_push(f"mtp_verify_cycle_{cycles}")
                     cycle_t_ns_start = time.perf_counter_ns()
                     snapshots = [proposer.save_state(0)]
+                    proposal_snapshot_saves += 1
                     candidates = [int(proposer.current.token)]
                     # Gated branching tree (#99 -> persistent): on
                     # low-confidence depth-1 cycles, spend the budget on a
@@ -863,7 +866,11 @@ def _run_spec_persistent_device(
                                 position=proposer.position + 1,
                                 read_expert_topk=not skip_unused_proposer_reads,
                             )
-                            snapshots.append(proposer.save_state(draft_idx))
+                            if (not skip_unused_proposer_reads) or draft_idx < active_budget - 1:
+                                snapshots.append(proposer.save_state(draft_idx))
+                                proposal_snapshot_saves += 1
+                            else:
+                                proposal_snapshot_skips += 1
                             candidates.append(int(proposer.current.token))
                         active_budget = len(candidates)
                     active_budgets.append(active_budget)
@@ -1003,6 +1010,8 @@ def _run_spec_persistent_device(
         "decode_tok_s": int(decode_tokens) / decode_seconds if decode_seconds > 0 else None,
         "proposal_prefill_seconds": proposal_prefill_seconds,
         "proposal_decode_update_seconds": proposal_decode_update_seconds,
+        "proposal_snapshot_saves": int(proposal_snapshot_saves),
+        "proposal_snapshot_skips": int(proposal_snapshot_skips),
         "verify_seconds": verify_seconds,
         "accepted_lengths": accepted_lengths,
         "active_budgets": active_budgets,
@@ -1011,7 +1020,7 @@ def _run_spec_persistent_device(
         "chain_attn_mode": chain_attn_mode,
         "proposal_impl": "persistent_device",
         "proposer_skip_unused_reads": bool(skip_unused_proposer_reads),
-        "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results are skipped by default.",
+        "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results/snapshots are skipped by default.",
         "rocprof_window": rocprof_window_meta,
         "cycle_marker_ns": [
             {"cycle": cycle_idx, "start_perf_ns": start_ns, "end_perf_ns": end_ns}

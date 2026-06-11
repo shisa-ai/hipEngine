@@ -40,6 +40,10 @@ SUMMARY_FIELDS = (
     "cycle_wall_ms_per_cycle_mean",
     "verify_ms_per_cycle_mean",
     "proposal_update_ms_per_cycle_mean",
+    "proposal_snapshot_saves_mean",
+    "proposal_snapshot_skips_mean",
+    "proposal_snapshot_saves_per_cycle_mean",
+    "proposal_snapshot_skips_per_cycle_mean",
     "ar_decode_ms_per_token_mean",
 )
 
@@ -234,6 +238,9 @@ def _aggregate_across_prompts(results: list[dict[str, Any]]) -> dict[str, Any]:
             vals = [row[field] for row in rows if row.get(field) is not None]
             summary[f"{field}_across_prompts_mean"] = _mean(vals)
             summary[f"{field}_across_prompts_std"] = _std(vals)
+        for field in ("proposal_snapshot_saves_mean", "proposal_snapshot_skips_mean"):
+            vals = [row[field] for row in rows if row.get(field) is not None]
+            summary[f"{field}_across_prompts_sum"] = float(sum(vals)) if vals else None
         by_budget[budget] = summary
     return by_budget
 
