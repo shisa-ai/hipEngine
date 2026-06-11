@@ -44,16 +44,16 @@ command, hardware, workload shape, and correctness gate.
 | P1 | Remove glue launches / copy-cast floor | -1.5 to -2.2 ms full target; -0.27 ms/pass host measured for first slice; default suite -0.61 ms/cycle verify | Fuse or alias producer outputs into the next RMSNorm/rotate/GEMV inputs; eliminate pure `copyBuffer`/format-cast nodes from verifier hot path. | RED layout/lifetime tests; exact B=3 smoke; launch count and cycle wall both drop. | **First slice promoted default-on 2026-06-11.** Linear-attn out-proj `f32_to_fp16 + paro_rotate1` fusion is byte-exact vs the old chain and removes 30 launches/pass (`972 -> 942`), with neutral kernel time and lower host overhead. Same-suite D32 off/default A/B is exact `9/9` and non-regressive on every prompt; opt out with `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=0`. Continue with higher-reach glue: capture-safe barrier/fill elimination, rotate launch consolidation, and overlap. |
 | P1 | Producer-side RMSNorm+rotate re-test | 0 ms retained; prior target was -0.5 to -1 ms | Re-test the existing M15.4 producer-side input RMSNorm + PARO rotate2 fusion on the current P1-default stack before spending new kernel time here. | Bit-exact candidates/AR output; launch count, verifier kernel time, and host window all improve before promotion. | **No-hold refreshed 2026-06-11.** `HIPENGINE_FUSED_RMSNORM_ROTATE=1` stayed exact, but reduced calls only `943.0 -> 915.9/pass` while worsening verifier kernel `13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass`; keep default-off. The live MTP sidecar uses RoPE RMS+rotary rather than PARO rotates, so the next retained levers are overlap and device-resident proposer/update work. |
 | P2 | Multi-stream overlap spike | -1 to -3 ms if real | Prototype verifier-layer dispatch on 2/4 streams with event dependencies around independent W4/MoE/GDN work. | Microbench shows measurable overlap before runtime integration; exact smoke after integration. | W7900 has idle ACEs, but dependency shape may cap useful overlap. |
-| P2 | Device-resident proposer chain advance | -0.5 to -1.5 ms | Use the graph-safe device expert dispatch to keep proposer update/advance in device-resident batches. | Candidate token sequence identical to baseline; cycle wall improves. | p_min and sync trims were neutral; only do work that removes real GPU/launch cost. |
+| P2 | Device-resident proposer chain advance | -0.5 to -1.5 ms | Use the graph-safe device expert dispatch to keep proposer update/advance in device-resident batches. | Candidate token sequence identical to baseline; cycle wall improves. | **First slice promoted default-on 2026-06-11.** Persistent proposer now skips discarded expert-topk host reads and skips intermediate lm-head/argmax for update-only accepted-token state advances. Same-suite D32 9-prompt off/default A/B is exact `9/9` with identical acceptance and visible tokens; actual speed `0.664x -> 0.670x` AR (+0.96% relative), cycle wall `27.94 -> 27.68 ms`, proposal/update `2.145 -> 2.052 ms`. Opt out with `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS=0`. Continue with real device-resident/batched chain advance. |
 | P3 | Revisit top-k/tree after wall cut | Acceptance margin | Re-run gated tree/top-k only after verify wall is materially lower or a better acceptance head is available. | Tree beats chain on the same wall and same prompt suite. | Current B=3 tree is default-off negative. |
 | No-go | p_min / whole-pass persistent / exact PARO rotate-pair fusion | 0 ms | Do not spend sprint time here unless new evidence changes the bottleneck. | n/a | Measured neutral or negative on this stack; includes both consumer-side rotate fusions and the refreshed M15.4 producer-side RMSNorm+rotate2 gate. |
 
 Break-even accounting: stacked P1 wins must get close to `27.8 -> 23-24 ms`; one
 additional P2 overlap/proposer win is likely needed for `<21.5 ms`. Any acceptance
 uplift is margin, not the primary plan. The D32 9-prompt off/on A/B confirms the
-stacked P1 gates are exact and worth keeping by default, but it also shows they
-only recover about `0.6 ms/cycle`; the remaining break-even gap still needs
-higher-reach wall-time cuts.
+stacked P1 gates are exact and worth keeping by default, and the first P2
+proposer skip removes another `0.26 ms/cycle`; the remaining break-even gap still
+needs higher-reach wall-time cuts.
 
 ### P0 Refresh Artifacts (2026-06-11)
 
@@ -889,9 +889,9 @@ Default benchmark mode is `chain_attn_mode=c1_loop`, `graph_mode=off`,
 | Stage | Code | B handling today | Serial work / sync |
 |---|---|---|---|
 | Prompt handoff | `scripts/mtp_chain_e2e_smoke.py:349-369`, `NativeMtpChainProposer.prefill_from_target_hidden_rows` | Prompt hidden taps are captured from the target into one BF16 buffer, but proposer prefill advances one prompt token at a time. | `prefill_from_target_hidden_rows` loops over prompt tokens and calls `advance` per row. Outside steady-state cycle, but it proves the proposer is not a graph/batch API yet. |
-| Draft construction | `scripts/mtp_chain_e2e_smoke.py:404-412` | Candidate list is built on the host. | One `save_state(0)`, then `for draft_idx in range(1, active_budget): proposer.advance_with_previous_hidden(...); save_state(draft_idx)`. This is serial in draft depth. Each `NativeMtpChainProposer.advance` is a full c=1 MTP block and ends with host copies for top-k / argmax plus `device_synchronize` (`mtp_native.py:398-451`). |
+| Draft construction | `scripts/mtp_chain_e2e_smoke.py:404-412` | Candidate list is built on the host. | One `save_state(0)`, then `for draft_idx in range(1, active_budget): proposer.advance_with_previous_hidden(...); save_state(draft_idx)`. This is serial in draft depth. Result-producing advances still read argmax/logit to the host; discarded expert-topk metadata is skipped by default. |
 | Target batch metadata | `_target_batch` / `TargetVerifyBatch.from_draft` (`scripts/...:150-159`, `interfaces.py:159-196`) | The metadata object is row-batched: one root row plus B candidate rows, parent chain encoded as row indices. | Pure host construction. No per-row target forward here, but row topology is fixed before kernels run. |
-| Proposer repair after accept | `scripts/mtp_chain_e2e_smoke.py:448-456` | Uses the accepted count to restore a saved proposer snapshot, optionally advance through the last accepted draft, then advance once on the bonus/correction token. | Serial and synchronized: `restore_state` does D2D memcpy; `advance_with_previous_hidden` is again one c=1 MTP block with host top-k/argmax copies and `device_synchronize`. This contributes to cycle wall but not `verify_seconds`. |
+| Proposer repair after accept | `scripts/mtp_chain_e2e_smoke.py:448-456` | Uses the accepted count to restore a saved proposer snapshot, optionally advance through the last accepted draft, then advance once on the bonus/correction token. | Serial: `restore_state` does D2D memcpy, and update-only accepted-token advances are still c=1 MTP blocks. Default-on proposer skip removes discarded lm-head/argmax and expert-topk host reads for those update-only advances, but the chain is not batched/device-looped yet. This contributes to cycle wall but not `verify_seconds`. |
 
 #### Target verifier entry / metadata / commit
 
@@ -932,10 +932,11 @@ Default benchmark mode is `chain_attn_mode=c1_loop`, `graph_mode=off`,
 4. **M12.4 third target:** convert the target MoE path from “row-batched but many
    small primitive launches” into a verifier-layer primitive. This is where the
    earlier M7 selected-expert work belongs.
-5. **Proposer handoff is not free:** the persistent proposer is resident, but
-   draft build and repair are serial c=1 MTP advances with host top-k/top1 copies
-   and `device_synchronize`. It should be measured in M12.1 before assuming the
-   target verifier alone explains the 3.2–6.9 AR-token-equivalent cycle cost.
+5. **Proposer handoff is not free:** the persistent proposer is resident, and
+   the 2026-06-11 proposer skip removed discarded expert-topk reads plus
+   update-only lm-head/top1 reads by default, but draft build and repair are
+   still serial c=1 MTP advances. Measure this separately before assuming the
+   target verifier alone explains the AR-token-equivalent cycle cost.
 
 ### M12 implementation track (Updated for W7900 Phase)
 
@@ -949,7 +950,7 @@ Based on the 32 optimization iterations on `dflash`, the orchestration/Python si
 | M12.4 | **Device-resident accept summary → device-resident state commit** | Replace the 60 D2D `hipMemcpy` calls in `_commit_bulk_linear_states` with one indexed-copy kernel keyed off `commit_rows[0]` (already produced by `dflash_accept_chain_i32` on device). Folds the commit into the captured graph. | **Done** 2026-05-22 W7900: fused multi-layer linear-state commit landed; exact AR preserved; MTP throughput +~1% on the stable quicksort gate. |
 | M12.5 | **Invariant cycle metadata cache** | Cache the verifier-chain metadata that is invariant for a fixed `(B, base_slot)` and refresh only the dynamic token/position buffers per cycle. | **Done** 2026-05-22 W7900: H2D metadata copies 11 → 5 for the common path; exact AR preserved; +~1% MTP throughput on top of M12.4. |
 | M12.6 | **Small-B W4 verifier GEMV** | Dedicated multi-row pack8 W4 kernels share weights across `B+1 <= 8` verifier rows. Full all-site enablement improved the stable quicksort prompt but changed verifier numerics enough to fail exact AR on the llama.cpp-compatible translation prompt. | **Partial / gated** 2026-05-22 W7900: the FMA row-loop kernel now half-rounds dequantized FP16 weights to better match the stock WMMA prefill path, and default enables only prompt-suite-safe sites (`full_qk`, `linear_qkv_z`, `dense_gate_up`, `single_full_o`, `single_shared_down`, `single_dense_down`). `HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all` remains available for risky perf experiments; remaining unsafe sites are `shared_gate_up`, `single_full_v`, and `single_linear_out`. Full exact-preserving W4 speedup likely requires a WMMA/prefill-numerics-compatible small-B kernel. |
-| M12.7 | **GPU-resident proposer loop** | Proposer's 3 AR steps take ~9.6 ms due to serial c=1 advances with host top1 copies and `device_synchronize`. Graph-capture the proposer loop or fuse into one C++ step to drop to ~3 ms. Gate: exact accepted-token provenance unchanged. | Pending |
+| M12.7 | **GPU-resident proposer loop** | Proposer's 3 AR steps are still serial c=1 advances; the 2026-06-11 default-on skip trims discarded host reads/results but does not batch or graph-loop the proposer. Graph-capture the proposer loop or fuse into one C++ step to drop toward ~3 ms. Gate: exact accepted-token provenance unchanged. | Pending |
 | M12.8 | **Adaptive B / fallback policy** | After kernel/graph work drops `C_3` below 2.0, add policy to dynamically choose B=1 or pure AR fallback based on proposer confidence to rescue low-acceptance cycles. | Pending |
 
 ### llama.cpp PR #21845 follow-up: small-column verifier GEMV audit (2026-06-07)

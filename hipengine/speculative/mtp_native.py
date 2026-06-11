@@ -280,6 +280,7 @@ class NativeMtpChainProposer:
         capture_base_ptr: int,
         seed_token: int,
         capture_stride_hidden: int | None = None,
+        read_expert_topk: bool = True,
     ) -> NativeMtpStepResult:
         """Run MTP prompt prefill using shifted prompt ids and target hidden rows."""
 
@@ -292,11 +293,29 @@ class NativeMtpChainProposer:
             input_token = int(prompt_tokens[idx + 1]) if idx + 1 < len(prompt_tokens) else int(seed_token)
             hidden_ptr = int(capture_base_ptr) + idx * stride * DType.BF16.itemsize
             # nano-vLLM reference uses position_offset=1 for MTP prompt prefill.
-            result = self.advance(input_token=input_token, target_hidden_ptr=hidden_ptr, position=idx + 1)
+            result = self.advance(
+                input_token=input_token,
+                target_hidden_ptr=hidden_ptr,
+                position=idx + 1,
+                read_expert_topk=read_expert_topk,
+            )
         return result
 
-    def advance_with_previous_hidden(self, *, input_token: int, position: int) -> NativeMtpStepResult:
-        return self.advance(input_token=int(input_token), target_hidden_ptr=self.final_hidden_buf.ptr, position=int(position))
+    def advance_with_previous_hidden(
+        self,
+        *,
+        input_token: int,
+        position: int,
+        need_result: bool = True,
+        read_expert_topk: bool = True,
+    ) -> NativeMtpStepResult:
+        return self.advance(
+            input_token=int(input_token),
+            target_hidden_ptr=self.final_hidden_buf.ptr,
+            position=int(position),
+            need_result=need_result,
+            read_expert_topk=read_expert_topk,
+        )
 
     def save_state(self, slot: int) -> NativeMtpStateSnapshot:
         if slot < 0 or slot >= self.max_mtp_tokens:
@@ -359,7 +378,23 @@ class NativeMtpChainProposer:
         exp = np.exp(vals - vals.max())
         return float(exp[-1] / exp.sum())
 
-    def advance(self, *, input_token: int, target_hidden_ptr: int, position: int) -> NativeMtpStepResult:
+    def advance(
+        self,
+        *,
+        input_token: int,
+        target_hidden_ptr: int,
+        position: int,
+        need_result: bool = True,
+        read_expert_topk: bool = True,
+    ) -> NativeMtpStepResult:
+        """Advance one MTP step.
+
+        ``need_result=False`` is for verifier repair/update advances where only
+        the updated hidden/KV state is consumed by the following step. It skips
+        the draft lm-head/argmax and host reads, so ``current`` is intentionally
+        marked invalid until a later result-producing advance runs.
+        """
+
         if self.closed:
             raise RuntimeError("NativeMtpChainProposer is closed")
         if self.cache_len >= self.max_mtp_tokens:
@@ -447,9 +482,8 @@ class NativeMtpChainProposer:
         topk_f32_rows_i32(self.router_logits_buf.ptr, self.topk_values_buf.ptr, self.topk_ids_buf.ptr, 1, int(self.config.num_experts), self.top_k, threads=256, library=self.lm_lib)
         mtp_softmax_topk_f32(self.topk_values_buf.ptr, self.routing_buf.ptr, 1, self.top_k, library=self.mtp_lib)
         # Expert-indexed GEMVs read `topk_ids[route]` on-device, so the MoE
-        # loop no longer forces a mid-pass router D2H sync (graph-capture-safe;
-        # part of the #107 >1x proposer path). Host-visible ids/values are read
-        # once at the end of the pass alongside the argmax.
+        # loop no longer forces a mid-pass router D2H sync. Host-visible
+        # ids/values are only read when the caller needs diagnostic metadata.
         self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, 0)
         for route in range(self.top_k):
             dflash_dense_bf16_to_bf16_expert(
@@ -488,6 +522,11 @@ class NativeMtpChainProposer:
         mtp_accumulate_sigmoid_gate_bf16_to_f32(self.shared_down_buf.ptr, self.shared_gate_buf.ptr, self.moe_accum_buf.ptr, self.hidden, threads=256, library=self.mtp_lib)
         mtp_finalize_f32_to_bf16(self.moe_accum_buf.ptr, self.moe_out_buf.ptr, self.hidden, threads=256, library=self.mtp_lib)
         mtp_add_rmsnorm_bf16_oneplus(self.moe_out_buf.ptr, self.residual2_buf.ptr, self.weights["mtp.norm.weight"].ptr, self.final_hidden_buf.ptr, self.final_residual_buf.ptr, 1, self.hidden, eps=self.eps, threads=256, library=self.mtp_lib)
+        self.cache_len += 1
+        self.position = int(position)
+        if not need_result:
+            self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
+            return self.current
         lm_head_fp16_argmax_bf16(
             self.final_hidden_buf.ptr,
             self.weights["lm_head.weight"].ptr,
@@ -505,15 +544,19 @@ class NativeMtpChainProposer:
         # device_synchronize on top of it was pure host stall (#107 host-time trim).
         copy_device_to_host(host_array_ptr(self.out_index_host), self.out_index_buf, self.out_index_host.nbytes, runtime=self.runtime)
         copy_device_to_host(host_array_ptr(self.out_value_host), self.out_value_buf, self.out_value_host.nbytes, runtime=self.runtime)
-        copy_device_to_host(host_array_ptr(self.topk_ids_host), self.topk_ids_buf, self.topk_ids_host.nbytes, runtime=self.runtime)
-        copy_device_to_host(host_array_ptr(self.topk_values_host), self.topk_values_buf, self.topk_values_host.nbytes, runtime=self.runtime)
-        self.cache_len += 1
-        self.position = int(position)
+        if read_expert_topk:
+            copy_device_to_host(host_array_ptr(self.topk_ids_host), self.topk_ids_buf, self.topk_ids_host.nbytes, runtime=self.runtime)
+            copy_device_to_host(host_array_ptr(self.topk_values_host), self.topk_values_buf, self.topk_values_host.nbytes, runtime=self.runtime)
+            topk_experts = tuple(int(x) for x in self.topk_ids_host.reshape(-1))
+            topk_logits = tuple(float(x) for x in self.topk_values_host.reshape(-1))
+        else:
+            topk_experts = ()
+            topk_logits = ()
         self.current = NativeMtpStepResult(
             token=int(self.out_index_host[0]),
             logit=float(self.out_value_host[0]),
-            topk_experts=tuple(int(x) for x in self.topk_ids_host.reshape(-1)),
-            topk_logits=tuple(float(x) for x in self.topk_values_host.reshape(-1)),
+            topk_experts=topk_experts,
+            topk_logits=topk_logits,
         )
         return self.current
 

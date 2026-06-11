@@ -78381,3 +78381,59 @@ more sprint time on exact PARO rotate-pair fusion unless a new implementation
 avoids the one-block RMSNorm occupancy trap. The live MTP proposer uses RoPE
 RMS+rotary, so this table row is now closed as a refreshed no-hold; next sprint
 work should move to overlap and device-resident proposer/update levers.
+
+## 2026-06-11 - MTP proposer unused-read/result skip promoted default-on
+
+Scoped first slice of the P2 device-resident proposer row. The persistent MTP
+proposer now defaults to skipping discarded expert-topk host reads and skipping
+lm-head/argmax for accepted-token repair advances where only the updated hidden
+and KV state are consumed by the following step. Result-producing draft advances
+still compute/read the token. Opt out with:
+
+```bash
+HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS=0
+```
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py scripts/mtp_chain_e2e_smoke.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-skip-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-skip-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-skip-on-9prompt-d32.json
+```
+
+Result: exact `9/9` off and default-on, with identical acceptance and visible
+tokens. Actual speed improved `0.6637x -> 0.6701x` AR (+0.96% relative), cycle
+wall improved `27.939 -> 27.676 ms/cycle` (-0.263), proposal/update improved
+`2.145 -> 2.052 ms/cycle` (-0.093), and verify moved `22.460 -> 22.393
+ms/cycle` (-0.067, small/noisy but not regressive). Every prompt improved cycle
+wall and proposal/update. This is a real retained micro-win and is now the
+default; it does not change the locked sprint baseline of `0.758x / 27.8 ms`.

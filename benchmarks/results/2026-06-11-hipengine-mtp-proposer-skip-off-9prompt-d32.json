@@ -1,0 +1,702 @@
+{
+  "schema": 1,
+  "status": "diagnostic",
+  "performance_claim": false,
+  "date": "2026-06-11",
+  "purpose": "hipEngine MTP verifier economics over the llama.cpp mtp-bench prompt suite.",
+  "source_prompt_suite": {
+    "gist": "https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090",
+    "raw": "https://gist.githubusercontent.com/am17an/228edfb84ed082aa88e3865d6fa27090/raw/0bee1e2b88904e62670d0df1cf0991883b0815d7/mtp-bench.py",
+    "llama_cpp_evidence": "https://github.com/ggml-org/llama.cpp/pull/22673#issuecomment-4380579942",
+    "llama_cpp_pr_23287": "https://github.com/ggml-org/llama.cpp/pull/23287",
+    "note": "The original script sends these prompts as single user chat messages to an OpenAI-compatible llama.cpp server. hipEngine encodes the raw prompt text unless a future tokenizer/template option is added."
+  },
+  "prompts_file": "benchmarks/fixtures/llamacpp_mtp_bench_prompts.json",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "prompt_render_mode": "raw",
+  "tokenization": "raw prompt text encoded with model tokenizer.json",
+  "decode_tokens": 32,
+  "candidate_budgets": [
+    3
+  ],
+  "runs_per_prompt": 1,
+  "proposal_impl": "persistent_device",
+  "backend": "hip_gfx1100",
+  "hip_arch": "gfx1100",
+  "chain_attn_mode": "batched",
+  "graph_mode": "auto",
+  "small_batch_decode_threshold": 7,
+  "verify_gpu_accept": null,
+  "dry_run": false,
+  "results": [
+    {
+      "name": "code_python",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 102,
+      "rendered_prompt_chars": 102,
+      "prompt_chars": 102,
+      "prompt_tokens": 20,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_python/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.06539028114639,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 3.2088062643261543,
+          "observed_cycle_speedup_vs_ar_mean": 0.9660913575444532,
+          "actual_decode_speedup_vs_ar_mean": 0.9275791753263818,
+          "avg_visible_tokens_per_cycle_mean": 3.1,
+          "avg_accepted_per_cycle_mean": 2.1,
+          "acceptance_rate_mean": 0.7241379310344828,
+          "cycle_wall_ms_per_cycle_mean": 28.4366911,
+          "verify_ms_per_cycle_mean": 22.5829950068146,
+          "proposal_update_ms_per_cycle_mean": 2.7820745948702097,
+          "ar_decode_ms_per_token_mean": 8.862077906087507,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              3,
+              3,
+              3,
+              3,
+              3,
+              0,
+              3,
+              2,
+              1
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              2
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "code_cpp",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 99,
+      "rendered_prompt_chars": 99,
+      "prompt_chars": 99,
+      "prompt_tokens": 30,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/code_cpp/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.491653410950676,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 2.865744890756005,
+          "observed_cycle_speedup_vs_ar_mean": 0.697898827788675,
+          "actual_decode_speedup_vs_ar_mean": 0.6978110436330518,
+          "avg_visible_tokens_per_cycle_mean": 2.0,
+          "avg_accepted_per_cycle_mean": 1.0,
+          "acceptance_rate_mean": 0.3404255319148936,
+          "cycle_wall_ms_per_cycle_mean": 25.576982625000003,
+          "verify_ms_per_cycle_mean": 20.453636432648636,
+          "proposal_update_ms_per_cycle_mean": 1.944062561960891,
+          "ar_decode_ms_per_token_mean": 8.925073096179403,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              0,
+              3,
+              1,
+              3,
+              1,
+              2,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              3,
+              2
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              2
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "explain_concept",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 100,
+      "rendered_prompt_chars": 100,
+      "prompt_chars": 100,
+      "prompt_tokens": 17,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/explain_concept/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.09843799797818,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 2.678252222968706,
+          "observed_cycle_speedup_vs_ar_mean": 0.6430395940503418,
+          "actual_decode_speedup_vs_ar_mean": 0.6322642868398087,
+          "avg_visible_tokens_per_cycle_mean": 1.7222222222222223,
+          "avg_accepted_per_cycle_mean": 0.7222222222222222,
+          "acceptance_rate_mean": 0.24074074074074073,
+          "cycle_wall_ms_per_cycle_mean": 23.847141722222222,
+          "verify_ms_per_cycle_mean": 18.634908974895044,
+          "proposal_update_ms_per_cycle_mean": 1.9447579333144758,
+          "ar_decode_ms_per_token_mean": 8.903993999410886,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              0,
+              3,
+              3,
+              1,
+              1,
+              0,
+              0,
+              1,
+              0,
+              0,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0,
+              2
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "summarize",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 258,
+      "rendered_prompt_chars": 258,
+      "prompt_chars": 258,
+      "prompt_tokens": 52,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/summarize/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.78680740110576,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 2.8926729392331505,
+          "observed_cycle_speedup_vs_ar_mean": 0.6914020499428467,
+          "actual_decode_speedup_vs_ar_mean": 0.6913104066199268,
+          "avg_visible_tokens_per_cycle_mean": 2.0,
+          "avg_accepted_per_cycle_mean": 1.0,
+          "acceptance_rate_mean": 0.35555555555555557,
+          "cycle_wall_ms_per_cycle_mean": 25.813293625,
+          "verify_ms_per_cycle_mean": 20.8585842337925,
+          "proposal_update_ms_per_cycle_mean": 1.8527395150158554,
+          "ar_decode_ms_per_token_mean": 8.923682064050809,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              1,
+              1,
+              1,
+              2,
+              1,
+              0,
+              2,
+              1,
+              3,
+              0,
+              0,
+              0,
+              3,
+              0,
+              1
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              2,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "qa_factual",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 54,
+      "rendered_prompt_chars": 54,
+      "prompt_chars": 54,
+      "prompt_tokens": 14,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/qa_factual/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.39727873587981,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 2.843410224290911,
+          "observed_cycle_speedup_vs_ar_mean": 0.7502727939530228,
+          "actual_decode_speedup_vs_ar_mean": 0.7501706709281822,
+          "avg_visible_tokens_per_cycle_mean": 2.1333333333333333,
+          "avg_accepted_per_cycle_mean": 1.1333333333333333,
+          "acceptance_rate_mean": 0.3953488372093023,
+          "cycle_wall_ms_per_cycle_mean": 25.39229813333333,
+          "verify_ms_per_cycle_mean": 20.430131737763684,
+          "proposal_update_ms_per_cycle_mean": 1.817354497810205,
+          "ar_decode_ms_per_token_mean": 8.930226780648809,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              1,
+              1,
+              3,
+              1,
+              3,
+              0,
+              2,
+              1,
+              0,
+              2,
+              1,
+              0,
+              1,
+              1
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "translation",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 67,
+      "rendered_prompt_chars": 67,
+      "prompt_chars": 67,
+      "prompt_tokens": 15,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/translation/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.86365524190478,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 2.6522446563232607,
+          "observed_cycle_speedup_vs_ar_mean": 0.4675285128932941,
+          "actual_decode_speedup_vs_ar_mean": 0.4654318573094015,
+          "avg_visible_tokens_per_cycle_mean": 1.24,
+          "avg_accepted_per_cycle_mean": 0.24,
+          "acceptance_rate_mean": 0.08333333333333333,
+          "cycle_wall_ms_per_cycle_mean": 23.544203160000002,
+          "verify_ms_per_cycle_mean": 18.71260104700923,
+          "proposal_update_ms_per_cycle_mean": 1.7513681761920452,
+          "ar_decode_ms_per_token_mean": 8.877085718268063,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              1,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              1,
+              1,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              2,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "creative_short",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 47,
+      "rendered_prompt_chars": 47,
+      "prompt_chars": 47,
+      "prompt_tokens": 11,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/creative_short/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.45255262777209,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 3.0797239286455182,
+          "observed_cycle_speedup_vs_ar_mean": 0.6927027820547494,
+          "actual_decode_speedup_vs_ar_mean": 0.6926160865875549,
+          "avg_visible_tokens_per_cycle_mean": 2.1333333333333333,
+          "avg_accepted_per_cycle_mean": 1.1333333333333333,
+          "acceptance_rate_mean": 0.3953488372093023,
+          "cycle_wall_ms_per_cycle_mean": 27.5366882,
+          "verify_ms_per_cycle_mean": 22.477803891524673,
+          "proposal_update_ms_per_cycle_mean": 2.0517067362864814,
+          "ar_decode_ms_per_token_mean": 8.941284620959777,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              0,
+              0,
+              3,
+              3,
+              2,
+              0,
+              3,
+              0,
+              1,
+              0,
+              0,
+              3,
+              1,
+              1
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "stepwise_math",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 193,
+      "rendered_prompt_chars": 193,
+      "prompt_chars": 193,
+      "prompt_tokens": 50,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/stepwise_math/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 47.542898452840745,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 2.834123426273955,
+          "observed_cycle_speedup_vs_ar_mean": 0.7056855680521352,
+          "actual_decode_speedup_vs_ar_mean": 0.7055943473550863,
+          "avg_visible_tokens_per_cycle_mean": 2.0,
+          "avg_accepted_per_cycle_mean": 1.0,
+          "acceptance_rate_mean": 0.34782608695652173,
+          "cycle_wall_ms_per_cycle_mean": 25.767792,
+          "verify_ms_per_cycle_mean": 20.684683899162337,
+          "proposal_update_ms_per_cycle_mean": 1.9399718730710447,
+          "ar_decode_ms_per_token_mean": 9.091979467484634,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              0,
+              3,
+              1,
+              3,
+              1,
+              2,
+              0,
+              0,
+              0,
+              1,
+              0,
+              1,
+              0,
+              3,
+              1
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "long_code_review",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 2927,
+      "rendered_prompt_chars": 2927,
+      "prompt_chars": 2927,
+      "prompt_tokens": 721,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode auto --raw-root /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/raw --out /tmp/hipengine-mtp-proposer-skip-off-9prompt-d32/long_code_review/economics.json --small-batch-decode-threshold 7 --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 61.32951129390858,
+      "by_budget": {
+        "3": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 4.5850399635671115,
+          "observed_cycle_speedup_vs_ar_mean": 0.4105423193982415,
+          "actual_decode_speedup_vs_ar_mean": 0.4105080785884081,
+          "avg_visible_tokens_per_cycle_mean": 1.8823529411764706,
+          "avg_accepted_per_cycle_mean": 0.8823529411764706,
+          "acceptance_rate_mean": 0.3125,
+          "cycle_wall_ms_per_cycle_mean": 45.53649705882353,
+          "verify_ms_per_cycle_mean": 37.302075775668904,
+          "proposal_update_ms_per_cycle_mean": 3.223587799926891,
+          "ar_decode_ms_per_token_mean": 9.931537657394074,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              0,
+              3,
+              1,
+              3,
+              2,
+              0,
+              1,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              3,
+              0,
+              1
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              2,
+              1
+            ]
+          ]
+        }
+      }
+    }
+  ],
+  "aggregate_by_budget": {
+    "3": {
+      "prompts": 9,
+      "all_exact_ar_match": true,
+      "cycle_cost_ar_tokens_mean_across_prompts_mean": 3.0711131684871966,
+      "cycle_cost_ar_tokens_mean_across_prompts_std": 0.5940147558472078,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_mean": 0.6694626450753067,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_std": 0.16053673167148094,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_mean": 0.6636984392430891,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_std": 0.15249228663732553,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_mean": 2.0234713144517062,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_std": 0.48851800842109766,
+      "avg_accepted_per_cycle_mean_across_prompts_mean": 1.0234713144517067,
+      "avg_accepted_per_cycle_mean_across_prompts_std": 0.48851800842109766,
+      "acceptance_rate_mean_across_prompts_mean": 0.35502409488379244,
+      "acceptance_rate_mean_across_prompts_std": 0.16898493243710375,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_mean": 27.93906529159768,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_std": 6.77713606171637,
+      "verify_ms_per_cycle_mean_across_prompts_mean": 22.4597134443644,
+      "verify_ms_per_cycle_mean_across_prompts_std": 5.7319184969532735,
+      "proposal_update_ms_per_cycle_mean_across_prompts_mean": 2.145291520938678,
+      "proposal_update_ms_per_cycle_mean_across_prompts_std": 0.5059819167699237,
+      "ar_decode_ms_per_token_mean_across_prompts_mean": 9.042993478942662,
+      "ar_decode_ms_per_token_mean_across_prompts_std": 0.339611638387845
+    }
+  },
+  "go_no_go_rule": {
+    "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",
+    "hits_1p5x": "avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5",
+    "final_confirmation": "Use >=3 runs per prompt/budget before promoting any performance claim."
+  }
+}

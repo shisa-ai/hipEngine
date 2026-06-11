@@ -15,6 +15,7 @@ import argparse
 import ctypes
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -108,6 +109,19 @@ def _topk_softmax_top1(topk_logits: Sequence[float]) -> float:
     exps = [math.exp(v - m) for v in vals]
     z = sum(exps)
     return (exps[0] / z) if z > 0 else 1.0
+
+
+def _env_flag(name: str, default: bool = True) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _mtp_proposer_skip_unused_reads_enabled() -> bool:
+    """Skip MTP proposer host reads/results that the persistent chain discards."""
+
+    return _env_flag("HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS", True)
 
 
 def _capture_tensor(buffer: DeviceBuffer, rows: int, hidden: int) -> Tensor:
@@ -720,6 +734,7 @@ def _run_spec_persistent_device(
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
     active_budgets: list[int] = []
+    skip_unused_proposer_reads = _mtp_proposer_skip_unused_reads_enabled()
     # Always load libroctx64 so range_push/pop markers fire even when the
     # selected-region window is off (rocprofv3 1.1.0 path). The resume/pause
     # path is still gated on rocprof_verify_cycles>0 below.
@@ -770,7 +785,12 @@ def _run_spec_persistent_device(
                 runtime=session.runtime,
             ) as proposer:
                 prefill_started = time.perf_counter()
-                proposer.prefill_from_target_hidden_rows(prompt_tokens, capture_base_ptr=capture_buf.ptr, seed_token=root)
+                proposer.prefill_from_target_hidden_rows(
+                    prompt_tokens,
+                    capture_base_ptr=capture_buf.ptr,
+                    seed_token=root,
+                    read_expert_topk=not skip_unused_proposer_reads,
+                )
                 proposal_prefill_seconds += time.perf_counter() - prefill_started
                 cycles = 0
                 decode_started = time.perf_counter()
@@ -824,7 +844,11 @@ def _run_spec_persistent_device(
                         # Tree shape at budget B: depth-1 top-(tree_top_k) +
                         # top-1 chain through depth B-1 (total B candidates).
                         for _depth in range(2, active_budget):
-                            proposer.advance_with_previous_hidden(input_token=int(topk_per_depth[-1][0][0]), position=proposer.position + 1)
+                            proposer.advance_with_previous_hidden(
+                                input_token=int(topk_per_depth[-1][0][0]),
+                                position=proposer.position + 1,
+                                read_expert_topk=not skip_unused_proposer_reads,
+                            )
                             topk_per_depth.append(proposer.vocab_topk(k=8))
                         candidates = [int(ids[0]) for ids, _vals in topk_per_depth]
                     else:
@@ -834,7 +858,11 @@ def _run_spec_persistent_device(
                         for draft_idx in range(1, active_budget):
                             if draft_p_min > 0.0 and proposer.top1_prob_proxy() < draft_p_min:
                                 break
-                            proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
+                            proposer.advance_with_previous_hidden(
+                                input_token=candidates[-1],
+                                position=proposer.position + 1,
+                                read_expert_topk=not skip_unused_proposer_reads,
+                            )
                             snapshots.append(proposer.save_state(draft_idx))
                             candidates.append(int(proposer.current.token))
                         active_budget = len(candidates)
@@ -911,7 +939,12 @@ def _run_spec_persistent_device(
                             # replay the accepted path from the cycle root.
                             proposer.restore_state(snapshots[0])
                             for token in accepted_tokens:
-                                proposer.advance_with_previous_hidden(input_token=int(token), position=proposer.position + 1)
+                                proposer.advance_with_previous_hidden(
+                                    input_token=int(token),
+                                    position=proposer.position + 1,
+                                    need_result=not skip_unused_proposer_reads,
+                                    read_expert_topk=not skip_unused_proposer_reads,
+                                )
                         elif accepted < active_budget - 1:
                             proposer.restore_state(snapshots[accepted])
                         elif accepted >= active_budget:
@@ -920,8 +953,17 @@ def _run_spec_persistent_device(
                             # Reuse it and consume the final accepted candidate before
                             # the target bonus token instead of doing a redundant
                             # synchronous D2D restore.
-                            proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
-                        proposer.advance_with_previous_hidden(input_token=bonus, position=proposer.position + 1)
+                            proposer.advance_with_previous_hidden(
+                                input_token=candidates[-1],
+                                position=proposer.position + 1,
+                                need_result=not skip_unused_proposer_reads,
+                                read_expert_topk=not skip_unused_proposer_reads,
+                            )
+                        proposer.advance_with_previous_hidden(
+                            input_token=bonus,
+                            position=proposer.position + 1,
+                            read_expert_topk=not skip_unused_proposer_reads,
+                        )
                     proposal_decode_update_seconds += time.perf_counter() - update_started
                     context += len(committed)
                     root = bonus
@@ -968,7 +1010,8 @@ def _run_spec_persistent_device(
         "proposal_trace_sample": proposal_trace,
         "chain_attn_mode": chain_attn_mode,
         "proposal_impl": "persistent_device",
-        "note": "Persistent native MTP provider: weights/cache resident and target hidden stays on device; selected expert ids are still host-orchestrated.",
+        "proposer_skip_unused_reads": bool(skip_unused_proposer_reads),
+        "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results are skipped by default.",
         "rocprof_window": rocprof_window_meta,
         "cycle_marker_ns": [
             {"cycle": cycle_idx, "start_perf_ns": start_ns, "end_perf_ns": end_ns}
