@@ -78623,3 +78623,44 @@ Decision: no-hold. Replaying accepted-token state on partial accepts costs more
 than the intermediate D2D snapshot copies it removes. Removed the experimental
 flag/code; keep the artifact as a retained diagnostic so we do not re-try this
 shape without a genuinely batched/device-resident replay design.
+
+## 2026-06-11 - MTP proposer scalar H2D copies switched to async
+
+Scoped another small P2 proposer cleanup. `NativeMtpChainProposer.advance()`
+updated the per-step token and position device scalars with blocking
+`hipMemcpy` calls. Those copies are now stream-ordered `memcpy_async` calls on
+stream 0, before the same-stream proposer kernels that consume the scalar
+buffers. This preserves ordering while avoiding host-side blocking copies in
+the proposer hot path.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-async-scalar-h2d-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-async-scalar-h2d-9prompt-d32.json
+```
+
+Result: exact `9/9` with identical accepted lengths, visible tokens, and
+acceptance rate versus the selected-down-default-off baseline. Aggregate
+cycle wall improved `27.4081 -> 27.2535 ms/cycle` and proposal/update improved
+`2.0351 -> 1.9989 ms/cycle`; verify also moved slightly
+`22.1312 -> 22.0762 ms/cycle`. AR-normalized ratio was flat within run noise
+(`0.67845x -> 0.67830x`) because the same-session AR denominator also moved.
+
+Decision: retain as default code-path cleanup. This is a small but real
+proposer/cycle-wall improvement, not a large throughput row. Artifact:
+`benchmarks/results/2026-06-11-hipengine-mtp-proposer-async-scalar-h2d-9prompt-d32.json`.

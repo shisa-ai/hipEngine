@@ -403,8 +403,20 @@ class NativeMtpChainProposer:
             raise ValueError("position outside MTP RoPE table")
         self.token_host[0] = int(input_token)
         self.position_host[0] = int(position)
-        copy_host_to_device(self.token_buf, host_array_ptr(self.token_host), self.token_host.nbytes, runtime=self.runtime)
-        copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), self.position_host.nbytes, runtime=self.runtime)
+        self.runtime.memcpy_async(
+            self.token_buf.ptr,
+            host_array_ptr(self.token_host),
+            self.token_host.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            0,
+        )
+        self.runtime.memcpy_async(
+            self.position_buf.ptr,
+            host_array_ptr(self.position_host),
+            self.position_host.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            0,
+        )
         mtp_fuse_inputs_f16_bf16(
             self.token_buf.ptr,
             self.weights["embed_tokens.weight"].ptr,
