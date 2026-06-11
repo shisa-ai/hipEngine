@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-12
 
+- [diagnostic no-hold] Qwen3.6-35B-A3B-PARO packed MTP-BF16 / W7900 9-prompt D32 B=3 current-stack `decode_batched`: exact `9/9` with identical accepted lengths/active budgets and `translation` now exact, but graph-off loses to current batched graph-auto defaults: actual ratio `0.6920x -> 0.5043x`, wall `26.643 -> 36.154 ms/cycle` (+35.7%), verify `21.498 -> 31.012 ms/cycle` (+44.3%), cycle cost `2.940 -> 3.992`; keep `chain_attn_mode=batched`, verifier graph `auto`; `benchmarks/results/2026-06-12-hipengine-mtp-decode-batched-current-9prompt-d32.json`.
 - [hipEngine default] Qwen3.6-35B-A3B-PARO packed MTP-BF16 / W7900 9-prompt D32 B=3 verifier weight tensor lookup cache: immutable per-decode-state lookup memo avoids repeated prefix normalization and weight-map unwraps, exact `9/9` with identical visible/accepted cycle aggregates, wall `26.6621 -> 26.6433 ms/cycle` (-0.07%), verify `21.5290 -> 21.4984 ms/cycle` (-0.14%), actual ratio `0.69160x -> 0.69200x`; graph-auto profile is neutral/noisy (`18.218 -> 18.236 ms/pass`), graph-off isolates raw host improvement `34.757 -> 32.288 ms/pass`; `benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-{off,on}-9prompt-d32.json` and `benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-{off,on}{,-graphoff}-rocprof.json`.
 
 ## 2026-06-11

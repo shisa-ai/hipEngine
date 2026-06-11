@@ -80367,3 +80367,50 @@ Fresh review triage:
 - BF16 final RMSNorm output is stale: BF16 RMSNorm output kernels/wrappers
   already exist. GDN `VTILE=8` is stale/no-hold from the 2026-06-11 exact
   profile (`1.7559 -> 1.7597 ms/pass`, total kernel regressed).
+
+## 2026-06-12 - MTP current-stack decode_batched no-hold
+
+Validated the fresh-review `decode_batched` suggestion on the current default
+stack after the `single_linear_out` / `single_full_v` exactness repairs.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-decode-batched-current-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-decode-batched-current-9prompt-d32.json
+```
+
+Result: exact `9/9`, including `translation`, with identical accepted lengths,
+active budgets, visible/accepted aggregates, and snapshot saves/skips vs the
+current batched graph-auto default artifact. However, graph-off loses far more
+wall than decode-style full-attention saves: actual ratio
+`0.6920x -> 0.5043x`, cycle wall `26.643 -> 36.154 ms/cycle`, verify
+`21.498 -> 31.012 ms/cycle`, and cycle cost `2.940 -> 3.992`. It regressed
+8/9 prompts; only `long_code_review` improved because its default graph-auto
+row was unusually slow/noisy.
+
+Decision: no-hold. Keep `chain_attn_mode=batched`, verifier graph `auto`. Do
+not run the compound `decode_batched + HIPENGINE_SELECTED_MOE_DOWN_STAGED=1`
+graph-off test unless `decode_batched` gains graph capture or the graph-off
+baseline becomes competitive.
+
+Triage on the newer host-cache review:
+
+- Item 1 (`Qwen35ParoDecodeState.tensor` cache) is already done and promoted as
+  `HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=1` in commit `3b423134`.
+- Item 2 (`_workspace_tensor_matches` bypass) is worth only as a guarded
+  generation-stamp optimization. `_workspace_tensor_matches` is stale-pointer
+  protection for prefill/graph workspace invalidation; do not delete it
+  outright. Add a scratch-cache generation/version and return directly on
+  matching generation.
+- Item 3 (resident state/cache `Tensor.from_handle` view caching) is the better
+  next host-cache micro-slice. `_slot_linear_state`, `_slot_full_cache`, and
+  `_full_cache_all_slots` are still used across verifier and commit paths and
+  allocate transient non-owning Tensor views. Cache by `(layer_id, slot)` /
+  `layer_id`, but invalidate on `reset()` and any `linear_states` /
+  `full_caches` rebuild.

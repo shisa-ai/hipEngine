@@ -354,6 +354,17 @@ MTP verifier but failed exact AR at token index 9 (`156973` vs `149315`), so it
 remains default-off regardless of any launch-count benefit. Artifact:
 [`PARO FFN megakernel exact blocked`](results/2026-06-11-hipengine-mtp-paro-ffn-megakernel-exact-blocked.json).
 
+Also no-hold: current-stack `chain_attn_mode=decode_batched` with graph `off`
+is now exact `9/9` on the D32 prompt suite, including `translation`, with
+identical accepted lengths and active budgets, but loses badly to current
+batched graph-auto defaults. Same-session comparison against the weight tensor
+cache default row moves actual ratio `0.6920x -> 0.5043x`, cycle wall
+`26.643 -> 36.154 ms/cycle`, verify `21.498 -> 31.012 ms/cycle`, and cycle
+cost `2.940 -> 3.992`. Do not retest staged-down graph-off compounds unless
+`decode_batched` gains graph capture or the graph-off baseline becomes
+competitive. Artifact:
+[`decode_batched current no-hold`](results/2026-06-12-hipengine-mtp-decode-batched-current-9prompt-d32.json).
+
 Also no-hold: proposer partial-accept replay removed intermediate snapshot
 saves (`285 -> 148` across the D32 suite) but stayed slower because replaying
 accepted-token state on partial accepts costs more than the D2D copies it
