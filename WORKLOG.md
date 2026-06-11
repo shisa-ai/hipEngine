@@ -80253,3 +80253,117 @@ metric. Update `docs/MTP.md`, `docs/REFACTOR.md`, `benchmarks/README.md`, and
 `benchmarks/CHANGELOG.md`. The next host-cache unit is non-MoE weight-pointer
 hoisting; graph-auto replay limits scratch-object savings during steady replay,
 so pointer hoisting must be measured with the same graph-auto/off controls.
+
+## 2026-06-12 - MTP verifier weight tensor lookup cache default-on
+
+Implemented the second host-cache slice from the external review. Each
+`Qwen35ParoDecodeState` now memoizes immutable model `Tensor` handles by the raw
+caller name passed to `state.tensor(...)`, avoiding repeated Qwen root-prefix
+normalization and `DeviceWeightMap`/allocation unwraps. This is host-only: no
+device pointer, shape, kernel, or math changes. Opt out with
+`HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=0`; default stays on.
+
+Validation and measurement commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-weight-tensor-cache-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-weight-tensor-cache-off-rocprof-rerun --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-weight-tensor-cache-on-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-graphoff-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-weight-tensor-cache-off-graphoff-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-graphoff-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-weight-tensor-cache-on-graphoff-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-weight-tensor-cache-off-9prompt-d32-gfx1100 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-weight-tensor-cache-on-9prompt-d32-gfx1100 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-9prompt-d32.json
+```
+
+Results:
+
+- `py_compile` passed. Quicksort smoke passed exact AR with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- Graph-auto rocprof off/on stayed exact with identical accepted lengths and
+  calls `932/pass`; kernel `14.3173 -> 14.3144 ms/pass`, host
+  `18.218 -> 18.236 ms/pass` (neutral/noisy because steady replay skips most
+  Python lookup work).
+- Graph-off rocprof off/on stayed exact with identical accepted lengths and
+  calls `932/pass`; kernel `14.3431 -> 14.3273 ms/pass`, host
+  `34.757 -> 32.288 ms/pass`, isolating the raw Python lookup win.
+- D32 9-prompt off/on stayed exact `9/9` with identical visible/accepted cycle
+  aggregates (`2.01185` visible, `1.01185` accepted), accepted lengths, active
+  budgets, and snapshot saves/skips. Aggregate wall moved
+  `26.6621 -> 26.6433 ms/cycle`, verify `21.5290 -> 21.4984 ms/cycle`,
+  proposal/update `1.96078 -> 1.96404 ms/cycle`, and actual ratio
+  `0.69160x -> 0.69200x`.
+
+Decision: retain and promote default-on. The suite delta is a micro-slice, but
+it is exact, accepted-length identical, and backed by a graph-off host-control.
+This follows the "keep every real improvement" rule. Update `docs/MTP.md`,
+`docs/REFACTOR.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+Prompt-suite gotcha: `scripts/mtp_prompt_suite_economics.py` defaults
+`--hip-arch gfx1151`, which overwrites the outer `HIPENGINE_HIP_ARCH=gfx1100`
+for the child. On W7900 this caused an empty-log native segfault before the
+corrected rerun. Always pass `--hip-arch gfx1100` explicitly for W7900 MTP
+prompt-suite measurements.
+
+Fresh review triage:
+
+- Worth a cheap current-stack check: `chain_attn_mode=decode_batched` with
+  `graph_mode=off` on the exact D32 9-prompt suite, compared against current
+  batched graph-auto defaults. The old positive rows were against older
+  c1/pre-graph controls; do not promote from those.
+- If `decode_batched` is exact-positive, then test the compound graph-off path
+  with `HIPENGINE_SELECTED_MOE_DOWN_STAGED=1`. Otherwise keep staged down
+  opt-in as already decided.
+- Proposer graph capture remains real P2; the proposer DAG is much smaller than
+  the verifier graph and now has fewer scalar/readback hazards.
+- Verifier/proposer stream overlap is plausible but dependency-risky. Audit
+  accepted-token, accepted hidden row, proposer repair state, and commit-buffer
+  dependencies before adding events.
+- BF16 final RMSNorm output is stale: BF16 RMSNorm output kernels/wrappers
+  already exist. GDN `VTILE=8` is stale/no-hold from the 2026-06-11 exact
+  profile (`1.7559 -> 1.7597 ms/pass`, total kernel regressed).

@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, packed verify dynamic metadata, verifier scratch object cache, chunked linear-state commit, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, direct proposer K/V cache writes, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, proposer shared-gate finalize fusion, async packed verify-metadata H2D, and full-QKV split+key-cast fusion no-hold, still WIP)
+Last updated: 2026-06-12 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, packed verify dynamic metadata, verifier scratch object cache, verifier weight tensor lookup cache, chunked linear-state commit, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, direct proposer K/V cache writes, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, proposer shared-gate finalize fusion, async packed verify-metadata H2D, and full-QKV split+key-cast fusion no-hold, still WIP)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -310,6 +310,23 @@ with `HIPENGINE_VERIFY_SCRATCH_CACHE=0`. Artifacts:
 [`scratch cache on rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-rocprof.json),
 [`scratch cache off graph-off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-graphoff-rocprof.json),
 [`scratch cache on graph-off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-graphoff-rocprof.json).
+
+The verifier also caches immutable Qwen3.5/PARO weight tensor lookups by raw
+caller name on each decode state. This avoids repeated prefix normalization and
+weight-map allocation unwraps without changing any device pointer or kernel
+math. The D32 opt-out/default A/B stays exact `9/9` with identical
+visible/accepted cycle aggregates, moves actual ratio `0.69160x -> 0.69200x`,
+cycle wall `26.6621 -> 26.6433 ms/cycle`, and verify
+`21.5290 -> 21.4984 ms/cycle`; graph-auto profile is neutral/noisy
+(`18.218 -> 18.236 ms/pass`) while graph-off isolates the raw host win
+(`34.757 -> 32.288 ms/pass`). Opt out with
+`HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE=0`. Artifacts:
+[`weight cache off D32`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-9prompt-d32.json),
+[`weight cache on D32`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-9prompt-d32.json),
+[`weight cache off rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-rocprof.json),
+[`weight cache on rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-rocprof.json),
+[`weight cache off graph-off rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-off-graphoff-rocprof.json),
+[`weight cache on graph-off rocprof`](results/2026-06-12-hipengine-mtp-weight-tensor-cache-on-graphoff-rocprof.json).
 
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is now opt-in after the current graph-auto
 suite proved the unfused fallback faster: exact `9/9`, identical acceptance,

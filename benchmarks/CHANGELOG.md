@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-12
+
+- [hipEngine default] Qwen3.6-35B-A3B-PARO packed MTP-BF16 / W7900 9-prompt D32 B=3 verifier weight tensor lookup cache: immutable per-decode-state lookup memo avoids repeated prefix normalization and weight-map unwraps, exact `9/9` with identical visible/accepted cycle aggregates, wall `26.6621 -> 26.6433 ms/cycle` (-0.07%), verify `21.5290 -> 21.4984 ms/cycle` (-0.14%), actual ratio `0.69160x -> 0.69200x`; graph-auto profile is neutral/noisy (`18.218 -> 18.236 ms/pass`), graph-off isolates raw host improvement `34.757 -> 32.288 ms/pass`; `benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-{off,on}-9prompt-d32.json` and `benchmarks/results/2026-06-12-hipengine-mtp-weight-tensor-cache-{off,on}{,-graphoff}-rocprof.json`.
+
 ## 2026-06-11
 
 - [hipEngine default] Qwen3.6-35B-A3B-PARO packed MTP-BF16 / W7900 9-prompt D32 B=3 verifier scratch object cache: fixed-shape linear-attention/MLP scratch dataclasses cached per `(layer_id, rows)` with workspace-pointer validation, exact `9/9` with identical visible/accepted cycle aggregates, wall `27.0958 -> 26.7015 ms/cycle` (-1.46%), verify `21.9328 -> 21.5511 ms/cycle` (-1.74%), proposal/update `1.9880 -> 1.9725 ms/cycle`, actual ratio `0.6860x -> 0.6987x`; graph-auto host `18.290 -> 18.275 ms/pass`, graph-off host `33.469 -> 32.988 ms/pass`; `benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-{off,on}-9prompt-d32.json` and `benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-{off,on}{,-graphoff}-rocprof.json`.
