@@ -10840,6 +10840,10 @@ _W4_MULTI_ROW_DEFAULT_SAFE_SITES = frozenset(
         "single_full_o",
         "single_shared_down",
         "single_dense_down",
+        # Promoted on 2026-06-11 after the current MTP stack's 9-prompt D32
+        # exact suite passed and the default translation prompt mismatch was
+        # restored to exact AR.
+        "single_linear_out",
     }
 )
 

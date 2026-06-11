@@ -79034,3 +79034,91 @@ moves in the right direction. Artifacts:
 `benchmarks/results/2026-06-11-hipengine-mtp-cdispatch-shared-down-output-tiled.json`
 and
 `benchmarks/results/2026-06-11-hipengine-mtp-cdispatch-shared-down-output-tiled-rocprof.json`.
+
+## 2026-06-11 - MTP M12.6 single_linear_out promoted default-on
+
+Checked the next M12.6 site after `shared_gate_up` was shown to be superseded by
+the current M16.4 split-output output-tiled route. `shared_gate_up` no longer has
+a M12.6 effect on the default verifier path: Python checks output-tiled split
+before multi-row, and the C dispatcher uses output-tiled split for linear shared
+gate/up rows `{2,4,8}` when the function pointer is present.
+
+The viable remaining single-output site was `single_linear_out`. With an opt-in
+site mask it passed the locked quicksort exact smoke and improved the profile:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down,single_linear_out PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-m12-single-linear-out-rocprof \
+  --out /tmp/hipengine-mtp-m12-single-linear-out-rocprof.json
+```
+
+Initial profile vs the post-C-dispatch baseline:
+
+- total kernel `159.919 -> 158.905 ms` over 11 passes,
+  `14.538 -> 14.446 ms/pass`;
+- host marker window `18.538 -> 18.437 ms/pass`;
+- `w4_single_gemv` `1.555 -> 1.454 ms/pass`;
+- calls/pass unchanged at `935`.
+
+The full opt-in D32 9-prompt gate then passed exact `9/9`, including the
+historically fragile `translation` prompt:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down,single_linear_out PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-m12-single-linear-out-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-m12-single-linear-out-9prompt-d32.json
+```
+
+A same-tree no-env suite before the default-mask change failed exact AR on
+`translation` (first mismatch `5494 -> 72931` at output index 6), and forcing
+linear shared-down back to `multi_row_decode` did not fix it. The
+`single_linear_out` site restored exactness on `translation`, so this is both a
+correctness repair and a speed retention.
+
+Promoted by adding `single_linear_out` to `_W4_MULTI_ROW_DEFAULT_SAFE_SITES`.
+Validation after the default change:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-m12-single-linear-out-default-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-m12-single-linear-out-default-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-m12-single-linear-out-default-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-m12-single-linear-out-default-rocprof.json
+```
+
+Default result: exact `9/9`, cycle wall `26.921 ms/cycle`, verify
+`21.799 ms/cycle`, actual ratio `0.6898x`, unchanged accepted/visible-token
+statistics vs prior exact rows. Compared to the last exact full-suite row
+(`accept-payload`), this is `27.122 -> 26.921 ms/cycle`, verify
+`21.997 -> 21.799 ms/cycle`, and actual ratio `0.6805x -> 0.6898x`. The
+default profile refreshed at `159.457 ms` kernel over 11 passes:
+`14.538 -> 14.496 ms/pass` kernel and `18.538 -> 18.497 ms/pass` host marker
+vs the post-C-dispatch profile. Artifacts:
+`benchmarks/results/2026-06-11-hipengine-mtp-m12-single-linear-out-default-9prompt-d32.json`,
+`benchmarks/results/2026-06-11-hipengine-mtp-m12-single-linear-out-default-rocprof.json`,
+and
+`benchmarks/results/2026-06-11-hipengine-mtp-current-default-pre-single-linear-out-exact-blocked.json`.

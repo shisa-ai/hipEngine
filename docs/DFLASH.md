@@ -363,9 +363,10 @@ with `captured_validated_miss`/`replayed` statuses.  This remains a
 on prior prompt history rather than a deployable online classifier, verifier
 graph capture is still opt-in, `bulk_direct` exactness is only established for
 this gate, budget-prefix proposals can differ from the z-lab block-query
-contract, threshold `4` has known non-exact chain rows, prompt-specific
-terminal-tail AR routing is only proven on this D64 suite, and `single_full_v` /
-`single_linear_out` remain outside the default exact-safe W4 site mask.
+contract, threshold `4` has known non-exact chain rows, and prompt-specific
+terminal-tail AR routing is only proven on this D64 suite. `single_linear_out`
+was later promoted into the default exact-safe W4 site mask by the 2026-06-11
+MTP D32 9-prompt gate; `single_full_v` remains outside the default mask.
 Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json),
 [`2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json),
