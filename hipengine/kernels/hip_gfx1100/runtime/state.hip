@@ -146,6 +146,27 @@ __global__ void advance_decode_positions_i64_kernel(
   contexts[row] = next + 1;
 }
 
+__global__ void unpack_verify_chain_dynamic_metadata_i64_kernel(
+    const int64_t* packed,
+    int64_t* token_ids_i64,
+    int32_t* token_ids_i32,
+    int64_t* positions_i64,
+    int32_t* positions_i32,
+    int64_t* contexts_i64,
+    int64_t rows) {
+  constexpr int64_t kFields = 5;
+  const int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row >= rows) {
+    return;
+  }
+  const int64_t base = row * kFields;
+  token_ids_i64[row] = packed[base + 0];
+  token_ids_i32[row] = static_cast<int32_t>(packed[base + 1]);
+  positions_i64[row] = packed[base + 2];
+  positions_i32[row] = static_cast<int32_t>(packed[base + 3]);
+  contexts_i64[row] = packed[base + 4];
+}
+
 bool valid_embedding_shape(int64_t hidden_size, int64_t vocab_size) {
   return hidden_size > 0 && vocab_size > 0;
 }
@@ -429,6 +450,36 @@ extern "C" int hipengine_advance_decode_positions_i64(
       positions,
       contexts,
       active_mask,
+      rows);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_unpack_verify_chain_dynamic_metadata_i64(
+    const int64_t* packed,
+    int64_t* token_ids_i64,
+    int32_t* token_ids_i32,
+    int64_t* positions_i64,
+    int32_t* positions_i32,
+    int64_t* contexts_i64,
+    int64_t rows,
+    hipStream_t stream) {
+  if (!valid_vector_shape(rows)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((rows + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      unpack_verify_chain_dynamic_metadata_i64_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      packed,
+      token_ids_i64,
+      token_ids_i32,
+      positions_i64,
+      positions_i32,
+      contexts_i64,
       rows);
   return static_cast<int>(hipGetLastError());
 }

@@ -70,6 +70,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_decode_positions_i64,
     set_i64_scalar,
     set_i64_vector,
+    unpack_verify_chain_dynamic_metadata_i64,
 )
 from hipengine.dispatch import (
     ActiveBatch,
@@ -117,6 +118,7 @@ from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitP
 
 _PREFILL_OVERLAP_MIN_TOKENS = 32768
 _LOGGER = logging.getLogger(__name__)
+_VERIFY_DYNAMIC_METADATA_FIELDS = 5
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
     for key in (name, *aliases):
@@ -6231,6 +6233,10 @@ class Qwen35ParoResidentSession:
         verify_rows = self.max_batch_size
         self.verify_token_ids_i64 = malloc(verify_rows * DType.INT64.itemsize, runtime=self.runtime)
         self.verify_token_ids_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_dynamic_metadata_i64 = malloc(
+            verify_rows * _VERIFY_DYNAMIC_METADATA_FIELDS * DType.INT64.itemsize,
+            runtime=self.runtime,
+        )
         self.verify_positions_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_parent_rows_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_parent_rows_i64 = malloc(verify_rows * DType.INT64.itemsize, runtime=self.runtime)
@@ -6301,6 +6307,7 @@ class Qwen35ParoResidentSession:
                 self.batch_lm_out_value,
                 self.verify_token_ids_i64,
                 self.verify_token_ids_i32,
+                self.verify_dynamic_metadata_i64,
                 self.verify_positions_i32,
                 self.verify_parent_rows_i32,
                 self.verify_parent_rows_i64,
@@ -8299,6 +8306,11 @@ class Qwen35ParoResidentSession:
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
+    def _verify_packed_dynamic_metadata_enabled(self, batch: TargetVerifyBatch) -> bool:
+        if batch.mode != "verify_chain":
+            return False
+        return _env_flag("HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA", True)
+
     def _should_use_chain_tloop_linear_verify(self, batch: TargetVerifyBatch, *, rows: int, graph_mode: str) -> bool:
         if not self._verify_chain_linear_tloop_enabled():
             return False
@@ -9879,9 +9891,10 @@ class Qwen35ParoResidentSession:
         # M12.5: cycle-to-cycle invariants (parent_rows, draft_depths,
         # row_to_request, active_mask, block_table) only change when the
         # (rows, base_slot, mode) bucket changes.  Cache by bucket signature
-        # so steady-state cycles in a fixed B/B+1 bucket only do the 4 H2D
-        # copies for the per-cycle dynamic buffers (tokens i64/i32, positions
-        # i64/i32, context_i64).
+        # so steady-state cycles in a fixed B/B+1 bucket only refresh the
+        # per-cycle dynamic buffers (tokens i64/i32, positions i64/i32,
+        # context_i64).  The chain path can pack those five logical updates
+        # into one H2D copy and unpack them on device.
         bucket_signature = (
             int(rows),
             int(base_slot),
@@ -9893,13 +9906,23 @@ class Qwen35ParoResidentSession:
         )
         if getattr(self, "_verify_metadata_bucket_cache", None) is None:
             self._verify_metadata_bucket_cache = None  # type: ignore[attr-defined]
-        dynamic_copies: list[tuple[Any, Any]] = [
-            (self.verify_token_ids_i64, token_i64),
-            (self.verify_token_ids_i32, token_i32),
-            (self.prefill_position_buf, position_i64),
-            (self.verify_positions_i32, position_i32),
-            (self.prefill_context_count_buf, context_i64),
-        ]
+        packed_dynamic_metadata: np.ndarray | None = None
+        if self._verify_packed_dynamic_metadata_enabled(batch):
+            packed_dynamic_metadata = np.empty((rows, _VERIFY_DYNAMIC_METADATA_FIELDS), dtype=np.int64)
+            packed_dynamic_metadata[:, 0] = token_i64
+            packed_dynamic_metadata[:, 1] = token_i64
+            packed_dynamic_metadata[:, 2] = position_i64
+            packed_dynamic_metadata[:, 3] = position_i64
+            packed_dynamic_metadata[:, 4] = context_i64
+            dynamic_copies: list[tuple[Any, Any]] = []
+        else:
+            dynamic_copies = [
+                (self.verify_token_ids_i64, token_i64),
+                (self.verify_token_ids_i32, token_i32),
+                (self.prefill_position_buf, position_i64),
+                (self.verify_positions_i32, position_i32),
+                (self.prefill_context_count_buf, context_i64),
+            ]
         if self._verify_metadata_bucket_cache == bucket_signature:
             copies: list[tuple[Any, Any]] = dynamic_copies
         else:
@@ -9969,7 +9992,26 @@ class Qwen35ParoResidentSession:
         for buffer, array in copies:
             contiguous = np.ascontiguousarray(array)
             copy_host_to_device(buffer, host_array_ptr(contiguous), contiguous.nbytes, runtime=self.runtime)
-        _ = stream
+        if packed_dynamic_metadata is not None:
+            contiguous = np.ascontiguousarray(packed_dynamic_metadata)
+            copy_host_to_device(
+                self.verify_dynamic_metadata_i64,
+                host_array_ptr(contiguous),
+                contiguous.nbytes,
+                runtime=self.runtime,
+            )
+            unpack_verify_chain_dynamic_metadata_i64(
+                self.verify_dynamic_metadata_i64.ptr,
+                self.verify_token_ids_i64.ptr,
+                self.verify_token_ids_i32.ptr,
+                self.prefill_position_buf.ptr,
+                self.verify_positions_i32.ptr,
+                self.prefill_context_count_buf.ptr,
+                rows,
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
 
     def _sample_verify_rows_from_hidden(self, hidden: Tensor, rows: int, *, stream: int = 0) -> None:
         norm_out = Tensor.from_handle(self.batch_norm_out.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)

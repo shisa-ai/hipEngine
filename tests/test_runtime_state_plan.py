@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_decode_positions_i64,
     set_i64_scalar,
     set_i64_vector,
+    unpack_verify_chain_dynamic_metadata_i64,
 )
 from hipengine.kernels.registry import resolve
 
@@ -71,6 +72,15 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
         resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="record_i64_indexed")
         is record_i64_scalar_indexed
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="verify_metadata",
+            quant="w4_paro",
+            variant="unpack_chain_dynamic_i64",
+        )
+        is unpack_verify_chain_dynamic_metadata_i64
+    )
 
 
 def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -111,3 +121,5 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         advance_decode_positions_i64(0, 0, 0)
     with pytest.raises(ValueError, match="capacity"):
         record_i64_scalar_indexed(0, 0, 0, 0)
+    with pytest.raises(ValueError, match="rows"):
+        unpack_verify_chain_dynamic_metadata_i64(0, 0, 0, 0, 0, 0, 0)

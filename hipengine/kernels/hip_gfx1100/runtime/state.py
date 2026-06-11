@@ -24,6 +24,7 @@ _SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
 _SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
 _SYMBOL_RECORD_I64_INDEXED = "hipengine_record_i64_scalar_indexed"
+_SYMBOL_UNPACK_VERIFY_CHAIN_DYNAMIC_METADATA = "hipengine_unpack_verify_chain_dynamic_metadata_i64"
 
 
 def plan_runtime_state_build(
@@ -467,6 +468,50 @@ def record_i64_scalar_indexed(
     _check_launch(runtime, err)
 
 
+def unpack_verify_chain_dynamic_metadata_i64(
+    packed_i64_ptr: int,
+    token_ids_i64_ptr: int,
+    token_ids_i32_ptr: int,
+    positions_i64_ptr: int,
+    positions_i32_ptr: int,
+    contexts_i64_ptr: int,
+    rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Unpack verifier token/position/context metadata from one packed int64 buffer."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_UNPACK_VERIFY_CHAIN_DYNAMIC_METADATA)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(packed_i64_ptr),
+        ctypes.c_void_p(token_ids_i64_ptr),
+        ctypes.c_void_p(token_ids_i32_ptr),
+        ctypes.c_void_p(positions_i64_ptr),
+        ctypes.c_void_p(positions_i32_ptr),
+        ctypes.c_void_p(contexts_i64_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "embedding", "bf16", "lookup_bf16_out"),
@@ -536,6 +581,11 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "record_i64_indexed"),
         record_i64_scalar_indexed,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "verify_metadata", "w4_paro", "unpack_chain_dynamic_i64"),
+        unpack_verify_chain_dynamic_metadata_i64,
         replace=replace,
     )
 

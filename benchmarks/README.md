@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, and proposer shared-gate finalize fusion no-hold, still WIP)
+Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, packed verify dynamic metadata, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, and proposer shared-gate finalize fusion no-hold, still WIP)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -274,6 +274,19 @@ and active budgets, cycle `27.279 -> 27.122 ms/cycle`, verify
 Artifacts:
 [`packed accept off`](results/2026-06-11-hipengine-mtp-accept-payload-off-9prompt-d32.json),
 [`packed accept default-on`](results/2026-06-11-hipengine-mtp-accept-payload-on-9prompt-d32.json).
+
+The verifier dynamic metadata path now packs token i64/i32, position i64/i32,
+and context-count i64 updates into one int64 H2D copy plus a tiny unpack kernel.
+The D32 opt-out/default A/B stays exact `9/9` with identical accepted lengths
+and active budgets, moves actual ratio `0.68417x -> 0.68898x`, cycle wall
+`27.02196 -> 26.99252 ms/cycle`, verify `21.87984 -> 21.85918 ms/cycle`, and
+proposal/update `1.95733 -> 1.95069 ms/cycle`. Rocprof confirms
+`unpack_verify_chain_dynamic_metadata_i64_kernel`; a 27B dense DFlash D16
+one-prompt shared-path smoke passed. Opt out with
+`HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA=0`. Artifacts:
+[`pack dynamic metadata off`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-off-9prompt-d32.json),
+[`pack dynamic metadata on`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-on-9prompt-d32.json),
+[`pack dynamic metadata rocprof`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-rocprof.json).
 
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is now opt-in after the current graph-auto
 suite proved the unfused fallback faster: exact `9/9`, identical acceptance,

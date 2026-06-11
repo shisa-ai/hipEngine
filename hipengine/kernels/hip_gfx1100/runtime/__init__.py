@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.runtime.state import (
     set_decode_positions_i64,
     set_i64_scalar,
     set_i64_vector,
+    unpack_verify_chain_dynamic_metadata_i64,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "set_decode_positions_i64",
     "set_i64_scalar",
     "set_i64_vector",
+    "unpack_verify_chain_dynamic_metadata_i64",
 ]

@@ -79625,3 +79625,91 @@ Results:
 Decision: no-hold. Experiment code and flag removed. Keep the two-kernel
 shared-gate accumulation + finalize path until a broader proposer graph/batch
 design can remove more of the update chain.
+
+## 2026-06-11 - MTP verifier dynamic metadata packing retained
+
+Tested a P1 glue/copy lane candidate from `_write_verify_chain_metadata`: pack
+the five per-cycle dynamic verifier metadata H2D submissions
+(`verify_token_ids_i64`, `verify_token_ids_i32`, `prefill_position_buf`,
+`verify_positions_i32`, `prefill_context_count_buf`) into one int64 metadata
+buffer and unpack on device with
+`unpack_verify_chain_dynamic_metadata_i64_kernel`. The path is chain-only for
+now; tree metadata remains on the legacy host-copy path. Opt out with
+`HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA=0`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/runtime/state.py hipengine/runtime/qwen35_paro_runner.py tests/test_runtime_state_plan.py tests/test_runtime_state_unpack_metadata.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_runtime_state_plan.py tests/test_runtime_state_unpack_metadata.py
+
+PYTHONPATH=. pytest -q tests/test_qwen35_resident_tree_metadata.py tests/test_qwen35_resident_batch_layout.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-verify-pack-dynamic-metadata-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-verify-pack-dynamic-metadata-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-verify-pack-dynamic-metadata-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-on-9prompt-d32.json
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-verify-pack-dynamic-metadata-rocprof --top 30
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --draft-top-k 2 \
+  --whole-cycle-gate 0.90 --verifier-mode native_bulk_bplus1 --verifier-graph auto \
+  --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-pack-dynamic-metadata-smoke.json
+```
+
+Results:
+
+- runtime-state tests passed `4/4`; nearby resident tree/layout tests passed.
+- MTP quicksort smoke stayed exact with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- 9-prompt D32 opt-out/default A/B stayed exact `9/9` with identical accepted
+  lengths, active budgets, visible tokens/cycle, and accepted/cycle.
+- Actual ratio moved `0.6841682709x -> 0.6889800425x`.
+- Cycle wall moved `27.021959 -> 26.992517 ms/cycle` (-0.02944 ms).
+- Verify moved `21.879838 -> 21.859185 ms/cycle` (-0.02065 ms).
+- Proposal/update moved `1.957334 -> 1.950689 ms/cycle` (-0.00664 ms).
+- Rocprof confirmed
+  `(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel`
+  in the kernel trace. The profile artifact reports exact smoke, `932`
+  calls/pass, and `14.415 ms/pass` kernel time on this current stack.
+- 27B dense DFlash shared-path smoke passed
+  `all_correctness_passed=true` for one D16 prompt.
+
+Decision: retain default-on. This is a micro wall/verify slice, not a headline
+break-even move, but it is exact, same-suite non-regressive, positive on wall,
+and keeps the docs/REFACTOR opt-out removal trigger explicit.
