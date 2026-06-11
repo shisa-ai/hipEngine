@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "9-prompt prompt-suite economics",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "runs_per_prompt": 1
+  },
+  "change": {
+    "env_flag": "HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED",
+    "default": true,
+    "description": "Fuse the linear-attention shared-down output-tiled W4 GEMV with selected/shared gate residual combine, using a parallel epilogue that preserves the old FP16 rounding points.",
+    "expected_dispatch_delta": "Remove the 30 linear-attention shared-gate/residual combine launches per verifier pass; full-attention combine launches remain separate."
+  },
+  "correctness": {
+    "targeted_tests": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py tests/test_paro_awq_output_tiled_gemv.py::test_output_tiled_combine_residual_transposed_fp16_matches_unfused",
+      "result": "9 passed"
+    },
+    "quicksort_smoke_default": {
+      "exact_ar_match": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+    },
+    "prompt_suite": {
+      "exact_prompts": "9/9",
+      "accepted_lengths_identical_to_control": true,
+      "active_budgets_identical_to_control": true
+    }
+  },
+  "prompt_suite_ab": {
+    "control_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-linear-shared-down-combine-fused-off-9prompt-d32.json",
+    "fused_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-linear-shared-down-combine-fused-on-9prompt-d32.json",
+    "control_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-linear-shared-down-combine-fused-off-9prompt-d32 --out benchmarks/results/2026-06-12-hipengine-mtp-linear-shared-down-combine-fused-off-9prompt-d32.json",
+    "fused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-linear-shared-down-combine-fused-on-9prompt-d32 --out benchmarks/results/2026-06-12-hipengine-mtp-linear-shared-down-combine-fused-on-9prompt-d32.json",
+    "metrics": {
+      "actual_decode_speedup_vs_ar": {
+        "control": 0.8842774405634629,
+        "fused": 0.8858789712765635,
+        "relative_delta_percent": 0.181104966304216
+      },
+      "cycle_cost_ar_tokens": {
+        "control": 2.2487586634971937,
+        "fused": 2.23871013200614,
+        "delta": -0.010048531491053814
+      },
+      "avg_visible_tokens_per_cycle": {
+        "control": 2.011851851851852,
+        "fused": 2.011851851851852,
+        "delta": 0.0
+      },
+      "avg_accepted_per_cycle": {
+        "control": 1.011851851851852,
+        "fused": 1.011851851851852,
+        "delta": 0.0
+      },
+      "cycle_wall_ms_per_cycle": {
+        "control": 20.314658535679015,
+        "fused": 20.204457140864196,
+        "delta": -0.11020139481481906
+      },
+      "verify_ms_per_cycle": {
+        "control": 16.52272516533152,
+        "fused": 16.402169500576782,
+        "delta": -0.12055566475473855
+      },
+      "proposal_update_ms_per_cycle": {
+        "control": 1.4529208983668345,
+        "fused": 1.458395871823872,
+        "delta": 0.005474973457037448
+      },
+      "ar_decode_ms_per_token": {
+        "control": 9.028039672153277,
+        "fused": 9.019002707241775,
+        "delta": -0.009036964911501958
+      }
+    }
+  },
+  "verify_profile_ab": {
+    "control_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-linear-shared-down-combine-fused-off-rocprof.json",
+    "fused_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-linear-shared-down-combine-fused-on-rocprof.json",
+    "prompt": "quicksort",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "passes": 11,
+    "metrics_per_pass": {
+      "kernel_calls": {
+        "control": 942.0,
+        "fused": 912.0,
+        "delta": -30.0
+      },
+      "kernel_time_ms": {
+        "control": 12.870635,
+        "fused": 12.78121118181818,
+        "delta": -0.08942381818182045
+      },
+      "host_window_ms": {
+        "control": 16.752542363636363,
+        "fused": 16.56480681818182,
+        "delta": -0.18773554545454352
+      },
+      "moe_combine_ms": {
+        "control": 0.123816,
+        "fused": 0.03217863636363636,
+        "delta": -0.09163736363636365
+      },
+      "moe_combine_calls": {
+        "control": 40.0,
+        "fused": 10.0,
+        "delta": -30.0
+      }
+    }
+  },
+  "decision": {
+    "promotion": "default_on",
+    "rationale": "Exact same-suite positive, acceptance-neutral, and removes real verifier DAG launches. The win is small but retained because every exact improvement contributes to the break-even path.",
+    "current_best_after_change": {
+      "actual_decode_speedup_vs_ar": 0.8858789712765635,
+      "cycle_wall_ms_per_cycle": 20.204457140864196,
+      "verify_ms_per_cycle": 16.402169500576782,
+      "proposal_update_ms_per_cycle": 1.458395871823872,
+      "avg_visible_tokens_per_cycle": 2.011851851851852
+    },
+    "remaining_gap": "At 2.012 visible tokens/cycle and 9.019 ms/token AR, unchanged acceptance needs about 18.1 ms/cycle for break-even; at 20.204 ms/cycle it needs about 2.24 visible tokens/cycle."
+  }
+}

@@ -155,6 +155,15 @@ typedef hipengine_err_t (*gemv_awq_pack8_transposed_fp16_fn)(
     int64_t, int64_t, int64_t, int64_t, int64_t,
     void*);
 
+// gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16:
+//   x, qw, qz, s, selected, weights, gate_logits, residual, out,
+//   rows, in_features, out_packed, group_size, rows_per_token, gate_stride,
+//   threads, stream
+typedef hipengine_err_t (*gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16_fn)(
+    void*, void*, void*, void*, void*, void*, void*, void*, void*,
+    int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+    void*);
+
 // gemv_awq_dual_pack8_transposed_fp16 (full-attn shared expert packed gate||up):
 //   x_a, x_b, qw_a, qz_a, s_a, qw_b, qz_b, s_b, out,
 //   rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream
@@ -189,6 +198,7 @@ struct MoeC1Fns {
     void* gemv_awq_pack8_multi_row_transposed_fp16;        // linear-attn shared down opt-in
     void* gemv_awq_pack8_multi_row_decode_transposed_fp16; // linear-attn shared down opt-in
     void* gemv_awq_pack8_output_tiled_transposed_fp16;     // linear-attn shared down opt-in
+    void* gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16; // linear-attn reduced-DAG opt-in
     void* gemv_awq_dual_pack8_transposed_fp16; // full-attn only
     void* gemv_awq_pack8_transposed_fp16;      // full-attn only
     void* combine_batch_fp16;
@@ -540,7 +550,25 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
     // ---- 10a. Shared down W4: shared_down_input -> shared_out ----
     const bool output_tiled_rows =
         args->tokens == 2 || args->tokens == 4 || args->tokens == 8;
-    if (args->shared_down_mode == 2 && output_tiled_rows) {
+    bool combined_in_shared_down = false;
+    if (args->shared_down_mode == 2 && output_tiled_rows &&
+        fns->gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16) {
+        auto fn = reinterpret_cast<gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16_fn>(
+            fns->gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16);
+        DISPATCH_CHECK(fn(
+            args->shared_down_input,
+            args->shared_down_qweight, args->shared_down_qzeros,
+            args->shared_down_scales,
+            args->down_out, args->routing_weights,
+            shared_gate_logits_ptr(args),
+            args->residual, args->out,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->out_packed_shared_down, args->group_size,
+            args->num_experts_per_tok, args->num_experts + 1,
+            args->shared_threads,
+            args->stream));
+        combined_in_shared_down = true;
+    } else if (args->shared_down_mode == 2 && output_tiled_rows) {
         auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
             fns->gemv_awq_pack8_output_tiled_transposed_fp16);
         DISPATCH_CHECK(fn(
@@ -606,7 +634,7 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
     }
 
     // ---- 11. Combine batch: down_out + routing + shared + residual -> out ----
-    {
+    if (!combined_in_shared_down) {
         auto fn = reinterpret_cast<combine_batch_fp16_fn>(fns->combine_batch_fp16);
         DISPATCH_CHECK(fn(
             args->down_out, args->routing_weights,

@@ -88,6 +88,7 @@ class MoeC1Fns(ctypes.Structure):
         ("gemv_awq_pack8_multi_row_transposed_fp16", ctypes.c_void_p),         # linear-attn shared down opt-in
         ("gemv_awq_pack8_multi_row_decode_transposed_fp16", ctypes.c_void_p),  # linear-attn shared down opt-in
         ("gemv_awq_pack8_output_tiled_transposed_fp16", ctypes.c_void_p),      # linear-attn shared down opt-in
+        ("gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16", ctypes.c_void_p),  # linear-attn reduced-DAG opt-in
         ("gemv_awq_dual_pack8_transposed_fp16", ctypes.c_void_p),  # full-attn only
         ("gemv_awq_pack8_transposed_fp16", ctypes.c_void_p),       # full-attn only
         ("combine_batch_fp16", ctypes.c_void_p),

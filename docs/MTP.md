@@ -4,18 +4,18 @@
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab
 > cap, and device expert dispatch are landed. The current W7900/gfx1100 35B-A3B
 > MTP sprint baseline remains **0.758x AR** at **27.8 ms/cycle**. The current
-> exact 9-prompt D32 best is now **0.881x AR** with `chain_attn_mode=decode_batched`,
+> exact 9-prompt D32 best is now **0.886x AR** with `chain_attn_mode=decode_batched`,
 > `graph_mode=off`, MTP verify canonicalize skip default-on, and fused
-> 256-expert/top-8 proposer router top-k+softmax default-on: **20.38 ms/cycle**
-> wall, **16.58 ms/cycle** verifier time, and **1.46 ms/cycle**
-> proposal/update time.
+> 256-expert/top-8 proposer router top-k+softmax plus linear-attn shared-down
+> combine default-on: **20.20 ms/cycle** wall, **16.40 ms/cycle** verifier
+> time, and **1.46 ms/cycle** proposal/update time.
 > This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 
 > **Top priority for the next push:** MTP break-even sprint. Hold every exact
 > same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,
-> and push the active `0.881x / 20.38 ms` row below true break-even and ultimately
+> and push the active `0.886x / 20.20 ms` row below true break-even and ultimately
 > above `1.0x`. See ["Next Push: 35B MTP Break-Even Sprint"](#next-push-35b-mtp-break-even-sprint-2026-06-11).
 
 ## Next Push: 35B MTP Break-Even Sprint (2026-06-11)
@@ -32,22 +32,23 @@ Locked baseline:
 - Wall milestone from the original sprint: **`<21.5 ms/cycle`**, requiring
   about **6.3 ms/cycle** off the locked row.
 
-Current best retained stack after the 2026-06-12 host/cache/proposer-router cleanup:
+Current best retained stack after the 2026-06-12 host/cache/proposer-router/reduced-DAG cleanup:
 
 - Runtime config: `proposal_impl=persistent_device`,
   `chain_attn_mode=decode_batched`, verifier graph `off`, MTP
   canonicalize-after-verify skip default-on, fused 256-expert/top-8 proposer
-  router top-k+softmax default-on, draft vocab cap `32768`, device expert
-  dispatch, exact chain verifier; branching tree default-off.
-- Current speed: **`0.881x` AR** on the 9-prompt D32 suite, exact `9/9`, with
-  identical accepted lengths and active budgets relative to the router-fusion
-  opt-out control.
-- Current wall: **`20.38 ms/cycle = 16.58 ms verify + 1.46 ms proposal/update`**.
-- Wall milestone status: crossed (`20.38 ms < 21.5 ms`). True `>1.0x`
+  router top-k+softmax default-on, linear-attn shared-down+combine fused
+  default-on, draft vocab cap `32768`, device expert dispatch, exact chain
+  verifier; branching tree default-off.
+- Current speed: **`0.886x` AR** on the 9-prompt D32 suite, exact `9/9`, with
+  identical accepted lengths and active budgets relative to the
+  shared-down+combine opt-out control.
+- Current wall: **`20.20 ms/cycle = 16.40 ms verify + 1.46 ms proposal/update`**.
+- Wall milestone status: crossed (`20.20 ms < 21.5 ms`). True `>1.0x`
   break-even at the current visible-token density is stricter: with
-  `2.012` visible tokens/cycle and `9.018 ms/token` AR, wall would need to be
+  `2.012` visible tokens/cycle and `9.019 ms/token` AR, wall would need to be
   about **`18.1 ms/cycle`**, or visible density must rise to at least
-  **`2.26` visible tokens/cycle** at the current wall. The next work must keep
+  **`2.24` visible tokens/cycle** at the current wall. The next work must keep
   grinding wall while saving acceptance-density policy work for the endgame.
 
 Tree status is explicit: the B=3 gated tree path is exact and graph-replayed, but
@@ -63,10 +64,11 @@ Current priority order after folding in the external review:
 | Rank | Work item | Expected wall effect | Risk / readiness | Live-plan correction |
 | --- | --- | ---: | --- | --- |
 | Done | Specialized proposer router top-k / fused router-topk-softmax | -1.31 ms/cycle wall retained | Exact D32 suite positive | `HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED=1` fuses the proposer router's 256-expert/top-8 `topk_rows_i32` + softmax path into one exact kernel with the same descending-value/lower-index tie order. Exact `9/9`, identical accepted lengths/active budgets, ratio `0.8244x -> 0.8806x`, wall `21.686 -> 20.379 ms/cycle`, proposal/update `1.974 -> 1.460 ms/cycle`. Proposer marker profile moved router family `1.714 -> 0.373 ms/cycle`, total proposer kernel `4.676 -> 3.379 ms/cycle`, host window `5.578 -> 4.248 ms/cycle`, and calls `181.5 -> 178.4/cycle`. |
-| 1 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. The first shared-down+combine prototype proved the launch-removal idea can stay exact, but the thread-0 output-tiled epilogue is no-hold; a retry needs a parallel combine epilogue or broader layer composite, not another serial epilogue graft. |
+| Done | Linear-attn shared-down+combine parallel epilogue | -0.11 ms/cycle wall retained | Exact D32 suite positive | `HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED=1` fuses the linear-attn shared-down output-tiled W4 GEMV with selected/shared gate residual combine while preserving the old FP16 rounding points. Exact `9/9`, identical accepted lengths/active budgets, ratio `0.8843x -> 0.8859x`, wall `20.315 -> 20.204 ms/cycle`, verify `16.523 -> 16.402 ms/cycle`. Quicksort verify profile removed 30 combine launches/pass (`942 -> 912`), moved kernel `12.871 -> 12.781 ms/pass`, host `16.753 -> 16.565 ms/pass`, and `moe_combine` `0.124 -> 0.032 ms/pass`. |
+| 1 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. The parallel shared-down+combine epilogue is the first retained reduced-DAG slice, but it is only a micro-win; continue with broader layer-surround batching/composites rather than stopping at pairwise fusions. |
 | 2 | M12.7 graph-capture proposer loop | -0.4 to -0.9 ms estimated from remaining measured proposer host gap | Medium; design needed after recent scalar/readback trims and router fusion | Post-router-fusion proposer marker profile shows `proposer_all` is `~4.25 ms/cycle` host for `~3.38 ms/cycle` kernel over `~178` launches/cycle. Capture can still recover some launch/ctypes overhead, but it cannot remove the expert dense, LM-head, attention, or dense BF16 GPU work. Audit dynamic by-value cache pointers/context length before capture; direct graph replay will freeze those unless we add device-resident metadata or graph-node param updates. |
 | 3 | Route-batched proposer expert loop | -0.3 to -0.7 ms possible after router fusion | Medium/high; requires new route-batched expert kernels and larger `[top_k, ...]` scratch | Router fusion makes route-scalar expert dense the largest proposer family (`~0.67 ms/cycle`, `~49.5` calls/cycle). Do not treat this as a host-only batching change: batching routes must preserve route accumulation order with new gate/up, activation/down, and accumulation plumbing. |
-| 4 | Acceptance-density diagnostics and policy | Ratio lever, not pure wall | Low/medium; save policy changes until fast path stabilizes | Add per-position acceptance histograms, B=4/B=5 economics, vocab-cap rejection diagnostics, and adaptive B/AR fallback gates after the wall path stabilizes. At the current wall, break-even needs about `+0.25` visible tokens/cycle, so this is co-equal with the final wall cuts but should not distract from reduced-DAG/proposer work in the next implementation unit. |
+| 4 | Acceptance-density diagnostics and policy | Ratio lever, not pure wall | Low/medium; save policy changes until fast path stabilizes | Add per-position acceptance histograms, B=4/B=5 economics, vocab-cap rejection diagnostics, and adaptive B/AR fallback gates after the wall path stabilizes. At the current wall, break-even needs about `+0.23` visible tokens/cycle, so this is co-equal with the final wall cuts but should not distract from reduced-DAG/proposer work in the next implementation unit. |
 | 5 | Verifier/proposer inter-cycle overlap design | -0.5 to -1.0 ms possible if commit is hideable | Medium/high; must prove proposer dependencies do not read committed canonical verifier state or shared scratch | Worth a design audit, but not a quick flip. Insert events only after proving accepted token/hidden row, proposer state repair, and commit buffers are independent until the next verifier cycle. |
 | 6 | Per-layer memset/fill/copy enumeration | -0.1 to -0.3 ms estimated if any live copy/fill family remains | Low if the lifetime proof is local | Current locked profile shows `fillBufferAligned=0`, so this is a profile-driven cleanup lane, not a presumed win. Require write-before-read evidence and an exact D32 gate before promoting. |
 | 7 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-6 shrink synchronization and graph-capture overhead. |
@@ -75,7 +77,7 @@ Current priority order after folding in the external review:
 | Done | MTP graph-off canonicalize-after-verify skip | Retained default-on for the MTP harness | Exact D32 same-suite positive | `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1` keeps verifier-shaped scratch live between MTP graph-off verify cycles. Exact `9/9`, identical accepted lengths/active budgets, graph-off batched wall `37.207 -> 24.076 ms/cycle`, verify `32.069 -> 18.933 ms/cycle`, ratio `0.4969x -> 0.7730x`; rocprof calls and kernel stayed flat (`932/pass`, ~`14.33 ms/pass`) while host moved `32.505 -> 18.272 ms/pass`. |
 | Done | Current-stack `decode_batched` with graph-off skip | Current best retained MTP verifier mode | Exact D32 same-suite positive | After canonicalize skip made graph-off competitive, `chain_attn_mode=decode_batched` is exact `9/9` and improves over graph-off batched skip with identical accepted lengths/active budgets: ratio `0.7730x -> 0.8252x`, wall `24.076 -> 21.661 ms/cycle`, verify `18.933 -> 16.511 ms/cycle`; profile calls `932 -> 942`, kernel `14.330 -> 12.922 ms/pass`, host `18.272 -> 16.849 ms/pass`. |
 | No-hold | `decode_batched + HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` compound | 0 ms retained | Exact but aggregate-negative | Retested after graph-off became current best. Exact `9/9` with unchanged accepted lengths/active budgets, but slower than `decode_batched + graph_off + skip`: ratio `0.8252x -> 0.8204x`, wall `21.661 -> 21.763 ms/cycle`, verify `16.511 -> 16.628 ms/cycle`, cycle cost `2.411 -> 2.425`. Keep selected-down staged opt-in only. |
-| No-hold | Thread-0 shared-down + shared-gate/residual combine epilogue | 0 ms retained | Exact but kernel-negative | Prototype removed 30 linear-attn combine launches/pass and kept quicksort exact with identical accepted lengths, but the fused output-tiled shared-down kernel grew from `0.348 -> 0.814 ms/pass`; net profile regressed calls `942 -> 912/pass`, kernel `12.860 -> 13.255 ms/pass`, host `16.832 -> 17.076 ms/pass`. Code removed; only retry with a parallel epilogue or broader reduced-DAG composite. |
+| No-hold | Thread-0 shared-down + shared-gate/residual combine epilogue | 0 ms retained | Exact but kernel-negative | Prototype removed 30 linear-attn combine launches/pass and kept quicksort exact with identical accepted lengths, but the fused output-tiled shared-down kernel grew from `0.348 -> 0.814 ms/pass`; net profile regressed calls `942 -> 912/pass`, kernel `12.860 -> 13.255 ms/pass`, host `16.832 -> 17.076 ms/pass`. Superseded by the retained parallel-epilogue implementation above; do not reintroduce the serial shape. |
 | Done | Verifier MLP scratch policy alignment | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=1` makes verifier MLP scratch reservation use the same c1/grouped threshold as the chain/tree t-loop MoE path and keys the cache by expected policy. Exact `9/9`, identical accepted lengths/active budgets, wall `26.309 -> 25.690 ms/cycle`, verify `21.176 -> 20.523 ms/cycle`, ratio `0.7003x -> 0.7172x`; graph-auto profile kept `932` calls/pass and moved host `18.314 -> 18.246 ms/pass`; graph-off host `32.445 -> 32.273 ms/pass`. |
 | Done | Resident state/cache Tensor view caching | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=1` caches `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` non-owning Tensor views with explicit invalidation. Exact `9/9`, identical acceptance, wall `26.642 -> 26.426 ms/cycle`, verify `21.506 -> 21.278 ms/cycle`, ratio `0.6924x -> 0.6986x`; graph-off host control `32.52 -> 31.70 ms/pass`. |
 | Done | `single_linear_out` / `single_full_v` exact multi-row routing | Already retained | Default-on after exact D32 gates | Not pending next work; keep the retained paths and remove their opt-outs after the follow-up defaults-only gates in `docs/REFACTOR.md`. |
@@ -84,15 +86,15 @@ Acceptance-density backlog for the endgame:
 
 | Rank | Diagnostic / policy | Why it matters | First gate |
 | --- | --- | --- | --- |
-| A1 | B=4/B=5 economics with per-position acceptance histograms | At `20.379 ms/cycle`, the current `2.012` visible tokens/cycle still needs `2.26` visible tokens/cycle for AR break-even. Higher B is the simplest way to buy visible tokens if deeper positions still accept often enough. | Add per-depth accept counters across the exact 9-prompt D32 suite, then run B=4 and B=5 with current defaults. Promote only if exact AR holds and suite `actual_ratio` improves after the added verifier row cost. |
+| A1 | B=4/B=5 economics with per-position acceptance histograms | At `20.204 ms/cycle`, the current `2.012` visible tokens/cycle still needs `2.24` visible tokens/cycle for AR break-even. Higher B is the simplest way to buy visible tokens if deeper positions still accept often enough. | Add per-depth accept counters across the exact 9-prompt D32 suite, then run B=4 and B=5 with current defaults. Promote only if exact AR holds and suite `actual_ratio` improves after the added verifier row cost. |
 | A2 | Draft vocab-cap rejection census (`32768 -> 65536/full`) | A correct target token outside the draft cap is a guaranteed rejection. If cap-caused misses are nontrivial, raising the cap may buy density for proposer-only LM-head cost. | Instrument rejected depths with target top-1 token id and cap status; then A/B cap `32768`, `65536`, and full vocab for exactness, acceptance, proposer wall, and total ratio. |
 | A3 | Adaptive B / AR fallback for zero-accept streaks | Some prompts or phases pay the full verify wall to accept no draft tokens. Dropping to B=1 or AR after repeated zero-accept cycles can raise suite average without changing kernel math. | Exact output must remain identical. Gate on a fixed policy, 9-prompt D32 suite, no prompt-level regression hidden by average-only reporting. |
 | A4 | Tree or rejection-boundary sibling retest | Full B=3 tree is exact but negative on the current stack. A smaller boundary-sibling policy might recover first-rejection cases once wall is lower. | Revisit only after the reduced-DAG/proposer wall path stabilizes. Compare against chain at the same B and report added rows, acceptance lift, wall, and ratio. |
 | A5 | Relaxed speculative sampling | This is the known theoretical acceptance ceiling, but it changes the exact top-1 accept contract and needs distribution access from both models. | Out of scope for the exact-default sprint. Treat as explicit opt-in quality tier, never as a default speed row. |
 
 For B sweeps, use the ratio gate rather than intuition: the current row is
-`2.012 / 20.379 = 0.0987` visible tokens/ms, while AR is about
-`1 / 9.018 = 0.1109` tokens/ms. A larger B row must either beat the current
+`2.012 / 20.204 = 0.0996` visible tokens/ms, while AR is about
+`1 / 9.019 = 0.1109` tokens/ms. A larger B row must either beat the current
 suite ratio immediately or show enough per-depth acceptance to justify the extra
 verify row after the next wall-cut unit lands.
 
@@ -161,7 +163,8 @@ Live-tree corrections to the external review ranking:
   removed the graph-off host penalty. This remains the current verifier
   baseline: exact `9/9` with `chain_attn_mode=decode_batched`, graph `off`,
   wall `21.661 ms/cycle`, verify `16.511 ms/cycle`, and ratio `0.8252x`
-  before the fused proposer router is layered on top.
+  before the fused proposer router and shared-down+combine epilogue are layered
+  on top.
 - The same review's `decode_batched + HIPENGINE_SELECTED_MOE_DOWN_STAGED=1`
   compound has now been checked against that current best and no-held: exact
   `9/9` with identical accepted lengths/active budgets, but ratio regressed
@@ -216,7 +219,7 @@ External review ranking, folded into the live plan:
 | Graph-off canonicalize-after-verify skip | Promoted default-on in the MTP harness. Exact `9/9`, identical accepted lengths/active budgets, graph-off batched wall `37.207 -> 24.076 ms/cycle`, verify `32.069 -> 18.933 ms/cycle`; profile proves this is host scratch canonicalization, not kernel math (`932/pass`, kernel ~`14.33 ms/pass` unchanged). |
 | M13.B.1+B.2 selected-GEMV/shared rotate fusion | Closed/no-hold from prior exact evidence. Reopen only with a new rotate-once/no-barrier-reset design. |
 | Full-layer C-dispatcher | Accepted only as reduced-DAG batching. Do not build a C-only wrapper that launches the same kernels. |
-| Shared-down + shared-gate/residual combine | First prototype no-held 2026-06-12. It was exact and removed 30 combine launches/pass, but the thread-0 output-tiled epilogue regressed kernel `12.860 -> 13.255 ms/pass` and host `16.832 -> 17.076 ms/pass`; code removed. Reopen only with a parallel epilogue or broader reduced-DAG composite. |
+| Shared-down + shared-gate/residual combine | Parallel-epilogue retry promoted default-on 2026-06-12. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.8843x -> 0.8859x`, wall `20.315 -> 20.204 ms/cycle`, verify `16.523 -> 16.402 ms/cycle`; profile removes 30 combine launches/pass (`942 -> 912`) and moves kernel `12.871 -> 12.781 ms/pass`. The earlier thread-0 epilogue remains no-held and should not be restored. |
 | `single_linear_out` exact multi-row path | Already default-on after current-stack 9-prompt exactness; not pending. |
 | Specialized proposer router top-k | Promoted default-on 2026-06-12 for the actual 256-expert/top-8 sidecar shape. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.8244x -> 0.8806x`, wall `21.686 -> 20.379 ms/cycle`; profiler router family `1.714 -> 0.373 ms/cycle`. |
 | M12.7 proposer graph capture | Keep as P2 but profile-bound. Post-router-fusion proposer all-region has about `0.87 ms/cycle` host gap above kernel time, and direct capture must solve by-value cache pointer/context-length dynamics. |
@@ -228,11 +231,11 @@ External review ranking, folded into the live plan:
 
 Break-even accounting: the retained stack has already moved the exact 9-prompt
 D32 row from the locked sprint baseline `27.8 ms/cycle` to the current
-`20.379 ms/cycle`, crossing the original `<21.5 ms` wall milestone. The row is
-still `0.881x` AR because visible-token density is only about `2.012/cycle`.
-At the current AR denominator (`9.018 ms/token`), true break-even at unchanged
+`20.204 ms/cycle`, crossing the original `<21.5 ms` wall milestone. The row is
+still `0.886x` AR because visible-token density is only about `2.012/cycle`.
+At the current AR denominator (`9.019 ms/token`), true break-even at unchanged
 acceptance would require about `18.1 ms/cycle`; at the current wall, it needs at
-least `2.26` visible tokens/cycle. The next push must keep every retained wall
+least `2.24` visible tokens/cycle. The next push must keep every retained wall
 win while continuing reduced-DAG/proposer work and saving acceptance-density
 policy for the endgame. The D32 9-prompt off/on A/B confirms the stacked P1
 gates are exact and worth keeping by default,
@@ -324,6 +327,10 @@ at `16.537 -> 16.578 ms/cycle`, and proposal/update
 `1.974 -> 1.460 ms/cycle`. The quicksort proposer profile shows the cause:
 router top-k+softmax collapses `1.714 -> 0.373 ms/cycle`, total proposer kernel
 `4.676 -> 3.379 ms/cycle`, and proposer host window `5.578 -> 4.248 ms/cycle`.
+The parallel shared-down+combine epilogue is the first retained reduced-DAG
+slice on top of that row: exact `9/9`, identical acceptance, ratio
+`0.8843x -> 0.8859x`, wall `20.315 -> 20.204 ms/cycle`, verify
+`16.523 -> 16.402 ms/cycle`, and quicksort verify launches `942 -> 912/pass`.
 Partial-accept proposer replay is not one of them: it stayed exact and cut
 snapshot saves, but the 9-prompt D32 suite regressed aggregate wall and
 proposal/update time, so do not re-add that flag without a new batching design.
@@ -343,7 +350,7 @@ in order:
 
 | Item | First measurement | Promotion gate |
 | --- | --- | --- |
-| B=4/B=5 chain economics | Run the exact 9-prompt D32 suite at `B=4` and `B=5` with the current default stack, plus per-position acceptance histograms. | Promote only if added visible tokens beat marginal verify/proposer wall. At `20.38 ms`, break-even needs about `+0.25` visible tokens/cycle over current B=3. |
+| B=4/B=5 chain economics | Run the exact 9-prompt D32 suite at `B=4` and `B=5` with the current default stack, plus per-position acceptance histograms. | Promote only if added visible tokens beat marginal verify/proposer wall. At `20.20 ms`, break-even needs about `+0.23` visible tokens/cycle over current B=3. |
 | Draft vocab cap rejection census | Instrument rejected rows to count cases where the target token is outside `HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768` but would have matched with a larger cap. | Try `65536` or full vocab only if cap-caused rejections are material enough to pay the proposer LM-head cost. |
 | Adaptive B / AR fallback | Track prompt/cycle streaks with zero accepted drafts and confidence signals available before verify. | Drop to lower B or pure AR only when an online rule improves same-suite exact economics without prompt-history oracle leakage. |
 | Revisit tree / rejection-boundary sibling | Re-run only after the faster verifier/proposer path is stable and per-position histograms show a recoverable first-rejection pattern. | Tree or hybrid sibling verification must beat chain on the same exact suite, not just improve accepted-token count. |
@@ -442,10 +449,10 @@ Measurement:
 Decision: promote the MTP canonicalize skip default-on and use
 `chain_attn_mode=decode_batched`, graph `off` as the current exact B=3 MTP
 verifier baseline, with `HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` still no-held.
-After the fused proposer router lands on top, the current exact B=3 MTP row is
-`0.881x` at `20.379 ms/cycle`; the original `<21.5 ms` wall milestone is
-crossed, but the true `>1.0x` target still needs reduced-DAG/proposer work and
-later acceptance-density uplift.
+After the fused proposer router and parallel shared-down+combine epilogue land
+on top, the current exact B=3 MTP row is `0.886x` at `20.204 ms/cycle`; the
+original `<21.5 ms` wall milestone is crossed, but the true `>1.0x` target still
+needs broader reduced-DAG/proposer work and later acceptance-density uplift.
 
 ### M16.4 Split-Output Follow-Up (2026-06-11)
 

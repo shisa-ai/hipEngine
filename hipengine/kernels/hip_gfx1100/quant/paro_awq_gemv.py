@@ -18,6 +18,14 @@ _ARGTYPES_PACK8_SINGLE = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,        # rows, in_features, out_packed, group_size, threads
     ctypes.c_void_p,                                                                       # stream
 )
+_ARGTYPES_PACK8_SINGLE_COMBINE = (
+    ctypes.c_void_p,                                                                       # x
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight, qzeros, scales
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,   # selected, weights, gate, residual, out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,                        # rows, in_features, out_packed, group_size
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,                                        # rows_per_token, gate_stride, threads
+    ctypes.c_void_p,                                                                       # stream
+)
 _ARGTYPES_PACK8_DUAL_1 = (
     ctypes.c_void_p,                                                                       # input ptr
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight_a, qzeros_a, scales_a
@@ -133,6 +141,9 @@ _SYMBOL_PACK8_OUTPUT_TILED = "hipengine_gemv_awq_pack8_output_tiled_bf16"
 _SYMBOL_PACK8_OUTPUT_TILED_FP16 = "hipengine_gemv_awq_pack8_output_tiled_fp16"
 _SYMBOL_PACK8_OUTPUT_TILED_TRANSPOSED = "hipengine_gemv_awq_pack8_output_tiled_transposed_bf16"
 _SYMBOL_PACK8_OUTPUT_TILED_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_output_tiled_transposed_fp16"
+_SYMBOL_PACK8_OUTPUT_TILED_COMBINE_TRANSPOSED_FP16 = (
+    "hipengine_gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16"
+)
 _SYMBOL_DUAL_PACK8_OUTPUT_TILED_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_output_tiled_transposed_bf16"
 _SYMBOL_DUAL_PACK8_OUTPUT_TILED_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_output_tiled_transposed_fp16"
 _SYMBOL_DUAL_PACK8_OUTPUT_TILED_SPLIT_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_output_tiled_split_transposed_fp16"
@@ -391,6 +402,69 @@ def gemv_awq_pack8_output_tiled_transposed_fp16(
         library=library,
         runtime=runtime,
     )
+
+
+def gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    selected_ptr: int,
+    routing_weights_ptr: int,
+    shared_gate_logits_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    rows_per_token: int,
+    gate_stride: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """FP16 output-tiled shared-down GEMV fused with selected/shared residual combine.
+
+    This preserves the old two-launch rounding points: the shared-down dot is
+    rounded to FP16 first, the selected weighted sum is rounded to FP16 next,
+    and only then are residual + selected + sigmoid(shared_gate) * shared added.
+    ``rows`` is the verifier token count and must be in {2, 4, 8}.
+    """
+
+    _check_pack8_single_shape(rows, in_features, out_packed, group_size, threads)
+    _check_positive(rows_per_token, "rows_per_token")
+    _check_positive(gate_stride, "gate_stride")
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_PACK8_OUTPUT_TILED_COMBINE_TRANSPOSED_FP16,
+        _ARGTYPES_PACK8_SINGLE_COMBINE,
+        ctypes.c_int,
+    )
+    err = fn(
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        selected_ptr,
+        routing_weights_ptr,
+        shared_gate_logits_ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        rows_per_token,
+        gate_stride,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
 
 
 def _gemv_awq_dual_pack8_output_tiled(

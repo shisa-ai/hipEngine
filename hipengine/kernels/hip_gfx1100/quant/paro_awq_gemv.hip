@@ -2793,6 +2793,152 @@ __launch_bounds__(128, 2) __global__ void gemv_awq_pack8_output_tiled_kernel(
   }
 }
 
+template <typename scalar_t, bool qweight_transposed, int C>
+__launch_bounds__(128, 2) __global__ void gemv_awq_pack8_output_tiled_combine_residual_kernel(
+    const scalar_t* __restrict__ x,
+    const int32_t* __restrict__ qweight,
+    const int32_t* __restrict__ qzeros,
+    const scalar_t* __restrict__ scales,
+    const scalar_t* __restrict__ selected,
+    const float* __restrict__ routing_weights,
+    const float* __restrict__ shared_gate_logits,
+    const scalar_t* __restrict__ residual,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t out_packed,
+    int group_size,
+    int64_t rows_per_token,
+    int64_t gate_stride) {
+  const int64_t out_pack = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t out_col = out_pack << 3;
+  const int64_t qw_base = qweight_transposed ? out_pack * in_features : out_pack;
+
+  float acc[C][8];
+#pragma unroll
+  for (int r = 0; r < C; ++r) {
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      acc[r][o] = 0.0f;
+    }
+  }
+
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const int64_t group = k_base / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * out_packed + out_pack]);
+    int z[8];
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      z[o] = static_cast<int>((pz >> awq_shift_for_pack_lane(o)) & 0xF);
+    }
+    const scalar_t* scale_ptr = &scales[group * out_features + out_col];
+    float s[8];
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      s[o] = scalar_to_float(scale_ptr[o]);
+    }
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int64_t qw_idx = qweight_transposed ? (qw_base + k_base + j) : ((k_base + j) * out_packed + out_pack);
+      const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+      float w[8];
+#pragma unroll
+      for (int o = 0; o < 8; ++o) {
+        w[o] = static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(o)) & 0xF) - z[o]) * s[o];
+      }
+#pragma unroll
+      for (int r = 0; r < C; ++r) {
+        const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + k_base + j]);
+#pragma unroll
+        for (int o = 0; o < 8; ++o) {
+          acc[r][o] = fmaf(xv, w[o], acc[r][o]);
+        }
+      }
+    }
+  }
+
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    const int64_t group = in_col / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * out_packed + out_pack]);
+    const int64_t qw_idx = qweight_transposed ? (qw_base + in_col) : (in_col * out_packed + out_pack);
+    const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+    const scalar_t* scale_ptr = &scales[group * out_features + out_col];
+    float w[8];
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      w[o] = static_cast<float>(static_cast<int>((pw >> awq_shift_for_pack_lane(o)) & 0xF) - static_cast<int>((pz >> awq_shift_for_pack_lane(o)) & 0xF)) * scalar_to_float(scale_ptr[o]);
+    }
+#pragma unroll
+    for (int r = 0; r < C; ++r) {
+      const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + in_col]);
+#pragma unroll
+      for (int o = 0; o < 8; ++o) {
+        acc[r][o] = fmaf(xv, w[o], acc[r][o]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < C; ++r) {
+#pragma unroll
+    for (int o = 0; o < 8; ++o) {
+      float a = acc[r][o];
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        a += __shfl_down(a, offset);
+      }
+      acc[r][o] = a;
+    }
+  }
+  __shared__ float xchg[4 * C * 8];
+  const int warp_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int r = 0; r < C; ++r) {
+#pragma unroll
+      for (int o = 0; o < 8; ++o) {
+        xchg[(warp_id * C + r) * 8 + o] = acc[r][o];
+      }
+    }
+  }
+  __syncthreads();
+
+  const int sub_groups = blockDim.x >> 5;
+  for (int elem = tid; elem < C * 8; elem += blockDim.x) {
+    const int r = elem >> 3;
+    const int o = elem & 7;
+    const int64_t col = out_col + o;
+    if (col >= out_features) {
+      continue;
+    }
+    float sum = 0.0f;
+    for (int g = 0; g < sub_groups; ++g) {
+      sum += xchg[(g * C + r) * 8 + o];
+    }
+    const scalar_t shared_lowp = float_to_scalar<scalar_t>(sum);
+    const int64_t token_offset = static_cast<int64_t>(r) * out_features;
+    float selected_acc = 0.0f;
+    for (int64_t row = 0; row < rows_per_token; ++row) {
+      const int64_t lane = static_cast<int64_t>(r) * rows_per_token + row;
+      selected_acc = fmaf(
+          scalar_to_float(selected[lane * out_features + col]),
+          routing_weights[lane],
+          selected_acc);
+    }
+    const scalar_t selected_lowp = float_to_scalar<scalar_t>(selected_acc);
+    const float gate = 1.0f / (1.0f + expf(-shared_gate_logits[static_cast<int64_t>(r) * gate_stride]));
+    const int64_t idx = token_offset + col;
+    const float value =
+        scalar_to_float(residual[idx]) +
+        scalar_to_float(selected_lowp) +
+        gate * scalar_to_float(shared_lowp);
+    out[idx] = float_to_scalar<scalar_t>(value);
+  }
+}
+
 template <typename scalar_t, bool qweight_transposed>
 int launch_pack8_output_tiled(
     const scalar_t* x,
@@ -2823,6 +2969,47 @@ int launch_pack8_output_tiled(
     default: return static_cast<int>(hipErrorInvalidValue);
   }
 #undef PARO_LAUNCH_PACK8_OT
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, bool qweight_transposed>
+int launch_pack8_output_tiled_combine_residual(
+    const scalar_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const scalar_t* scales,
+    const scalar_t* selected,
+    const float* routing_weights,
+    const float* shared_gate_logits,
+    const scalar_t* residual,
+    scalar_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t rows_per_token,
+    int64_t gate_stride,
+    int64_t threads,
+    hipStream_t stream) {
+  if (in_features <= 0 || out_packed <= 0 || group_size <= 0 ||
+      rows_per_token <= 0 || gate_stride <= 0 ||
+      (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(out_packed));
+  const dim3 block(static_cast<unsigned int>(threads));
+#define PARO_LAUNCH_PACK8_OT_COMBINE(CVAL) \
+  hipLaunchKernelGGL((gemv_awq_pack8_output_tiled_combine_residual_kernel<scalar_t, qweight_transposed, CVAL>), \
+      grid, block, 0, stream, x, qweight, qzeros, scales, selected, routing_weights, \
+      shared_gate_logits, residual, out, in_features, out_packed << 3, out_packed, \
+      static_cast<int>(group_size), rows_per_token, gate_stride)
+  switch (rows) {
+    case 2: PARO_LAUNCH_PACK8_OT_COMBINE(2); break;
+    case 4: PARO_LAUNCH_PACK8_OT_COMBINE(4); break;
+    case 8: PARO_LAUNCH_PACK8_OT_COMBINE(8); break;
+    default: return static_cast<int>(hipErrorInvalidValue);
+  }
+#undef PARO_LAUNCH_PACK8_OT_COMBINE
   return static_cast<int>(hipGetLastError());
 }
 
@@ -4576,6 +4763,30 @@ extern "C" int hipengine_gemv_awq_pack8_output_tiled_transposed_fp16(
     hipStream_t stream) {
   return launch_pack8_output_tiled<half_t, true>(
       x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    const half_t* selected,
+    const float* routing_weights,
+    const float* shared_gate_logits,
+    const half_t* residual,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t rows_per_token,
+    int64_t gate_stride,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_output_tiled_combine_residual<half_t, true>(
+      x, qweight, qzeros, scales, selected, routing_weights, shared_gate_logits,
+      residual, out, rows, in_features, out_packed, group_size, rows_per_token,
+      gate_stride, threads, stream);
 }
 
 extern "C" int hipengine_gemv_awq_dual_pack8_output_tiled_transposed_fp16(

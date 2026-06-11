@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_bf16,
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_pack8_output_tiled_bf16,
+    gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16,
     gemv_awq_pack8_output_tiled_fp16,
     gemv_awq_pack8_output_tiled_transposed_bf16,
     gemv_awq_pack8_output_tiled_transposed_fp16,
@@ -41,6 +42,10 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_pack8_strided_fp16,
     gemv_awq_pack8_transposed_bf16,
     gemv_awq_pack8_transposed_fp16,
+)
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    build_paro_combine,
+    weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w,
 )
 
 
@@ -138,6 +143,81 @@ def test_output_tiled_bitexact_bf16(rows, in_features, out_packed, threads, layo
 @pytest.mark.parametrize("threads", [64, 128])
 def test_output_tiled_bitexact_fp16(rows, in_features, out_packed, threads, layout):
     _run_case(rows, in_features, out_packed, threads, dtype="fp16", layout=layout)
+
+
+def _run_output_tiled_combine_case(rows, threads):
+    rng = np.random.default_rng(20260612 + rows * 17 + threads)
+    group_size = 128
+    in_features = 512
+    out_packed = 4
+    out_features = out_packed * 8
+    groups = in_features // group_size
+    top_k = 8
+    gate_stride = 257
+
+    x = _fp16_bits(rng.standard_normal((rows, in_features)).astype(np.float32))
+    qweight = rng.integers(0, 2**32, size=(out_packed, in_features), dtype=np.uint32).view(np.int32)
+    qzeros = rng.integers(0, 2**32, size=(groups, out_packed), dtype=np.uint32).view(np.int32)
+    scales = _fp16_bits((0.01 * rng.standard_normal((groups, out_features))).astype(np.float32))
+    selected = _fp16_bits(rng.standard_normal((rows * top_k, out_features)).astype(np.float32))
+    routing = rng.standard_normal((rows * top_k,)).astype(np.float32)
+    gate_logits = rng.standard_normal((rows, gate_stride)).astype(np.float32)
+    residual = _fp16_bits(rng.standard_normal((rows, out_features)).astype(np.float32))
+    shared = np.full((rows, out_features), 0xBEEF, dtype=np.uint16)
+    out_ref = np.full((rows, out_features), 0xDEAD, dtype=np.uint16)
+    out_test = np.full((rows, out_features), 0xCAFE, dtype=np.uint16)
+
+    awq_lib = build_paro_awq_gemv(load=True)
+    combine_lib = build_paro_combine(load=True)
+    bufs = []
+    try:
+        x_d = _dev(np.ascontiguousarray(x)); bufs.append(x_d)
+        qw_d = _dev(np.ascontiguousarray(qweight)); bufs.append(qw_d)
+        qz_d = _dev(np.ascontiguousarray(qzeros)); bufs.append(qz_d)
+        sc_d = _dev(np.ascontiguousarray(scales)); bufs.append(sc_d)
+        selected_d = _dev(np.ascontiguousarray(selected)); bufs.append(selected_d)
+        routing_d = _dev(np.ascontiguousarray(routing)); bufs.append(routing_d)
+        gate_d = _dev(np.ascontiguousarray(gate_logits)); bufs.append(gate_d)
+        residual_d = _dev(np.ascontiguousarray(residual)); bufs.append(residual_d)
+        shared_d = _dev(shared); bufs.append(shared_d)
+        ref_d = _dev(out_ref); bufs.append(ref_d)
+        test_d = _dev(out_test); bufs.append(test_d)
+
+        gemv_awq_pack8_output_tiled_transposed_fp16(
+            x_d.ptr, qw_d.ptr, qz_d.ptr, sc_d.ptr, shared_d.ptr,
+            rows, in_features, out_packed, group_size,
+            threads=threads, library=awq_lib,
+        )
+        weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w(
+            selected_d.ptr, routing_d.ptr, shared_d.ptr, gate_d.ptr,
+            residual_d.ptr, ref_d.ptr,
+            rows, top_k, out_features, gate_stride,
+            library=combine_lib,
+        )
+        gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16(
+            x_d.ptr, qw_d.ptr, qz_d.ptr, sc_d.ptr,
+            selected_d.ptr, routing_d.ptr, gate_d.ptr, residual_d.ptr,
+            test_d.ptr,
+            rows, in_features, out_packed, group_size, top_k, gate_stride,
+            threads=threads, library=awq_lib,
+        )
+        copy_device_to_host(host_array_ptr(out_ref), ref_d, out_ref.nbytes)
+        copy_device_to_host(host_array_ptr(out_test), test_d, out_test.nbytes)
+    finally:
+        for b in bufs:
+            free(b)
+
+    np.testing.assert_array_equal(
+        out_test,
+        out_ref,
+        err_msg=f"output-tiled shared-down+combine != unfused chain ({rows=}, {threads=})",
+    )
+
+
+@pytest.mark.parametrize("rows", [2, 4, 8])
+@pytest.mark.parametrize("threads", [64, 128])
+def test_output_tiled_combine_residual_transposed_fp16_matches_unfused(rows, threads):
+    _run_output_tiled_combine_case(rows, threads)
 
 
 _DUAL_SHAPES = [(256, 2, 2), (512, 8, 4), (2048, 4, 2), (4096, 8, 8)]
