@@ -19,6 +19,7 @@ _SYMBOL_GATE_MUL_BF16 = "hipengine_mtp_gate_mul_bf16"
 _SYMBOL_SOFTMAX_TOPK = "hipengine_mtp_softmax_topk_f32"
 _SYMBOL_ROUTER_TOPK_SOFTMAX = "hipengine_mtp_router_topk_softmax_256x8_f32"
 _SYMBOL_ACCUM_ROUTE = "hipengine_mtp_accumulate_route_bf16_to_f32"
+_SYMBOL_ACCUM_ROUTES = "hipengine_mtp_accumulate_routes_bf16_to_f32"
 _SYMBOL_ACCUM_SIGMOID_GATE = "hipengine_mtp_accumulate_sigmoid_gate_bf16_to_f32"
 _SYMBOL_FINALIZE_F32_TO_BF16 = "hipengine_mtp_finalize_f32_to_bf16"
 _ALLOWED_THREADS = {64, 128, 256}
@@ -31,6 +32,7 @@ _PTR_ARG_COUNTS = {
     _SYMBOL_SOFTMAX_TOPK: 2,
     _SYMBOL_ROUTER_TOPK_SOFTMAX: 4,
     _SYMBOL_ACCUM_ROUTE: 3,
+    _SYMBOL_ACCUM_ROUTES: 3,
     _SYMBOL_ACCUM_SIGMOID_GATE: 3,
     _SYMBOL_FINALIZE_F32_TO_BF16: 2,
 }
@@ -301,6 +303,35 @@ def mtp_accumulate_route_bf16_to_f32(
     )
 
 
+def mtp_accumulate_routes_bf16_to_f32(
+    src_routes_bf16_ptr: int,
+    routing_f32_ptr: int,
+    accum_f32_ptr: int,
+    routes: int,
+    elements: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Accumulate route-major BF16 route outputs into one FP32 row.
+
+    The device loop visits routes in ascending order, matching the scalar
+    ``mtp_accumulate_route_bf16_to_f32`` loop used by the persistent proposer.
+    """
+
+    if routes <= 0:
+        raise ValueError("routes must be positive")
+    _check_elements(elements, threads)
+    _launch(
+        _SYMBOL_ACCUM_ROUTES,
+        [src_routes_bf16_ptr, routing_f32_ptr, accum_f32_ptr, routes, elements, threads, stream],
+        library,
+        runtime,
+    )
+
+
 def mtp_accumulate_sigmoid_gate_bf16_to_f32(
     src_bf16_ptr: int,
     gate_f32_ptr: int,
@@ -348,6 +379,7 @@ def register_mtp_speculative_kernels(*, replace: bool = True) -> None:
         register(KernelKey(backend, "mtp_softmax_topk", "f32", "rows"), mtp_softmax_topk_f32, replace=replace)
         register(KernelKey(backend, "mtp_router_topk_softmax", "f32", "256x8"), mtp_router_topk_softmax_f32, replace=replace)
         register(KernelKey(backend, "mtp_accumulate_route", "bf16", "f32"), mtp_accumulate_route_bf16_to_f32, replace=replace)
+        register(KernelKey(backend, "mtp_accumulate_routes", "bf16", "f32"), mtp_accumulate_routes_bf16_to_f32, replace=replace)
         register(KernelKey(backend, "mtp_accumulate_sigmoid_gate", "bf16", "f32"), mtp_accumulate_sigmoid_gate_bf16_to_f32, replace=replace)
         register(KernelKey(backend, "mtp_finalize", "f32", "bf16"), mtp_finalize_f32_to_bf16, replace=replace)
 
@@ -405,6 +437,7 @@ def _check_threads(threads: int) -> None:
 __all__ = [
     "build_mtp_speculative",
     "mtp_accumulate_route_bf16_to_f32",
+    "mtp_accumulate_routes_bf16_to_f32",
     "mtp_accumulate_sigmoid_gate_bf16_to_f32",
     "mtp_add_rmsnorm_bf16_oneplus",
     "mtp_finalize_f32_to_bf16",

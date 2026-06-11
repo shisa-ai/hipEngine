@@ -10,6 +10,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, topk_f32
 from hipengine.kernels.hip_gfx1100.speculative.mtp import (
     build_mtp_speculative,
     mtp_accumulate_route_bf16_to_f32,
+    mtp_accumulate_routes_bf16_to_f32,
     mtp_accumulate_sigmoid_gate_bf16_to_f32,
     mtp_add_rmsnorm_bf16_oneplus,
     mtp_finalize_f32_to_bf16,
@@ -268,3 +269,50 @@ def test_mtp_router_topk_softmax_matches_generic_topk_path() -> None:
     assert np.array_equal(fused_routing, generic_routing)
     assert fused_ids[0, 0] == 5
     assert fused_ids[0, 1] == 17
+
+
+@pytest.mark.skipif(not _hip_available(), reason="ROCm runtime not available")
+def test_mtp_accumulate_routes_matches_scalar_route_loop() -> None:
+    rng = np.random.default_rng(0xA551E)
+    routes = 4
+    elements = 13
+    src = _f32_to_bf16_bits(rng.standard_normal((routes, elements), dtype=np.float32) * 0.25)
+    routing = rng.random(routes, dtype=np.float32)
+    routing = routing / np.sum(routing, dtype=np.float32)
+    scalar = np.zeros(elements, dtype=np.float32)
+    batched = np.zeros_like(scalar)
+    src_route_bytes = elements * np.dtype(np.uint16).itemsize
+    buffers = []
+    try:
+        for arr in (src, routing, scalar, batched):
+            buf = malloc(arr.nbytes)
+            copy_host_to_device(buf, host_array_ptr(np.ascontiguousarray(arr)), arr.nbytes)
+            buffers.append(buf)
+        library = build_mtp_speculative(load=True)
+        for route in range(routes):
+            mtp_accumulate_route_bf16_to_f32(
+                buffers[0].ptr + route * src_route_bytes,
+                buffers[1].ptr,
+                buffers[2].ptr,
+                elements,
+                route,
+                reset_output=route == 0,
+                threads=64,
+                library=library,
+            )
+        mtp_accumulate_routes_bf16_to_f32(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[3].ptr,
+            routes,
+            elements,
+            threads=64,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(scalar), buffers[2], scalar.nbytes)
+        copy_device_to_host(host_array_ptr(batched), buffers[3], batched.nbytes)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+    assert np.array_equal(batched, scalar)

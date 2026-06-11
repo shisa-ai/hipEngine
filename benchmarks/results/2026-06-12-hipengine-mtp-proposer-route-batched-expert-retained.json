@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": "llama.cpp MTP prompt suite, 9 prompts, D32, B=3",
+  "runtime_config": {
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "baseline_env": "HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=0",
+    "retained_env": "HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=1"
+  },
+  "change": "Batch the persistent MTP proposer's top-8 routed expert loop: one route-batched gate/up expert GEMV, one route-major SiLU, one route-batched down expert GEMV, and one ordered route accumulation kernel replace the scalar per-route loop while preserving route accumulation order.",
+  "correctness": {
+    "targeted_tests": "HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_dflash_dense_wmma.py::test_dflash_dense_bf16_to_bf16_expert_routes_matches_scalar tests/test_dflash_dense_wmma.py::test_dflash_silu_mul_gate_up_routes_matches_scalar tests/test_mtp_input_fusion_kernel.py::test_mtp_accumulate_routes_matches_scalar_route_loop",
+    "targeted_tests_result": "3 passed",
+    "quicksort_smoke": "exact_ar_match=true; accepted_lengths=[3,3,2,0,2,0,0,1,3,0,2,0,2]",
+    "prompt_suite_exact": "9/9",
+    "accepted_lengths_identical": true,
+    "active_budgets_identical": true
+  },
+  "suite_ab": {
+    "off_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-proposer-route-batched-expert-off-9prompt-d32 --out /tmp/hipengine-mtp-proposer-route-batched-expert-off-9prompt-d32.json",
+    "on_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-proposer-route-batched-expert-on-9prompt-d32 --out /tmp/hipengine-mtp-proposer-route-batched-expert-on-9prompt-d32.json",
+    "off": {
+      "actual_decode_speedup_vs_ar": 0.8938613879930001,
+      "cycle_cost_ar_tokens": 2.222530877505124,
+      "avg_visible_tokens_per_cycle": 2.011851851851852,
+      "avg_accepted_per_cycle": 1.011851851851852,
+      "acceptance_rate": 0.350802961986189,
+      "cycle_wall_ms_per_cycle": 20.04468624768519,
+      "verify_ms_per_cycle": 16.254285144372442,
+      "proposal_update_ms_per_cycle": 1.4546777420018995,
+      "ar_decode_ms_per_token": 9.012853298271592
+    },
+    "on": {
+      "actual_decode_speedup_vs_ar": 0.9135369076248026,
+      "cycle_cost_ar_tokens": 2.175831664083194,
+      "avg_visible_tokens_per_cycle": 2.011851851851852,
+      "avg_accepted_per_cycle": 1.011851851851852,
+      "acceptance_rate": 0.350802961986189,
+      "cycle_wall_ms_per_cycle": 19.6037059295679,
+      "verify_ms_per_cycle": 16.32543392867471,
+      "proposal_update_ms_per_cycle": 1.2442016943047445,
+      "ar_decode_ms_per_token": 9.00324653533365
+    },
+    "delta": {
+      "actual_decode_speedup_vs_ar_abs": 0.019675519631802474,
+      "actual_decode_speedup_vs_ar_rel_pct": 2.201182408827414,
+      "cycle_wall_ms_per_cycle": -0.4409803181172869,
+      "cycle_wall_rel_pct": -2.199986134321321,
+      "verify_ms_per_cycle": 0.07114878430226668,
+      "proposal_update_ms_per_cycle": -0.210476047697155,
+      "proposal_update_rel_pct": -14.468912365944494,
+      "cycle_cost_ar_tokens": -0.046699213421930175
+    }
+  },
+  "proposer_profile": {
+    "baseline_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-on-rocprof.json",
+    "on_tmp_artifact": "/tmp/hipengine-mtp-proposer-route-batched-expert-on-rocprof.json",
+    "region": "proposer_all",
+    "selected_marker_windows": 22,
+    "baseline": {
+      "kernel_calls_per_cycle": 178.36363636363637,
+      "kernel_time_ms_per_cycle": 3.379336454545455,
+      "host_window_ms_per_cycle": 4.248323909090909,
+      "proposer_expert_dense_calls_per_cycle": 49.45454545454545,
+      "proposer_expert_dense_ms_per_cycle": 0.6742380909090909,
+      "proposer_route_accumulate_calls_per_cycle": 24.727272727272727,
+      "proposer_route_accumulate_ms_per_cycle": 0.04211672727272727
+    },
+    "on": {
+      "kernel_calls_per_cycle": 92.0,
+      "kernel_time_ms_per_cycle": 3.0177019090909094,
+      "host_window_ms_per_cycle": 3.543465,
+      "proposer_expert_dense_calls_per_cycle": 6.181818181818182,
+      "proposer_expert_dense_ms_per_cycle": 0.37282854545454547,
+      "proposer_route_accumulate_calls_per_cycle": 3.090909090909091,
+      "proposer_route_accumulate_ms_per_cycle": 0.018145818181818183
+    },
+    "delta": {
+      "kernel_calls_per_cycle": -86.36363636363637,
+      "kernel_time_ms_per_cycle": -0.36163454545454575,
+      "host_window_ms_per_cycle": -0.704858909090909
+    }
+  },
+  "decision": "Promote default-on with opt-out HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=0. The exact prompt-suite gate is positive with identical acceptance; the profiler confirms launch and proposer-window reduction."
+}

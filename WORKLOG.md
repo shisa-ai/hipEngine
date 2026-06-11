@@ -81452,3 +81452,122 @@ current reduced-DAG/proposer path, but to make the endgame gates concrete:
   diagnostic before reopening the full tree path.
 - Relaxed speculative sampling is documented as an opt-in architecture project,
   not an exact-default sprint item.
+
+## 2026-06-12 - MTP proposer route-batched expert loop promoted
+
+Implemented the route-batched MTP sidecar expert loop behind
+`HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT` and promoted it default-on after
+exact same-suite evidence. The change replaces the scalar top-8 route loop
+inside `NativeMtpChainProposer.advance()`:
+
+- route-batched expert-indexed gate/up BF16 GEMV,
+- route-major packed gate/up SiLU,
+- route-batched expert-indexed down BF16 GEMV,
+- ordered multi-route BF16-to-FP32 accumulation.
+
+The ordered accumulation kernel intentionally preserves scalar route order
+`0..top_k-1`; targeted testing caught and fixed a last-bit FP32 contraction
+difference by forcing scalar-style multiply then add.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py hipengine/kernels/hip_gfx1100/speculative/mtp.py hipengine/kernels/hip_gfx1100/speculative/__init__.py hipengine/speculative/mtp_native.py tests/test_dflash_dense_wmma.py tests/test_mtp_input_fusion_kernel.py
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_dflash_dense_wmma.py::test_dflash_dense_bf16_to_bf16_expert_routes_matches_scalar tests/test_dflash_dense_wmma.py::test_dflash_silu_mul_gate_up_routes_matches_scalar tests/test_mtp_input_fusion_kernel.py::test_mtp_accumulate_routes_matches_scalar_route_loop
+```
+
+- Targeted tests: `3 passed`.
+
+Exact quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-proposer-route-batched-expert-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Proposer profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --region proposer_all \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-proposer-route-batched-expert-on-rocprof \
+  --out /tmp/hipengine-mtp-proposer-route-batched-expert-on-rocprof.json
+```
+
+Compared to retained post-router-fusion proposer profile
+`benchmarks/results/2026-06-12-hipengine-mtp-router-topk-fused-on-rocprof.json`:
+
+- Proposer calls: `178.36 -> 92.00/cycle`.
+- Proposer kernel: `3.379 -> 3.018 ms/cycle`.
+- Proposer host window: `4.248 -> 3.543 ms/cycle`.
+- Expert dense: `49.45 -> 6.18 calls/cycle`, `0.674 -> 0.373 ms/cycle`.
+- Route accumulation: `24.73 -> 3.09 calls/cycle`, `0.042 -> 0.018 ms/cycle`.
+
+Same-session 9-prompt D32 suite A/B was run sequentially after aborting an
+invalid parallel start:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-proposer-route-batched-expert-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-proposer-route-batched-expert-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-proposer-route-batched-expert-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-proposer-route-batched-expert-on-9prompt-d32.json
+```
+
+- Exact: `9/9 -> 9/9`.
+- Accepted lengths and active budgets: identical.
+- Actual ratio: `0.893861 -> 0.913537` (+2.20% relative).
+- Wall: `20.044686 -> 19.603706 ms/cycle` (-0.440980 ms, -2.20%).
+- Verify: `16.254285 -> 16.325434 ms/cycle` (noise/up).
+- Proposal/update: `1.454678 -> 1.244202 ms/cycle` (-0.210476 ms, -14.47%).
+- Visible/accepted density unchanged: `2.011852` / `1.011852` per cycle.
+
+Decision:
+
+- Promote default-on with opt-out
+  `HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=0`.
+- Added compact retained artifact
+  `benchmarks/results/2026-06-12-hipengine-mtp-proposer-route-batched-expert-retained.json`.
+- Updated `docs/MTP.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`. Current 35B-A3B MTP row is now `0.914x`,
+  `19.604 ms/cycle`, `16.325 ms` verify, and `1.244 ms` proposal/update.
+
+Default-on smoke after flipping the env default:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-proposer-route-batched-expert-default-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.

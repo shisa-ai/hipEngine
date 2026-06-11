@@ -315,6 +315,28 @@ __global__ void mtp_accumulate_route_bf16_to_f32_kernel(
   }
 }
 
+__global__ void mtp_accumulate_routes_bf16_to_f32_kernel(
+    const uint16_t* __restrict__ src_routes,
+    const float* __restrict__ routing,
+    float* __restrict__ accum,
+    int64_t routes,
+    int64_t elements) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < elements;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    float total = 0.0f;
+    for (int64_t route = 0; route < routes; ++route) {
+      const volatile float value = routing[route] * bf16_bits_to_float(src_routes[route * elements + idx]);
+      if (route == 0) {
+        total = value;
+      } else {
+        const volatile float previous = total;
+        total = previous + value;
+      }
+    }
+    accum[idx] = total;
+  }
+}
+
 __global__ void mtp_accumulate_sigmoid_gate_bf16_to_f32_kernel(
     const uint16_t* __restrict__ src,
     const float* __restrict__ gate,
@@ -556,6 +578,32 @@ extern "C" int hipengine_mtp_accumulate_route_bf16_to_f32(
       elements,
       route_index,
       reset_output);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_mtp_accumulate_routes_bf16_to_f32(
+    const uint16_t* src_routes,
+    const float* routing,
+    float* accum,
+    int64_t routes,
+    int64_t elements,
+    int64_t threads,
+    hipStream_t stream) {
+  if (routes <= 0 || elements <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (elements + threads - 1) / threads;
+  hipLaunchKernelGGL(
+      mtp_accumulate_routes_bf16_to_f32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      src_routes,
+      routing,
+      accum,
+      routes,
+      elements);
   return static_cast<int>(hipGetLastError());
 }
 

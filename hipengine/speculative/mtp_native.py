@@ -23,15 +23,18 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     build_dflash_drafter,
     dflash_dense_bf16_to_bf16,
     dflash_dense_bf16_to_bf16_expert,
+    dflash_dense_bf16_to_bf16_expert_routes,
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
     dflash_qkv_proj_bf16_mixed,
+    dflash_silu_mul_gate_up_routes_bf16,
     dflash_silu_mul_bf16,
 )
 from hipengine.kernels.hip_gfx1100.speculative.mtp import (
     build_mtp_speculative,
     mtp_accumulate_route_bf16_to_f32,
+    mtp_accumulate_routes_bf16_to_f32,
     mtp_accumulate_sigmoid_gate_bf16_to_f32,
     mtp_add_rmsnorm_bf16_oneplus,
     mtp_finalize_f32_to_bf16,
@@ -105,6 +108,10 @@ def _direct_kv_write_enabled() -> bool:
 
 def _router_topk_fused_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED", True)
+
+
+def _route_batched_expert_enabled() -> bool:
+    return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT", True)
 
 
 def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic], buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> tuple[np.ndarray, DeviceBuffer]:
@@ -264,6 +271,9 @@ class NativeMtpChainProposer:
         _, self.gate_up_buf = _empty_device((1, 2 * self.intermediate), np.uint16, self.buffers, runtime=self.runtime)
         _, self.expert_intermediate_buf = _empty_device((1, self.intermediate), np.uint16, self.buffers, runtime=self.runtime)
         _, self.expert_down_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
+        _, self.gate_up_routes_buf = _empty_device((self.top_k, 2 * self.intermediate), np.uint16, self.buffers, runtime=self.runtime)
+        _, self.expert_intermediate_routes_buf = _empty_device((self.top_k, self.intermediate), np.uint16, self.buffers, runtime=self.runtime)
+        _, self.expert_down_routes_buf = _empty_device((self.top_k, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, self.moe_accum_buf = _empty_device((1, self.hidden), np.float32, self.buffers, runtime=self.runtime)
         _, self.shared_gate_buf = _empty_device((1, 1), np.float32, self.buffers, runtime=self.runtime)
         _, self.shared_gate_proj_buf = _empty_device((1, self.shared_intermediate), np.uint16, self.buffers, runtime=self.runtime)
@@ -556,16 +566,14 @@ class NativeMtpChainProposer:
         # Expert-indexed GEMVs read `topk_ids[route]` on-device, so the MoE
         # loop no longer forces a mid-pass router D2H sync. Host-visible
         # ids/values are only read when the caller needs diagnostic metadata.
-        route0_init = _route0_accum_init_enabled()
-        if not route0_init:
-            self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, 0)
-        for route in range(self.top_k):
-            dflash_dense_bf16_to_bf16_expert(
+        if _route_batched_expert_enabled():
+            dflash_dense_bf16_to_bf16_expert_routes(
                 self.moe_in_buf.ptr,
                 self.gate_up_base,
                 self.topk_ids_buf.ptr,
-                self.gate_up_buf.ptr,
-                route,
+                self.gate_up_routes_buf.ptr,
+                self.top_k,
+                0,
                 self.gate_up_expert_bytes // DType.BF16.itemsize,
                 1,
                 self.hidden,
@@ -573,13 +581,21 @@ class NativeMtpChainProposer:
                 threads=128,
                 library=self.dflash_lib,
             )
-            dflash_silu_mul_bf16(self.gate_up_buf.ptr, self.gate_up_buf.ptr + self.intermediate * DType.BF16.itemsize, self.expert_intermediate_buf.ptr, self.intermediate, threads=256, library=self.dflash_lib)
-            dflash_dense_bf16_to_bf16_expert(
-                self.expert_intermediate_buf.ptr,
+            dflash_silu_mul_gate_up_routes_bf16(
+                self.gate_up_routes_buf.ptr,
+                self.expert_intermediate_routes_buf.ptr,
+                self.top_k,
+                self.intermediate,
+                threads=256,
+                library=self.dflash_lib,
+            )
+            dflash_dense_bf16_to_bf16_expert_routes(
+                self.expert_intermediate_routes_buf.ptr,
                 self.down_base,
                 self.topk_ids_buf.ptr,
-                self.expert_down_buf.ptr,
-                route,
+                self.expert_down_routes_buf.ptr,
+                self.top_k,
+                self.intermediate,
                 self.down_expert_bytes // DType.BF16.itemsize,
                 1,
                 self.intermediate,
@@ -587,16 +603,57 @@ class NativeMtpChainProposer:
                 threads=128,
                 library=self.dflash_lib,
             )
-            mtp_accumulate_route_bf16_to_f32(
-                self.expert_down_buf.ptr,
+            mtp_accumulate_routes_bf16_to_f32(
+                self.expert_down_routes_buf.ptr,
                 self.routing_buf.ptr,
                 self.moe_accum_buf.ptr,
+                self.top_k,
                 self.hidden,
-                route,
-                reset_output=route0_init and route == 0,
                 threads=256,
                 library=self.mtp_lib,
             )
+        else:
+            route0_init = _route0_accum_init_enabled()
+            if not route0_init:
+                self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, 0)
+            for route in range(self.top_k):
+                dflash_dense_bf16_to_bf16_expert(
+                    self.moe_in_buf.ptr,
+                    self.gate_up_base,
+                    self.topk_ids_buf.ptr,
+                    self.gate_up_buf.ptr,
+                    route,
+                    self.gate_up_expert_bytes // DType.BF16.itemsize,
+                    1,
+                    self.hidden,
+                    2 * self.intermediate,
+                    threads=128,
+                    library=self.dflash_lib,
+                )
+                dflash_silu_mul_bf16(self.gate_up_buf.ptr, self.gate_up_buf.ptr + self.intermediate * DType.BF16.itemsize, self.expert_intermediate_buf.ptr, self.intermediate, threads=256, library=self.dflash_lib)
+                dflash_dense_bf16_to_bf16_expert(
+                    self.expert_intermediate_buf.ptr,
+                    self.down_base,
+                    self.topk_ids_buf.ptr,
+                    self.expert_down_buf.ptr,
+                    route,
+                    self.down_expert_bytes // DType.BF16.itemsize,
+                    1,
+                    self.intermediate,
+                    self.hidden,
+                    threads=128,
+                    library=self.dflash_lib,
+                )
+                mtp_accumulate_route_bf16_to_f32(
+                    self.expert_down_buf.ptr,
+                    self.routing_buf.ptr,
+                    self.moe_accum_buf.ptr,
+                    self.hidden,
+                    route,
+                    reset_output=route0_init and route == 0,
+                    threads=256,
+                    library=self.mtp_lib,
+                )
         dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert_gate.weight"].ptr, self.shared_gate_buf.ptr, 1, self.hidden, 1, threads=128, library=self.dflash_lib)
         dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, self.shared_gate_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
         dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, self.shared_up_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)

@@ -189,3 +189,155 @@ def test_dflash_dense_dispatch_env(monkeypatch, _drafter_lib, _runtime):
     monkeypatch.setenv("HIPENGINE_DFLASH_DRAFTER_DENSE", "bogus")
     with pytest.raises(ValueError):
         dflash_dense_bf16_to_bf16(0, 0, 0, 16, 32, 16, library=_drafter_lib, runtime=get_hip_runtime())
+
+
+def test_dflash_dense_bf16_to_bf16_expert_routes_matches_scalar(_drafter_lib, _runtime):
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
+        dflash_dense_bf16_to_bf16_expert,
+        dflash_dense_bf16_to_bf16_expert_routes,
+    )
+
+    rng = np.random.default_rng(0xD41A7)
+    routes = 4
+    rows = 1
+    in_features = 32
+    out_features = 17
+    num_experts = 6
+    expert_ids = np.array([3, 1, 5, 0], dtype=np.int32)
+    x_shared = _to_bf16_bits(rng.standard_normal((rows, in_features), dtype=np.float32) * 0.05)
+    x_routes = _to_bf16_bits(rng.standard_normal((routes, rows, in_features), dtype=np.float32) * 0.05)
+    weights = _to_bf16_bits(rng.standard_normal((num_experts, out_features, in_features), dtype=np.float32) * 0.02)
+    scalar_shared = np.zeros((routes, rows, out_features), dtype=np.uint16)
+    batch_shared = np.zeros_like(scalar_shared)
+    scalar_routed = np.zeros_like(scalar_shared)
+    batch_routed = np.zeros_like(scalar_shared)
+    bytes_per_out = rows * out_features * np.dtype(np.uint16).itemsize
+    bytes_per_x = rows * in_features * np.dtype(np.uint16).itemsize
+    bufs = []
+    try:
+        x_shared_dev = _upload(_runtime, bufs, x_shared)
+        x_routes_dev = _upload(_runtime, bufs, x_routes)
+        weights_dev = _upload(_runtime, bufs, weights)
+        expert_ids_dev = _upload(_runtime, bufs, expert_ids)
+        scalar_shared_dev = _upload(_runtime, bufs, scalar_shared)
+        batch_shared_dev = _upload(_runtime, bufs, batch_shared)
+        scalar_routed_dev = _upload(_runtime, bufs, scalar_routed)
+        batch_routed_dev = _upload(_runtime, bufs, batch_routed)
+        expert_stride = out_features * in_features
+        for route in range(routes):
+            dflash_dense_bf16_to_bf16_expert(
+                x_shared_dev.ptr,
+                weights_dev.ptr,
+                expert_ids_dev.ptr,
+                scalar_shared_dev.ptr + route * bytes_per_out,
+                route,
+                expert_stride,
+                rows,
+                in_features,
+                out_features,
+                threads=64,
+                library=_drafter_lib,
+                runtime=_runtime,
+            )
+            dflash_dense_bf16_to_bf16_expert(
+                x_routes_dev.ptr + route * bytes_per_x,
+                weights_dev.ptr,
+                expert_ids_dev.ptr,
+                scalar_routed_dev.ptr + route * bytes_per_out,
+                route,
+                expert_stride,
+                rows,
+                in_features,
+                out_features,
+                threads=64,
+                library=_drafter_lib,
+                runtime=_runtime,
+            )
+        dflash_dense_bf16_to_bf16_expert_routes(
+            x_shared_dev.ptr,
+            weights_dev.ptr,
+            expert_ids_dev.ptr,
+            batch_shared_dev.ptr,
+            routes,
+            0,
+            expert_stride,
+            rows,
+            in_features,
+            out_features,
+            threads=64,
+            library=_drafter_lib,
+            runtime=_runtime,
+        )
+        dflash_dense_bf16_to_bf16_expert_routes(
+            x_routes_dev.ptr,
+            weights_dev.ptr,
+            expert_ids_dev.ptr,
+            batch_routed_dev.ptr,
+            routes,
+            rows * in_features,
+            expert_stride,
+            rows,
+            in_features,
+            out_features,
+            threads=64,
+            library=_drafter_lib,
+            runtime=_runtime,
+        )
+        _runtime.device_synchronize()
+        scalar_shared = _download(_runtime, scalar_shared_dev, scalar_shared.shape, np.uint16)
+        batch_shared = _download(_runtime, batch_shared_dev, batch_shared.shape, np.uint16)
+        scalar_routed = _download(_runtime, scalar_routed_dev, scalar_routed.shape, np.uint16)
+        batch_routed = _download(_runtime, batch_routed_dev, batch_routed.shape, np.uint16)
+    finally:
+        _free_all(_runtime, bufs)
+
+    assert np.array_equal(batch_shared, scalar_shared)
+    assert np.array_equal(batch_routed, scalar_routed)
+
+
+def test_dflash_silu_mul_gate_up_routes_matches_scalar(_drafter_lib, _runtime):
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
+        dflash_silu_mul_bf16,
+        dflash_silu_mul_gate_up_routes_bf16,
+    )
+
+    rng = np.random.default_rng(0xD41A8)
+    routes = 4
+    features = 19
+    gate_up = _to_bf16_bits(rng.standard_normal((routes, 2 * features), dtype=np.float32) * 0.5)
+    scalar = np.zeros((routes, features), dtype=np.uint16)
+    batched = np.zeros_like(scalar)
+    bytes_per_gate_up = 2 * features * np.dtype(np.uint16).itemsize
+    bytes_per_out = features * np.dtype(np.uint16).itemsize
+    bufs = []
+    try:
+        gate_up_dev = _upload(_runtime, bufs, gate_up)
+        scalar_dev = _upload(_runtime, bufs, scalar)
+        batched_dev = _upload(_runtime, bufs, batched)
+        for route in range(routes):
+            base = gate_up_dev.ptr + route * bytes_per_gate_up
+            dflash_silu_mul_bf16(
+                base,
+                base + features * np.dtype(np.uint16).itemsize,
+                scalar_dev.ptr + route * bytes_per_out,
+                features,
+                threads=64,
+                library=_drafter_lib,
+                runtime=_runtime,
+            )
+        dflash_silu_mul_gate_up_routes_bf16(
+            gate_up_dev.ptr,
+            batched_dev.ptr,
+            routes,
+            features,
+            threads=64,
+            library=_drafter_lib,
+            runtime=_runtime,
+        )
+        _runtime.device_synchronize()
+        scalar = _download(_runtime, scalar_dev, scalar.shape, np.uint16)
+        batched = _download(_runtime, batched_dev, batched.shape, np.uint16)
+    finally:
+        _free_all(_runtime, bufs)
+
+    assert np.array_equal(batched, scalar)

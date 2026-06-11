@@ -244,6 +244,24 @@ __global__ void dflash_silu_mul_bf16_kernel(
   }
 }
 
+__global__ void dflash_silu_mul_gate_up_routes_bf16_kernel(
+    const uint16_t* __restrict__ gate_up_routes,
+    uint16_t* __restrict__ out_routes,
+    int64_t routes,
+    int64_t features) {
+  const int64_t total = routes * features;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < total;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int64_t route = idx / features;
+    const int64_t dim = idx - route * features;
+    const int64_t base = route * 2 * features;
+    const float g = bf16_bits_to_float(gate_up_routes[base + dim]);
+    const float u = bf16_bits_to_float(gate_up_routes[base + features + dim]);
+    const float silu = g / (1.0f + expf(-g));
+    out_routes[route * features + dim] = float_to_bf16_bits(silu * u);
+  }
+}
+
 __global__ void dflash_dense_bf16_to_bf16_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ weight,
@@ -312,6 +330,45 @@ __global__ void dflash_dense_bf16_to_bf16_expert_kernel(
   }
   if (threadIdx.x == 0) {
     out[row * out_features + out_col] = float_to_bf16_bits(partial[0]);
+  }
+}
+
+__global__ void dflash_dense_bf16_to_bf16_expert_routes_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ expert_weights_base,
+    const int32_t* __restrict__ expert_ids,
+    uint16_t* __restrict__ out,
+    int64_t routes,
+    int64_t x_route_stride_elems,
+    int64_t expert_stride_elems,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t route = static_cast<int64_t>(blockIdx.z);
+  if (route >= routes || row >= rows || out_col >= out_features) {
+    return;
+  }
+  const uint16_t* weight = expert_weights_base + static_cast<int64_t>(expert_ids[route]) * expert_stride_elems;
+  const uint16_t* route_x = x_route_stride_elems > 0 ? x + route * x_route_stride_elems : x;
+  extern __shared__ float partial[];
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+  float acc = 0.0f;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < in_features; dim += blockDim.x) {
+    acc = fmaf(bf16_bits_to_float(route_x[x_base + dim]), bf16_bits_to_float(weight[w_base + dim]), acc);
+  }
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    out[(route * rows + row) * out_features + out_col] = float_to_bf16_bits(partial[0]);
   }
 }
 
@@ -1207,6 +1264,32 @@ extern "C" int hipengine_dflash_silu_mul_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_dflash_silu_mul_gate_up_routes_bf16(
+    const uint16_t* gate_up_routes,
+    uint16_t* out_routes,
+    int64_t routes,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (routes <= 0 || !valid_elements(features, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t elements = routes * features;
+  const int64_t blocks = (elements + threads - 1) / threads;
+  const int64_t capped_blocks = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      dflash_silu_mul_gate_up_routes_bf16_kernel,
+      dim3(static_cast<unsigned int>(capped_blocks)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      gate_up_routes,
+      out_routes,
+      routes,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dflash_dense_bf16_to_bf16(
     const uint16_t* x,
     const uint16_t* weight,
@@ -1260,6 +1343,45 @@ extern "C" int hipengine_dflash_dense_bf16_to_bf16_expert(
       expert_ids,
       out,
       route,
+      expert_stride_elems,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_dense_bf16_to_bf16_expert_routes(
+    const uint16_t* x,
+    const uint16_t* expert_weights_base,
+    const int32_t* expert_ids,
+    uint16_t* out,
+    int64_t routes,
+    int64_t x_route_stride_elems,
+    int64_t expert_stride_elems,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_dense_shape(rows, in_features, out_features, threads) || routes <= 0 ||
+      x_route_stride_elems < 0 || expert_stride_elems <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dflash_dense_bf16_to_bf16_expert_routes_kernel,
+      dim3(
+          static_cast<unsigned int>(out_features),
+          static_cast<unsigned int>(rows),
+          static_cast<unsigned int>(routes)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      x,
+      expert_weights_base,
+      expert_ids,
+      out,
+      routes,
+      x_route_stride_elems,
       expert_stride_elems,
       rows,
       in_features,

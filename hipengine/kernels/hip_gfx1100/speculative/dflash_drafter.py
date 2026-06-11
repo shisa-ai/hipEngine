@@ -20,7 +20,10 @@ _SYMBOL_CONCAT_BF16 = "hipengine_dflash_concat_rows_bf16"
 _SYMBOL_RMSNORM_BF16 = "hipengine_dflash_rmsnorm_bf16"
 _SYMBOL_ADD_RMSNORM_BF16 = "hipengine_dflash_add_rmsnorm_bf16"
 _SYMBOL_SILU_MUL_BF16 = "hipengine_dflash_silu_mul_bf16"
+_SYMBOL_SILU_MUL_GATE_UP_ROUTES_BF16 = "hipengine_dflash_silu_mul_gate_up_routes_bf16"
 _SYMBOL_DENSE_BF16_TO_BF16 = "hipengine_dflash_dense_bf16_to_bf16"
+_SYMBOL_DENSE_BF16_TO_BF16_EXPERT = "hipengine_dflash_dense_bf16_to_bf16_expert"
+_SYMBOL_DENSE_BF16_TO_BF16_EXPERT_ROUTES = "hipengine_dflash_dense_bf16_to_bf16_expert_routes"
 _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
 _SYMBOL_DENSE_BF16_TO_BF16_WMMA = "hipengine_dflash_dense_bf16_to_bf16_wmma"
 _SYMBOL_DENSE_BF16_TO_F32_WMMA = "hipengine_dflash_dense_bf16_to_f32_wmma"
@@ -380,6 +383,46 @@ def dflash_silu_mul_bf16(
     _launch_simple(_SYMBOL_SILU_MUL_BF16, (gate_bf16_ptr, up_bf16_ptr, out_bf16_ptr, elements), threads, stream, library, runtime)
 
 
+def dflash_silu_mul_gate_up_routes_bf16(
+    gate_up_routes_bf16_ptr: int,
+    out_routes_bf16_ptr: int,
+    routes: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Route-major BF16 SiLU for packed ``[route][gate, up]`` slabs."""
+
+    if routes <= 0:
+        raise ValueError("routes must be positive")
+    _check_elements(features, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SILU_MUL_GATE_UP_ROUTES_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(gate_up_routes_bf16_ptr),
+        ctypes.c_void_p(out_routes_bf16_ptr),
+        ctypes.c_int64(routes),
+        ctypes.c_int64(features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def dflash_dense_bf16_to_bf16(
     x_bf16_ptr: int,
     weight_bf16_ptr: int,
@@ -439,7 +482,7 @@ def dflash_dense_bf16_to_bf16_expert(
     _check_dense_shape(rows, in_features, out_features, threads)
     library = library or build_dflash_drafter(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, "hipengine_dflash_dense_bf16_to_bf16_expert")
+    fn = getattr(library, _SYMBOL_DENSE_BF16_TO_BF16_EXPERT)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -460,6 +503,73 @@ def dflash_dense_bf16_to_bf16_expert(
         ctypes.c_void_p(expert_ids_i32_ptr),
         ctypes.c_void_p(out_bf16_ptr),
         ctypes.c_int64(route),
+        ctypes.c_int64(expert_stride_elems),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash_dense_bf16_to_bf16_expert_routes(
+    x_bf16_ptr: int,
+    expert_weights_base_ptr: int,
+    expert_ids_i32_ptr: int,
+    out_bf16_ptr: int,
+    routes: int,
+    x_route_stride_elems: int,
+    expert_stride_elems: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Expert-indexed dense GEMV for all routes in one launch.
+
+    ``x_route_stride_elems == 0`` means every route reads the same input row.
+    Positive strides mean route ``r`` reads ``x + r * x_route_stride_elems``.
+    Output is route-major ``[routes, rows, out_features]``.
+    """
+
+    if routes <= 0:
+        raise ValueError("routes must be positive")
+    if x_route_stride_elems < 0:
+        raise ValueError("x_route_stride_elems must be non-negative")
+    if expert_stride_elems <= 0:
+        raise ValueError("expert_stride_elems must be positive")
+    _check_dense_shape(rows, in_features, out_features, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DENSE_BF16_TO_BF16_EXPERT_ROUTES)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_bf16_ptr),
+        ctypes.c_void_p(expert_weights_base_ptr),
+        ctypes.c_void_p(expert_ids_i32_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(routes),
+        ctypes.c_int64(x_route_stride_elems),
         ctypes.c_int64(expert_stride_elems),
         ctypes.c_int64(rows),
         ctypes.c_int64(in_features),
@@ -999,8 +1109,18 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "dflash_silu_mul_routes", "w4_paro", "bf16"),
+        dflash_silu_mul_gate_up_routes_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_bf16"),
         dflash_dense_bf16_to_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_bf16_expert_routes"),
+        dflash_dense_bf16_to_bf16_expert_routes,
         replace=replace,
     )
     register(
