@@ -40,8 +40,8 @@ command, hardware, workload shape, and correctness gate.
 | --- | --- | ---: | --- | --- | --- |
 | P0 | Re-artifact locked baseline | 0 ms | Rerun exact B=3 chain graph-auto + cap32768 + device-expert-dispatch config and emit a compact artifact. | Exact same-session AR; ratio within noise of `0.758x`; wall near `27.8 ms`. | **Done 2026-06-11.** Fresh audit row: `84.314` vs `111.769 tok/s` = `0.754x`; accepted lengths unchanged. Keep `0.758x / 27.8 ms` as the sprint's best locked baseline. |
 | P0 | Current verify profile refresh | Diagnostic | Run `scripts/mtp_verifier_rocprof.py` on the locked config with callsite/family rollup. | Family split reconciles with `22.0 ms` verify wall; no unexpected fallback kernels. | **Done 2026-06-11.** Post-warmup verify profile: `19.73 ms/pass` host window, `15.33 ms/pass` kernel, `972` calls/pass. |
-| P1 | Finish M16.4 dual output-tiling | -0.46 ms/pass kernel / -0.57 ms/pass host measured; more only if split-output coverage broadens | Add a split-output output-column-tiled dual W4 kernel for prefill-style ABIs, then route only exact-suite-safe sites. | Byte-exact W4 gates; same-session exact B=3 smoke; rocprof shows `w4_dual_prefill_smallbatch` and remaining single-prefill shrink. | **Banked diagnostic 2026-06-11, default-off.** Split-output kernel is byte-exact and C-dispatch-routed for linear-attn shared gate/up under `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1`. Quicksort exact; `w4_dual_prefill_smallbatch` `0.917 -> 0 ms/pass`, replaced by 30 output-tiled dual calls at `0.438 ms/pass`; net steady profile `15.33 -> 14.87 ms/pass` kernel and `19.73 -> 19.16 ms/pass` host. Broader exact-suite gate needed before default-on. |
-| P1 | Remove glue launches / copy-cast floor | -1.5 to -2.2 ms full target; -0.27 ms/pass host measured for first slice | Fuse or alias producer outputs into the next RMSNorm/rotate/GEMV inputs; eliminate pure `copyBuffer`/format-cast nodes from verifier hot path. | RED layout/lifetime tests; exact B=3 smoke; launch count and cycle wall both drop. | **First slice banked diagnostic 2026-06-11, default-off.** Linear-attn out-proj `f32_to_fp16 + paro_rotate1` fusion is byte-exact vs the old chain and removes 30 launches/pass (`972 -> 942`), but kernel time is neutral (`15.33 -> 15.31 ms/pass`) and host only `19.73 -> 19.45 ms/pass`. Stacked with M16.4 split-output: exact quicksort, `87.725 tok/s` (`0.783x`), host `19.02 ms/pass`, kernel `14.86 ms/pass`, calls `942`. Continue with higher-reach glue: capture-safe barrier/fill elimination, rotate launch consolidation, and overlap. |
+| P1 | Finish M16.4 dual output-tiling | -0.46 ms/pass kernel / -0.57 ms/pass host measured; more only if split-output coverage broadens | Add a split-output output-column-tiled dual W4 kernel for prefill-style ABIs, then route only exact-suite-safe sites. | Byte-exact W4 gates; same-session exact B=3 smoke; rocprof shows `w4_dual_prefill_smallbatch` and remaining single-prefill shrink. | **Suite-exact diagnostic 2026-06-11, default-off.** Split-output kernel is byte-exact and C-dispatch-routed for linear-attn shared gate/up under `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1`. Quicksort exact; `w4_dual_prefill_smallbatch` `0.917 -> 0 ms/pass`, replaced by 30 output-tiled dual calls at `0.438 ms/pass`; net steady profile `15.33 -> 14.87 ms/pass` kernel and `19.73 -> 19.16 ms/pass` host. Stacked with cast+rotate, the D32 9-prompt suite is exact `9/9`, but aggregate is still `0.666x` AR. |
+| P1 | Remove glue launches / copy-cast floor | -1.5 to -2.2 ms full target; -0.27 ms/pass host measured for first slice | Fuse or alias producer outputs into the next RMSNorm/rotate/GEMV inputs; eliminate pure `copyBuffer`/format-cast nodes from verifier hot path. | RED layout/lifetime tests; exact B=3 smoke; launch count and cycle wall both drop. | **Suite-exact diagnostic 2026-06-11, default-off.** Linear-attn out-proj `f32_to_fp16 + paro_rotate1` fusion is byte-exact vs the old chain and removes 30 launches/pass (`972 -> 942`), but kernel time is neutral (`15.33 -> 15.31 ms/pass`) and host only `19.73 -> 19.45 ms/pass`. Stacked with M16.4 split-output: exact quicksort, `87.725 tok/s` (`0.783x`), host `19.02 ms/pass`, kernel `14.86 ms/pass`, calls `942`; D32 9-prompt suite exact `9/9` with mean wall `27.77 ms/cycle`, verify `22.31 ms/cycle`, and speed `0.666x` AR. Continue with higher-reach glue: capture-safe barrier/fill elimination, rotate launch consolidation, and overlap. |
 | P1 | Proposer-side rotate-into-RMSNorm fusion | -0.5 to -1 ms | Implement producer-side fusion where it reduces launches without repeating full rotation per output tile. | Bit-exact proposal candidates; no acceptance drift; net proposer/draft wall decreases. | Avoid the prior consumer-side rotate trap that regressed occupancy. |
 | P2 | Multi-stream overlap spike | -1 to -3 ms if real | Prototype verifier-layer dispatch on 2/4 streams with event dependencies around independent W4/MoE/GDN work. | Microbench shows measurable overlap before runtime integration; exact smoke after integration. | W7900 has idle ACEs, but dependency shape may cap useful overlap. |
 | P2 | Device-resident proposer chain advance | -0.5 to -1.5 ms | Use the graph-safe device expert dispatch to keep proposer update/advance in device-resident batches. | Candidate token sequence identical to baseline; cycle wall improves. | p_min and sync trims were neutral; only do work that removes real GPU/launch cost. |
@@ -50,7 +50,10 @@ command, hardware, workload shape, and correctness gate.
 
 Break-even accounting: stacked P1 wins must get close to `27.8 -> 23-24 ms`; one
 additional P2 overlap/proposer win is likely needed for `<21.5 ms`. Any acceptance
-uplift is margin, not the primary plan.
+uplift is margin, not the primary plan. The D32 9-prompt suite confirms the
+stacked P1 gates are exact, but it also shows that acceptance variance keeps the
+aggregate prompt-suite row slower than the stable quicksort row; wall-time cuts
+remain the gating lever.
 
 ### P0 Refresh Artifacts (2026-06-11)
 
@@ -178,6 +181,36 @@ evidence for the glue bucket, but it is not a major break-even lever. The next
 P1 work should target the larger capture-safe barrier/fill bucket, remaining
 rotate consolidation that does not repeat rotation per output tile, or a P2
 overlap/proposer win.
+
+### Stacked P1 9-Prompt Exactness Check (2026-06-11)
+
+Artifact:
+
+- [`2026-06-11-hipengine-mtp-p1-stacked-9prompt-d32.json`](../benchmarks/results/2026-06-11-hipengine-mtp-p1-stacked-9prompt-d32.json)
+
+Command shape: W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed trunk +
+MTP-BF16, D32, B=3, `persistent_device`, `chain_attn_mode=batched`, verifier
+graph `auto`, draft vocab cap `32768`, with both
+`HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1` and
+`HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1`.
+
+Result:
+
+- Correctness: exact same-session AR on all `9/9` prompts.
+- Aggregate by-prompt mean: actual decode speedup `0.666x` AR, observed cycle
+  speedup `0.672x`, visible tokens/cycle `2.023`, acceptance rate `0.355`.
+- Timing: cycle wall `27.77 ms/cycle`, verify `22.31 ms/cycle`,
+  proposal/update `2.14 ms/cycle`, AR decode `9.01 ms/token`.
+- Best acceptance prompt: `code_python`, `0.949x` AR with `3.10` visible
+  tokens/cycle.
+- Worst prompt: `long_code_review`, `0.408x` AR, driven by `45.02 ms/cycle`
+  wall and only `1.88` visible tokens/cycle.
+
+Decision: the stacked P1 gates are no longer quicksort-only for correctness, but
+they are still default-off diagnostics because they do not make the prompt suite
+positive. The locked sprint baseline remains `0.758x / 27.8 ms`; the next work
+must reduce the verifier/proposer wall rather than spending another cycle on
+small launch-count cleanups.
 
 ## Thesis
 

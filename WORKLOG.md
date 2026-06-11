@@ -78212,3 +78212,44 @@ Decision: bank as default-off diagnostic. This is a clean launch-count cleanup
 but too small to move break-even by itself. The next P1 targets should be the
 larger capture-safe barrier/fill bucket, remaining rotate consolidation that
 does not repeat rotations per output tile, or a P2 overlap/proposer win.
+
+## 2026-06-11 — Stacked P1 gates pass D32 9-prompt exactness, still not positive
+
+Ran the wider prompt-suite gate for the two default-off P1 verifier slices
+stacked together:
+
+- `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1`
+- `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1`
+- `HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768`
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=1 HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-p1-stacked-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-p1-stacked-9prompt-d32.json
+```
+
+Result: exact same-session AR on all `9/9` prompts. Aggregate by-prompt mean:
+actual decode speedup `0.666x` AR, observed cycle speedup `0.672x`, visible
+tokens/cycle `2.023`, acceptance rate `0.355`, cycle wall `27.77 ms/cycle`,
+verify `22.31 ms/cycle`, proposal/update `2.14 ms/cycle`, and AR decode
+`9.01 ms/token`. Per-prompt speed ranged from `code_python` `0.949x` to
+`long_code_review` `0.408x`.
+
+Decision: stacked P1 is suite-exact at D32, so it is no longer merely a
+quicksort correctness diagnostic. It still stays default-off because it is not
+positive and does not move the locked sprint baseline. The next push remains the
+same: hold `0.758x / 27.8 ms`, cut wall toward `<21.5 ms` with higher-reach
+glue removal, overlap, or proposer/device-resident work.
