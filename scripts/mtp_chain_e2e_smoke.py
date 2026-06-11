@@ -792,6 +792,7 @@ def _run_spec_persistent_device(
                     capture_base_ptr=capture_buf.ptr,
                     seed_token=root,
                     read_expert_topk=not skip_unused_proposer_reads,
+                    read_lm_head_value=not skip_unused_proposer_reads,
                 )
                 proposal_prefill_seconds += time.perf_counter() - prefill_started
                 cycles = 0
@@ -851,6 +852,7 @@ def _run_spec_persistent_device(
                                 input_token=int(topk_per_depth[-1][0][0]),
                                 position=proposer.position + 1,
                                 read_expert_topk=not skip_unused_proposer_reads,
+                                read_lm_head_value=not skip_unused_proposer_reads,
                             )
                             topk_per_depth.append(proposer.vocab_topk(k=8))
                         candidates = [int(ids[0]) for ids, _vals in topk_per_depth]
@@ -865,6 +867,7 @@ def _run_spec_persistent_device(
                                 input_token=candidates[-1],
                                 position=proposer.position + 1,
                                 read_expert_topk=not skip_unused_proposer_reads,
+                                read_lm_head_value=not skip_unused_proposer_reads,
                             )
                             if (not skip_unused_proposer_reads) or draft_idx < active_budget - 1:
                                 snapshots.append(proposer.save_state(draft_idx))
@@ -951,6 +954,7 @@ def _run_spec_persistent_device(
                                     position=proposer.position + 1,
                                     need_result=not skip_unused_proposer_reads,
                                     read_expert_topk=not skip_unused_proposer_reads,
+                                    read_lm_head_value=not skip_unused_proposer_reads,
                                 )
                         elif accepted < active_budget - 1:
                             proposer.restore_state(snapshots[accepted])
@@ -965,11 +969,13 @@ def _run_spec_persistent_device(
                                 position=proposer.position + 1,
                                 need_result=not skip_unused_proposer_reads,
                                 read_expert_topk=not skip_unused_proposer_reads,
+                                read_lm_head_value=not skip_unused_proposer_reads,
                             )
                         proposer.advance_with_previous_hidden(
                             input_token=bonus,
                             position=proposer.position + 1,
                             read_expert_topk=not skip_unused_proposer_reads,
+                            read_lm_head_value=not skip_unused_proposer_reads,
                         )
                     proposal_decode_update_seconds += time.perf_counter() - update_started
                     context += len(committed)

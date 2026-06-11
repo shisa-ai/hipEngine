@@ -78664,3 +78664,44 @@ cycle wall improved `27.4081 -> 27.2535 ms/cycle` and proposal/update improved
 Decision: retain as default code-path cleanup. This is a small but real
 proposer/cycle-wall improvement, not a large throughput row. Artifact:
 `benchmarks/results/2026-06-11-hipengine-mtp-proposer-async-scalar-h2d-9prompt-d32.json`.
+
+## 2026-06-11 - MTP proposer skips unused lm-head logit value D2H
+
+Scoped the next proposer unused-read cleanup. The persistent chain needs the
+lm-head argmax token id to build candidate tokens, but it never consumes the
+top-1 logit value. `NativeMtpChainProposer.advance()` now takes
+`read_lm_head_value` (default true for diagnostic/API compatibility), and the
+persistent chain passes `read_lm_head_value=not skip_unused_proposer_reads`.
+Thus the default hot path skips the unused value D2H while
+`HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS=0` restores the old diagnostic reads.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py scripts/mtp_chain_e2e_smoke.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-skip-logit-value-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-skip-logit-value-9prompt-d32.json
+```
+
+Result: exact `9/9` with identical accepted lengths, visible tokens, and
+acceptance rate versus the async-scalar-H2D retained row. Aggregate actual
+ratio improved `0.6783x -> 0.6876x`, cycle wall `27.2535 -> 27.2015
+ms/cycle`, and proposal/update `1.9989 -> 1.9734 ms/cycle`; verify was flat
+within noise (`22.0762 -> 22.0958 ms/cycle`).
+
+Decision: retain as default-on under the existing
+`HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` cleanup umbrella. Artifact:
+`benchmarks/results/2026-06-11-hipengine-mtp-proposer-skip-logit-value-9prompt-d32.json`.

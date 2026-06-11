@@ -281,6 +281,7 @@ class NativeMtpChainProposer:
         seed_token: int,
         capture_stride_hidden: int | None = None,
         read_expert_topk: bool = True,
+        read_lm_head_value: bool = True,
     ) -> NativeMtpStepResult:
         """Run MTP prompt prefill using shifted prompt ids and target hidden rows."""
 
@@ -298,6 +299,7 @@ class NativeMtpChainProposer:
                 target_hidden_ptr=hidden_ptr,
                 position=idx + 1,
                 read_expert_topk=read_expert_topk,
+                read_lm_head_value=read_lm_head_value,
             )
         return result
 
@@ -308,6 +310,7 @@ class NativeMtpChainProposer:
         position: int,
         need_result: bool = True,
         read_expert_topk: bool = True,
+        read_lm_head_value: bool = True,
     ) -> NativeMtpStepResult:
         return self.advance(
             input_token=int(input_token),
@@ -315,6 +318,7 @@ class NativeMtpChainProposer:
             position=int(position),
             need_result=need_result,
             read_expert_topk=read_expert_topk,
+            read_lm_head_value=read_lm_head_value,
         )
 
     def save_state(self, slot: int) -> NativeMtpStateSnapshot:
@@ -386,6 +390,7 @@ class NativeMtpChainProposer:
         position: int,
         need_result: bool = True,
         read_expert_topk: bool = True,
+        read_lm_head_value: bool = True,
     ) -> NativeMtpStepResult:
         """Advance one MTP step.
 
@@ -555,7 +560,10 @@ class NativeMtpChainProposer:
         # Blocking D2H of the argmax pair implies a stream sync; the explicit
         # device_synchronize on top of it was pure host stall (#107 host-time trim).
         copy_device_to_host(host_array_ptr(self.out_index_host), self.out_index_buf, self.out_index_host.nbytes, runtime=self.runtime)
-        copy_device_to_host(host_array_ptr(self.out_value_host), self.out_value_buf, self.out_value_host.nbytes, runtime=self.runtime)
+        logit = float("nan")
+        if read_lm_head_value:
+            copy_device_to_host(host_array_ptr(self.out_value_host), self.out_value_buf, self.out_value_host.nbytes, runtime=self.runtime)
+            logit = float(self.out_value_host[0])
         if read_expert_topk:
             copy_device_to_host(host_array_ptr(self.topk_ids_host), self.topk_ids_buf, self.topk_ids_host.nbytes, runtime=self.runtime)
             copy_device_to_host(host_array_ptr(self.topk_values_host), self.topk_values_buf, self.topk_values_host.nbytes, runtime=self.runtime)
@@ -566,7 +574,7 @@ class NativeMtpChainProposer:
             topk_logits = ()
         self.current = NativeMtpStepResult(
             token=int(self.out_index_host[0]),
-            logit=float(self.out_value_host[0]),
+            logit=logit,
             topk_experts=topk_experts,
             topk_logits=topk_logits,
         )
