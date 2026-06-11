@@ -80443,3 +80443,87 @@ Follow-up fresh-review triage:
 - Final RMSNorm+cast fusion is low priority. BF16 RMSNorm wrappers exist but
   are not a complete drop-in for every final-norm/LM-head path, and the likely
   saving is below the scratch/reduced-DAG/proposer items.
+
+## 2026-06-12 - MTP resident Tensor view cache promoted
+
+Implemented the next host-cache micro-slice from the review: resident session
+now caches non-owning Tensor views returned by `_slot_linear_state`,
+`_slot_full_cache`, and `_full_cache_all_slots`, behind default-on
+`HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=1`. The cache is invalidated on `reset()`,
+sequence-capacity changes, and any resident `linear_states` / `full_caches`
+assignment. No kernel/math/device memory lifetime changes.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+PYTHONPATH=. pytest -q tests/test_qwen35_resident_batch_layout.py -k 'bulk_linear_commit or copy_slot_state_can_bound_kv_rows'
+```
+
+Both passed (`3/3` targeted resident layout tests).
+
+Exact quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-resident-view-cache-smoke.json
+```
+
+Passed exact AR with accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Verifier profile A/B commands used the same locked quicksort prompt, varying
+`HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=0/1`:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=<0-or-1> PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode <auto-or-off> \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-resident-view-cache-<off-or-on>{-graphoff}-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-resident-view-cache-<off-or-on>{-graphoff}-rocprof --top 50
+```
+
+Profile results:
+
+- Graph-auto off/on: exact with identical accepted lengths, calls `932/pass`,
+  kernel `14.324 -> 14.330 ms/pass`, host `18.235 -> 18.244 ms/pass`
+  (neutral/noisy under replay).
+- Graph-off off/on: exact with identical accepted lengths, calls `932/pass`,
+  kernel `14.335 -> 14.308 ms/pass`, host `32.52 -> 31.70 ms/pass`,
+  isolating raw host/object-churn improvement.
+
+D32 9-prompt economy gate:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=<0-or-1> PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-resident-view-cache-<off-or-on>-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-resident-view-cache-<off-or-on>-9prompt-d32.json
+```
+
+Result: exact `9/9` off/on with identical visible/accepted cycle aggregates
+(`2.01185` visible, `1.01185` accepted) and identical per-prompt accepted
+lengths/active budgets. Aggregate actual ratio moved
+`0.69239x -> 0.69857x`, cycle wall `26.6424 -> 26.4259 ms/cycle`, verify
+`21.5059 -> 21.2785 ms/cycle`, and proposal/update
+`1.96137 -> 1.96606 ms/cycle`.
+
+Decision: retain and promote default-on. This is a real wall/verify improvement
+with exact same-suite evidence and a graph-off host-control. Updated
+`docs/MTP.md`, `docs/REFACTOR.md`, `benchmarks/README.md`, and
+`benchmarks/CHANGELOG.md`. Next live item is verifier MLP scratch policy
+alignment: make runner scratch reservation choose c1/grouped with the same
+threshold as the chain/tree t-loop MoE path, and include expected scratch class
+in any cache acceptance check.

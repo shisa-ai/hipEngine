@@ -1444,6 +1444,10 @@ class Qwen35ParoResidentSession:
         self.moe_scratch = {}
         self._verify_linear_scratch_cache: dict[tuple[int, int], Qwen35ParoLinearAttentionScratch] = {}
         self._verify_mlp_scratch_cache: dict[tuple[int, int], Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch] = {}
+        self._resident_tensor_view_cache_enabled_value = _env_flag("HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE", True)
+        self._slot_linear_state_cache: dict[tuple[int, int], tuple[Tensor, Tensor]] = {}
+        self._slot_full_cache_cache: dict[tuple[int, int], tuple[Tensor, Tensor]] = {}
+        self._full_cache_all_slots_cache: dict[int, tuple[Tensor, Tensor]] = {}
         self.prefill_workspace = RuntimeWorkspace(runtime=self.runtime)
         _reset_shared_rotate_fuse_barrier_state()
         self.prefill_hidden_buffer: DeviceBuffer | None = None
@@ -1558,6 +1562,7 @@ class Qwen35ParoResidentSession:
             _key_scale, _value_scale, key_scale_buf, value_scale_buf = scale_buffers
             self.runtime.memset(key_scale_buf.ptr, 0, key_scale_buf.nbytes)
             self.runtime.memset(value_scale_buf.ptr, 0, value_scale_buf.nbytes)
+        self._clear_resident_tensor_view_caches()
         self._decode_full_block_table_key = None
         self.last_prefill_execution = None
 
@@ -2502,12 +2507,25 @@ class Qwen35ParoResidentSession:
         self._check_slot(slot)
         return Tensor.from_handle(buffer.ptr + int(slot) * dtype.itemsize, (1,), dtype, self.device)
 
+    def _resident_tensor_view_cache_enabled(self) -> bool:
+        return self._resident_tensor_view_cache_enabled_value
+
+    def _clear_resident_tensor_view_caches(self) -> None:
+        self._slot_linear_state_cache.clear()
+        self._slot_full_cache_cache.clear()
+        self._full_cache_all_slots_cache.clear()
+
     def _slot_linear_state(self, layer_id: int, slot: int) -> tuple[Tensor, Tensor]:
         self._check_slot(slot)
+        key = (int(layer_id), int(slot))
+        if self._resident_tensor_view_cache_enabled():
+            cached = self._slot_linear_state_cache.get(key)
+            if cached is not None:
+                return cached
         conv_state, recurrent_state, conv_buf, recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
         conv_nbytes = int(np.prod(conv_state.shape)) * conv_state.dtype.itemsize
         recurrent_nbytes = int(np.prod(recurrent_state.shape)) * recurrent_state.dtype.itemsize
-        return (
+        views = (
             Tensor.from_handle(conv_buf.ptr + int(slot) * conv_nbytes, conv_state.shape, conv_state.dtype, conv_state.device),
             Tensor.from_handle(
                 recurrent_buf.ptr + int(slot) * recurrent_nbytes,
@@ -2516,15 +2534,26 @@ class Qwen35ParoResidentSession:
                 recurrent_state.device,
             ),
         )
+        if self._resident_tensor_view_cache_enabled():
+            self._slot_linear_state_cache[key] = views
+        return views
 
     def _slot_full_cache(self, layer_id: int, slot: int) -> tuple[Tensor, Tensor]:
         self._check_slot(slot)
+        key = (int(layer_id), int(slot))
+        if self._resident_tensor_view_cache_enabled():
+            cached = self._slot_full_cache_cache.get(key)
+            if cached is not None:
+                return cached
         key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
         cache_nbytes = int(np.prod(key_cache.shape)) * key_cache.dtype.itemsize
-        return (
+        views = (
             Tensor.from_handle(key_buf.ptr + int(slot) * cache_nbytes, key_cache.shape, key_cache.dtype, key_cache.device),
             Tensor.from_handle(value_buf.ptr + int(slot) * cache_nbytes, value_cache.shape, value_cache.dtype, value_cache.device),
         )
+        if self._resident_tensor_view_cache_enabled():
+            self._slot_full_cache_cache[key] = views
+        return views
 
     def _slot_full_scale_metadata(self, layer_id: int, slot: int) -> KVScaleMetadata | None:
         self._check_slot(slot)
@@ -2704,12 +2733,20 @@ class Qwen35ParoResidentSession:
         return key, value
 
     def _full_cache_all_slots(self, layer_id: int) -> tuple[Tensor, Tensor]:
+        cache_key = int(layer_id)
+        if self._resident_tensor_view_cache_enabled():
+            cached = self._full_cache_all_slots_cache.get(cache_key)
+            if cached is not None:
+                return cached
         key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
         shape = (self.max_batch_size * self.blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim)
-        return (
+        views = (
             Tensor.from_handle(key_buf.ptr, shape, key_cache.dtype, key_cache.device),
             Tensor.from_handle(value_buf.ptr, shape, value_cache.dtype, value_cache.device),
         )
+        if self._resident_tensor_view_cache_enabled():
+            self._full_cache_all_slots_cache[cache_key] = views
+        return views
 
     def owned_buffer_summary(self) -> dict[str, Any]:
         """Return a compact accounting of session-owned resident buffers."""
@@ -6456,6 +6493,7 @@ class Qwen35ParoResidentSession:
             self.batch_hidden_nbytes = self.max_batch_size * self.hidden_nbytes
             self.prefill_capacity_rows = self.max_sequence_length * self.max_batch_size
             self.prefill_hidden_nbytes = self.prefill_capacity_rows * self.hidden_nbytes
+        self._clear_resident_tensor_view_caches()
         self.active_batch = ActiveBatch(self.max_batch_size)
         self.active_batch.admit(RequestState.from_tokens(0, (), max_new_tokens=self.max_sequence_length))
 
@@ -6590,6 +6628,7 @@ class Qwen35ParoResidentSession:
         key_cache = Tensor.from_handle(key_buf.ptr, self.batch_layout.slot0_full_kv_shape, payload_dtype, self.device)
         value_cache = Tensor.from_handle(value_buf.ptr, self.batch_layout.slot0_full_kv_shape, payload_dtype, self.device)
         self.full_caches[layer_id] = (key_cache, value_cache, key_buf, value_buf)
+        self._clear_resident_tensor_view_caches()
 
         if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
             scale_zero = np.zeros(
@@ -6664,6 +6703,7 @@ class Qwen35ParoResidentSession:
                     self.device,
                 )
                 self.linear_states[layer_id] = (conv_state, recurrent_state, conv_buf, recurrent_buf, conv_zero, recurrent_zero)
+                self._clear_resident_tensor_view_caches()
                 self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
             elif layer_type == "full_attention":
                 self._allocate_full_attention_cache(layer_id)
