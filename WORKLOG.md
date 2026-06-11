@@ -78718,3 +78718,45 @@ MTP chain/tree paths, 27B dense DFlash deployable-vs-profile routing split,
 DFlash drafter/verifier flags, and benchmark command flag piles. The cleanup
 pass is intentionally after the fast/correct path is proven; during the sprint,
 the priority stays retaining every real measured win.
+
+## 2026-06-11 - MTP proposer device-chain candidate buffering no-hold
+
+Tested a P2 proposer experiment that kept deeper draft argmax ids on device,
+fed the next draft step from the previous `out_index_buf`, stored candidate ids
+with D2D copies, and read the candidate-id chain once per cycle. The path was
+restricted to normal chain mode with `draft_p_min=0` and existing
+`HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS=1`; it was removed after the gate
+because the exact full suite regressed.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py scripts/mtp_chain_e2e_smoke.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_DEVICE_CHAIN=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-device-chain-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-device-chain-9prompt-d32.json
+```
+
+Result: exact `9/9` with identical accepted lengths, visible tokens, and
+acceptance rate versus the skip-logit retained row. Device-chain was active for
+all `142` draft cycles and read `279` candidate ids, but aggregate actual ratio
+regressed `0.6876x -> 0.6795x`, cycle wall `27.2015 -> 27.2440 ms/cycle`,
+verify `22.0958 -> 22.1592 ms/cycle`, and proposal/update
+`1.9734 -> 1.9777 ms/cycle`.
+
+Decision: no-hold. The extra D2D stores plus one batched candidate-id D2H do not
+beat the existing per-depth token path on the D32 prompt suite. Experiment code
+removed; artifact retained with `decision.status=no_hold`:
+`benchmarks/results/2026-06-11-hipengine-mtp-proposer-device-chain-9prompt-d32.json`.
