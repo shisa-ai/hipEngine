@@ -80881,3 +80881,79 @@ The reduced-DAG lesson is specific: shared-down+combine is only worth reopening
 with a parallel combine epilogue or a broader layer composite that keeps the
 epilogue parallel. Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-shared-down-combine-fused-nohold.json`.
+
+## 2026-06-12 - MTP proposer marker profile reprioritizes next work
+
+Added ROCTX marker windows for the persistent proposer draft and post-verify
+repair/update regions:
+
+- `mtp_proposer_draft_<cycle>` covers snapshot save plus candidate draft
+  advances before verify.
+- `mtp_proposer_update_<cycle>` covers post-verify proposer restore/replay and
+  bonus-token advance.
+
+Extended `scripts/mtp_verifier_rocprof.py` with `--region` so the existing
+rocprof helper can slice `verify_pass`, `cycle`, `proposer_draft`,
+`proposer_update`, or `proposer_all` marker windows. The default remains
+`verify_pass`, so existing verifier diagnostics keep their behavior.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_rocprof.py
+python3 scripts/mtp_verifier_rocprof.py --help
+git diff --check
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-proposer-markers-smoke.json
+```
+
+Smoke passed exact AR with the current-best accepted lengths:
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Proposer marker profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-proposer-all-rocprof
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region proposer_all \
+  --raw-root /tmp/hipengine-mtp-proposer-all-rocprof \
+  --out /tmp/hipengine-mtp-proposer-all-rocprof.json \
+  --top 50
+cp /tmp/hipengine-mtp-proposer-all-rocprof.json benchmarks/results/2026-06-12-hipengine-mtp-proposer-all-rocprof-diagnostic.json
+python3 -m json.tool benchmarks/results/2026-06-12-hipengine-mtp-proposer-all-rocprof-diagnostic.json >/tmp/hipengine-mtp-proposer-all-rocprof-diagnostic.pretty.json
+```
+
+Result: exact, 22 selected proposer marker windows after the first two cycles
+are dropped, 11 steady cycles summarized. `proposer_all` is
+`5.599 ms/cycle` host and `4.702 ms/cycle` kernel over `181.6` launches/cycle
+(`83.97%` kernel share). Family split:
+
+- `proposer_topk_router`: `6.18 calls/cycle`, `1.733 ms/cycle`; the underlying
+  `topk_rows_i32` router kernel alone is `1.721 ms/cycle` across about
+  `3.09 calls/cycle`.
+- `proposer_expert_dense`: `49.45 calls/cycle`, `0.674 ms/cycle`.
+- `lm_head_argmax`: `9.00 calls/cycle`, `0.569 ms/cycle`.
+- `proposer_attention`: `3.09 calls/cycle`, `0.547 ms/cycle`.
+- `proposer_dense_bf16`: `15.45 calls/cycle`, `0.537 ms/cycle`.
+
+Post-processing the same raw marker CSV splits proposer work into:
+
+- Draft: `3.585 ms/cycle` host, `3.004 ms/cycle` kernel, `118.0` calls/cycle.
+- Update: `2.014 ms/cycle` host, `1.698 ms/cycle` kernel, `63.6` calls/cycle.
+
+Decision: retain this as a diagnostic, not a speed row. It changes the next-work
+ranking: generic proposer graph capture can only recover roughly the
+`~0.9 ms/cycle` host gap unless it also enables deeper batching, while the
+single-row router top-k path is already `~1.7 ms/cycle` of real GPU time.
+Move specialized/fused proposer router top-k ahead of generic M12.7 graph
+capture. Route-batched expert work remains plausible but is smaller
+(`~0.67 ms/cycle`) and requires new route-batched expert kernels.

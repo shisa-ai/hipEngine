@@ -839,6 +839,7 @@ def _run_spec_persistent_device(
                         rocprof_window_t_start = time.perf_counter()
                     rocprof_window.range_push(f"mtp_verify_cycle_{cycles}")
                     cycle_t_ns_start = time.perf_counter_ns()
+                    rocprof_window.range_push(f"mtp_proposer_draft_{cycles}")
                     snapshots = [proposer.save_state(0)]
                     proposal_snapshot_saves += 1
                     candidates = [int(proposer.current.token)]
@@ -888,6 +889,7 @@ def _run_spec_persistent_device(
                             candidates.append(int(proposer.current.token))
                         active_budget = len(candidates)
                     active_budgets.append(active_budget)
+                    rocprof_window.range_pop()
                     # Keep the verify at a FIXED rows=B+1 shape: each rows
                     # bucket re-reserves verifier scratch at its own shape,
                     # freeing buffers other rows' cached graphs hold (#107
@@ -956,6 +958,7 @@ def _run_spec_persistent_device(
                             }
                         )
                     update_started = time.perf_counter()
+                    rocprof_window.range_push(f"mtp_proposer_update_{cycles}")
                     if len(generated) < int(decode_tokens):
                         if use_tree:
                             # Tree accepts may follow the sibling branch, so
@@ -990,6 +993,7 @@ def _run_spec_persistent_device(
                             read_expert_topk=not skip_unused_proposer_reads,
                             read_lm_head_value=not skip_unused_proposer_reads,
                         )
+                    rocprof_window.range_pop()
                     proposal_decode_update_seconds += time.perf_counter() - update_started
                     context += len(committed)
                     root = bonus

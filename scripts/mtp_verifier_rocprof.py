@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""M7.0 baseline: rocprofv3 kernel breakdown of one MTP B=3 verifier pass.
+"""rocprofv3 kernel breakdown of MTP marker windows.
 
 Wraps ``scripts/mtp_chain_e2e_smoke.py`` under ``rocprofv3 --kernel-trace`` and
-processes the kernel CSV into a compact JSON artifact at
-``benchmarks/results/<date>-hipengine-mtp-verifier-rocprof-baseline.json``.
+processes the kernel CSV into a compact JSON artifact.  The default region is
+the historical ``mtp_verify_pass_*`` verifier window, but ``--region`` can also
+slice the enclosing cycle or the proposer draft/update windows.
 
 ``--selected-regions true`` would have been the natural way to scope the trace
 to the steady-state verify window, but rocprofv3 1.1.0 on the gfx1151 host
@@ -13,8 +14,8 @@ flag is honored under newer rocprofv3 versions — see
 1.2.3).  We therefore trace the whole smoke process and divide kernel-level
 metrics by the verifier-pass count (smoke's ``len(active_budgets)``) to get
 per-pass averages.  Warmup-vs-steady drift on this workload is small (<5%
-relative per family in spot checks), and the diagnostic is for sizing
-kernels against the M7 budget, not for retaining a perf row.
+relative per family in spot checks).  This diagnostic sizes the live MTP
+kernel/launch families before retaining or rejecting implementation work.
 
 This is a diagnostic artifact only.  No performance claim is retained from
 this run.
@@ -41,6 +42,13 @@ DEFAULT_ROCTX_SDK = Path(
     "_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1"
 )
 DEFAULT_PROMPT_TOKENS = "151646"
+REGION_MARKER_PREFIXES = {
+    "verify_pass": ("mtp_verify_pass_",),
+    "cycle": ("mtp_verify_cycle_",),
+    "proposer_draft": ("mtp_proposer_draft_",),
+    "proposer_update": ("mtp_proposer_update_",),
+    "proposer_all": ("mtp_proposer_draft_", "mtp_proposer_update_"),
+}
 
 
 def main() -> int:
@@ -71,6 +79,16 @@ def main() -> int:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
+    parser.add_argument(
+        "--region",
+        choices=tuple(REGION_MARKER_PREFIXES),
+        default="verify_pass",
+        help=(
+            "ROCTX marker region to summarize. Defaults to the historical verifier "
+            "pass window; proposer_* regions require a smoke harness that emits the "
+            "2026-06-12 proposer markers."
+        ),
+    )
     parser.add_argument(
         "--out",
         type=Path,
@@ -123,8 +141,8 @@ def main() -> int:
     if args.compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
-    smoke_json = args.raw_root / "mtp-verifier-baseline-smoke.json"
-    smoke_log = args.raw_root / "mtp-verifier-baseline-smoke.log"
+    smoke_json = args.raw_root / f"mtp-{args.region}-rocprof-smoke.json"
+    smoke_log = args.raw_root / f"mtp-{args.region}-rocprof-smoke.log"
     smoke_cmd = _smoke_command(args, smoke_json)
     rocprof_cmd = _rocprof_command(args, smoke_cmd)
 
@@ -168,26 +186,41 @@ def main() -> int:
     verifier_passes = len(active_budgets)
     host_window_seconds = window_seconds if window_seconds else mtp.get("verify_seconds")
 
-    # If --marker-trace produced a marker CSV with roctxRangePush ranges named
-    # mtp_verify_cycle_*, use the marker start/end ns to filter the kernel rows
-    # down to just the verifier passes (excludes prefill + AR baseline + MTP
-    # proposer prefill noise).  Skip the first ``--steady-state-skip`` marker
-    # windows so we drop cold-cache iterations.
+    # If --marker-trace produced a marker CSV with roctxRangePush ranges for the
+    # selected region, use marker start/end ns to filter the kernel rows down to
+    # just that window (excludes prefill + AR baseline + unrelated MTP work).
+    # Skip the first ``--steady-state-skip`` cycle's windows so we drop cold-cache
+    # iterations.
     marker_csv_candidates = sorted(args.raw_root.glob("*_marker_api_trace.csv"))
-    cycle_windows: list[tuple[int, int]] = []
+    cycle_windows: list[tuple[int, int, int]] = []
     cycle_skip = int(args.steady_state_skip)
     if marker_csv_candidates:
-        cycle_windows = _read_cycle_marker_windows(marker_csv_candidates[0])
-    verifier_kernels = kernels
+        cycle_windows = _read_marker_windows(
+            marker_csv_candidates[0],
+            REGION_MARKER_PREFIXES[str(args.region)],
+        )
+    if str(args.region) != "verify_pass" and not cycle_windows:
+        raise SystemExit(
+            f"no ROCTX marker windows found for region={args.region}; "
+            "run against a smoke harness that emits proposer/cycle markers"
+        )
+    region_kernels = kernels
     used_cycle_count = verifier_passes
+    selected_windows: list[tuple[int, int]] = []
     if cycle_windows:
-        steady_windows = cycle_windows[cycle_skip:] if cycle_skip < len(cycle_windows) else []
+        steady_windows = [(start, end) for idx, start, end in cycle_windows if idx > cycle_skip]
+        if str(args.region) != "verify_pass" and not steady_windows:
+            raise SystemExit(
+                f"all marker windows for region={args.region} were skipped by "
+                f"--steady-state-skip={cycle_skip}"
+            )
         if steady_windows:
-            verifier_kernels = _filter_kernels_by_windows(kernels, steady_windows)
-            used_cycle_count = len(steady_windows)
+            selected_windows = steady_windows
+            region_kernels = _filter_kernels_by_windows(kernels, steady_windows)
+            used_cycle_count = len({idx for idx, _start, _end in cycle_windows if idx > cycle_skip})
             host_window_seconds = sum(end - start for start, end in steady_windows) / 1e9
     summary = _summarize_rows(
-        verifier_kernels,
+        region_kernels,
         top=args.top,
         host_window_seconds=host_window_seconds,
         verifier_passes=used_cycle_count,
@@ -201,11 +234,13 @@ def main() -> int:
         "hardware": "AMD Radeon Pro W7900 / gfx1100 lineage; run target backend below",
         "backend": str(args.backend),
         "model": str(args.model),
+        "region": str(args.region),
+        "marker_prefixes": list(REGION_MARKER_PREFIXES[str(args.region)]),
+        "steady_state_skip": int(args.steady_state_skip),
         "purpose": (
-            "M7.0 — one MTP B=3 verifier window under rocprofv3 --selected-regions, "
-            "to decide whether the 20 ms MoE budget can be reclaimed by tuning the "
-            "existing gemv_awq_selected_* kernels for the 32-row small-batch shape, "
-            "or whether a new layer-array kernel is required."
+            "MTP B=3 marker-window rocprofv3 diagnostic.  The default verifier-pass "
+            "region sizes the verify kernel/launch families; proposer regions size "
+            "M12.7 graph-capture and route-batching candidates before implementation."
         ),
         "rocprof_command": " ".join(rocprof_cmd),
         "smoke_command": " ".join(smoke_cmd),
@@ -214,6 +249,7 @@ def main() -> int:
         "rocprof_log": str(smoke_log),
         "kernel_trace_csv": str(kernel_csv),
         "rocprof_window": window,
+        "selected_marker_windows": len(selected_windows),
         "smoke_summary": {
             "exact_ar_match": smoke.get("exact_ar_match"),
             "ar_tok_s": (smoke.get("ar") or {}).get("decode_tok_s") or (smoke.get("ar") or {}).get("tok_s"),
@@ -230,7 +266,7 @@ def main() -> int:
     }
     args.out.write_text(json.dumps(artifact, indent=2) + "\n")
     print(
-        f"[rocprof] window cycles={window.get('profiled_cycle_range')} "
+        f"[rocprof] region={args.region} window cycles={window.get('profiled_cycle_range')} "
         f"seconds={window_seconds!s} kernel_calls={summary['kernel_calls']} "
         f"kernel_ms={summary['kernel_time_ms']:.3f}",
         flush=True,
@@ -278,7 +314,7 @@ def _rocprof_command(args: argparse.Namespace, smoke_cmd: list[str]) -> list[str
         "-d",
         str(args.raw_root),
         "-o",
-        "mtp-verifier-baseline",
+        f"mtp-{args.region}-rocprof",
     ]
     if int(args.rocprof_verify_cycles) > 0:
         cmd.extend(["--selected-regions", "true"])
@@ -326,12 +362,10 @@ def _single_file(root: Path, pattern: str) -> Path:
     return matches[0]
 
 
-def _read_cycle_marker_windows(path: Path) -> list[tuple[int, int]]:
-    """Read rocprofv3 marker CSV and return (start_ns, end_ns) windows for the
-    ``mtp_verify_cycle_*`` roctxRangePush ranges in cycle-index order.
-    """
+def _read_marker_windows(path: Path, prefixes: tuple[str, ...]) -> list[tuple[int, int, int]]:
+    """Read rocprofv3 marker CSV and return (cycle_idx, start_ns, end_ns) windows."""
 
-    windows: list[tuple[int, int]] = []
+    windows: list[tuple[int, int, int]] = []
     with path.open(newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -344,7 +378,8 @@ def _read_cycle_marker_windows(path: Path) -> list[tuple[int, int]]:
                 or row.get("Name")
                 or ""
             ).strip()
-            if not name.startswith("mtp_verify_pass_"):
+            prefix = next((item for item in prefixes if name.startswith(item)), None)
+            if prefix is None:
                 continue
             try:
                 start = int(float(row["Start_Timestamp"]))
@@ -354,12 +389,12 @@ def _read_cycle_marker_windows(path: Path) -> list[tuple[int, int]]:
             if end < start:
                 continue
             try:
-                idx = int(name.removeprefix("mtp_verify_pass_"))
+                idx = int(name.removeprefix(prefix))
             except ValueError:
                 continue
             windows.append((idx, start, end))
-    windows.sort(key=lambda x: x[0])
-    return [(start, end) for _idx, start, end in windows]
+    windows.sort(key=lambda x: (x[0], x[1], x[2]))
+    return windows
 
 
 def _filter_kernels_by_windows(
@@ -511,6 +546,26 @@ def _family(kernel: str) -> str:
         return "shared_expert_w8a16"
     if "w8a16" in k:
         return "w8a16_linear"
+    if "dflash_dense_bf16_to_bf16_expert" in k:
+        return "proposer_expert_dense"
+    if "dflash_dense_bf16_to_bf16_wmma" in k:
+        return "proposer_dense_bf16"
+    if "dflash_dense_bf16_to_f32_wmma" in k:
+        return "proposer_dense_f32"
+    if "dflash_qkv_proj" in k:
+        return "proposer_qkv_projection"
+    if "dflash_gqa_attention" in k:
+        return "proposer_attention"
+    if "mtp_accumulate_route" in k:
+        return "proposer_route_accumulate"
+    if "mtp_accumulate_sigmoid_gate" in k:
+        return "proposer_shared_gate"
+    if "mtp_finalize" in k:
+        return "proposer_finalize"
+    if "mtp_fuse_inputs" in k:
+        return "proposer_input_fuse"
+    if "topk_rows_i32" in k or "mtp_softmax_topk" in k:
+        return "proposer_topk_router"
     if "dense_dual_gemv" in k or "dense_gemv" in k:
         return "dense_gemv"
     if "router" in k:
