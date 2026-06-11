@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "status": "rejected_no_hold",
+  "performance_claim": false,
+  "date": "2026-06-11",
+  "purpose": "P2 multi-stream overlap spike for the 35B-A3B MTP break-even sprint.",
+  "retention_decision": "Do not retain the experimental HIPENGINE_MOE_C1_C_DISPATCH_OVERLAP code. Verifier-only selected/shared branch overlap was exact on the locked D32 quicksort prompt, but worsened the target graph-auto all-cycle wall and also worsened graph-off. A steady graph-auto cycle-marker improvement was outweighed by first-cycle/capture overhead at D32.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "locked quicksort token prompt",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "batched",
+    "draft_vocab_cap": 32768
+  },
+  "gate": {
+    "same_session_ar_exact": true,
+    "locked_ar_tokens_match_after_verifier_only_gate": true,
+    "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "note": "The first naive overlap attempt also affected linear-attention prompt prefill and changed the AR continuation; verifier-only gating fixed the locked AR/acceptance pattern before timing comparison."
+  },
+  "results": {
+    "graph_auto": {
+      "default": {
+        "ar_tok_s": 111.67345875599793,
+        "mtp_tok_s": 88.70434198177908,
+        "verify_s": 0.2663002796471119,
+        "decode_s": 0.3607489699497819,
+        "cycle_avg_ms": 26.102292153846157,
+        "cycle_steady_avg_ms": 22.60223825,
+        "cycle_first_ms": 68.102939
+      },
+      "overlap_verifier_only": {
+        "ar_tok_s": 110.08271990610834,
+        "mtp_tok_s": 82.24918900987926,
+        "verify_s": 0.2946413375902921,
+        "decode_s": 0.38906158693134785,
+        "cycle_avg_ms": 28.285589615384612,
+        "cycle_steady_avg_ms": 21.29957225,
+        "cycle_first_ms": 112.117798
+      },
+      "delta": {
+        "cycle_avg_ms": 2.1832974615384554,
+        "cycle_steady_avg_ms": -1.302666,
+        "cycle_first_ms": 44.014859,
+        "verify_s": 0.028341057943180205,
+        "decode_s": 0.028312616981565952
+      }
+    },
+    "graph_off": {
+      "default": {
+        "ar_tok_s": 110.77113761658339,
+        "mtp_tok_s": 63.96789695636102,
+        "verify_s": 0.4194014836102724,
+        "decode_s": 0.5002509308978915,
+        "cycle_avg_ms": 37.77462476923077,
+        "cycle_steady_avg_ms": 35.885406749999994,
+        "cycle_first_ms": 60.445241
+      },
+      "overlap_verifier_only": {
+        "ar_tok_s": 111.54485869692996,
+        "mtp_tok_s": 54.7870989539668,
+        "verify_s": 0.5031117191538215,
+        "decode_s": 0.5840791100636125,
+        "cycle_avg_ms": 44.223987,
+        "cycle_steady_avg_ms": 39.07179983333333,
+        "cycle_first_ms": 106.050233
+      },
+      "delta": {
+        "cycle_avg_ms": 6.449362230769228,
+        "cycle_steady_avg_ms": 3.1863930833333387,
+        "cycle_first_ms": 45.604992,
+        "verify_s": 0.08371023554354908,
+        "decode_s": 0.08382817916572104
+      }
+    }
+  },
+  "source_jsons": {
+    "graph_auto_default": "/tmp/hipengine-mtp-overlap-default-d32.json",
+    "graph_auto_overlap": "/tmp/hipengine-mtp-overlap-on-d32-smallbatch.json",
+    "graph_off_default": "/tmp/hipengine-mtp-overlap-default-d32-graphoff.json",
+    "graph_off_overlap": "/tmp/hipengine-mtp-overlap-on-d32-graphoff.json"
+  }
+}

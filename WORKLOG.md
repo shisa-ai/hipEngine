@@ -78542,3 +78542,44 @@ Decision: flip `HIPENGINE_SELECTED_MOE_DOWN_STAGED` to opt-in (`=1`) and keep
 the staged path only for bisection/historical comparison. This is a retained
 exact micro-win; 35B-A3B MTP remains WIP below AR. Artifact:
 `benchmarks/results/2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json`.
+
+## 2026-06-11 - MTP MoE C-dispatch overlap spike is no-hold
+
+Tested the P2 multi-stream idea on the real MoE C dispatcher, not the Python
+fallback: split selected/shared MoE branches across main/aux HIP streams with
+events, leaving router/selected/combine on the main stream and shared expert on
+the auxiliary stream. The naive version also affected linear-attention prompt
+prefill and changed the AR continuation, so tightened the experiment to
+verifier-sized batches only before timing it.
+
+Command shape for all rows:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 [HIPENGINE_MOE_C1_C_DISPATCH_OVERLAP=1] PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens '<locked quicksort token list>' \
+  --decode-tokens 32 \
+  --candidate-budget 3 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto|off \
+  --json /tmp/hipengine-mtp-overlap-...
+```
+
+Results after verifier-only gating:
+
+- graph-auto default: exact, accepted `[3,3,2,0,2,0,0,1,3,0,2,0,2]`,
+  MTP `88.70 tok/s`, cycle `26.10 ms`, steady markers `22.60 ms`, first cycle
+  `68.10 ms`.
+- graph-auto overlap: exact and same acceptance, but MTP `82.25 tok/s`, cycle
+  `28.29 ms`, verify `0.266 -> 0.295 s`; steady markers improved
+  `22.60 -> 21.30 ms`, but first-cycle/capture cost rose `68.10 -> 112.12 ms`.
+- graph-off default/overlap: exact and same acceptance, but cycle worsened
+  `37.77 -> 44.22 ms` and steady worsened `35.89 -> 39.07 ms`.
+
+Decision: no-hold for the current D32 graph-auto sprint metric. Removed the
+experimental overlap code instead of retaining a dead flag. Revisit only with a
+graph-capture/amortization design that improves all-cycle D32 economics, not
+just steady markers. Artifact:
+`benchmarks/results/2026-06-11-hipengine-mtp-moe-cdispatch-overlap-nohold.json`.
