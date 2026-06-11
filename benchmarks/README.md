@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, packed verify dynamic metadata, chunked linear-state commit, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, direct proposer K/V cache writes, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, proposer shared-gate finalize fusion, async packed verify-metadata H2D, and full-QKV split+key-cast fusion no-hold, still WIP)
+Last updated: 2026-06-11 (27B dense DFlash accepted 1.231x; 35B-A3B MTP stacked P1 plus proposer metadata/result/snapshot/logit-value skips, async scalar H2D, packed accept payload, packed verify dynamic metadata, verifier scratch object cache, chunked linear-state commit, C-dispatch shared-down output-tiled routing, M12.6 `single_linear_out`/`single_full_v` default safe mask, proposer token+position H2D packing, route-0 accumulator init, direct proposer K/V cache writes, and selected-down staged default-off promoted; MoE C-dispatch overlap, partial-accept replay, proposer device-chain, M15.4 RMSNorm+rotate, fused verifier LM-head, GDN VTILE=8, routed-expert proposer WMMA, proposer shared-gate finalize fusion, async packed verify-metadata H2D, and full-QKV split+key-cast fusion no-hold, still WIP)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -293,6 +293,23 @@ stayed exact `9/9` with identical acceptance, but regressed actual ratio
 `21.7799 -> 21.9470 ms/cycle`; the experiment code was removed. Artifacts:
 [`async off`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-off-9prompt-d32.json),
 [`async on`](results/2026-06-11-hipengine-mtp-verify-pack-dynamic-metadata-async-on-9prompt-d32.json).
+
+The verifier now caches fixed-shape linear-attention and MLP scratch objects per
+`(layer_id, rows)` by default, with workspace-pointer validation and cache
+invalidation when prefill/graph state changes. The D32 opt-out/default A/B stays
+exact `9/9` with identical visible/accepted cycle aggregates, moves actual ratio
+`0.6860x -> 0.6987x`, cycle wall `27.0958 -> 26.7015 ms/cycle`, verify
+`21.9328 -> 21.5511 ms/cycle`, and proposal/update
+`1.9880 -> 1.9725 ms/cycle`. The graph-auto profile only moves host
+`18.290 -> 18.275 ms/pass` because replay skips most Python rebuild work; the
+graph-off control shows the raw host effect `33.469 -> 32.988 ms/pass`. Opt out
+with `HIPENGINE_VERIFY_SCRATCH_CACHE=0`. Artifacts:
+[`scratch cache off D32`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-9prompt-d32.json),
+[`scratch cache on D32`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-9prompt-d32.json),
+[`scratch cache off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-rocprof.json),
+[`scratch cache on rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-rocprof.json),
+[`scratch cache off graph-off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-graphoff-rocprof.json),
+[`scratch cache on graph-off rocprof`](results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-graphoff-rocprof.json).
 
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is now opt-in after the current graph-auto
 suite proved the unfused fallback faster: exact `9/9`, identical acceptance,

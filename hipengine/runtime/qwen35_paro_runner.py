@@ -1442,6 +1442,8 @@ class Qwen35ParoResidentSession:
         self.linear_scratch = {}
         self.full_scratch = {}
         self.moe_scratch = {}
+        self._verify_linear_scratch_cache: dict[tuple[int, int], Qwen35ParoLinearAttentionScratch] = {}
+        self._verify_mlp_scratch_cache: dict[tuple[int, int], Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch] = {}
         self.prefill_workspace = RuntimeWorkspace(runtime=self.runtime)
         _reset_shared_rotate_fuse_barrier_state()
         self.prefill_hidden_buffer: DeviceBuffer | None = None
@@ -3195,6 +3197,79 @@ class Qwen35ParoResidentSession:
             return state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         return state.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
 
+    def _clear_verify_scratch_caches(self) -> None:
+        self._verify_linear_scratch_cache.clear()
+        self._verify_mlp_scratch_cache.clear()
+
+    @staticmethod
+    def _workspace_tensor_matches(state: Qwen35ParoDecodeState, name: str, tensor: Tensor) -> bool:
+        try:
+            current = state.workspace.allocation(name).tensor
+        except KeyError:
+            return False
+        return (
+            current.ptr == tensor.ptr
+            and current.shape == tensor.shape
+            and current.dtype == tensor.dtype
+            and current.device == tensor.device
+        )
+
+    def _verify_linear_attention_scratch(
+        self,
+        layer_id: int,
+        state: Qwen35ParoDecodeState,
+        *,
+        rows: int,
+    ) -> Qwen35ParoLinearAttentionScratch:
+        rows = int(rows)
+        if self._verify_scratch_cache_enabled():
+            key = (int(layer_id), rows)
+            cached = self._verify_linear_scratch_cache.get(key)
+            if (
+                isinstance(cached, Qwen35ParoLinearAttentionScratch)
+                and cached.attn_input.shape[0] == rows
+                and cached.attn_input.dtype == DType.FP16
+                and self._workspace_tensor_matches(state, "linear_attn.attn_input", cached.attn_input)
+                and self._workspace_tensor_matches(state, "linear_attn.qkv_z", cached.qkv_z)
+                and self._workspace_tensor_matches(state, "linear_attn.tree_recurrent_state", cached.tree_recurrent_state)
+            ):
+                return cached
+        scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
+        if self._verify_scratch_cache_enabled():
+            self._verify_linear_scratch_cache[(int(layer_id), rows)] = scratch
+        return scratch
+
+    def _verify_mlp_scratch(
+        self,
+        layer_id: int,
+        state: Qwen35ParoDecodeState,
+        *,
+        rows: int,
+    ) -> Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch:
+        rows = int(rows)
+        if self._verify_scratch_cache_enabled():
+            key = (int(layer_id), rows)
+            cached = self._verify_mlp_scratch_cache.get(key)
+            if isinstance(cached, Qwen35ParoDenseMlpScratch):
+                alloc_name = "dense_mlp.normed"
+            elif isinstance(cached, Qwen35ParoGroupedMoeScratch):
+                alloc_name = "moe.grouped.normed"
+            elif isinstance(cached, Qwen35ParoMoeScratch):
+                alloc_name = "moe.normed"
+            else:
+                alloc_name = ""
+            if (
+                alloc_name
+                and cached.normed.shape[0] == rows
+                and cached.normed.dtype == DType.FP16
+                and self._workspace_tensor_matches(state, alloc_name, cached.normed)
+            ):
+                return cached
+        scratch = self._reserve_mlp_scratch(state, tokens=rows)
+        if self._verify_scratch_cache_enabled():
+            self._verify_mlp_scratch_cache[(int(layer_id), rows)] = scratch
+        return scratch
+
     def _ensure_grouped_moe_prefill_scratch(self, layer_id: int | None = None, *, tokens: int):
         _ = layer_id
         scratch = getattr(self, "prefill_moe_scratch", None)
@@ -4086,6 +4161,7 @@ class Qwen35ParoResidentSession:
     def _restore_decode_scratch_after_prefill(self) -> None:
         self._release_prefill_workspace()
         self._release_prefill_hidden_buffer()
+        self._clear_verify_scratch_caches()
         for layer_id, state in enumerate(self.states):
             self.moe_scratch[layer_id] = self._reserve_mlp_scratch(state, tokens=1)
             if self.config.layer_types[layer_id] == "linear_attention":
@@ -8329,6 +8405,9 @@ class Qwen35ParoResidentSession:
             return False
         return _env_flag("HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA", True)
 
+    def _verify_scratch_cache_enabled(self) -> bool:
+        return _env_flag("HIPENGINE_VERIFY_SCRATCH_CACHE", True)
+
     def _should_use_chain_tloop_linear_verify(self, batch: TargetVerifyBatch, *, rows: int, graph_mode: str) -> bool:
         if not self._verify_chain_linear_tloop_enabled():
             return False
@@ -9067,9 +9146,9 @@ class Qwen35ParoResidentSession:
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
                 conv_state, recurrent_state = self._slot_linear_state(layer_id, base_slot)
-                linear_scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
+                linear_scratch = self._verify_linear_attention_scratch(layer_id, state, rows=rows)
                 self.linear_scratch[layer_id] = linear_scratch
-                moe_scratch = self._reserve_mlp_scratch(state, tokens=rows)
+                moe_scratch = self._verify_mlp_scratch(layer_id, state, rows=rows)
                 self.moe_scratch[layer_id] = moe_scratch
                 # M13.B.0: pass ``out=next_hidden`` so the linear-attention
                 # layer's final MoE combine writes straight into the trunk
@@ -10530,6 +10609,7 @@ class Qwen35ParoResidentSession:
     def _invalidate_verify_graph_cache(self) -> None:
         """Destroy cached verifier graphs (their baked scratch pointers may dangle)."""
 
+        self._clear_verify_scratch_caches()
         if not getattr(self, "_verify_graph_cache", None):
             return
         # A replay may still be in flight on the default stream; freeing the

@@ -80155,3 +80155,101 @@ Plan pivot from external review:
   already default-on), current raw traces show `fillBufferAligned=0`, and
   `linear_state_pair_commit_chunked_i32` is already down to about
   `0.202 ms/pass` from the retained chunked commit work.
+
+## 2026-06-11 - MTP verifier scratch object cache default-on
+
+Implemented the first host-cache slice from the external review: the B=3
+verifier now caches fixed-shape linear-attention and MLP scratch objects per
+`(layer_id, rows)`, validates cached backing tensors against the live workspace
+allocation, and invalidates on prefill restore / verify-graph cache
+invalidation. The opt-out is `HIPENGINE_VERIFY_SCRATCH_CACHE=0`; default stays
+on.
+
+Validation and measurement commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-verify-scratch-cache-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_CACHE=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-verify-scratch-cache-off-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_CACHE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-verify-scratch-cache-on-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_CACHE=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-graphoff-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-verify-scratch-cache-off-graphoff-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_CACHE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-graphoff-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-verify-scratch-cache-on-graphoff-rocprof --top 50
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_CACHE=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-verify-scratch-cache-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_CACHE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-verify-scratch-cache-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-verify-scratch-cache-on-9prompt-d32.json
+```
+
+Results:
+
+- `py_compile` passed. Quicksort smoke passed exact AR with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- Graph-auto rocprof off/on: calls unchanged at `932/pass`, kernel
+  `14.353 -> 14.363 ms/pass` (noise/slightly worse), host
+  `18.290 -> 18.275 ms/pass`. This is expected because steady graph replay
+  skips most per-layer Python scratch rebuild work.
+- Graph-off rocprof off/on: calls unchanged at `932/pass`, kernel
+  `14.398 -> 14.393 ms/pass`, host `33.469 -> 32.988 ms/pass`; this isolates
+  the raw Python/object rebuild win at about `0.48 ms/pass`.
+- D32 9-prompt off/on stayed exact `9/9` with identical visible/accepted cycle
+  aggregates (`2.01185` visible, `1.01185` accepted), snapshot saves/skips, and
+  active budgets. Aggregate wall moved `27.0958 -> 26.7015 ms/cycle`, verify
+  `21.9328 -> 21.5511 ms/cycle`, proposal/update
+  `1.9880 -> 1.9725 ms/cycle`, actual ratio `0.6860x -> 0.6987x`, and
+  observed-cycle speedup `0.6930x -> 0.7065x`.
+
+Decision: retain and promote default-on. This is not a kernel launch-count win,
+but it is exact, removes real host recompute, and improves the prompt-suite wall
+metric. Update `docs/MTP.md`, `docs/REFACTOR.md`, `benchmarks/README.md`, and
+`benchmarks/CHANGELOG.md`. The next host-cache unit is non-MoE weight-pointer
+hoisting; graph-auto replay limits scratch-object savings during steady replay,
+so pointer hoisting must be measured with the same graph-auto/off controls.
