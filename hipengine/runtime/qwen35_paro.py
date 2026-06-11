@@ -10844,6 +10844,9 @@ _W4_MULTI_ROW_DEFAULT_SAFE_SITES = frozenset(
         # exact suite passed and the default translation prompt mismatch was
         # restored to exact AR.
         "single_linear_out",
+        # Promoted later on 2026-06-11 after a fresh default A/B stayed exact
+        # and moved D32 suite wall/verify plus the locked verifier profile down.
+        "single_full_v",
     }
 )
 

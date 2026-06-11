@@ -79122,3 +79122,119 @@ vs the post-C-dispatch profile. Artifacts:
 `benchmarks/results/2026-06-11-hipengine-mtp-m12-single-linear-out-default-rocprof.json`,
 and
 `benchmarks/results/2026-06-11-hipengine-mtp-current-default-pre-single-linear-out-exact-blocked.json`.
+
+## 2026-06-11 - MTP M12.6 single_full_v promoted default-on
+
+Finished the remaining M12.6 single-output site after `single_linear_out` was
+promoted.  The candidate was deliberately gated as a fresh same-session A/B
+instead of relying on an older retained row, because the older aggregate row was
+slightly noisier while the profile and fresh baseline both moved down.
+
+Opt-in quick smoke and profile used the current default safe mask plus
+`single_full_v`:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down,single_linear_out,single_full_v PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-m12-single-full-v-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down,single_linear_out,single_full_v PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-m12-single-full-v-rocprof \
+  --out /tmp/hipengine-mtp-m12-single-full-v-rocprof.json
+```
+
+Quick smoke was exact with accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`. Opt-in profile vs the retained
+`single_linear_out` profile:
+
+- verifier kernel `14.496 -> 14.411 ms/pass`;
+- host marker window `18.497 -> 18.420 ms/pass`;
+- `w4_single_gemv` `1.457 -> 1.395 ms/pass`;
+- calls/pass unchanged at `935`.
+
+The opt-in 9-prompt D32 suite was exact `9/9`, including `summarize` and
+`translation`:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down,single_linear_out,single_full_v PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-m12-single-full-v-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-9prompt-d32.json
+```
+
+Because the older retained default row was not a clean same-session baseline, I
+ran a fresh no-env default control before changing the code:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-current-default-after-single-full-v-check-9prompt-d32 \
+  --out /tmp/hipengine-mtp-current-default-after-single-full-v-check-9prompt-d32.json
+```
+
+Fresh no-env default vs opt-in `single_full_v`:
+
+- exact `9/9` on both rows;
+- ratio `0.68723 -> 0.70019`;
+- wall `27.001 -> 26.980 ms/cycle`;
+- verify `21.890 -> 21.855 ms/cycle`;
+- proposal/update `1.972 -> 1.979 ms/cycle`;
+- visible/acceptance unchanged.
+
+Promoted by adding `single_full_v` to `_W4_MULTI_ROW_DEFAULT_SAFE_SITES`.
+Validation after the default-mask change:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-m12-single-full-v-default-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-default-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-m12-single-full-v-default-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-default-rocprof.json
+```
+
+Default result: exact `9/9`, ratio `0.69014x`, wall
+`26.946 ms/cycle`, verify `21.817 ms/cycle`, proposal/update
+`1.980 ms/cycle`, cycle cost `2.961`, visible `2.023`, acceptance
+`0.355`. Compared to the fresh no-env control this is wall
+`27.001 -> 26.946 ms/cycle`, verify `21.890 -> 21.817 ms/cycle`, and
+ratio `0.6872x -> 0.6901x`. The retained default profile moved kernel
+`14.496 -> 14.448 ms/pass`, host marker `18.497 -> 18.465 ms/pass`, and
+`w4_single_gemv` `1.457 -> 1.399 ms/pass`, with calls/pass unchanged.
+
+Artifacts:
+`benchmarks/results/2026-06-11-hipengine-mtp-current-default-before-single-full-v-9prompt-d32.json`,
+`benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-9prompt-d32.json`,
+`benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-default-9prompt-d32.json`,
+and
+`benchmarks/results/2026-06-11-hipengine-mtp-m12-single-full-v-default-rocprof.json`.
