@@ -78583,3 +78583,43 @@ experimental overlap code instead of retaining a dead flag. Revisit only with a
 graph-capture/amortization design that improves all-cycle D32 economics, not
 just steady markers. Artifact:
 `benchmarks/results/2026-06-11-hipengine-mtp-moe-cdispatch-overlap-nohold.json`.
+
+## 2026-06-11 - MTP proposer partial-accept replay is no-hold
+
+Tested the next P2 proposer-chain idea: save only the cycle-root proposer
+snapshot, then replay accepted tokens from that root on partial accepts instead
+of saving/restoring intermediate draft snapshots. This was an exact A/B against
+the current selected-down-default-off stack.
+
+Validation command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_REPLAY_PARTIAL_ACCEPTS=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw \
+  --decode-tokens 32 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --hip-arch gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-replay-partial-accepts-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-replay-partial-accepts-9prompt-d32.json
+```
+
+Result: exact `9/9` with identical accepted lengths, visible tokens, and
+acceptance rate versus
+`benchmarks/results/2026-06-11-hipengine-mtp-selected-down-staged-off-9prompt-d32.json`.
+It did remove the intended D2D snapshot copies: snapshot saves `285 -> 148`
+and skips `142 -> 279` across the suite. End-to-end economics regressed:
+actual speed `0.6784x -> 0.6691x`, cycle wall `27.4081 -> 27.6799 ms/cycle`,
+and proposal/update `2.0351 -> 2.3400 ms/cycle`; verify was effectively flat
+`22.1312 -> 22.1278 ms/cycle`.
+
+Decision: no-hold. Replaying accepted-token state on partial accepts costs more
+than the intermediate D2D snapshot copies it removes. Removed the experimental
+flag/code; keep the artifact as a retained diagnostic so we do not re-try this
+shape without a genuinely batched/device-resident replay design.
