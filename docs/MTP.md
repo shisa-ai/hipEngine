@@ -52,6 +52,14 @@ command, hardware, workload shape, and correctness gate.
 | P3 | Revisit top-k/tree after wall cut | Acceptance margin | Re-run gated tree/top-k only after verify wall is materially lower or a better acceptance head is available. | Tree beats chain on the same wall and same prompt suite. | Current B=3 tree is default-off negative. |
 | No-go | p_min / whole-pass persistent / selected-FFN megakernel / exact PARO rotate-pair fusion / fused verifier LM-head / wider GDN dv-tiling / routed-expert WMMA proposer dense | 0 ms | Do not spend sprint time here unless new evidence changes the bottleneck. | n/a | Measured neutral, negative, or non-exact on this stack. Includes p_min/sync trims, consumer-side rotate fusions, refreshed M15.4 producer-side RMSNorm+rotate2, and the current-stack `HIPENGINE_PARO_FFN_MEGAKERNEL=1` recheck: it fired but failed exact AR at token index 9 (`156973` vs `149315`), so it stays default-off. The existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` path is exact on locked quicksort but no-hold for MTP: calls/pass `935 -> 934`, kernel `14.594 -> 15.236 ms/pass`, host `18.621 -> 19.234 ms/pass`; it removes one argmax launch but makes the W8A16 body slower (`1.4435 -> 2.0953 ms/pass`). GDN `VTILE=8` stayed exact and halved chain blocks (`1024 -> 512`) but raised VGPR (`64 -> 80`) and regressed locked GDN `1.7559 -> 1.7597 ms/pass` plus total kernel `14.5941 -> 14.6308 ms/pass`. Routed-expert WMMA BF16 dense for the sidecar proposer was exact on quicksort and `9/9` prompts, but regressed D32 wall `27.011 -> 27.149 ms/cycle` and proposal/update `1.980 -> 2.068 ms/cycle`; experiment code removed. |
 
+Additional no-hold from the 2026-06-11 proposer pass: fusing the sidecar
+shared-gate FP32 accumulation and FP32-to-BF16 finalize into one helper stayed
+exact on quicksort and exact `9/9` on the D32 prompt suite with identical
+acceptance, but regressed aggregate wall `27.0015 -> 27.1124 ms/cycle` and
+actual ratio `0.6840x -> 0.6816x`; the proposal/update nudge was only
+`1.95247 -> 1.95093 ms/cycle`. Experiment code was removed. Do not re-open this
+single-row fuse unless it is part of a broader proposer graph/batch design.
+
 Live-tree corrections to the external review ranking:
 
 - `single_linear_out` and `single_full_v` exact W4 multi-row routing are already

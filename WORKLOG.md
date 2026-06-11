@@ -79565,3 +79565,63 @@ that separates:
   `27.8 ms/cycle`, exact but still WIP toward `<21.5 ms/cycle`.
 
 No benchmark was run for this entry; it is a root README surfacing fix only.
+
+## 2026-06-11 - MTP proposer shared-gate finalize fusion no-hold
+
+Tested a narrow P2 proposer launch-removal candidate: fuse the MTP sidecar
+shared-expert `mtp_accumulate_sigmoid_gate_bf16_to_f32` and
+`mtp_finalize_f32_to_bf16` helpers into one kernel that preserves the old FP32
+accumulator postcondition and writes the BF16 finalized row. The helper was
+exact in the narrow unit and quicksort smoke, but failed the same-session
+9-prompt D32 aggregate gate, so the experiment code was removed and the current
+two-kernel path remains.
+
+Validation and measurement:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/mtp.py hipengine/speculative/mtp_native.py tests/test_mtp_input_fusion_kernel.py
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-proposer-fused-shared-finalize-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_FUSED_SHARED_FINALIZE=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-fused-shared-finalize-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-fused-shared-finalize-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-proposer-fused-shared-finalize-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-proposer-fused-shared-finalize-on-9prompt-d32.json
+```
+
+Results:
+
+- quicksort smoke exact with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`;
+- 9-prompt D32 stayed exact `9/9` with identical acceptance/visible-token
+  aggregates;
+- cycle wall regressed `27.001547862 -> 27.112434298 ms/cycle` (+0.41%);
+- actual ratio regressed `0.684028820x -> 0.681645697x`;
+- proposal/update only nudged `1.952470195 -> 1.950927174 ms/cycle`
+  (-0.00154 ms), too small to justify default promotion against the aggregate
+  regression.
+
+Decision: no-hold. Experiment code and flag removed. Keep the two-kernel
+shared-gate accumulation + finalize path until a broader proposer graph/batch
+design can remove more of the update chain.
