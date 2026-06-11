@@ -81077,3 +81077,14 @@ Next grind order after router fusion:
    streaks, and a later tree/rejection-boundary sibling retest. Relaxed
    speculative sampling remains out of sprint scope because it changes the
    accept contract and needs distribution access.
+
+Acceptance-density backlog doc cleanup:
+
+- Updated `docs/MTP.md` with an explicit endgame table for acceptance-density
+  work after the wall path stabilizes: B=4/B=5 economics plus per-depth
+  histograms first, draft vocab-cap rejection census second, adaptive B / AR
+  fallback third, tree/rejection-boundary sibling retest later, and relaxed
+  speculative sampling as an opt-in quality tier only.
+- Kept the immediate implementation priority unchanged: reduced-DAG verifier
+  batching first, then re-profile the post-fusion proposer before choosing
+  M12.7 graph capture versus route-batched expert kernels.

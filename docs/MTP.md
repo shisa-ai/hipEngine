@@ -80,6 +80,22 @@ Current priority order after folding in the external review:
 | Done | Resident state/cache Tensor view caching | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=1` caches `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` non-owning Tensor views with explicit invalidation. Exact `9/9`, identical acceptance, wall `26.642 -> 26.426 ms/cycle`, verify `21.506 -> 21.278 ms/cycle`, ratio `0.6924x -> 0.6986x`; graph-off host control `32.52 -> 31.70 ms/pass`. |
 | Done | `single_linear_out` / `single_full_v` exact multi-row routing | Already retained | Default-on after exact D32 gates | Not pending next work; keep the retained paths and remove their opt-outs after the follow-up defaults-only gates in `docs/REFACTOR.md`. |
 
+Acceptance-density backlog for the endgame:
+
+| Rank | Diagnostic / policy | Why it matters | First gate |
+| --- | --- | --- | --- |
+| A1 | B=4/B=5 economics with per-position acceptance histograms | At `20.379 ms/cycle`, the current `2.012` visible tokens/cycle still needs `2.26` visible tokens/cycle for AR break-even. Higher B is the simplest way to buy visible tokens if deeper positions still accept often enough. | Add per-depth accept counters across the exact 9-prompt D32 suite, then run B=4 and B=5 with current defaults. Promote only if exact AR holds and suite `actual_ratio` improves after the added verifier row cost. |
+| A2 | Draft vocab-cap rejection census (`32768 -> 65536/full`) | A correct target token outside the draft cap is a guaranteed rejection. If cap-caused misses are nontrivial, raising the cap may buy density for proposer-only LM-head cost. | Instrument rejected depths with target top-1 token id and cap status; then A/B cap `32768`, `65536`, and full vocab for exactness, acceptance, proposer wall, and total ratio. |
+| A3 | Adaptive B / AR fallback for zero-accept streaks | Some prompts or phases pay the full verify wall to accept no draft tokens. Dropping to B=1 or AR after repeated zero-accept cycles can raise suite average without changing kernel math. | Exact output must remain identical. Gate on a fixed policy, 9-prompt D32 suite, no prompt-level regression hidden by average-only reporting. |
+| A4 | Tree or rejection-boundary sibling retest | Full B=3 tree is exact but negative on the current stack. A smaller boundary-sibling policy might recover first-rejection cases once wall is lower. | Revisit only after the reduced-DAG/proposer wall path stabilizes. Compare against chain at the same B and report added rows, acceptance lift, wall, and ratio. |
+| A5 | Relaxed speculative sampling | This is the known theoretical acceptance ceiling, but it changes the exact top-1 accept contract and needs distribution access from both models. | Out of scope for the exact-default sprint. Treat as explicit opt-in quality tier, never as a default speed row. |
+
+For B sweeps, use the ratio gate rather than intuition: the current row is
+`2.012 / 20.379 = 0.0987` visible tokens/ms, while AR is about
+`1 / 9.018 = 0.1109` tokens/ms. A larger B row must either beat the current
+suite ratio immediately or show enough per-depth acceptance to justify the extra
+verify row after the next wall-cut unit lands.
+
 Meta-bias for this sprint: prefer launch-count reduction, host round-trip
 compression, graph capture, and C-side batching only when it removes actual DAG
 nodes. VTILE=8 GDN, fused LM-head, refreshed RMSNorm+rotate, and current
