@@ -1,0 +1,86 @@
+{
+  "date": "2026-06-12",
+  "status": "no_hold",
+  "performance_claim": false,
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900",
+  "backend": "hip_gfx1100",
+  "workload": "9-prompt D32 B=3 MTP prompt suite plus quicksort verifier rocprof",
+  "baseline_config": {
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "mtp_skip_canonicalize_after_verify": true,
+    "mtp_proposer_router_topk_fused": true,
+    "linear_shared_down_combine_fused": true,
+    "full_shared_down_combine_fused": true,
+    "verify_final_rmsnorm_fp16_to_bf16": false
+  },
+  "experiment_config": {
+    "HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16": "1",
+    "description": "Replace verifier final paro_rmsnorm_out_fp16 + fp16_to_bf16 with one exact kernel that writes BF16 after the FP16 rounding point."
+  },
+  "correctness": {
+    "quicksort_smoke_exact_ar_match": true,
+    "prompt_suite_exact_prompts": "9/9",
+    "accepted_lengths_identical": true,
+    "active_budgets_identical": true
+  },
+  "suite_ab": {
+    "off": {
+      "actual_decode_speedup_vs_ar_mean": 0.8915047894724973,
+      "cycle_wall_ms_per_cycle_mean": 20.087396071018517,
+      "verify_ms_per_cycle_mean": 16.297947691500553,
+      "proposal_update_ms_per_cycle_mean": 1.4517964129580507,
+      "avg_visible_tokens_per_cycle_mean": 2.011851851851852,
+      "avg_accepted_per_cycle_mean": 1.0118518518518518,
+      "ar_decode_ms_per_token_mean": 9.004665442464304
+    },
+    "on": {
+      "actual_decode_speedup_vs_ar_mean": 0.8918999890171933,
+      "cycle_wall_ms_per_cycle_mean": 20.11919238123457,
+      "verify_ms_per_cycle_mean": 16.32914298426728,
+      "proposal_update_ms_per_cycle_mean": 1.4494432421562113,
+      "avg_visible_tokens_per_cycle_mean": 2.011851851851852,
+      "avg_accepted_per_cycle_mean": 1.0118518518518518,
+      "ar_decode_ms_per_token_mean": 9.025232378108841
+    },
+    "delta": {
+      "actual_decode_speedup_vs_ar_mean": 0.00039519954469595156,
+      "cycle_wall_ms_per_cycle_mean": 0.03179631021605144,
+      "verify_ms_per_cycle_mean": 0.03119529276672599,
+      "proposal_update_ms_per_cycle_mean": -0.0023531708018393713
+    }
+  },
+  "rocprof_ab": {
+    "control_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json",
+    "experiment_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-rocprof.json",
+    "off": {
+      "kernel_calls_per_pass": 902.0,
+      "kernel_time_ms_per_pass": 12.714392727272726,
+      "host_window_ms_per_pass": 16.481617
+    },
+    "on": {
+      "kernel_calls_per_pass": 901.0,
+      "kernel_time_ms_per_pass": 12.710503181818183,
+      "host_window_ms_per_pass": 16.43927190909091
+    },
+    "delta": {
+      "kernel_calls_per_pass": -1.0,
+      "kernel_time_ms_per_pass": -0.003889545454543281,
+      "host_window_ms_per_pass": -0.042345090909091636
+    }
+  },
+  "decision": "Do not promote. The profile shows the expected one-launch reduction and a tiny host/kernel improvement, but the exact same-suite 9-prompt D32 gate regressed wall and verify time. Experiment code was removed; keep this as a retained diagnostic/no-hold only.",
+  "artifacts": {
+    "suite_off": "benchmarks/results/2026-06-12-hipengine-mtp-final-rmsnorm-fp16-to-bf16-off-9prompt-d32.json",
+    "suite_on": "benchmarks/results/2026-06-12-hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-9prompt-d32.json",
+    "rocprof_on": "benchmarks/results/2026-06-12-hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-rocprof.json"
+  },
+  "commands": {
+    "suite_off": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-off-9prompt-d32 --out /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-off-9prompt-d32.json",
+    "suite_on": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-9prompt-d32 --out /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-9prompt-d32.json",
+    "rocprof_on": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt) HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-rocprof --out /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-rocprof.json"
+  }
+}

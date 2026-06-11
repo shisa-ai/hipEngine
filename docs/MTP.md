@@ -79,6 +79,7 @@ Current priority order after folding in the external review:
 | Done | Current-stack `decode_batched` with graph-off skip | Current best retained MTP verifier mode | Exact D32 same-suite positive | After canonicalize skip made graph-off competitive, `chain_attn_mode=decode_batched` is exact `9/9` and improves over graph-off batched skip with identical accepted lengths/active budgets: ratio `0.7730x -> 0.8252x`, wall `24.076 -> 21.661 ms/cycle`, verify `18.933 -> 16.511 ms/cycle`; profile calls `932 -> 942`, kernel `14.330 -> 12.922 ms/pass`, host `18.272 -> 16.849 ms/pass`. |
 | No-hold | `decode_batched + HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` compound | 0 ms retained | Exact but aggregate-negative | Retested after graph-off became current best. Exact `9/9` with unchanged accepted lengths/active budgets, but slower than `decode_batched + graph_off + skip`: ratio `0.8252x -> 0.8204x`, wall `21.661 -> 21.763 ms/cycle`, verify `16.511 -> 16.628 ms/cycle`, cycle cost `2.411 -> 2.425`. Keep selected-down staged opt-in only. |
 | No-hold | Thread-0 shared-down + shared-gate/residual combine epilogue | 0 ms retained | Exact but kernel-negative | Prototype removed 30 linear-attn combine launches/pass and kept quicksort exact with identical accepted lengths, but the fused output-tiled shared-down kernel grew from `0.348 -> 0.814 ms/pass`; net profile regressed calls `942 -> 912/pass`, kernel `12.860 -> 13.255 ms/pass`, host `16.832 -> 17.076 ms/pass`. Superseded by the retained parallel-epilogue implementation above; do not reintroduce the serial shape. |
+| No-hold | Final RMSNorm FP16-to-BF16 fused cast | 0 ms retained | Exact but suite wall/verify-negative | Replacing verifier final `paro_rmsnorm_out_fp16 + fp16_to_bf16` with one exact BF16-writing kernel removed one launch in the quicksort profile (`902 -> 901 calls/pass`) and nudged profile kernel/host (`12.7144 -> 12.7105 ms/pass`, `16.4816 -> 16.4393 ms/pass`), but the exact 9-prompt D32 suite regressed wall and verify with identical acceptance (`20.087 -> 20.119 ms/cycle`, verify `16.298 -> 16.329 ms/cycle`). Experiment code removed; do not promote without a new same-suite positive design. |
 | Done | Verifier MLP scratch policy alignment | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=1` makes verifier MLP scratch reservation use the same c1/grouped threshold as the chain/tree t-loop MoE path and keys the cache by expected policy. Exact `9/9`, identical accepted lengths/active budgets, wall `26.309 -> 25.690 ms/cycle`, verify `21.176 -> 20.523 ms/cycle`, ratio `0.7003x -> 0.7172x`; graph-auto profile kept `932` calls/pass and moved host `18.314 -> 18.246 ms/pass`; graph-off host `32.445 -> 32.273 ms/pass`. |
 | Done | Resident state/cache Tensor view caching | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=1` caches `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` non-owning Tensor views with explicit invalidation. Exact `9/9`, identical acceptance, wall `26.642 -> 26.426 ms/cycle`, verify `21.506 -> 21.278 ms/cycle`, ratio `0.6924x -> 0.6986x`; graph-off host control `32.52 -> 31.70 ms/pass`. |
 | Done | `single_linear_out` / `single_full_v` exact multi-row routing | Already retained | Default-on after exact D32 gates | Not pending next work; keep the retained paths and remove their opt-outs after the follow-up defaults-only gates in `docs/REFACTOR.md`. |
@@ -124,7 +125,7 @@ noise or negative on this stack.
 | P2 | M12.7 graph-capture proposer loop | -0.4 to -0.9 ms estimated from remaining host gap | Capture the stable sidecar proposer/update loop after router fusion and scalar/readback trims, keeping the exact persistent-chain candidate sequence and graph cache keys explicit. | Exact 9-prompt D32 with same acceptance; proposal/update drops; no capture-freeze or stale scalar state across prompts. | Still real, but profile-bounded. Post-fusion proposer all-region host/kernel gap is about `0.87 ms/cycle`; capture cannot remove the `~3.38 ms/cycle` proposer GPU work. Direct capture also needs a design for by-value dynamic cache destinations/context length in `NativeMtpChainProposer.advance()`. |
 | P2 | Eliminate per-layer memset/fill launches | -0.1 to -0.3 ms estimated | Audit verifier/proposer fills and copies for write-before-read coverage; remove or fold only when lifetime proof is local and testable. | RED lifetime/unit test plus exact 9-prompt D32; launch family disappears or shrinks; no stale-data failures under graph replay. | Low-risk cleanup lane between larger spikes. Keep changes small; never remove a fill just because it looks redundant in one prompt. |
 | P3 | Revisit top-k/tree after wall cut | Acceptance margin | Re-run gated tree/top-k only after verify wall is materially lower or a better acceptance head is available. | Tree beats chain on the same wall and same prompt suite. | Current B=3 tree is default-off negative. |
-| No-go | p_min / whole-pass persistent / selected-FFN megakernel / exact PARO rotate-pair fusion / fused verifier LM-head / wider GDN dv-tiling / routed-expert WMMA proposer dense / launch-only full-QKV split+key-cast fusion / accept-position fused state update | 0 ms | Do not spend sprint time here unless new evidence changes the bottleneck. | n/a | Measured neutral, negative, or non-exact on this stack. Includes p_min/sync trims, consumer-side rotate fusions, refreshed M15.4 producer-side RMSNorm+rotate2, and the current-stack `HIPENGINE_PARO_FFN_MEGAKERNEL=1` recheck: it fired but failed exact AR at token index 9 (`156973` vs `149315`), so it stays default-off. The existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` path is exact on locked quicksort but no-hold for MTP: calls/pass `935 -> 934`, kernel `14.594 -> 15.236 ms/pass`, host `18.621 -> 19.234 ms/pass`; it removes one argmax launch but makes the W8A16 body slower (`1.4435 -> 2.0953 ms/pass`). GDN `VTILE=8` stayed exact and halved chain blocks (`1024 -> 512`) but raised VGPR (`64 -> 80`) and regressed locked GDN `1.7559 -> 1.7597 ms/pass` plus total kernel `14.5941 -> 14.6308 ms/pass`. Routed-expert WMMA BF16 dense for the sidecar proposer was exact on quicksort and `9/9` prompts, but regressed D32 wall `27.011 -> 27.149 ms/cycle` and proposal/update `1.980 -> 2.068 ms/cycle`; experiment code removed. Full-QKV split+key-cast fusion is bit-exact and profile-positive on launch count, but repeated exact prompt-suite A/B regressed wall/verify, so it is opt-in diagnostic only. Fusing the resident base-slot position/context update into the packed accept kernel removed one scalar launch/pass (`932 -> 931`) and stayed exact, but profile host window and 9-prompt wall/verify both regressed (`27.038 -> 27.135 ms/cycle`, verify `21.884 -> 21.969 ms/cycle`), so `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` stays opt-in. |
+| No-go | p_min / whole-pass persistent / selected-FFN megakernel / exact PARO rotate-pair fusion / fused verifier LM-head / wider GDN dv-tiling / routed-expert WMMA proposer dense / launch-only full-QKV split+key-cast fusion / accept-position fused state update / final RMSNorm+cast micro-fusion | 0 ms | Do not spend sprint time here unless new evidence changes the bottleneck. | n/a | Measured neutral, negative, or non-exact on this stack. Includes p_min/sync trims, consumer-side rotate fusions, refreshed M15.4 producer-side RMSNorm+rotate2, and the current-stack `HIPENGINE_PARO_FFN_MEGAKERNEL=1` recheck: it fired but failed exact AR at token index 9 (`156973` vs `149315`), so it stays default-off. The existing `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` path is exact on locked quicksort but no-hold for MTP: calls/pass `935 -> 934`, kernel `14.594 -> 15.236 ms/pass`, host `18.621 -> 19.234 ms/pass`; it removes one argmax launch but makes the W8A16 body slower (`1.4435 -> 2.0953 ms/pass`). GDN `VTILE=8` stayed exact and halved chain blocks (`1024 -> 512`) but raised VGPR (`64 -> 80`) and regressed locked GDN `1.7559 -> 1.7597 ms/pass` plus total kernel `14.5941 -> 14.6308 ms/pass`. Routed-expert WMMA BF16 dense for the sidecar proposer was exact on quicksort and `9/9` prompts, but regressed D32 wall `27.011 -> 27.149 ms/cycle` and proposal/update `1.980 -> 2.068 ms/cycle`; experiment code removed. Full-QKV split+key-cast fusion is bit-exact and profile-positive on launch count, but repeated exact prompt-suite A/B regressed wall/verify, so it is opt-in diagnostic only. Fusing the resident base-slot position/context update into the packed accept kernel removed one scalar launch/pass (`932 -> 931`) and stayed exact, but profile host window and 9-prompt wall/verify both regressed (`27.038 -> 27.135 ms/cycle`, verify `21.884 -> 21.969 ms/cycle`), so `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` stays opt-in. Final RMSNorm+cast micro-fusion stayed exact and removed one profile launch, but same-suite D32 wall/verify regressed; experiment code removed. |
 
 Additional no-hold from the 2026-06-11 proposer pass: fusing the sidecar
 shared-gate FP32 accumulation and FP32-to-BF16 finalize into one helper stayed
@@ -202,10 +203,10 @@ Live-tree corrections to the external review ranking:
   The existing dense expert helper is route-scalar, so any batched version must
   preserve route accumulation order with route-batched gate/up, activation/down,
   and accumulation kernels.
-- Final RMSNorm+cast fusion is a low-priority micro. Existing BF16 RMSNorm
-  wrappers are not a complete drop-in for every final-norm/LM-head path, but the
-  expected saving is too small to outrank scratch policy, resident view caching,
-  reduced-DAG batching, or proposer graph capture.
+- Final RMSNorm+cast fusion is checked/no-hold on the current best stack. It
+  removed one profile launch and stayed exact, but the 9-prompt D32 suite
+  regressed wall/verify, so the experiment was removed rather than retained as
+  another opt-in flag.
 
 External review ranking, folded into the live plan:
 
@@ -228,15 +229,15 @@ External review ranking, folded into the live plan:
 | Verifier/proposer stream overlap | Plausible but dependency-risky; audit accepted-token, hidden-row, proposer-repair, and commit-buffer dependencies before prototyping events. |
 | Per-layer memset/fill elimination | Keep as a profile-driven cleanup lane, but the current locked raw trace has `fillBufferAligned=0`; require a fresh live fill bucket, local write-before-read proof, and exact D32 gate. |
 | Multi-stream overlap | High-upside but blocked until the verifier DAG is smaller; prior branch-overlap attempt regressed all-cycle wall. |
-| Final RMSNorm+cast fusion | Defer/low priority. Existing BF16 RMSNorm wrappers are not enough to make this a broad drop-in, and the likely saving is too small to outrank scratch policy, resident view caching, reduced-DAG batching, or proposer graph capture. |
+| Final RMSNorm+cast fusion | Checked/no-hold 2026-06-12. Exact `9/9` with identical acceptance and one fewer profile launch, but same-suite wall/verify regressed (`20.087 -> 20.119 ms/cycle`, verify `16.298 -> 16.329 ms/cycle`); experiment code removed. |
 
 Break-even accounting: the retained stack has already moved the exact 9-prompt
 D32 row from the locked sprint baseline `27.8 ms/cycle` to the current
-`20.204 ms/cycle`, crossing the original `<21.5 ms` wall milestone. The row is
-still `0.886x` AR because visible-token density is only about `2.012/cycle`.
-At the current AR denominator (`9.019 ms/token`), true break-even at unchanged
+`20.110 ms/cycle`, crossing the original `<21.5 ms` wall milestone. The row is
+still `0.891x` AR because visible-token density is only about `2.012/cycle`.
+At the current AR denominator (`9.011 ms/token`), true break-even at unchanged
 acceptance would require about `18.1 ms/cycle`; at the current wall, it needs at
-least `2.24` visible tokens/cycle. The next push must keep every retained wall
+least `2.23` visible tokens/cycle. The next push must keep every retained wall
 win while continuing reduced-DAG/proposer work and saving acceptance-density
 policy for the endgame. The D32 9-prompt off/on A/B confirms the stacked P1
 gates are exact and worth keeping by default,
@@ -450,8 +451,9 @@ Measurement:
 Decision: promote the MTP canonicalize skip default-on and use
 `chain_attn_mode=decode_batched`, graph `off` as the current exact B=3 MTP
 verifier baseline, with `HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` still no-held.
-After the fused proposer router and parallel shared-down+combine epilogue land
-on top, the current exact B=3 MTP row is `0.886x` at `20.204 ms/cycle`; the
+After the fused proposer router and linear/full parallel shared-down+combine
+epilogues land on top, the current exact B=3 MTP row is `0.891x` at
+`20.110 ms/cycle`; the
 original `<21.5 ms` wall milestone is crossed, but the true `>1.0x` target still
 needs broader reduced-DAG/proposer work and later acceptance-density uplift.
 

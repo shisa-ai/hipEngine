@@ -81282,3 +81282,86 @@ Decision:
   break-even still needs about `18.1 ms/cycle`; at the current wall it needs
   about `2.23` visible tokens/cycle. Continue broader reduced-DAG/proposer work
   before acceptance-density policy experiments.
+
+### 2026-06-12 - MTP final RMSNorm+cast micro-fusion no-hold
+
+Tested a verifier tail micro-fusion on the current best 35B-A3B MTP stack:
+replace final `paro_rmsnorm_out_fp16 -> fp16_to_bf16` before the verifier
+LM-head with a single exact kernel that writes BF16 after the FP16 rounding
+point.
+
+Validation before suite:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/norm/rmsnorm.py hipengine/kernels/hip_gfx1100/norm/__init__.py hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_rmsnorm_plan.py
+PYTHONPATH=. pytest -q tests/test_qwen35_rmsnorm_plan.py
+git diff --check
+```
+
+- Targeted tests: `3 passed`.
+- Exact quicksort smoke with `HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16=1`
+  held exact AR and unchanged accepted lengths:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Profile command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-rocprof \
+  --out /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-rocprof.json
+```
+
+Compared against the retained current-best profile
+`benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json`:
+
+- Exact AR: true.
+- Calls/pass: `902.0 -> 901.0`.
+- Kernel: `12.714393 -> 12.710503 ms/pass`.
+- Host window: `16.481617 -> 16.439272 ms/pass`.
+
+9-prompt D32 suite A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_FINAL_RMSNORM_FP16_TO_BF16=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-final-rmsnorm-fp16-to-bf16-on-9prompt-d32.json
+```
+
+Results:
+
+- Exact `9/9`.
+- Accepted lengths and active budgets identical on every prompt.
+- Actual MTP/AR ratio: `0.891504789 -> 0.891899989`; this apparent uptick is
+  from AR denominator noise, not a retained MTP speedup.
+- Visible tokens/cycle unchanged: `2.011851852`.
+- Wall: `20.087396071 -> 20.119192381 ms/cycle` (+0.031796310 ms).
+- Verify: `16.297947692 -> 16.329142984 ms/cycle` (+0.031195293 ms).
+- Proposal/update: `1.451796413 -> 1.449443242 ms/cycle` (noise/flat).
+
+Decision:
+
+- No-hold. The profile shows the expected one-launch removal and tiny
+  profile-window improvement, but the exact same-suite wall and verify gate
+  regressed. Experiment code removed; keep only the diagnostic artifacts.
+- Added `benchmarks/results/2026-06-12-hipengine-mtp-final-rmsnorm-fp16-to-bf16-nohold.json`
+  plus raw suite/profile artifacts.
+- Updated `docs/MTP.md` to mark final RMSNorm+cast as checked/no-hold and to
+  keep acceptance-density policy as an endgame backlog after reduced-DAG and
+  proposer work.
