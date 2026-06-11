@@ -80611,3 +80611,83 @@ The current exact D32 row is now `25.69 ms/cycle` with `20.52 ms` verify,
 leaving roughly `4.19 ms` to the `<21.5 ms` break-even target. Next live items:
 scratch-cache generation stamp / graph-off canonicalize skip if staying in
 host-cache cleanup, otherwise full-layer reduced-DAG batching.
+
+## 2026-06-12 - MTP scratch cache generation stamp promoted
+
+Changed verifier scratch cache hits to store a `_verify_scratch_cache_generation`
+stamp and return cached scratch directly when the generation matches. The
+generation is bumped by `_clear_verify_scratch_caches()`, so stale-pointer
+protection is retained without paying `_workspace_tensor_matches` on every
+steady-state cache hit. Default gate:
+`HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP=1`; opt out with `=0`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py
+PYTHONPATH=. pytest -q tests/test_qwen35_resident_batch_layout.py -k 'verify_mlp_scratch or generation_stamp or decode_batch_uses_grouped_moe_scratch or linear_prefill_restores_decode_scratch_token1'
+git diff --check
+```
+
+All passed. Targeted resident layout selection passed `4/4`.
+
+Exact quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-scratch-generation-stamp-smoke.json
+```
+
+Passed exact AR with accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+D32 9-prompt economy A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP=<0-or-1> PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-scratch-generation-stamp-<off-or-on>-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-scratch-generation-stamp-<off-or-on>-9prompt-d32.json
+```
+
+Result: exact `9/9` off/on with identical visible/accepted cycle aggregates,
+identical per-prompt accepted lengths, and identical active budgets. Aggregate
+actual ratio moved `0.71447x -> 0.72519x`, cycle wall
+`25.7085 -> 25.5955 ms/cycle`, verify `20.5460 -> 20.4342 ms/cycle`, and
+proposal/update `1.99205 -> 1.98602 ms/cycle`.
+
+Verifier profile controls:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP=<0-or-1> PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode <auto-or-off> \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-scratch-generation-stamp-<off-or-on>{-graphoff}-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-scratch-generation-stamp-<off-or-on>{-graphoff}-rocprof --top 50
+```
+
+Profile results:
+
+- Graph-auto off/on: exact, calls unchanged at `932/pass`, kernel
+  `14.388 -> 14.372 ms/pass`, host `18.322 -> 18.298 ms/pass`.
+- Graph-off off/on: exact, calls unchanged at `932/pass`, kernel
+  `14.303 -> 14.318 ms/pass`, host `32.659 -> 31.971 ms/pass`.
+
+Decision: retain and promote default-on. Updated `docs/MTP.md`,
+`docs/REFACTOR.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+The current exact D32 row is now `25.60 ms/cycle` with `20.43 ms` verify,
+leaving roughly `4.10 ms` to the `<21.5 ms` break-even target. Next live items:
+graph-off canonicalize skip if staying in host-cache cleanup, otherwise
+full-layer reduced-DAG batching.

@@ -1443,8 +1443,9 @@ class Qwen35ParoResidentSession:
         self.linear_scratch = {}
         self.full_scratch = {}
         self.moe_scratch = {}
-        self._verify_linear_scratch_cache: dict[tuple[int, int], Qwen35ParoLinearAttentionScratch] = {}
-        self._verify_mlp_scratch_cache: dict[tuple[int, int, str], Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch] = {}
+        self._verify_scratch_cache_generation = 0
+        self._verify_linear_scratch_cache: dict[tuple[int, int], tuple[int, Qwen35ParoLinearAttentionScratch]] = {}
+        self._verify_mlp_scratch_cache: dict[tuple[int, int, str], tuple[int, Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch]] = {}
         self._resident_tensor_view_cache_enabled_value = _env_flag("HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE", True)
         self._slot_linear_state_cache: dict[tuple[int, int], tuple[Tensor, Tensor]] = {}
         self._slot_full_cache_cache: dict[tuple[int, int], tuple[Tensor, Tensor]] = {}
@@ -3251,8 +3252,12 @@ class Qwen35ParoResidentSession:
         return state.reserve_moe_c1_scratch(tokens=rows, activation_dtype=DType.FP16)
 
     def _clear_verify_scratch_caches(self) -> None:
+        self._verify_scratch_cache_generation = int(getattr(self, "_verify_scratch_cache_generation", 0)) + 1
         self._verify_linear_scratch_cache.clear()
         self._verify_mlp_scratch_cache.clear()
+
+    def _verify_scratch_generation_stamp_enabled(self) -> bool:
+        return _env_flag("HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP", True)
 
     @staticmethod
     def _workspace_tensor_matches(state: Qwen35ParoDecodeState, name: str, tensor: Tensor) -> bool:
@@ -3277,19 +3282,31 @@ class Qwen35ParoResidentSession:
         rows = int(rows)
         if self._verify_scratch_cache_enabled():
             key = (int(layer_id), rows)
-            cached = self._verify_linear_scratch_cache.get(key)
+            cached_entry = self._verify_linear_scratch_cache.get(key)
+            cached_generation, cached = cached_entry if cached_entry is not None else (-1, None)
+            generation_matches = cached_generation == int(getattr(self, "_verify_scratch_cache_generation", 0))
+            use_generation_stamp = self._verify_scratch_generation_stamp_enabled()
             if (
                 isinstance(cached, Qwen35ParoLinearAttentionScratch)
                 and cached.attn_input.shape[0] == rows
                 and cached.attn_input.dtype == DType.FP16
-                and self._workspace_tensor_matches(state, "linear_attn.attn_input", cached.attn_input)
-                and self._workspace_tensor_matches(state, "linear_attn.qkv_z", cached.qkv_z)
-                and self._workspace_tensor_matches(state, "linear_attn.tree_recurrent_state", cached.tree_recurrent_state)
+                and (
+                    (use_generation_stamp and generation_matches)
+                    or (
+                        not use_generation_stamp
+                        and self._workspace_tensor_matches(state, "linear_attn.attn_input", cached.attn_input)
+                        and self._workspace_tensor_matches(state, "linear_attn.qkv_z", cached.qkv_z)
+                        and self._workspace_tensor_matches(state, "linear_attn.tree_recurrent_state", cached.tree_recurrent_state)
+                    )
+                )
             ):
                 return cached
         scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
         if self._verify_scratch_cache_enabled():
-            self._verify_linear_scratch_cache[(int(layer_id), rows)] = scratch
+            self._verify_linear_scratch_cache[(int(layer_id), rows)] = (
+                int(getattr(self, "_verify_scratch_cache_generation", 0)),
+                scratch,
+            )
         return scratch
 
     def _verify_mlp_scratch(
@@ -3303,7 +3320,10 @@ class Qwen35ParoResidentSession:
         policy = self._verify_mlp_scratch_policy(rows)
         if self._verify_scratch_cache_enabled():
             key = (int(layer_id), rows, policy)
-            cached = self._verify_mlp_scratch_cache.get(key)
+            cached_entry = self._verify_mlp_scratch_cache.get(key)
+            cached_generation, cached = cached_entry if cached_entry is not None else (-1, None)
+            generation_matches = cached_generation == int(getattr(self, "_verify_scratch_cache_generation", 0))
+            use_generation_stamp = self._verify_scratch_generation_stamp_enabled()
             if policy == "dense" and isinstance(cached, Qwen35ParoDenseMlpScratch):
                 alloc_name = "dense_mlp.normed"
             elif policy == "grouped" and isinstance(cached, Qwen35ParoGroupedMoeScratch):
@@ -3316,12 +3336,21 @@ class Qwen35ParoResidentSession:
                 alloc_name
                 and cached.normed.shape[0] == rows
                 and cached.normed.dtype == DType.FP16
-                and self._workspace_tensor_matches(state, alloc_name, cached.normed)
+                and (
+                    (use_generation_stamp and generation_matches)
+                    or (
+                        not use_generation_stamp
+                        and self._workspace_tensor_matches(state, alloc_name, cached.normed)
+                    )
+                )
             ):
                 return cached
         scratch = self._reserve_verify_mlp_scratch(state, rows=rows)
         if self._verify_scratch_cache_enabled():
-            self._verify_mlp_scratch_cache[(int(layer_id), rows, policy)] = scratch
+            self._verify_mlp_scratch_cache[(int(layer_id), rows, policy)] = (
+                int(getattr(self, "_verify_scratch_cache_generation", 0)),
+                scratch,
+            )
         return scratch
 
     def _ensure_grouped_moe_prefill_scratch(self, layer_id: int | None = None, *, tokens: int):

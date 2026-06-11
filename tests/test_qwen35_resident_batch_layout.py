@@ -5299,6 +5299,30 @@ def test_qwen35_resident_verify_mlp_scratch_follows_verifier_grouped_threshold(m
     assert (0, 4, "grouped") in override_session._verify_mlp_scratch_cache
 
 
+def test_qwen35_resident_verify_mlp_scratch_generation_stamp_skips_workspace_lookup(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP", raising=False)
+    device = Device("hip", 0)
+    state = _FakePrefillState(device)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.config = SimpleNamespace(num_experts=128)
+    session._verify_scratch_cache_generation = 0
+    session._verify_linear_scratch_cache = {}
+    session._verify_mlp_scratch_cache = {}
+
+    scratch = session._verify_mlp_scratch(0, state, rows=16)
+    cached = session._verify_mlp_scratch(0, state, rows=16)
+
+    assert cached is scratch
+    assert len(state.grouped_reservations) == 1
+
+    session._clear_verify_scratch_caches()
+    after_clear = session._verify_mlp_scratch(0, state, rows=16)
+
+    assert after_clear is state.grouped_reservations[1]
+    assert after_clear is not scratch
+    assert session._verify_scratch_cache_generation == 1
+
+
 def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None:
     device = Device("hip", 0)
     runtime = _FakePrefillRuntime()
