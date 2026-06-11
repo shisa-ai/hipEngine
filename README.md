@@ -194,6 +194,17 @@ On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
 
+## Speculative decode (DFlash / MTP)
+
+Speculative decode is active but split by model class. Dense 27B DFlash now has
+a retained exact speedup; 35B-A3B MTP is still an optimization sprint because
+the MoE target AR path is much cheaper.
+
+| Path | Model / workload | W7900 result | Status |
+| --- | --- | ---: | --- |
+| DFlash B=4 online-gated | Qwen3.6-27B-PARO dense target + z-lab Qwen3.6-27B-DFlash drafter, 9-prompt D64 | **1.231x AR** (`40.10` vs `32.57 tok/s`) | Exact `9/9`, deployable retained row; artifact: [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json). |
+| MTP B=3 persistent chain | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, graph-auto verifier, draft vocab cap 32768 | **0.758x AR** locked baseline (`83.4` vs `~110 tok/s`), `27.8 ms/cycle` | Exact but below AR; current sprint target is `<21.5 ms/cycle` for `>1.0x`. See [`docs/MTP.md`](docs/MTP.md) and artifacts [`baseline`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json) / [`rocprof`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json). |
+
 ## Concurrency (batched decode)
 
 hipEngine has a native `c>1` decode path: a scheduler-owned compact prefill plus

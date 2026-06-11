@@ -79550,3 +79550,18 @@ Decision: retain default-on. This is not a headline speed row, but it removes a
 real proposer launch and moves the proposal/update window down. Logged in
 `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/MTP.md`, and
 `docs/REFACTOR.md`.
+
+## 2026-06-11 - Root README speculative status surfaced
+
+Status check found that the benchmark rollup had the 27B dense DFlash and 35B
+MTP rows, but the root `README.md` did not yet have the requested MTP/DFlash
+section. Added a documentation-only "Speculative decode (DFlash / MTP)" section
+that separates:
+
+- retained Qwen3.6-27B dense DFlash B=4/D64 online-gated row: `1.231x` AR,
+  exact `9/9`, artifacted in
+  `benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`;
+- Qwen3.6-35B-A3B MTP B=3 graph-auto locked baseline: `0.758x` AR,
+  `27.8 ms/cycle`, exact but still WIP toward `<21.5 ms/cycle`.
+
+No benchmark was run for this entry; it is a root README surfacing fix only.
