@@ -80778,3 +80778,35 @@ baseline. The wall target is now very close (`21.661 ms/cycle` vs `<21.5 ms`),
 but the row is still `0.825x`, so `>1.0x` still needs proposer/overlap and any
 deployable acceptance uplift. Updated `docs/MTP.md`, `docs/REFACTOR.md`,
 `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP selected-down staged compound no-hold
+
+Retested the external-review compound now that graph-off is competitive:
+`decode_batched + graph_off + HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1`
+with `HIPENGINE_SELECTED_MOE_DOWN_STAGED=1`.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_SELECTED_MOE_DOWN_STAGED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-decode-batched-staged-down-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-decode-batched-staged-down-on-9prompt-d32.json
+```
+
+Result: exact `9/9` with unchanged accepted lengths and active budgets versus the
+current best `decode_batched + graph_off + skip` row, but aggregate performance
+regressed: actual ratio `0.82521x -> 0.82043x`, cycle wall
+`21.6612 -> 21.7629 ms/cycle`, verify `16.5110 -> 16.6280 ms/cycle`,
+proposal/update `1.9721 -> 1.9674 ms/cycle`, and cycle cost
+`2.4107 -> 2.4249` AR-token equivalents. Visible/accepted cycle aggregates
+remained `2.01185` / `1.01185`.
+
+Decision: no-hold and no speed promotion. Keep
+`HIPENGINE_SELECTED_MOE_DOWN_STAGED=1` opt-in only; the artifact is retained so
+we do not repeat this compound unless a new barrier-free staged design or graph
+path changes the cost model. Updated `docs/MTP.md`, `docs/REFACTOR.md`,
+`benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
