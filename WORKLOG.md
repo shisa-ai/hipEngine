@@ -78904,3 +78904,71 @@ off; do not spend break-even sprint time here unless a new fused kernel lowers
 the W8A16 body time, not just the argmax launch count. Artifacts:
 `benchmarks/results/2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json`
 and `benchmarks/results/2026-06-11-hipengine-mtp-fused-lm-head-rocprof.json`.
+
+## 2026-06-11 - MTP GDN VTILE=8 no-hold
+
+Checked the next GDN chain recurrence knob after the packed accept-payload
+profile showed `linear_attention_gdn_decode` at `1.756 ms/pass`. The existing
+landed path is `VTILE=4` (1024 blocks, VGPR 64). A transient local test exposed
+`VTILE=8` through `HIPENGINE_GDN_CHAIN_VTILE=8`, then the scaffold was removed
+after measurement so no extra runtime dispatch flag remains.
+
+Validation and measurement:
+
+```bash
+PYTHONPATH=. python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/gdn.py scripts/gdn_chain_microbench.py tests/test_qwen35_linear_attn_gdn_plan.py
+
+PYTHONPATH=. pytest -q \
+  tests/test_qwen35_linear_attn_gdn_plan.py::test_qwen35_gdn_chain_tloop_vtile_env_selects_symbol_without_gpu_load \
+  tests/test_qwen35_linear_attn_gdn_plan.py::test_qwen35_gdn_chain_tloop_vtile_env_validates_before_gpu_load
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 900 python3 scripts/gdn_chain_microbench.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-nodes 4 8 \
+  --iters 400 \
+  --warmup 40 \
+  --json benchmarks/results/2026-06-11-hipengine-gdn-chain-vtile4-microbench.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GDN_CHAIN_VTILE=8 PYTHONPATH=. timeout 900 python3 scripts/gdn_chain_microbench.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --max-nodes 4 8 \
+  --iters 400 \
+  --warmup 40 \
+  --json benchmarks/results/2026-06-11-hipengine-gdn-chain-vtile8-microbench.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_GDN_CHAIN_VTILE=8 PYTHONPATH=. timeout 3600 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens <locked-quicksort-tokens> \
+  --decode-tokens 32 \
+  --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --steady-state-skip 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-gdn-vtile8-rocprof \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-gdn-vtile8-rocprof.json
+```
+
+Results:
+
+- microbench oracle unchanged (`out_max_abs=1.07e-6`, `leaf_max_abs=5.96e-8`);
+- microbench T4 improved only `67.86 -> 67.41 us`, while T8 regressed
+  `118.08 -> 119.31 us`;
+- locked MTP rocprof stayed exact with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`;
+- `linear_attention_gdn_decode` regressed `1.7559 -> 1.7597 ms/pass`;
+- total verifier kernel regressed `14.5941 -> 14.6308 ms/pass`;
+- host window was flat within noise (`18.6215 -> 18.6168 ms/pass`);
+- GDN kernel metadata confirmed the tradeoff: grid blocks halve but VGPR rises
+  `64 -> 80`.
+
+Decision: no-hold. Keep the current `VTILE=4` GDN default. Do not add an env
+flag or runtime symbol for `VTILE=8`; the extra dispatch surface would become
+dead-path debt. Reopen GDN only for a different design that improves both the GDN
+family and total verifier profile. Artifacts:
+`benchmarks/results/2026-06-11-hipengine-mtp-gdn-vtile8-nohold.json`,
+`benchmarks/results/2026-06-11-hipengine-mtp-gdn-vtile8-rocprof.json`,
+`benchmarks/results/2026-06-11-hipengine-gdn-chain-vtile4-microbench.json`, and
+`benchmarks/results/2026-06-11-hipengine-gdn-chain-vtile8-microbench.json`.

@@ -1,0 +1,26 @@
+{
+  "num_k_heads": 16,
+  "num_v_heads": 32,
+  "head_k_dim": 128,
+  "head_v_dim": 128,
+  "vtile": 8,
+  "performance_claim": false,
+  "sweep": [
+    {
+      "max_nodes": 4,
+      "vtile": 8,
+      "blocks": 512,
+      "us_per_call": 67.4109224928543,
+      "out_max_abs": 1.0728836059570312e-06,
+      "leaf_max_abs": 5.960464477539063e-08
+    },
+    {
+      "max_nodes": 8,
+      "vtile": 8,
+      "blocks": 512,
+      "us_per_call": 119.30784792639315,
+      "out_max_abs": 7.152557373046875e-07,
+      "leaf_max_abs": 8.940696716308594e-08
+    }
+  ]
+}

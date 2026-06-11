@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "date": "2026-06-11",
+  "status": "diagnostic_no_hold",
+  "performance_claim": false,
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "locked quicksort prompt from 2026-06-11-hipengine-mtp-b3-locked-baseline.json",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "batched",
+    "graph_mode": "auto",
+    "draft_vocab_cap": 32768
+  },
+  "environment": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "HIPENGINE_MTP_DRAFT_VOCAB_CAP": "32768",
+    "HIPENGINE_GDN_CHAIN_VTILE": "8"
+  },
+  "baseline": {
+    "artifact": "2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json",
+    "gdn_vtile": 4,
+    "exact_ar_match": true,
+    "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "kernel_time_ms_per_pass": 14.594104090909092,
+    "host_window_ms_per_pass": 18.621459,
+    "linear_attention_gdn_decode_ms_per_pass": 1.7558656363636365,
+    "linear_attention_gdn_decode_vgpr_max": 64
+  },
+  "candidate": {
+    "artifact": "2026-06-11-hipengine-mtp-gdn-vtile8-rocprof.json",
+    "gdn_vtile": 8,
+    "exact_ar_match": true,
+    "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "kernel_time_ms_per_pass": 14.630773454545455,
+    "host_window_ms_per_pass": 18.616789454545454,
+    "linear_attention_gdn_decode_ms_per_pass": 1.759706818181818,
+    "linear_attention_gdn_decode_vgpr_max": 80
+  },
+  "microbench": {
+    "baseline_artifact": "2026-06-11-hipengine-gdn-chain-vtile4-microbench.json",
+    "candidate_artifact": "2026-06-11-hipengine-gdn-chain-vtile8-microbench.json",
+    "vtile4": {
+      "blocks": 1024,
+      "t4_us_per_call": 67.85500270780176,
+      "t8_us_per_call": 118.08295734226704
+    },
+    "vtile8": {
+      "blocks": 512,
+      "t4_us_per_call": 67.4109224928543,
+      "t8_us_per_call": 119.30784792639315
+    },
+    "oracle": {
+      "out_max_abs": 1.0728836059570312e-06,
+      "leaf_max_abs": 5.960464477539063e-08
+    }
+  },
+  "decision": {
+    "hold": false,
+    "reason": "VTILE=8 halves chain GDN blocks but raises VGPR pressure and does not improve the locked verifier profile; experiment code and runtime flag were removed.",
+    "next_action": "Keep current VTILE=4 default. Reopen GDN only for a different design that lowers both GDN ms/pass and total verifier kernel/host time."
+  }
+}
