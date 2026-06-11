@@ -77976,3 +77976,63 @@ proposer-side rotate/RMSNorm fusion; P2 multi-stream overlap and device-resident
 proposer chain advance; P3 revisit tree/top-k only after wall is lower. Explicit
 no-go list for this sprint: `p_min`, whole-pass persistent, and consumer-side
 rotate fusion unless new evidence changes the bottleneck.
+
+## 2026-06-11 — MTP P0 locked baseline/profile refresh
+
+Reran the locked B=3 MTP sprint baseline on W7900/gfx1100 after the 27B dense
+DFlash hardening commit. Config: Qwen3.6-35B-A3B-PARO packed trunk +
+MTP-BF16, stable quicksort prompt, D32, `persistent_device`,
+`chain_attn_mode=batched`, verifier graph `auto`, draft vocab cap `32768`,
+device expert dispatch, tree off.
+
+Baseline command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json
+```
+
+Result: exact same-session AR, accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`, AR `111.769 tok/s`, MTP
+`84.314 tok/s` = `0.754x`. This is within noise of the locked best
+`0.758x`; keep `0.758x / 27.8 ms` as the sprint's best baseline. Timing note:
+all-cycle `decode_seconds/cycle` is `29.19 ms` because cycle 1 includes graph
+bucket/capture work (`77.1 ms`); cycle markers after skip-1/skip-2 average
+`23.44/23.31 ms`. Verifier time averaged over all cycles is `21.75 ms/cycle`.
+
+Profiled the same locked config by adding `--graph-mode` to
+`scripts/mtp_verifier_rocprof.py` and running:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-rocprof-mtp-b3-locked \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json
+```
+
+Profile result: exact smoke under profiler, post-warmup marker slice has
+`11` verifier passes, `19.73 ms/pass` host window, `15.33 ms/pass` GPU kernel
+time, `972` calls/pass. Top families in ms/pass: native prefill attention
+`1.884`, MoE gate/up dual GEMV `1.880`, GDN decode `1.749`, MoE down `1.513`,
+lm-head W8A16 `1.442`, W4 dual GEMV `1.392`, W4 single GEMV `1.250`,
+MoE PARO rotate-in `0.924`, W4 dual prefill small-batch `0.917`, other small
+launches `0.611`.
+
+Scoped A/B (not retained/promoted): enabling only the historically-risky
+`shared_gate_up` M12.6 site on top of the default safe mask stayed exact on the
+quicksort prompt and moved the locked smoke to `85.153 tok/s`, verifier
+`21.34 ms/cycle` (`~0.4 ms` better). This is not enough for break-even and must
+not become default without the 9-prompt exact suite; it confirms the remaining
+dual-prefill slice is useful but small. `docs/MTP.md` now records the P0 refresh
+and updates the next-push table: dual output tiling needs a split-output
+output-tiled kernel, while the broader sprint still hinges on launch/glue
+reduction and one P2-class overlap/proposer win.

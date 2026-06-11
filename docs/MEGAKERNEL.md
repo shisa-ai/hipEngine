@@ -5,6 +5,12 @@ spec for the M16.3 megakernel campaign. It supersedes the scattered M16.3 notes
 in `docs/MTP.md` for *implementation* purposes; `docs/MTP.md` remains the
 economics/`C_B` source of truth. Update both when the plan moves.
 
+Current baseline note (2026-06-11): the active break-even sprint is now locked
+in `docs/MTP.md` at the post-graph/post-proposer best row, **0.758x AR** with
+**27.8 ms/cycle** (`22.0 ms` verify + `5.8 ms` proposer/draft). The older
+45 ms / `C_B=4.67` tables below are retained as M16.3 groundwork, not the
+current sprint scoreboard.
+
 Companion evidence:
 - `benchmarks/results/2026-06-09-hipengine-m16.3-launch-census-batched-b3.json`
 - `benchmarks/results/2026-06-09-hipengine-m16.3-staged-rotate-recheck.json`

@@ -70,6 +70,7 @@ def main() -> int:
     )
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
+    parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument(
         "--out",
         type=Path,
@@ -222,6 +223,7 @@ def main() -> int:
             "acceptance_rate": (smoke.get("mtp") or {}).get("acceptance_rate"),
             "candidate_budget": smoke.get("candidate_budget"),
             "chain_attn_mode": (smoke.get("mtp") or {}).get("chain_attn_mode"),
+            "graph_mode": str(args.graph_mode),
             "proposal_impl": (smoke.get("mtp") or {}).get("proposal_impl"),
         },
         "summary": summary,
@@ -255,6 +257,8 @@ def _smoke_command(args: argparse.Namespace, smoke_json: Path) -> list[str]:
         str(args.backend),
         "--chain-attn-mode",
         str(args.chain_attn_mode),
+        "--graph-mode",
+        str(args.graph_mode),
         "--rocprof-warmup-cycles",
         str(int(args.rocprof_warmup_cycles)),
         "--rocprof-verify-cycles",
