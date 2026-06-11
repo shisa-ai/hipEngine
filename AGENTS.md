@@ -13,7 +13,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details.
 - **Evidence policy:** every performance claim carries model + quant + workload shape + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`).
 - **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
-- **Performance wins are first-class.** Every measured, exact, non-regressive performance improvement is kept and promoted to the default path unless there is a concrete blocker recorded in `WORKLOG.md`. Do not leave real wins behind optional flags merely because the win is small; microseconds compound.
+- **Performance wins are first-class.** Every measured, exact, non-regressive performance improvement is kept and promoted to the default path unless there is a concrete blocker recorded in `WORKLOG.md`. Cycle-wall, verified sub-window, launch-count, and H2D/D2H reductions count even when same-session AR variance hides the headline ratio; microseconds compound.
 - **Refactor debt is tracked.** Temporary flags, rejected paths, duplicate dispatch routes, and fallback chains that should disappear after the optimal path is proven go in `docs/REFACTOR.md`. Add to it while the context is fresh instead of relying on future archeology.
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
@@ -67,7 +67,7 @@ Do not drift these casually. They define what hipEngine is.
 
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
 - Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
-- If a performance path is exact and same-suite non-regressive, make it the default and keep the old path as an opt-out only when rollback/bisection still has value. If a path remains gated off, record the concrete blocker, not a vague "needs more evidence".
+- If a performance path is exact and same-suite non-regressive, make it the default and keep the old path as an opt-out only when rollback/bisection still has value. A small cycle-wall or sub-window win can be retained even if the aggregate ratio is flat within noise; document the distinction. If a path remains gated off, record the concrete blocker, not a vague "needs more evidence".
 - When adding an env flag or retaining a default-off/default-on experiment, add or update a `docs/REFACTOR.md` entry that says when the flag/path should be removed.
 - When adding tests that call HIP/ROCm runtime, `hipcc`, or GPU kernels, add an explicit HIP-availability guard (for example `ctypes.CDLL("libamdhip64.so")` + `pytest.skip`) so no-ROCm CI/publish runners skip them instead of failing release validation.
 - Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.

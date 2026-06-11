@@ -78705,3 +78705,16 @@ within noise (`22.0762 -> 22.0958 ms/cycle`).
 Decision: retain as default-on under the existing
 `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` cleanup umbrella. Artifact:
 `benchmarks/results/2026-06-11-hipengine-mtp-proposer-skip-logit-value-9prompt-d32.json`.
+
+## 2026-06-11 - Performance retention and refactor ledger policy tightened
+
+Updated `AGENTS.md` to make the optimization posture explicit: every exact,
+same-suite non-regressive performance improvement should be retained/promoted by
+default, and cycle-wall, sub-window, launch-count, and H2D/D2H reductions count
+even when the headline AR-normalized ratio is flat within run noise.
+
+Expanded `docs/REFACTOR.md` with post-optimal-path cleanup targets for the 35B
+MTP chain/tree paths, 27B dense DFlash deployable-vs-profile routing split,
+DFlash drafter/verifier flags, and benchmark command flag piles. The cleanup
+pass is intentionally after the fast/correct path is proven; during the sprint,
+the priority stays retaining every real measured win.
