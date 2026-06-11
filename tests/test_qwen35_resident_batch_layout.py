@@ -5369,6 +5369,69 @@ def test_qwen35_resident_copy_slot_state_can_bound_kv_rows() -> None:
     assert (0x8000 + slot_stride, 0x8000, slot_stride, runner_module.HipMemcpyKind.DEVICE_TO_DEVICE, 3) not in calls
 
 
+def _bulk_linear_commit_session() -> Qwen35ParoResidentSession:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.runtime = object()
+    session.libraries = {"dflash_commit": object()}
+    session.linear_layer_ids = (1, 3)
+    session.linear_scratch = {
+        1: SimpleNamespace(tree_conv_state=DeviceBuffer(0x10000, 1), tree_recurrent_state=DeviceBuffer(0x20000, 1)),
+        3: SimpleNamespace(tree_conv_state=DeviceBuffer(0x30000, 1), tree_recurrent_state=DeviceBuffer(0x40000, 1)),
+    }
+    session.linear_state_dst_conv_table_buf = DeviceBuffer(0x50000, 16)
+    session.linear_state_dst_recurrent_table_buf = DeviceBuffer(0x60000, 16)
+    session.linear_state_src_conv_table_buf = DeviceBuffer(0x70000, 16)
+    session.linear_state_src_recurrent_table_buf = DeviceBuffer(0x80000, 16)
+    session.linear_state_src_conv_host = np.zeros((2,), dtype=np.uint64)
+    session.linear_state_src_recurrent_host = np.zeros((2,), dtype=np.uint64)
+    session.linear_state_src_conv_cached = np.zeros((2,), dtype=np.uint64)
+    session.linear_state_src_recurrent_cached = np.zeros((2,), dtype=np.uint64)
+    session.linear_state_conv_row_nbytes = 64
+    session.linear_state_recurrent_row_nbytes = 128
+    return session
+
+
+def test_qwen35_resident_bulk_linear_commit_uses_chunked_kernel_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def fake_copy_host_to_device(*args, **kwargs):
+        calls.append(("h2d", args, kwargs))
+
+    def fake_chunked(*args, **kwargs):
+        calls.append(("chunked", args, kwargs))
+
+    def fake_legacy(*args, **kwargs):
+        calls.append(("legacy", args, kwargs))
+
+    monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
+    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(runner_module, "linear_state_pair_commit_chunked_i32", fake_chunked)
+    monkeypatch.setattr(runner_module, "linear_state_pair_commit_i32", fake_legacy)
+
+    session = _bulk_linear_commit_session()
+    session._commit_bulk_linear_states(0, base_slot=0, commit_row_ptr=0x90000, stream=7)
+
+    assert [kind for kind, _args, _kwargs in calls].count("chunked") == 1
+    assert "legacy" not in [kind for kind, _args, _kwargs in calls]
+    commit_call = next((args, kwargs) for kind, args, kwargs in calls if kind == "chunked")
+    assert commit_call[0][6] == 0x90000
+    assert commit_call[1]["stream"] == 7
+
+
+def test_qwen35_resident_bulk_linear_commit_can_use_legacy_kernel(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", "0")
+    monkeypatch.setattr(runner_module, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner_module, "linear_state_pair_commit_chunked_i32", lambda *args, **kwargs: calls.append("chunked"))
+    monkeypatch.setattr(runner_module, "linear_state_pair_commit_i32", lambda *args, **kwargs: calls.append("legacy"))
+
+    session = _bulk_linear_commit_session()
+    session._commit_bulk_linear_states(0, base_slot=0, commit_row_ptr=0x90000, stream=7)
+
+    assert calls == ["legacy"]
+
+
 def test_qwen35_resident_session_slot_views_offset_batch_state() -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)

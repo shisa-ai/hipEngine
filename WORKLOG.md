@@ -79775,3 +79775,113 @@ multi-stream overlap after the DAG is smaller. The plan explicitly marks the
 review's selected-rotate item as hold/no-hold because M13.B.1/B.2/B.3 already
 measured exact-but-negative variants, and marks `single_linear_out`/`single_full_v`
 as done/default-on rather than pending work. Docs-only change; no GPU run.
+
+## 2026-06-11 - MTP chunked linear-state commit retained
+
+Investigated the largest residual `other` profile item in the current retained
+MTP verifier profile: `linear_state_pair_commit_i32_kernel`, one launch/pass but
+about `0.25 ms/pass`. The M12.4 fused commit was already much better than 60
+per-layer D2D copies, but it used only one CTA per `(linear layer, conv/recurrent
+family)` row. Added `linear_state_pair_commit_chunked_i32_kernel`, preserving the
+same pointer-table ABI and splitting each row into 64 KiB chunks so the large
+recurrent rows get more CTAs. Opt out with
+`HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED=0`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/dflash_commit.py hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py
+
+PYTHONPATH=. pytest -q tests/test_qwen35_resident_batch_layout.py -k 'bulk_linear_commit or copy_slot_state_can_bound_kv_rows'
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import build_dflash_commit
+lib = build_dflash_commit(load=True, compiler_version=open('/tmp/hipengine-hipcc-version.txt').read())
+print('built', bool(lib))
+PY
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-linear-commit-chunked-smoke.json
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-off-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-linear-state-commit-chunked-off-rocprof --top 40
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-on-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-linear-state-commit-chunked-on-rocprof --top 40
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-linear-state-commit-chunked-off-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json \
+  --prompt-render raw --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-linear-state-commit-chunked-on-9prompt-d32 \
+  --out benchmarks/results/2026-06-11-hipengine-mtp-linear-state-commit-chunked-on-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --draft-top-k 2 \
+  --whole-cycle-gate 0.90 --verifier-mode native_bulk_bplus1 --verifier-graph auto \
+  --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget off \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-linear-state-commit-chunked-smoke.json
+```
+
+Results:
+
+- py_compile passed; targeted resident layout tests passed `3/3`; HIP module
+  build succeeded.
+- MTP quicksort smoke stayed exact with accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- Locked rocprof old vs chunked: total verifier kernel
+  `14.394576 -> 14.341187 ms/pass`, host marker
+  `18.300507 -> 18.263497 ms/pass`, `other`
+  `0.445082 -> 0.397717 ms/pass`, and commit kernel
+  `0.250457 -> 0.202624 ms/pass`.
+- 9-prompt D32 A/B stayed exact `9/9` with identical accepted lengths, active
+  budgets, visible tokens/cycle, accepted/cycle, and snapshot save/skip counts.
+  Verify moved `21.851798 -> 21.830769 ms/cycle` while whole-cycle wall was
+  neutral/noisy (`26.992015 -> 27.022771 ms/cycle`) because proposal/update
+  moved `1.954166 -> 1.994699 ms/cycle`. Actual ratio was effectively flat/noisy
+  (`0.690539x -> 0.690057x`), and cycle cost improved slightly
+  `2.955817 -> 2.952434` AR-token equivalents.
+- A 32 KiB chunk trial was not retained: commit kernel nudged
+  `0.202624 -> 0.200464 ms/pass`, but total verifier kernel worsened
+  `14.341187 -> 14.408808 ms/pass` and host marker worsened
+  `18.263497 -> 18.315570 ms/pass`. Keep 64 KiB.
+- 27B dense DFlash shared-path smoke passed
+  `all_correctness_passed=true`, `performance_claim=false`.
+
+Decision: retain default-on as a verifier/commit sub-window micro-slice. It is
+not a headline throughput row, but it is exact, keeps acceptance identical,
+directly reduces the commit kernel and verifier profile, and does not change
+semantics. Track the opt-out in `docs/REFACTOR.md` for removal after the next
+defaults-only MTP/DFlash gates.

@@ -315,6 +315,63 @@ __global__ void linear_state_pair_commit_i32_kernel(
   copy_bytes_strided_f4(src, dst, row_nbytes, tid, threads);
 }
 
+__global__ void linear_state_pair_commit_chunked_i32_kernel(
+    const uint64_t* __restrict__ src_conv_table,
+    const uint64_t* __restrict__ dst_conv_table,
+    int64_t conv_row_nbytes,
+    const uint64_t* __restrict__ src_recurrent_table,
+    const uint64_t* __restrict__ dst_recurrent_table,
+    int64_t recurrent_row_nbytes,
+    const int32_t* __restrict__ commit_row,
+    int64_t n_layers,
+    int64_t chunk_bytes) {
+  const int64_t layer = static_cast<int64_t>(blockIdx.x);
+  const int family = static_cast<int>(blockIdx.y);
+  const int64_t chunk = static_cast<int64_t>(blockIdx.z);
+  if (layer >= n_layers || chunk_bytes <= 0) {
+    return;
+  }
+  const int32_t row = commit_row[0];
+  const uint8_t* src_base;
+  uint8_t* dst;
+  int64_t row_nbytes;
+  if (family == 0) {
+    src_base = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(src_conv_table[layer]));
+    dst = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(dst_conv_table[layer]));
+    row_nbytes = conv_row_nbytes;
+  } else {
+    src_base = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(src_recurrent_table[layer]));
+    dst = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(dst_recurrent_table[layer]));
+    row_nbytes = recurrent_row_nbytes;
+  }
+  const int64_t start = chunk * chunk_bytes;
+  if (src_base == nullptr || dst == nullptr || row_nbytes <= 0 || start >= row_nbytes) {
+    return;
+  }
+  const int64_t chunk_end = start + chunk_bytes;
+  const int64_t end = chunk_end < row_nbytes ? chunk_end : row_nbytes;
+  const uint8_t* src = src_base + static_cast<int64_t>(row) * row_nbytes;
+  const int64_t tid = static_cast<int64_t>(threadIdx.x);
+  const int64_t threads = static_cast<int64_t>(blockDim.x);
+
+  const uintptr_t src_addr = reinterpret_cast<uintptr_t>(src + start);
+  const uintptr_t dst_addr = reinterpret_cast<uintptr_t>(dst + start);
+  const int64_t bytes = end - start;
+  if ((start & 15) == 0 && (bytes & 15) == 0 && (src_addr & 15) == 0 && (dst_addr & 15) == 0) {
+    const int64_t f4_start = start >> 4;
+    const int64_t n_f4 = bytes >> 4;
+    const float4* sp = reinterpret_cast<const float4*>(src);
+    float4* dp = reinterpret_cast<float4*>(dst);
+    for (int64_t i = tid; i < n_f4; i += threads) {
+      dp[f4_start + i] = sp[f4_start + i];
+    }
+    return;
+  }
+  for (int64_t i = start + tid; i < end; i += threads) {
+    dst[i] = src[i];
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_linear_state_pair_commit_i32(
@@ -348,5 +405,46 @@ extern "C" int hipengine_linear_state_pair_commit_i32(
       recurrent_row_nbytes,
       static_cast<const int32_t*>(commit_row),
       n_layers);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_linear_state_pair_commit_chunked_i32(
+    const void* src_conv_table,
+    const void* dst_conv_table,
+    int64_t conv_row_nbytes,
+    const void* src_recurrent_table,
+    const void* dst_recurrent_table,
+    int64_t recurrent_row_nbytes,
+    const void* commit_row,
+    int64_t n_layers,
+    hipStream_t stream) {
+  if (n_layers <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (conv_row_nbytes <= 0 && recurrent_row_nbytes <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int64_t kChunkBytes = 65536;
+  const int64_t max_row_nbytes = conv_row_nbytes > recurrent_row_nbytes ? conv_row_nbytes : recurrent_row_nbytes;
+  const int64_t chunks = (max_row_nbytes + kChunkBytes - 1) / kChunkBytes;
+  if (chunks <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  hipLaunchKernelGGL(
+      linear_state_pair_commit_chunked_i32_kernel,
+      dim3(static_cast<unsigned int>(n_layers), 2u, static_cast<unsigned int>(chunks)),
+      dim3(threads),
+      0,
+      stream,
+      static_cast<const uint64_t*>(src_conv_table),
+      static_cast<const uint64_t*>(dst_conv_table),
+      conv_row_nbytes,
+      static_cast<const uint64_t*>(src_recurrent_table),
+      static_cast<const uint64_t*>(dst_recurrent_table),
+      recurrent_row_nbytes,
+      static_cast<const int32_t*>(commit_row),
+      n_layers,
+      kChunkBytes);
   return static_cast<int>(hipGetLastError());
 }

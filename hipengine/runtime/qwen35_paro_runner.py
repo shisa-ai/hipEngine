@@ -47,6 +47,7 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32,
     dflash_accept_chain_i32_packed,
     dflash_commit_chain_i32,
+    linear_state_pair_commit_chunked_i32,
     linear_state_pair_commit_i32,
 )
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
@@ -10444,7 +10445,12 @@ class Qwen35ParoResidentSession:
                     runtime=self.runtime,
                 )
                 np.copyto(rec_cached, rec_host)
-            linear_state_pair_commit_i32(
+            linear_commit = (
+                linear_state_pair_commit_chunked_i32
+                if self._chunked_linear_state_commit_enabled()
+                else linear_state_pair_commit_i32
+            )
+            linear_commit(
                 self.linear_state_src_conv_table_buf.ptr,
                 self.linear_state_dst_conv_table_buf.ptr,
                 self.linear_state_conv_row_nbytes,
@@ -10685,6 +10691,12 @@ class Qwen35ParoResidentSession:
 
     def _fused_linear_state_commit_enabled(self) -> bool:
         value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
+        if value is None or value.strip() == "":
+            return True
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _chunked_linear_state_commit_enabled(self) -> bool:
+        value = os.environ.get("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED")
         if value is None or value.strip() == "":
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
