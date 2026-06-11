@@ -113,6 +113,7 @@ from hipengine.runtime.qwen35_paro import (
     _reset_shared_rotate_fuse_barrier_state,
     _set_shared_rotate_fuse_barrier_memset_mode,
     _use_moe_grouped_compact_prefill,
+    _verify_moe_grouped_min_tokens,
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
@@ -1443,7 +1444,7 @@ class Qwen35ParoResidentSession:
         self.full_scratch = {}
         self.moe_scratch = {}
         self._verify_linear_scratch_cache: dict[tuple[int, int], Qwen35ParoLinearAttentionScratch] = {}
-        self._verify_mlp_scratch_cache: dict[tuple[int, int], Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch] = {}
+        self._verify_mlp_scratch_cache: dict[tuple[int, int, str], Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch] = {}
         self._resident_tensor_view_cache_enabled_value = _env_flag("HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE", True)
         self._slot_linear_state_cache: dict[tuple[int, int], tuple[Tensor, Tensor]] = {}
         self._slot_full_cache_cache: dict[tuple[int, int], tuple[Tensor, Tensor]] = {}
@@ -3234,6 +3235,21 @@ class Qwen35ParoResidentSession:
             return state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         return state.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
 
+    def _verify_mlp_scratch_policy(self, rows: int) -> str:
+        if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
+            return "dense"
+        if not _env_flag("HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED", True):
+            return "c1" if int(rows) == 1 else "grouped"
+        return "grouped" if int(rows) >= _verify_moe_grouped_min_tokens() else "c1"
+
+    def _reserve_verify_mlp_scratch(self, state: Qwen35ParoDecodeState, *, rows: int):
+        policy = self._verify_mlp_scratch_policy(rows)
+        if policy == "dense":
+            return state.reserve_dense_mlp_scratch(tokens=rows, activation_dtype=DType.FP16)
+        if policy == "grouped":
+            return state.reserve_moe_grouped_prefill_scratch(tokens=rows, activation_dtype=DType.FP16)
+        return state.reserve_moe_c1_scratch(tokens=rows, activation_dtype=DType.FP16)
+
     def _clear_verify_scratch_caches(self) -> None:
         self._verify_linear_scratch_cache.clear()
         self._verify_mlp_scratch_cache.clear()
@@ -3284,14 +3300,15 @@ class Qwen35ParoResidentSession:
         rows: int,
     ) -> Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch:
         rows = int(rows)
+        policy = self._verify_mlp_scratch_policy(rows)
         if self._verify_scratch_cache_enabled():
-            key = (int(layer_id), rows)
+            key = (int(layer_id), rows, policy)
             cached = self._verify_mlp_scratch_cache.get(key)
-            if isinstance(cached, Qwen35ParoDenseMlpScratch):
+            if policy == "dense" and isinstance(cached, Qwen35ParoDenseMlpScratch):
                 alloc_name = "dense_mlp.normed"
-            elif isinstance(cached, Qwen35ParoGroupedMoeScratch):
+            elif policy == "grouped" and isinstance(cached, Qwen35ParoGroupedMoeScratch):
                 alloc_name = "moe.grouped.normed"
-            elif isinstance(cached, Qwen35ParoMoeScratch):
+            elif policy == "c1" and isinstance(cached, Qwen35ParoMoeScratch):
                 alloc_name = "moe.normed"
             else:
                 alloc_name = ""
@@ -3302,9 +3319,9 @@ class Qwen35ParoResidentSession:
                 and self._workspace_tensor_matches(state, alloc_name, cached.normed)
             ):
                 return cached
-        scratch = self._reserve_mlp_scratch(state, tokens=rows)
+        scratch = self._reserve_verify_mlp_scratch(state, rows=rows)
         if self._verify_scratch_cache_enabled():
-            self._verify_mlp_scratch_cache[(int(layer_id), rows)] = scratch
+            self._verify_mlp_scratch_cache[(int(layer_id), rows, policy)] = scratch
         return scratch
 
     def _ensure_grouped_moe_prefill_scratch(self, layer_id: int | None = None, *, tokens: int):

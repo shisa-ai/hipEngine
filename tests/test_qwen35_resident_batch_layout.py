@@ -5258,6 +5258,47 @@ def test_qwen35_resident_decode_batch_uses_grouped_moe_scratch_for_rows_gt1() ->
     assert session.moe_scratch[0] is scratch
 
 
+def test_qwen35_resident_verify_mlp_scratch_follows_verifier_grouped_threshold(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS", raising=False)
+    monkeypatch.delenv("HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED", raising=False)
+    device = Device("hip", 0)
+    state = _FakePrefillState(device)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.config = SimpleNamespace(num_experts=128)
+    session._verify_mlp_scratch_cache = {}
+
+    c1_scratch = session._verify_mlp_scratch(0, state, rows=4)
+    grouped_scratch = session._verify_mlp_scratch(0, state, rows=16)
+
+    assert c1_scratch is state.moe_reservations[0]
+    assert grouped_scratch is state.grouped_reservations[0]
+    assert (0, 4, "c1") in session._verify_mlp_scratch_cache
+    assert (0, 16, "grouped") in session._verify_mlp_scratch_cache
+
+    monkeypatch.setenv("HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED", "0")
+    legacy_state = _FakePrefillState(device)
+    legacy_session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    legacy_session.config = SimpleNamespace(num_experts=128)
+    legacy_session._verify_mlp_scratch_cache = {}
+
+    legacy_scratch = legacy_session._verify_mlp_scratch(0, legacy_state, rows=4)
+
+    assert legacy_scratch is legacy_state.grouped_reservations[0]
+    assert (0, 4, "grouped") in legacy_session._verify_mlp_scratch_cache
+
+    monkeypatch.setenv("HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED", "1")
+    monkeypatch.setenv("HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS", "4")
+    override_state = _FakePrefillState(device)
+    override_session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    override_session.config = SimpleNamespace(num_experts=128)
+    override_session._verify_mlp_scratch_cache = {}
+
+    override_scratch = override_session._verify_mlp_scratch(0, override_state, rows=4)
+
+    assert override_scratch is override_state.grouped_reservations[0]
+    assert (0, 4, "grouped") in override_session._verify_mlp_scratch_cache
+
+
 def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None:
     device = Device("hip", 0)
     runtime = _FakePrefillRuntime()
@@ -5278,6 +5319,8 @@ def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None
     decode_moe = SimpleNamespace(normed=Tensor.from_handle(0x6000, (1, 8), DType.FP16, device))
     session.linear_scratch = {0: decode_linear}
     session.moe_scratch = {0: decode_moe}
+    session._verify_linear_scratch_cache = {}
+    session._verify_mlp_scratch_cache = {}
 
     out = session._run_linear_prefill_layers(tokens=4)
 

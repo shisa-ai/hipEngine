@@ -80527,3 +80527,87 @@ with exact same-suite evidence and a graph-off host-control. Updated
 alignment: make runner scratch reservation choose c1/grouped with the same
 threshold as the chain/tree t-loop MoE path, and include expected scratch class
 in any cache acceptance check.
+
+## 2026-06-12 - MTP verifier MLP scratch policy aligned
+
+Implemented the next host-cache/scratch item from `docs/MTP.md`: verifier MLP
+scratch reservation now follows the same c1/grouped threshold as the actual
+chain/tree t-loop MoE layer (`_verify_moe_grouped_min_tokens()`, default `16`).
+At the locked B=3 shape (`rows=4`) the runner now reserves c1 scratch directly
+instead of reserving grouped scratch that the layer immediately replaces with c1
+scratch. The verifier MLP scratch cache key now includes the expected policy
+string. Default-on gate: `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=1`; opt
+out with `=0` to reproduce the legacy runner reservation policy for bisection.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py
+PYTHONPATH=. pytest -q tests/test_qwen35_resident_batch_layout.py -k 'verify_mlp_scratch or decode_batch_uses_grouped_moe_scratch or linear_prefill_restores_decode_scratch_token1'
+git diff --check
+```
+
+All passed (`3/3` targeted resident layout tests). The new unit test covers
+default B=3 rows choosing c1 scratch, legacy opt-out choosing grouped scratch,
+and `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=4` choosing grouped scratch.
+
+Exact quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-verify-mlp-scratch-policy-smoke.json
+```
+
+Passed exact AR with accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+D32 9-prompt economy A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=<0-or-1> PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --raw-root /tmp/hipengine-mtp-verify-mlp-scratch-policy-<off-or-on>-9prompt-d32 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-<off-or-on>-9prompt-d32.json
+```
+
+Result: exact `9/9` off/on with identical visible/accepted cycle aggregates,
+identical per-prompt accepted lengths, and identical active budgets. Aggregate
+actual ratio moved `0.70031x -> 0.71725x`, cycle wall
+`26.3089 -> 25.6898 ms/cycle`, verify `21.1757 -> 20.5228 ms/cycle`, and
+proposal/update `1.96265 -> 1.99106 ms/cycle`.
+
+Verifier profile controls:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=<0-or-1> PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode <auto-or-off> \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-verify-mlp-scratch-policy-<off-or-on>{-graphoff}-rocprof.json \
+  --raw-root /tmp/hipengine-mtp-verify-mlp-scratch-policy-<off-or-on>{-graphoff}-rocprof --top 50
+```
+
+Profile results:
+
+- Graph-auto off/on: exact, calls unchanged at `932/pass`, kernel
+  `14.346 -> 14.338 ms/pass`, host `18.314 -> 18.246 ms/pass`.
+- Graph-off off/on: exact, calls unchanged at `932/pass`, kernel
+  `14.326 -> 14.330 ms/pass`, host `32.445 -> 32.273 ms/pass`.
+
+Decision: retain and promote default-on. Updated `docs/MTP.md`,
+`docs/REFACTOR.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+The current exact D32 row is now `25.69 ms/cycle` with `20.52 ms` verify,
+leaving roughly `4.19 ms` to the `<21.5 ms` break-even target. Next live items:
+scratch-cache generation stamp / graph-off canonicalize skip if staying in
+host-cache cleanup, otherwise full-layer reduced-DAG batching.
