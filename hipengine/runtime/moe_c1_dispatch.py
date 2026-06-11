@@ -106,6 +106,21 @@ def _linear_shared_down_combine_fused_enabled() -> bool:
     return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
 
 
+def _full_shared_down_combine_fused_enabled() -> bool:
+    """Reduced-DAG full-attn shared-down output-tiled W4 + combine.
+
+    Default-on after the 2026-06-12 W7900 D32 9-prompt gate proved that
+    removing the remaining 10 full-attn combine launches is exact and
+    same-suite positive. Opt out with
+    ``HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0``.
+    """
+
+    value = os.environ.get("HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED")
+    if value is None or value.strip() == "":
+        return True
+    return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
+
+
 def _linear_shared_down_mode() -> int:
     value = os.environ.get("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH")
     if value is None or value.strip() == "":
@@ -367,6 +382,10 @@ def _build_fns_table() -> MoeC1Fns:
     )
     if _linear_shared_down_combine_fused_enabled():
         fns.gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16 = addr(
+            awq_lib, "hipengine_gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16",
+        )
+    if _full_shared_down_combine_fused_enabled():
+        fns.gemv_awq_pack8_output_tiled_combine_residual_full_transposed_fp16 = addr(
             awq_lib, "hipengine_gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16",
         )
     fns.gemv_awq_dual_pack8_transposed_fp16 = addr(

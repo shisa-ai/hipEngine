@@ -199,6 +199,7 @@ struct MoeC1Fns {
     void* gemv_awq_pack8_multi_row_decode_transposed_fp16; // linear-attn shared down opt-in
     void* gemv_awq_pack8_output_tiled_transposed_fp16;     // linear-attn shared down opt-in
     void* gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16; // linear-attn reduced-DAG opt-in
+    void* gemv_awq_pack8_output_tiled_combine_residual_full_transposed_fp16; // full-attn reduced-DAG default
     void* gemv_awq_dual_pack8_transposed_fp16; // full-attn only
     void* gemv_awq_pack8_transposed_fp16;      // full-attn only
     void* combine_batch_fp16;
@@ -724,7 +725,27 @@ hipengine_err_t hipengine_moe_c1_dispatch_full_fp16(
     }
 
     // ---- 10b. Shared down GEMV (small-batch path) ----
-    {
+    bool combined_in_shared_down = false;
+    const bool output_tiled_rows =
+        args->tokens == 2 || args->tokens == 4 || args->tokens == 8;
+    if (output_tiled_rows &&
+        fns->gemv_awq_pack8_output_tiled_combine_residual_full_transposed_fp16) {
+        auto fn = reinterpret_cast<gemv_awq_pack8_output_tiled_combine_residual_transposed_fp16_fn>(
+            fns->gemv_awq_pack8_output_tiled_combine_residual_full_transposed_fp16);
+        DISPATCH_CHECK(fn(
+            args->shared_down_input,
+            args->shared_down_qweight, args->shared_down_qzeros,
+            args->shared_down_scales,
+            args->down_out, args->routing_weights,
+            shared_gate_logits_ptr(args),
+            args->residual, args->out,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->out_packed_shared_down, args->group_size,
+            args->num_experts_per_tok, args->num_experts + 1,
+            args->shared_threads,
+            args->stream));
+        combined_in_shared_down = true;
+    } else {
         auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
             fns->gemv_awq_pack8_transposed_fp16);
         DISPATCH_CHECK(fn(
@@ -739,7 +760,7 @@ hipengine_err_t hipengine_moe_c1_dispatch_full_fp16(
     }
 
     // ---- 11. Combine batch (same as linear) ----
-    {
+    if (!combined_in_shared_down) {
         auto fn = reinterpret_cast<combine_batch_fp16_fn>(fns->combine_batch_fp16);
         DISPATCH_CHECK(fn(
             args->down_out, args->routing_weights,

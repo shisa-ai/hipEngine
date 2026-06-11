@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "9-prompt prompt-suite economics",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "runs_per_prompt": 1
+  },
+  "change": {
+    "env_flag": "HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED",
+    "default": true,
+    "description": "Use the existing exact output-tiled W4 shared-down + selected/shared gate residual combine epilogue in the full-attention C-dispatch path.",
+    "expected_dispatch_delta": "Remove the remaining 10 full-attention shared-gate/residual combine launches per verifier pass; linear-attention combine launches are already fused by HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED."
+  },
+  "correctness": {
+    "targeted_tests": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py tests/test_paro_awq_output_tiled_gemv.py::test_output_tiled_combine_residual_transposed_fp16_matches_unfused",
+      "result": "10 passed"
+    },
+    "quicksort_smoke_optin": {
+      "exact_ar_match": true,
+      "accepted_lengths": [
+        3,
+        3,
+        2,
+        0,
+        2,
+        0,
+        0,
+        1,
+        3,
+        0,
+        2,
+        0,
+        2
+      ]
+    },
+    "prompt_suite": {
+      "exact_prompts": "9/9",
+      "accepted_lengths_identical_to_control": true,
+      "active_budgets_identical_to_control": true
+    }
+  },
+  "prompt_suite_ab": {
+    "control_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-off-9prompt-d32.json",
+    "fused_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-9prompt-d32.json",
+    "control_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-full-shared-down-combine-fused-off-9prompt-d32 --out /tmp/hipengine-mtp-full-shared-down-combine-fused-off-9prompt-d32.json",
+    "fused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-full-shared-down-combine-fused-on-9prompt-d32 --out /tmp/hipengine-mtp-full-shared-down-combine-fused-on-9prompt-d32.json",
+    "metrics": {
+      "actual_decode_speedup_vs_ar": {
+        "control": 0.889448554462634,
+        "fused": 0.8909996420294193,
+        "delta": 0.0015510875667852364,
+        "relative_delta_percent": 0.17438755271488304
+      },
+      "observed_cycle_speedup_vs_ar": {
+        "control": 0.8973679218130517,
+        "fused": 0.898740724016693,
+        "delta": 0.0013728022036413323,
+        "relative_delta_percent": 0.15298097583740233
+      },
+      "cycle_cost_ar_tokens": {
+        "control": 2.2354347854539873,
+        "fused": 2.2302155714364162,
+        "delta": -0.005219214017571083
+      },
+      "avg_visible_tokens_per_cycle": {
+        "control": 2.011851851851852,
+        "fused": 2.011851851851852,
+        "delta": 0.0
+      },
+      "avg_accepted_per_cycle": {
+        "control": 1.011851851851852,
+        "fused": 1.011851851851852,
+        "delta": 0.0
+      },
+      "cycle_wall_ms_per_cycle": {
+        "control": 20.157886649876545,
+        "fused": 20.10956290435185,
+        "delta": -0.04832374552469432
+      },
+      "verify_ms_per_cycle": {
+        "control": 16.365598692460974,
+        "fused": 16.311362902432634,
+        "delta": -0.05423579002833989
+      },
+      "proposal_update_ms_per_cycle": {
+        "control": 1.456683405788535,
+        "fused": 1.4564238731637251,
+        "delta": -0.00025953262480982175
+      },
+      "ar_decode_ms_per_token": {
+        "control": 9.011186207418278,
+        "fused": 9.010865932699138,
+        "delta": -0.0003202747191402011
+      }
+    }
+  },
+  "verify_profile_ab": {
+    "control_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-off-rocprof.json",
+    "fused_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json",
+    "prompt": "quicksort",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "control_command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt) HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-full-shared-down-combine-fused-off-current-rocprof --out /tmp/hipengine-mtp-full-shared-down-combine-fused-off-current-rocprof.json",
+    "fused_command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt) HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-full-shared-down-combine-fused-on-rocprof --out /tmp/hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json",
+    "metrics": {
+      "kernel_calls_per_pass": {
+        "control": 912.0,
+        "fused": 902.0,
+        "delta": -10.0
+      },
+      "kernel_time_ms_per_pass": {
+        "control": 12.788546818181818,
+        "fused": 12.714392727272726,
+        "delta": -0.07415409090909186
+      },
+      "host_window_ms_per_pass": {
+        "control": 16.595975999999997,
+        "fused": 16.481617,
+        "delta": -0.11435899999999677
+      },
+      "moe_combine_calls_per_pass": {
+        "control": 10.0,
+        "fused": 0.0,
+        "delta": -10.0
+      },
+      "moe_combine_ms_per_pass": {
+        "control": 0.032011363636363636,
+        "fused": 0.0,
+        "delta": -0.032011363636363636
+      }
+    }
+  },
+  "decision": "Promote default-on. This is a micro retained reduced-DAG slice: exact same-suite positive and removes the last 10 full-attention combine launches/pass. Continue with broader reduced-DAG verifier batching and proposer graph/batch work for material remaining gap."
+}

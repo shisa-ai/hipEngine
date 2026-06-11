@@ -81185,3 +81185,100 @@ Decision:
   about `2.24` visible tokens/cycle. Save acceptance-density policy for the
   endgame, but the B=4/B=5 and vocab-cap diagnostics are now documented in
   `docs/MTP.md`.
+
+### MTP full-attn shared-down+combine epilogue retained (2026-06-12)
+
+Goal: continue the reduced-DAG verifier path after the retained linear-attn
+shared-down+combine epilogue by removing the remaining full-attn
+`moe_combine` launches without changing math.
+
+Implementation:
+
+- Added `MoeC1Fns.gemv_awq_pack8_output_tiled_combine_residual_full_transposed_fp16`.
+- In `hipengine_moe_c1_dispatch_full_fp16`, full-attn shared-down now reuses
+  the exact output-tiled W4 shared-down + selected/shared gate residual combine
+  epilogue for verifier-sized rows `{2,4,8}` when
+  `HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=1`.
+- The gate is now default-on after the exact suite below; opt out with
+  `HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/runtime/qwen35_paro.py hipengine/runtime/moe_c1_dispatch.py hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py tests/test_paro_awq_output_tiled_gemv.py tests/test_moe_c1_dispatch.py
+
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py tests/test_paro_awq_output_tiled_gemv.py::test_output_tiled_combine_residual_transposed_fp16_matches_unfused
+```
+
+- Targeted tests: `10 passed`.
+- Quicksort opt-in smoke exact, accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+9-prompt D32 suite A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-full-shared-down-combine-fused-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-full-shared-down-combine-fused-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-full-shared-down-combine-fused-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-full-shared-down-combine-fused-on-9prompt-d32.json
+```
+
+Results:
+
+- Exact `9/9`.
+- Accepted lengths and active budgets identical on every prompt.
+- Actual MTP/AR ratio: `0.889448554 -> 0.890999642` (+0.17% relative).
+- Cycle cost: `2.235434785 -> 2.230215571` AR-token equivalents.
+- Visible tokens/cycle unchanged: `2.011851852`.
+- Accepted draft tokens/cycle unchanged: `1.011851852`.
+- Wall: `20.157886650 -> 20.109562904 ms/cycle` (-0.048323746 ms).
+- Verify: `16.365598692 -> 16.311362902 ms/cycle` (-0.054235790 ms).
+- Proposal/update: `1.456683406 -> 1.456423873 ms/cycle` (noise/flat).
+- AR denominator: `9.011186207 -> 9.010865933 ms/token`.
+
+Verifier rocprof A/B:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-full-shared-down-combine-fused-off-current-rocprof \
+  --out /tmp/hipengine-mtp-full-shared-down-combine-fused-off-current-rocprof.json
+```
+
+- Control artifact:
+  `benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-off-rocprof.json`.
+- Fused artifact:
+  `benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json`.
+- Calls/pass: `912.0 -> 902.0`.
+- Kernel: `12.788547 -> 12.714393 ms/pass`.
+- Host window: `16.596 -> 16.482 ms/pass`.
+- `moe_combine`: `10 -> 0 calls/pass`, `0.032011 -> 0 ms/pass`.
+
+Retained artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-retained.json`.
+
+Decision:
+
+- Promote `HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=1` default-on.
+- This is a small but real retained reduced-DAG slice. Current exact 35B MTP row
+  is now `0.891x` at `20.110 ms/cycle` (`16.311 ms` verify,
+  `1.456 ms` proposal/update).
+- At unchanged `2.012` visible tokens/cycle and `9.011 ms/token` AR, true
+  break-even still needs about `18.1 ms/cycle`; at the current wall it needs
+  about `2.23` visible tokens/cycle. Continue broader reduced-DAG/proposer work
+  before acceptance-density policy experiments.

@@ -23,6 +23,16 @@ def test_moe_c1_dispatch_shared_down_combine_fused_default_and_optout(monkeypatc
     assert not moe_c1_dispatch._linear_shared_down_combine_fused_enabled()
 
 
+def test_moe_c1_dispatch_full_shared_down_combine_fused_default_and_optout(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED", raising=False)
+
+    assert moe_c1_dispatch._full_shared_down_combine_fused_enabled()
+
+    monkeypatch.setenv("HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED", "0")
+
+    assert not moe_c1_dispatch._full_shared_down_combine_fused_enabled()
+
+
 def test_moe_c1_dispatch_linear_shared_down_mode_reuses_existing_w4_gates(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_W4_OUTPUT_TILED_PREFILL", raising=False)
     monkeypatch.delenv("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH", raising=False)
