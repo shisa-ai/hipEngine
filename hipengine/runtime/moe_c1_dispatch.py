@@ -85,6 +85,47 @@ def _w4_dual_output_tiled_split_prefill_enabled() -> bool:
     return value.strip().lower() in {"1", "on", "yes", "true", "enable", "enabled"}
 
 
+def _w4_output_tiled_prefill_enabled() -> bool:
+    value = os.environ.get("HIPENGINE_W4_OUTPUT_TILED_PREFILL")
+    if value is None or value.strip() == "":
+        return True
+    return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
+
+
+def _linear_shared_down_mode() -> int:
+    value = os.environ.get("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH")
+    if value is None or value.strip() == "":
+        return 2 if _w4_output_tiled_prefill_enabled() else 1
+    mode = value.strip().lower().replace("-", "_")
+    aliases = {
+        "0": "prefill",
+        "off": "prefill",
+        "false": "prefill",
+        "no": "prefill",
+        "decode": "gemv",
+        "decode_gemv": "gemv",
+        "single": "gemv",
+        "single_gemv": "gemv",
+        "1": "multi_row_decode",
+        "on": "multi_row_decode",
+        "true": "multi_row_decode",
+        "yes": "multi_row_decode",
+        "multi_row_exact": "multi_row_decode",
+        "decode_multi_row": "multi_row_decode",
+        "multi_row_gemv": "multi_row_decode",
+    }
+    mode = aliases.get(mode, mode)
+    if mode == "prefill":
+        return 0
+    if mode == "gemv":
+        return 3
+    if mode == "multi_row":
+        return 4
+    if mode == "multi_row_decode":
+        return 1
+    raise ValueError("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH must be prefill, gemv, multi_row, or multi_row_decode")
+
+
 def prewarm_moe_c1_c_dispatch() -> None:
     """Resolve the dispatcher .so and shared function-pointer table eagerly.
 
@@ -301,6 +342,15 @@ def _build_fns_table() -> MoeC1Fns:
     fns.awq_fusedw4_prefill_fp16 = addr(
         awq_lib, "hipengine_awq_fusedw4_prefill_fp16",
     )
+    fns.gemv_awq_pack8_multi_row_transposed_fp16 = addr(
+        awq_lib, "hipengine_gemv_awq_pack8_multi_row_transposed_fp16",
+    )
+    fns.gemv_awq_pack8_multi_row_decode_transposed_fp16 = addr(
+        awq_lib, "hipengine_gemv_awq_pack8_multi_row_decode_transposed_fp16",
+    )
+    fns.gemv_awq_pack8_output_tiled_transposed_fp16 = addr(
+        awq_lib, "hipengine_gemv_awq_pack8_output_tiled_transposed_fp16",
+    )
     fns.gemv_awq_dual_pack8_transposed_fp16 = addr(
         awq_lib, "hipengine_gemv_awq_dual_pack8_transposed_fp16",
     )
@@ -436,4 +486,5 @@ def _fill_layer_constant_args(
     args.shared_threads = 128             # small-batch shared expert (full-attn) default
     args.shared_prefill_tile_m = 16        # B+1 verifier small-batch tile (HIPENGINE_W4_PREFILL_SMALLBATCH_TILE_M default)
     args.shared_prefill_tile_n = 16        # rows < 32 → 16
+    args.shared_down_mode = _linear_shared_down_mode()
     args.combine_threads = 256             # weighted_sum_shared_gate_combine_residual_batch default

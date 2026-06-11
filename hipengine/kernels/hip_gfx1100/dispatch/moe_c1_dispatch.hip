@@ -186,6 +186,9 @@ struct MoeC1Fns {
     void* awq_fusedw4_prefill_dual_fp16;       // linear-attn only
     void* gemv_awq_dual_pack8_output_tiled_split_transposed_fp16; // linear-attn opt-in
     void* awq_fusedw4_prefill_fp16;            // linear-attn only
+    void* gemv_awq_pack8_multi_row_transposed_fp16;        // linear-attn shared down opt-in
+    void* gemv_awq_pack8_multi_row_decode_transposed_fp16; // linear-attn shared down opt-in
+    void* gemv_awq_pack8_output_tiled_transposed_fp16;     // linear-attn shared down opt-in
     void* gemv_awq_dual_pack8_transposed_fp16; // full-attn only
     void* gemv_awq_pack8_transposed_fp16;      // full-attn only
     void* combine_batch_fp16;
@@ -292,6 +295,7 @@ struct MoeC1Args {
     int64_t shared_threads;
     int64_t shared_prefill_tile_m;  // linear-attn only
     int64_t shared_prefill_tile_n;  // linear-attn only
+    int64_t shared_down_mode;       // linear-attn: 0=prefill, 1=multi-row decode, 2=output-tiled auto, 3=gemv, 4=multi-row
     int64_t combine_threads;
 };
 
@@ -533,8 +537,58 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
             args->stream));
     }
 
-    // ---- 10a. Shared down fused-W4 prefill: shared_down_input -> shared_out ----
-    {
+    // ---- 10a. Shared down W4: shared_down_input -> shared_out ----
+    const bool output_tiled_rows =
+        args->tokens == 2 || args->tokens == 4 || args->tokens == 8;
+    if (args->shared_down_mode == 2 && output_tiled_rows) {
+        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+            fns->gemv_awq_pack8_output_tiled_transposed_fp16);
+        DISPATCH_CHECK(fn(
+            args->shared_down_input,
+            args->shared_down_qweight, args->shared_down_qzeros,
+            args->shared_down_scales,
+            args->shared_out,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->out_packed_shared_down, args->group_size,
+            args->shared_threads,
+            args->stream));
+    } else if (args->shared_down_mode == 1 || args->shared_down_mode == 2) {
+        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+            fns->gemv_awq_pack8_multi_row_decode_transposed_fp16);
+        DISPATCH_CHECK(fn(
+            args->shared_down_input,
+            args->shared_down_qweight, args->shared_down_qzeros,
+            args->shared_down_scales,
+            args->shared_out,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->out_packed_shared_down, args->group_size,
+            args->shared_threads,
+            args->stream));
+    } else if (args->shared_down_mode == 3) {
+        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+            fns->gemv_awq_pack8_transposed_fp16);
+        DISPATCH_CHECK(fn(
+            args->shared_down_input,
+            args->shared_down_qweight, args->shared_down_qzeros,
+            args->shared_down_scales,
+            args->shared_out,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->out_packed_shared_down, args->group_size,
+            args->shared_threads,
+            args->stream));
+    } else if (args->shared_down_mode == 4) {
+        auto fn = reinterpret_cast<gemv_awq_pack8_transposed_fp16_fn>(
+            fns->gemv_awq_pack8_multi_row_transposed_fp16);
+        DISPATCH_CHECK(fn(
+            args->shared_down_input,
+            args->shared_down_qweight, args->shared_down_qzeros,
+            args->shared_down_scales,
+            args->shared_out,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->out_packed_shared_down, args->group_size,
+            args->shared_threads,
+            args->stream));
+    } else {
         auto fn = reinterpret_cast<awq_fusedw4_prefill_fp16_fn>(
             fns->awq_fusedw4_prefill_fp16);
         // Linear-attn shared down prefill: tile_m = same as gate-up,

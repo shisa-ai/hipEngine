@@ -85,6 +85,9 @@ class MoeC1Fns(ctypes.Structure):
         ("awq_fusedw4_prefill_dual_fp16", ctypes.c_void_p),    # linear-attn only
         ("gemv_awq_dual_pack8_output_tiled_split_transposed_fp16", ctypes.c_void_p),  # linear-attn opt-in
         ("awq_fusedw4_prefill_fp16", ctypes.c_void_p),         # linear-attn only
+        ("gemv_awq_pack8_multi_row_transposed_fp16", ctypes.c_void_p),         # linear-attn shared down opt-in
+        ("gemv_awq_pack8_multi_row_decode_transposed_fp16", ctypes.c_void_p),  # linear-attn shared down opt-in
+        ("gemv_awq_pack8_output_tiled_transposed_fp16", ctypes.c_void_p),      # linear-attn shared down opt-in
         ("gemv_awq_dual_pack8_transposed_fp16", ctypes.c_void_p),  # full-attn only
         ("gemv_awq_pack8_transposed_fp16", ctypes.c_void_p),       # full-attn only
         ("combine_batch_fp16", ctypes.c_void_p),
@@ -186,6 +189,7 @@ class MoeC1Args(ctypes.Structure):
         ("shared_threads", ctypes.c_int64),
         ("shared_prefill_tile_m", ctypes.c_int64),  # linear-attn only
         ("shared_prefill_tile_n", ctypes.c_int64),  # linear-attn only
+        ("shared_down_mode", ctypes.c_int64),        # linear-attn: 0=prefill, 1=multi-row decode, 2=output-tiled auto, 3=gemv, 4=multi-row
         ("combine_threads", ctypes.c_int64),
     ]
 

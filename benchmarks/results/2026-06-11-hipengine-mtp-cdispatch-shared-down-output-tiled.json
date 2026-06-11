@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "status": "retained",
+  "performance_claim": true,
+  "date": "2026-06-11",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": "locked quicksort prompt, decode-tokens=32, candidate-budget=3, persistent_device, chain_attn_mode=batched, graph_mode=auto, draft vocab cap 32768, steady marker windows after skip=2",
+  "change": "Route the C-dispatch linear-attention shared-expert down projection away from awq_fusedw4_prefill_fp16. Default policy uses the existing HIPENGINE_W4_OUTPUT_TILED_PREFILL gate for rows in {2,4,8}, with multi-row decode fallback for other verifier rows and existing HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH overrides for bisection.",
+  "baseline_artifact": "benchmarks/results/2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json",
+  "retained_rocprof_artifact": "benchmarks/results/2026-06-11-hipengine-mtp-cdispatch-shared-down-output-tiled-rocprof.json",
+  "exact_ar_match": true,
+  "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+  "baseline": {
+    "kernel_ms_total": 160.535145,
+    "kernel_ms_per_pass": 14.594104090909092,
+    "host_window_seconds": 0.204836049,
+    "kernel_calls_per_pass": 935.0,
+    "w4_single_prefill_smallbatch_ms_per_pass": 0.34962627272727276
+  },
+  "retained": {
+    "kernel_ms_total": 159.919232,
+    "kernel_ms_per_pass": 14.538112,
+    "host_window_seconds": 0.203912586,
+    "kernel_calls_per_pass": 935.0,
+    "w4_single_prefill_smallbatch_ms_per_pass": 0.0,
+    "w4_single_gemv_calls_per_pass": 90.0
+  },
+  "delta": {
+    "kernel_ms_total": -0.6159130000000062,
+    "kernel_ms_per_pass": -0.05599209090909163,
+    "host_window_ms": -0.9234629999999855,
+    "kernel_calls_per_pass": 0.0
+  },
+  "validation": [
+    "python3 -m py_compile hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py hipengine/runtime/moe_c1_dispatch.py tests/test_moe_c1_dispatch.py",
+    "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 300 python3 - <<'PY' ... build_moe_c1_dispatch(load=True) ... PY",
+    "PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py",
+    "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --json /tmp/hipengine-mtp-cdispatch-shared-down-default-smoke.json",
+    "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --steady-state-skip 2 --raw-root /tmp/hipengine-mtp-cdispatch-shared-down-default-rocprof --out /tmp/hipengine-mtp-cdispatch-shared-down-default-rocprof.json"
+  ]
+}

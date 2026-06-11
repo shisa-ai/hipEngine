@@ -78972,3 +78972,65 @@ family and total verifier profile. Artifacts:
 `benchmarks/results/2026-06-11-hipengine-mtp-gdn-vtile8-rocprof.json`,
 `benchmarks/results/2026-06-11-hipengine-gdn-chain-vtile4-microbench.json`, and
 `benchmarks/results/2026-06-11-hipengine-gdn-chain-vtile8-microbench.json`.
+
+## 2026-06-11 — MTP C-dispatch shared-down output-tiled micro-win
+
+After the GDN no-hold, audited the residual `awq_fusedw4_prefill_fp16` bucket in
+the locked post-packed profile. A temporary Python-side fallback logger printed
+zero lines on the exact D32 smoke, proving the 30/pass `w4_single_prefill` bucket
+was not coming through `Qwen35ParoDecodeState.project_pack8_fp16`; it was the C
+dispatcher hard-coded linear-attn shared-down call. Updated the C dispatcher to
+reuse the existing W4 policy: `HIPENGINE_W4_OUTPUT_TILED_PREFILL` routes rows in
+`{2,4,8}` to output-tiled W4, with multi-row decode fallback for other verifier
+rows; existing `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH` still provides prefill/gemv
+bisection modes. No new public runtime flag added.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py hipengine/runtime/moe_c1_dispatch.py tests/test_moe_c1_dispatch.py
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 300 python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.dispatch.moe_c1 import build_moe_c1_dispatch
+build_moe_c1_dispatch(load=True)
+print('moe_c1_dispatch build/load OK')
+PY
+
+PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-cdispatch-shared-down-default-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto \
+  --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-cdispatch-shared-down-default-rocprof \
+  --out /tmp/hipengine-mtp-cdispatch-shared-down-default-rocprof.json
+```
+
+Result: exact same-session AR with accepted lengths
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`. Compared to
+`benchmarks/results/2026-06-11-hipengine-mtp-current-default-after-packed-rocprof.json`,
+the retained no-env default profile moves:
+
+- `w4_single_prefill_smallbatch` `0.3496 -> 0 ms/pass` (30/pass linear shared-down
+  prefill calls removed);
+- total verifier kernel `160.535 -> 159.919 ms` over 11 passes,
+  `14.594 -> 14.538 ms/pass` (`-0.056 ms/pass`);
+- host marker window `204.836 -> 203.913 ms` over 11 passes,
+  `18.621 -> 18.538 ms/pass`;
+- calls stay `935/pass`.
+
+Retained because exactness and acceptance are unchanged and the locked profile
+moves in the right direction. Artifacts:
+`benchmarks/results/2026-06-11-hipengine-mtp-cdispatch-shared-down-output-tiled.json`
+and
+`benchmarks/results/2026-06-11-hipengine-mtp-cdispatch-shared-down-output-tiled-rocprof.json`.
