@@ -81432,3 +81432,23 @@ Decision:
 - Updated `docs/MTP.md` with the no-hold row and sharpened the endgame B-sweep
   acceptance-density gate: added rows must improve visible tokens faster than
   AR's current `~0.111 tokens/ms` denominator.
+
+## 2026-06-12 - MTP acceptance-density endgame plan tightened
+
+Docs-only planning update after external acceptance-density review. No benchmark
+claim and no code change.
+
+Updated `docs/MTP.md` to keep acceptance-density work explicitly after the
+current reduced-DAG/proposer path, but to make the endgame gates concrete:
+
+- B=4 is the first density diagnostic, not tree search; add per-position
+  acceptance histograms and only spend on B=5 if deeper-position acceptance can
+  pay the marginal verifier row. Same-suite ratio remains the promotion gate.
+- Draft vocab-cap work must first count cap-caused rejection opportunities
+  (`32768 -> 65536/full`) and report proposer wall separately from verify wall.
+- Adaptive B / AR fallback must use a fixed online rule with per-prompt
+  reporting; no prompt-history oracle leakage or average-only promotion.
+- Tree retest should start with a chain-plus-one-sibling-at-first-rejection
+  diagnostic before reopening the full tree path.
+- Relaxed speculative sampling is documented as an opt-in architecture project,
+  not an exact-default sprint item.
