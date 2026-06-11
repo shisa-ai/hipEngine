@@ -231,6 +231,10 @@ Current MTP no-hold diagnostic: on the 2026-06-11 P1-default stack,
 `943.0 -> 915.9/pass`; keep the M15.4 RMSNorm+PARO rotate2 gate default-off.
 Artifacts: [`current P1 rocprof`](results/2026-06-11-hipengine-mtp-p1-current-rocprof.json),
 [`fused RMSNorm+rotate rocprof`](results/2026-06-11-hipengine-mtp-p1-fused-rmsrotate-rocprof.json).
+Also no-hold: current-stack `HIPENGINE_PARO_FFN_MEGAKERNEL=1` fired on the B=3
+MTP verifier but failed exact AR at token index 9 (`156973` vs `149315`), so it
+remains default-off regardless of any launch-count benefit. Artifact:
+[`PARO FFN megakernel exact blocked`](results/2026-06-11-hipengine-mtp-paro-ffn-megakernel-exact-blocked.json).
 
 Accepted 27B dense DFlash rerun:
 

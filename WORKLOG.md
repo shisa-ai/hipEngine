@@ -78437,3 +78437,32 @@ wall improved `27.939 -> 27.676 ms/cycle` (-0.263), proposal/update improved
 ms/cycle` (-0.067, small/noisy but not regressive). Every prompt improved cycle
 wall and proposal/update. This is a real retained micro-win and is now the
 default; it does not change the locked sprint baseline of `0.758x / 27.8 ms`.
+
+## 2026-06-11 - Current-stack PARO selected-FFN megakernel remains no-hold
+
+Before spending more sprint time on M16.3 selected-FFN fusion, rechecked the
+existing opt-in `HIPENGINE_PARO_FFN_MEGAKERNEL=1` on the current P1/proposer
+default stack.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_PARO_FFN_MEGAKERNEL=1 HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 24 \
+  --candidate-budget 3 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1100 \
+  --chain-attn-mode batched \
+  --graph-mode auto \
+  --json /tmp/hipengine-mtp-paro-ffn-megakernel-smoke.json
+```
+
+Result: megakernel fired (`tokens=4`, `rows=32`, `krot=8`, `hidden=2048`,
+`ffn=512`, total fires `160`) but failed exact AR. First mismatch was token
+index `9`: AR `156973`, MTP `149315`. Accepted lengths were all zero after the
+verify change, and the smoke exited `status=exact_ar_mismatch`.
+
+Decision: keep `HIPENGINE_PARO_FFN_MEGAKERNEL` default-off. This is not a
+promotable speed row because it fails the current exact-AR gate. Artifact:
+`benchmarks/results/2026-06-11-hipengine-mtp-paro-ffn-megakernel-exact-blocked.json`.

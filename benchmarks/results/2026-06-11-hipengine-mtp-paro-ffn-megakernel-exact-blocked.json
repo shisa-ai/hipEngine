@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "status": "rejected_exact_ar_mismatch",
+  "performance_claim": false,
+  "date": "2026-06-11",
+  "commit": "36775b75",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900",
+  "backend": "hip_gfx1100",
+  "hip_arch": "gfx1100",
+  "workload": {
+    "decode_tokens": 24,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "batched",
+    "graph_mode": "auto",
+    "draft_vocab_cap": 32768,
+    "proposer_skip_unused_reads": true
+  },
+  "change_under_test": {
+    "env": {
+      "HIPENGINE_PARO_FFN_MEGAKERNEL": "1",
+      "HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG": "1"
+    },
+    "description": "Opt-in selected-expert PARO FFN megakernel inside run_moe_c1_fp16."
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_PARO_FFN_MEGAKERNEL=1 HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 24 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --json /tmp/hipengine-mtp-paro-ffn-megakernel-smoke.json",
+  "raw_json": "/tmp/hipengine-mtp-paro-ffn-megakernel-smoke.json",
+  "result": {
+    "exact_ar_match": false,
+    "status": "exact_ar_mismatch",
+    "megakernel_first_fire": {
+      "tokens": 4,
+      "rows": 32,
+      "krot": 8,
+      "hidden": 2048,
+      "ffn": 512
+    },
+    "megakernel_total_fires": 160,
+    "accepted_lengths": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "first_mismatch_index": 9,
+    "ar_token_at_mismatch": 156973,
+    "mtp_token_at_mismatch": 149315,
+    "ar_decode_tok_s": 111.43343740598003,
+    "mtp_decode_tok_s_diagnostic": 10.72976430011162,
+    "verify_seconds": 2.1100451631937176,
+    "proposal_decode_update_seconds": 0.037463756278157234
+  },
+  "decision": "Keep HIPENGINE_PARO_FFN_MEGAKERNEL default-off. This opt-in fails the current exact-AR gate and cannot be promoted regardless of any launch-count benefit."
+}

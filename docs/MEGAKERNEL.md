@@ -16,6 +16,7 @@ Companion evidence:
 - `benchmarks/results/2026-06-09-hipengine-m16.3-staged-rotate-recheck.json`
 - `benchmarks/results/2026-06-09-hipengine-economics-rerun-mtp-dflash-35b-27b.json`
 - `benchmarks/results/2026-06-09-hipengine-m16.3-b3-paro-ffn-megakernel-microbench.json`
+- `benchmarks/results/2026-06-11-hipengine-mtp-paro-ffn-megakernel-exact-blocked.json`
 
 **Progress (2026-06-09):** B0/B1 (GGUF) and **B3** (PARO fused FFN megakernel)
 are built + validated; a pi-multiloop kernel-time optimize loop took the PARO
@@ -23,10 +24,14 @@ megakernel from the correctness-first ~1.38 ms to **0.163 ms** at the c=4 verify
 shape (~7.8x), **4.1x past the *naive* unfused PARO chain** in a synchronized
 per-call microbench, single-launch, Scratch=0, KL gate held.
 
-**B4 measured + closed (2026-06-09) — negative result, campaign redirect.** The
-fp16 megakernel was wired into `run_moe_c1_fp16` (gated
-`HIPENGINE_PARO_FFN_MEGAKERNEL`, default off): exact_ar_match=true on-model
-(fires in all 40 layers) but it **REGRESSES** verify-cycle `C_B` ~4.4→~5.3.
+**B4 measured + closed (2026-06-09; current-stack recheck 2026-06-11) —
+negative result, campaign redirect.** The fp16 megakernel is wired into
+`run_moe_c1_fp16` (gated `HIPENGINE_PARO_FFN_MEGAKERNEL`, default off). It
+previously passed one on-model exact smoke but **REGRESSED** verify-cycle `C_B`
+~4.4→~5.3. On the current P1/proposer default stack it is worse: the opt-in
+fires (`tokens=4`, `rows=32`, 160 calls) but fails exact AR at token index 9
+(`156973` vs `149315`) on the locked B=3 smoke, so it is not eligible for
+promotion regardless of launch-count savings.
 
 Ground truth (rocprof, one batched B=3 verify window): megakernel **216.9 us/call**
 (32 blocks) vs the production selected FFN **81.6 us/call** (rotate1 4.8 +
