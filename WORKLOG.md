@@ -81876,3 +81876,90 @@ remain endgame work already captured in `docs/MTP.md`: B=4/B=5 with per-depth
 histograms first, vocab-cap rejection census second, adaptive B/AR fallback,
 boundary-sibling tree retest, and relaxed speculative sampling out of the
 exact-default sprint.
+
+## 2026-06-12 - MTP verify-commit/proposer overlap no-hold
+
+Implemented an opt-in overlap probe:
+
+- `NativeMtpChainProposer` now accepts an optional HIP stream for state
+  save/restore, top-k/proxy reads, and `advance()` kernel launches. Default
+  stream-0 behavior is unchanged.
+- `verify_chain_bulk_and_commit(..., synchronize_after_commit=False)` can return
+  after accepting and enqueueing commit/position updates instead of synchronizing
+  stream 0.
+- `scripts/mtp_chain_e2e_smoke.py` gates the experiment with
+  `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER=1`, using a side stream only for
+  chain-mode proposer update after the packed accept payload has been read.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py hipengine/runtime/qwen35_paro_runner.py scripts/mtp_chain_e2e_smoke.py
+```
+
+Default quicksort D32 smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-overlap-default-off-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths: `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Overlap quicksort D32 smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-overlap-on-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths identical.
+- Single-prompt directional timing was mixed: verify `0.21295 -> 0.20960 s`,
+  proposal/update `0.01691 -> 0.01972 s`, decode seconds roughly flat
+  (`0.27308 -> 0.27262 s`).
+
+Full 9-prompt D32 A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-overlap-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-overlap-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-overlap-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-overlap-on-9prompt-d32.json
+```
+
+- Exact `9/9 -> 9/9`; acceptance and visible tokens identical.
+- Ratio `0.9215918 -> 0.9184076`.
+- Wall `19.4406 -> 19.5063 ms/cycle`.
+- Verify `16.1660 -> 16.0279 ms/cycle`.
+- Proposal/update `1.2429 -> 1.4384 ms/cycle`.
+- Cycle cost `2.1560 -> 2.1627` AR tokens.
+
+Decision: no-hold for default speed row. The dependency audit was valid and the
+side stream hides a little verifier commit time, but the extra stream/readback
+shape shifts more wall into proposer update than it saves. Keep the plumbing
+default-off as diagnostic infrastructure only; do not count it toward the
+break-even row. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-verify-commit-proposer-overlap-nohold.json`.

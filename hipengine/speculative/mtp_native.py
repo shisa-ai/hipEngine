@@ -326,6 +326,22 @@ class NativeMtpChainProposer:
         self.position = -1
         self.current = NativeMtpStepResult(token=0, logit=float("nan"), topk_experts=(), topk_logits=())
 
+    def _copy_device_to_host_array(self, host_array: np.ndarray, buffer: DeviceBuffer, *, nbytes: int | None = None, stream: int = 0) -> None:
+        count = int(buffer.nbytes if nbytes is None else nbytes)
+        if count < 0 or count > int(buffer.nbytes):
+            raise ValueError("copy size exceeds device buffer")
+        if int(stream) == 0:
+            copy_device_to_host(host_array_ptr(host_array), buffer, count, runtime=self.runtime)
+            return
+        self.runtime.memcpy_async(
+            host_array_ptr(host_array),
+            buffer.ptr,
+            count,
+            HipMemcpyKind.DEVICE_TO_HOST,
+            int(stream),
+        )
+        self.runtime.stream_synchronize(int(stream))
+
     def prefill_from_target_hidden_rows(
         self,
         prompt_tokens: Sequence[int],
@@ -335,6 +351,7 @@ class NativeMtpChainProposer:
         capture_stride_hidden: int | None = None,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
+        stream: int = 0,
     ) -> NativeMtpStepResult:
         """Run MTP prompt prefill using shifted prompt ids and target hidden rows."""
 
@@ -353,6 +370,7 @@ class NativeMtpChainProposer:
                 position=idx + 1,
                 read_expert_topk=read_expert_topk,
                 read_lm_head_value=read_lm_head_value,
+                stream=stream,
             )
         return result
 
@@ -364,6 +382,7 @@ class NativeMtpChainProposer:
         need_result: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
+        stream: int = 0,
     ) -> NativeMtpStepResult:
         return self.advance(
             input_token=int(input_token),
@@ -372,9 +391,10 @@ class NativeMtpChainProposer:
             need_result=need_result,
             read_expert_topk=read_expert_topk,
             read_lm_head_value=read_lm_head_value,
+            stream=stream,
         )
 
-    def save_state(self, slot: int) -> NativeMtpStateSnapshot:
+    def save_state(self, slot: int, *, stream: int = 0) -> NativeMtpStateSnapshot:
         if slot < 0 or slot >= self.max_mtp_tokens:
             raise ValueError("snapshot slot outside capacity")
         self.runtime.memcpy_async(
@@ -382,11 +402,11 @@ class NativeMtpChainProposer:
             self.final_hidden_buf.ptr,
             self.hidden * DType.BF16.itemsize,
             HipMemcpyKind.DEVICE_TO_DEVICE,
-            0,
+            int(stream),
         )
         return NativeMtpStateSnapshot(slot=int(slot), cache_len=int(self.cache_len), position=int(self.position), current=self.current)
 
-    def restore_state(self, snapshot: NativeMtpStateSnapshot) -> None:
+    def restore_state(self, snapshot: NativeMtpStateSnapshot, *, stream: int = 0) -> None:
         if snapshot.slot < 0 or snapshot.slot >= self.max_mtp_tokens:
             raise ValueError("snapshot slot outside capacity")
         self.runtime.memcpy_async(
@@ -394,13 +414,13 @@ class NativeMtpChainProposer:
             self.snapshot_hidden_buf.ptr + int(snapshot.slot) * self.hidden * DType.BF16.itemsize,
             self.hidden * DType.BF16.itemsize,
             HipMemcpyKind.DEVICE_TO_DEVICE,
-            0,
+            int(stream),
         )
         self.cache_len = int(snapshot.cache_len)
         self.position = int(snapshot.position)
         self.current = snapshot.current
 
-    def vocab_topk(self, *, k: int = 8) -> tuple[list[int], list[float]]:
+    def vocab_topk(self, *, k: int = 8, stream: int = 0) -> tuple[list[int], list[float]]:
         """Exact top-k tokens+logits over the (capped) draft vocab.
 
         Runs the topk kernel over ``logits_buf`` (already populated by the
@@ -415,12 +435,12 @@ class NativeMtpChainProposer:
             vals, vals_buf = _empty_device((1, 8), np.float32, self.buffers, runtime=self.runtime)
             self._vocab_topk_host = (ids, ids_buf, vals, vals_buf)
         ids, ids_buf, vals, vals_buf = self._vocab_topk_host
-        topk_f32_rows_i32(self.logits_buf.ptr, vals_buf.ptr, ids_buf.ptr, 1, self.draft_vocab, 8, threads=256, library=self.lm_lib)
-        copy_device_to_host(host_array_ptr(ids), ids_buf, ids.nbytes, runtime=self.runtime)
-        copy_device_to_host(host_array_ptr(vals), vals_buf, vals.nbytes, runtime=self.runtime)
+        topk_f32_rows_i32(self.logits_buf.ptr, vals_buf.ptr, ids_buf.ptr, 1, self.draft_vocab, 8, threads=256, stream=stream, library=self.lm_lib)
+        self._copy_device_to_host_array(ids, ids_buf, nbytes=ids.nbytes, stream=stream)
+        self._copy_device_to_host_array(vals, vals_buf, nbytes=vals.nbytes, stream=stream)
         return [int(x) for x in ids.reshape(-1)[:k]], [float(x) for x in vals.reshape(-1)[:k]]
 
-    def top1_prob_proxy(self, *, k: int = 8) -> float:
+    def top1_prob_proxy(self, *, k: int = 8, stream: int = 0) -> float:
         """Softmax weight of the current top-1 over the top-k lm-head block maxima.
 
         Each lm-head stage-1 block covers a distinct vocab slice, so the top-k
@@ -430,7 +450,12 @@ class NativeMtpChainProposer:
         """
 
         valid = lm_head_argmax_stage1_blocks(self.draft_vocab, threads=256)
-        copy_device_to_host(host_array_ptr(self.block_values_host), self.block_values_buf, self.block_values_host.nbytes, runtime=self.runtime)
+        self._copy_device_to_host_array(
+            self.block_values_host,
+            self.block_values_buf,
+            nbytes=self.block_values_host.nbytes,
+            stream=stream,
+        )
         vals = np.sort(self.block_values_host[:valid])[-int(k):].astype(np.float64)
         exp = np.exp(vals - vals.max())
         return float(exp[-1] / exp.sum())
@@ -444,6 +469,7 @@ class NativeMtpChainProposer:
         need_result: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
+        stream: int = 0,
     ) -> NativeMtpStepResult:
         """Advance one MTP step.
 
@@ -467,7 +493,7 @@ class NativeMtpChainProposer:
                 host_array_ptr(self.token_position_host),
                 self.token_position_host.nbytes,
                 HipMemcpyKind.HOST_TO_DEVICE,
-                0,
+                int(stream),
             )
         else:
             self.runtime.memcpy_async(
@@ -475,14 +501,14 @@ class NativeMtpChainProposer:
                 host_array_ptr(self.token_host),
                 self.token_host.nbytes,
                 HipMemcpyKind.HOST_TO_DEVICE,
-                0,
+                int(stream),
             )
             self.runtime.memcpy_async(
                 self.position_buf.ptr,
                 host_array_ptr(self.position_host),
                 self.position_host.nbytes,
                 HipMemcpyKind.HOST_TO_DEVICE,
-                0,
+                int(stream),
             )
         key_cache_dst = self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize
         value_cache_dst = self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize
@@ -501,10 +527,11 @@ class NativeMtpChainProposer:
             self.vocab,
             eps=self.eps,
             threads=256,
+            stream=stream,
             library=self.mtp_lib,
         )
-        dflash_dense_bf16_to_bf16(self.fused_buf.ptr, self.weights["mtp.fc.weight"].ptr, self.fc_buf.ptr, 1, 2 * self.hidden, self.hidden, threads=128, library=self.dflash_lib)
-        mtp_rmsnorm_bf16_oneplus(self.fc_buf.ptr, self.weights["mtp.layers.0.input_layernorm.weight"].ptr, self.attn_in_buf.ptr, 1, self.hidden, eps=self.eps, threads=256, library=self.mtp_lib)
+        dflash_dense_bf16_to_bf16(self.fused_buf.ptr, self.weights["mtp.fc.weight"].ptr, self.fc_buf.ptr, 1, 2 * self.hidden, self.hidden, threads=128, stream=stream, library=self.dflash_lib)
+        mtp_rmsnorm_bf16_oneplus(self.fc_buf.ptr, self.weights["mtp.layers.0.input_layernorm.weight"].ptr, self.attn_in_buf.ptr, 1, self.hidden, eps=self.eps, threads=256, stream=stream, library=self.mtp_lib)
         dflash_qkv_proj_bf16_mixed(
             self.attn_in_buf.ptr,
             self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
@@ -518,9 +545,10 @@ class NativeMtpChainProposer:
             self.q_proj_features,
             self.kv_features,
             threads=128,
+            stream=stream,
             library=self.dflash_lib,
         )
-        mtp_split_q_gate_f32_bf16(self.q_proj_buf.ptr, self.query_buf.ptr, self.gate_buf.ptr, 1, self.q_heads, self.head_dim, threads=256, library=self.mtp_lib)
+        mtp_split_q_gate_f32_bf16(self.q_proj_buf.ptr, self.query_buf.ptr, self.gate_buf.ptr, 1, self.q_heads, self.head_dim, threads=256, stream=stream, library=self.mtp_lib)
         dflash_head_rmsnorm_rotary_f32(
             self.query_buf.ptr,
             self.k_proj_buf.ptr,
@@ -542,15 +570,16 @@ class NativeMtpChainProposer:
             self.max_positions,
             eps=self.eps,
             threads=128,
+            stream=stream,
             library=self.dflash_lib,
         )
         if not direct_kv_write:
-            self.runtime.memcpy_async(key_cache_dst, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
-            self.runtime.memcpy_async(value_cache_dst, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
+            self.runtime.memcpy_async(key_cache_dst, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))
+            self.runtime.memcpy_async(value_cache_dst, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))
         context_len = self.cache_len + 1
-        dflash_gqa_attention_f32_bf16(self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr, self.attn_out_buf.ptr, 1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim, threads=128, library=self.dflash_lib)
-        mtp_gate_mul_bf16(self.attn_out_buf.ptr, self.gate_buf.ptr, self.gated_buf.ptr, self.q_features, threads=256, library=self.mtp_lib)
-        dflash_dense_bf16_to_bf16(self.gated_buf.ptr, self.weights["mtp.layers.0.self_attn.o_proj.weight"].ptr, self.o_out_buf.ptr, 1, self.q_features, self.hidden, threads=128, library=self.dflash_lib)
+        dflash_gqa_attention_f32_bf16(self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr, self.attn_out_buf.ptr, 1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim, threads=128, stream=stream, library=self.dflash_lib)
+        mtp_gate_mul_bf16(self.attn_out_buf.ptr, self.gate_buf.ptr, self.gated_buf.ptr, self.q_features, threads=256, stream=stream, library=self.mtp_lib)
+        dflash_dense_bf16_to_bf16(self.gated_buf.ptr, self.weights["mtp.layers.0.self_attn.o_proj.weight"].ptr, self.o_out_buf.ptr, 1, self.q_features, self.hidden, threads=128, stream=stream, library=self.dflash_lib)
         mtp_add_rmsnorm_bf16_oneplus(
             self.o_out_buf.ptr,
             self.fc_buf.ptr,
@@ -561,9 +590,10 @@ class NativeMtpChainProposer:
             self.hidden,
             eps=self.eps,
             threads=256,
+            stream=stream,
             library=self.mtp_lib,
         )
-        dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.gate.weight"].ptr, self.router_logits_buf.ptr, 1, self.hidden, int(self.config.num_experts), threads=128, library=self.dflash_lib)
+        dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.gate.weight"].ptr, self.router_logits_buf.ptr, 1, self.hidden, int(self.config.num_experts), threads=128, stream=stream, library=self.dflash_lib)
         if _router_topk_fused_enabled() and int(self.config.num_experts) == 256 and int(self.top_k) == 8:
             mtp_router_topk_softmax_f32(
                 self.router_logits_buf.ptr,
@@ -572,11 +602,12 @@ class NativeMtpChainProposer:
                 self.routing_buf.ptr,
                 int(self.config.num_experts),
                 self.top_k,
+                stream=stream,
                 library=self.mtp_lib,
             )
         else:
-            topk_f32_rows_i32(self.router_logits_buf.ptr, self.topk_values_buf.ptr, self.topk_ids_buf.ptr, 1, int(self.config.num_experts), self.top_k, threads=256, library=self.lm_lib)
-            mtp_softmax_topk_f32(self.topk_values_buf.ptr, self.routing_buf.ptr, 1, self.top_k, library=self.mtp_lib)
+            topk_f32_rows_i32(self.router_logits_buf.ptr, self.topk_values_buf.ptr, self.topk_ids_buf.ptr, 1, int(self.config.num_experts), self.top_k, threads=256, stream=stream, library=self.lm_lib)
+            mtp_softmax_topk_f32(self.topk_values_buf.ptr, self.routing_buf.ptr, 1, self.top_k, stream=stream, library=self.mtp_lib)
         # Expert-indexed GEMVs read `topk_ids[route]` on-device, so the MoE
         # loop no longer forces a mid-pass router D2H sync. Host-visible
         # ids/values are only read when the caller needs diagnostic metadata.
@@ -593,6 +624,7 @@ class NativeMtpChainProposer:
                 self.hidden,
                 2 * self.intermediate,
                 threads=128,
+                stream=stream,
                 library=self.dflash_lib,
             )
             dflash_silu_mul_gate_up_routes_bf16(
@@ -601,6 +633,7 @@ class NativeMtpChainProposer:
                 self.top_k,
                 self.intermediate,
                 threads=256,
+                stream=stream,
                 library=self.dflash_lib,
             )
             dflash_dense_bf16_to_bf16_expert_routes(
@@ -615,6 +648,7 @@ class NativeMtpChainProposer:
                 self.intermediate,
                 self.hidden,
                 threads=128,
+                stream=stream,
                 library=self.dflash_lib,
             )
             mtp_accumulate_routes_bf16_to_f32(
@@ -624,12 +658,13 @@ class NativeMtpChainProposer:
                 self.top_k,
                 self.hidden,
                 threads=256,
+                stream=stream,
                 library=self.mtp_lib,
             )
         else:
             route0_init = _route0_accum_init_enabled()
             if not route0_init:
-                self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, 0)
+                self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, int(stream))
             for route in range(self.top_k):
                 dflash_dense_bf16_to_bf16_expert(
                     self.moe_in_buf.ptr,
@@ -642,9 +677,10 @@ class NativeMtpChainProposer:
                     self.hidden,
                     2 * self.intermediate,
                     threads=128,
+                    stream=stream,
                     library=self.dflash_lib,
                 )
-                dflash_silu_mul_bf16(self.gate_up_buf.ptr, self.gate_up_buf.ptr + self.intermediate * DType.BF16.itemsize, self.expert_intermediate_buf.ptr, self.intermediate, threads=256, library=self.dflash_lib)
+                dflash_silu_mul_bf16(self.gate_up_buf.ptr, self.gate_up_buf.ptr + self.intermediate * DType.BF16.itemsize, self.expert_intermediate_buf.ptr, self.intermediate, threads=256, stream=stream, library=self.dflash_lib)
                 dflash_dense_bf16_to_bf16_expert(
                     self.expert_intermediate_buf.ptr,
                     self.down_base,
@@ -656,6 +692,7 @@ class NativeMtpChainProposer:
                     self.intermediate,
                     self.hidden,
                     threads=128,
+                    stream=stream,
                     library=self.dflash_lib,
                 )
                 mtp_accumulate_route_bf16_to_f32(
@@ -666,9 +703,10 @@ class NativeMtpChainProposer:
                     route,
                     reset_output=route0_init and route == 0,
                     threads=256,
+                    stream=stream,
                     library=self.mtp_lib,
                 )
-        dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert_gate.weight"].ptr, self.shared_gate_buf.ptr, 1, self.hidden, 1, threads=128, library=self.dflash_lib)
+        dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert_gate.weight"].ptr, self.shared_gate_buf.ptr, 1, self.hidden, 1, threads=128, stream=stream, library=self.dflash_lib)
         if _shared_gate_up_dual_enabled():
             shared_gate_up_proj_buf = self._ensure_shared_gate_up_dual()
             dense_dual_gemv_out_bf16_wmma(
@@ -682,19 +720,20 @@ class NativeMtpChainProposer:
                 self.shared_intermediate,
                 library=self.dense_lib,
                 runtime=self.runtime,
+                stream=stream,
             )
             shared_gate_proj_ptr = shared_gate_up_proj_buf.ptr
             shared_up_proj_ptr = shared_gate_up_proj_buf.ptr + self.shared_intermediate * DType.BF16.itemsize
         else:
-            dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, self.shared_gate_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
-            dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, self.shared_up_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
+            dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, self.shared_gate_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, stream=stream, library=self.dflash_lib)
+            dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, self.shared_up_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, stream=stream, library=self.dflash_lib)
             shared_gate_proj_ptr = self.shared_gate_proj_buf.ptr
             shared_up_proj_ptr = self.shared_up_proj_buf.ptr
-        dflash_silu_mul_bf16(shared_gate_proj_ptr, shared_up_proj_ptr, self.shared_intermediate_buf.ptr, self.shared_intermediate, threads=256, library=self.dflash_lib)
-        dflash_dense_bf16_to_bf16(self.shared_intermediate_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.down_proj.weight"].ptr, self.shared_down_buf.ptr, 1, self.shared_intermediate, self.hidden, threads=128, library=self.dflash_lib)
-        mtp_accumulate_sigmoid_gate_bf16_to_f32(self.shared_down_buf.ptr, self.shared_gate_buf.ptr, self.moe_accum_buf.ptr, self.hidden, threads=256, library=self.mtp_lib)
-        mtp_finalize_f32_to_bf16(self.moe_accum_buf.ptr, self.moe_out_buf.ptr, self.hidden, threads=256, library=self.mtp_lib)
-        mtp_add_rmsnorm_bf16_oneplus(self.moe_out_buf.ptr, self.residual2_buf.ptr, self.weights["mtp.norm.weight"].ptr, self.final_hidden_buf.ptr, self.final_residual_buf.ptr, 1, self.hidden, eps=self.eps, threads=256, library=self.mtp_lib)
+        dflash_silu_mul_bf16(shared_gate_proj_ptr, shared_up_proj_ptr, self.shared_intermediate_buf.ptr, self.shared_intermediate, threads=256, stream=stream, library=self.dflash_lib)
+        dflash_dense_bf16_to_bf16(self.shared_intermediate_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.down_proj.weight"].ptr, self.shared_down_buf.ptr, 1, self.shared_intermediate, self.hidden, threads=128, stream=stream, library=self.dflash_lib)
+        mtp_accumulate_sigmoid_gate_bf16_to_f32(self.shared_down_buf.ptr, self.shared_gate_buf.ptr, self.moe_accum_buf.ptr, self.hidden, threads=256, stream=stream, library=self.mtp_lib)
+        mtp_finalize_f32_to_bf16(self.moe_accum_buf.ptr, self.moe_out_buf.ptr, self.hidden, threads=256, stream=stream, library=self.mtp_lib)
+        mtp_add_rmsnorm_bf16_oneplus(self.moe_out_buf.ptr, self.residual2_buf.ptr, self.weights["mtp.norm.weight"].ptr, self.final_hidden_buf.ptr, self.final_residual_buf.ptr, 1, self.hidden, eps=self.eps, threads=256, stream=stream, library=self.mtp_lib)
         self.cache_len += 1
         self.position = int(position)
         if not need_result:
@@ -711,18 +750,19 @@ class NativeMtpChainProposer:
             self.hidden,
             self.draft_vocab,
             threads=256,
+            stream=stream,
             library=self.lm_lib,
         )
         # Blocking D2H of the argmax pair implies a stream sync; the explicit
         # device_synchronize on top of it was pure host stall (#107 host-time trim).
-        copy_device_to_host(host_array_ptr(self.out_index_host), self.out_index_buf, self.out_index_host.nbytes, runtime=self.runtime)
+        self._copy_device_to_host_array(self.out_index_host, self.out_index_buf, nbytes=self.out_index_host.nbytes, stream=stream)
         logit = float("nan")
         if read_lm_head_value:
-            copy_device_to_host(host_array_ptr(self.out_value_host), self.out_value_buf, self.out_value_host.nbytes, runtime=self.runtime)
+            self._copy_device_to_host_array(self.out_value_host, self.out_value_buf, nbytes=self.out_value_host.nbytes, stream=stream)
             logit = float(self.out_value_host[0])
         if read_expert_topk:
-            copy_device_to_host(host_array_ptr(self.topk_ids_host), self.topk_ids_buf, self.topk_ids_host.nbytes, runtime=self.runtime)
-            copy_device_to_host(host_array_ptr(self.topk_values_host), self.topk_values_buf, self.topk_values_host.nbytes, runtime=self.runtime)
+            self._copy_device_to_host_array(self.topk_ids_host, self.topk_ids_buf, nbytes=self.topk_ids_host.nbytes, stream=stream)
+            self._copy_device_to_host_array(self.topk_values_host, self.topk_values_buf, nbytes=self.topk_values_host.nbytes, stream=stream)
             topk_experts = tuple(int(x) for x in self.topk_ids_host.reshape(-1))
             topk_logits = tuple(float(x) for x in self.topk_values_host.reshape(-1))
         else:

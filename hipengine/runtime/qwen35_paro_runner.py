@@ -8536,6 +8536,7 @@ class Qwen35ParoResidentSession:
         graph_mode: str = "off",
         chain_attn_mode: str = "c1_loop",
         canonicalize_after: bool = True,
+        synchronize_after_commit: bool = True,
     ) -> Qwen35ParoBulkVerifyResult:
         """Run one native root+candidate verifier forward and commit the selected row.
 
@@ -8689,7 +8690,8 @@ class Qwen35ParoResidentSession:
             # decode steps lazily re-reserve canonical c=1 views on demand.
             if bool(canonicalize_after) and (graph_mode == "off" or not self._verify_graph_cache):
                 self._canonicalize_decode_scratch()
-            self.runtime.stream_synchronize(stream)
+            if bool(synchronize_after_commit):
+                self.runtime.stream_synchronize(stream)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
             return Qwen35ParoBulkVerifyResult(
                 target_top1=tuple(int(token) for token in target_top1) if target_top1 else (),

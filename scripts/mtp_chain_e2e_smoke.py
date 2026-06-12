@@ -130,6 +130,30 @@ def _mtp_skip_canonicalize_after_verify_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", True)
 
 
+def _mtp_overlap_verify_commit_proposer_enabled() -> bool:
+    """Run proposer update on a side stream while verifier commit drains."""
+
+    return _env_flag("HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER", False)
+
+
+class _OptionalHipStream:
+    def __init__(self, runtime: Any, *, enabled: bool) -> None:
+        self.runtime = runtime
+        self.enabled = bool(enabled)
+        self.stream = 0
+
+    def __enter__(self) -> int:
+        if self.enabled:
+            self.stream = int(self.runtime.stream_create())
+        return self.stream
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.stream:
+            self.runtime.stream_synchronize(self.stream)
+            self.runtime.stream_destroy(self.stream)
+            self.stream = 0
+
+
 def _capture_tensor(buffer: DeviceBuffer, rows: int, hidden: int) -> Tensor:
     return Tensor.from_handle(buffer.ptr, (int(rows), int(hidden)), DType.BF16, Device("hip", 0))
 
@@ -748,6 +772,7 @@ def _run_spec_persistent_device(
     active_budgets: list[int] = []
     skip_unused_proposer_reads = _mtp_proposer_skip_unused_reads_enabled()
     canonicalize_after_verify = not _mtp_skip_canonicalize_after_verify_enabled()
+    overlap_verify_commit_proposer = _mtp_overlap_verify_commit_proposer_enabled()
     # Always load libroctx64 so range_push/pop markers fire even when the
     # selected-region window is off (rocprofv3 1.1.0 path). The resume/pause
     # path is still gated on rocprof_verify_cycles>0 below.
@@ -796,7 +821,7 @@ def _run_spec_persistent_device(
                 max_positions=max_sequence + int(decode_tokens) + 4,
                 max_mtp_tokens=len(prompt_tokens) + 2 * int(decode_tokens) + 8,
                 runtime=session.runtime,
-            ) as proposer:
+            ) as proposer, _OptionalHipStream(session.runtime, enabled=overlap_verify_commit_proposer) as proposer_update_stream:
                 prefill_started = time.perf_counter()
                 proposer.prefill_from_target_hidden_rows(
                     prompt_tokens,
@@ -930,6 +955,7 @@ def _run_spec_persistent_device(
                             chain_attn_mode=chain_attn_mode,
                             graph_mode=graph_mode,
                             canonicalize_after=canonicalize_after_verify,
+                            synchronize_after_commit=not overlap_verify_commit_proposer,
                         )
                         accepted_tokens = candidates[: int(verify.accepted_count)]
                     rocprof_window.range_pop()
@@ -959,11 +985,12 @@ def _run_spec_persistent_device(
                         )
                     update_started = time.perf_counter()
                     rocprof_window.range_push(f"mtp_proposer_update_{cycles}")
+                    update_stream = proposer_update_stream if (overlap_verify_commit_proposer and not use_tree) else 0
                     if len(generated) < int(decode_tokens):
                         if use_tree:
                             # Tree accepts may follow the sibling branch, so
                             # replay the accepted path from the cycle root.
-                            proposer.restore_state(snapshots[0])
+                            proposer.restore_state(snapshots[0], stream=update_stream)
                             for token in accepted_tokens:
                                 proposer.advance_with_previous_hidden(
                                     input_token=int(token),
@@ -971,9 +998,10 @@ def _run_spec_persistent_device(
                                     need_result=not skip_unused_proposer_reads,
                                     read_expert_topk=not skip_unused_proposer_reads,
                                     read_lm_head_value=not skip_unused_proposer_reads,
+                                    stream=update_stream,
                                 )
                         elif accepted < active_budget - 1:
-                            proposer.restore_state(snapshots[accepted])
+                            proposer.restore_state(snapshots[accepted], stream=update_stream)
                         elif accepted >= active_budget:
                             # After candidate generation, the live proposer state is
                             # already equivalent to snapshots[active_budget - 1].
@@ -986,12 +1014,14 @@ def _run_spec_persistent_device(
                                 need_result=not skip_unused_proposer_reads,
                                 read_expert_topk=not skip_unused_proposer_reads,
                                 read_lm_head_value=not skip_unused_proposer_reads,
+                                stream=update_stream,
                             )
                         proposer.advance_with_previous_hidden(
                             input_token=bonus,
                             position=proposer.position + 1,
                             read_expert_topk=not skip_unused_proposer_reads,
                             read_lm_head_value=not skip_unused_proposer_reads,
+                            stream=update_stream,
                         )
                     rocprof_window.range_pop()
                     proposal_decode_update_seconds += time.perf_counter() - update_started
@@ -1044,6 +1074,7 @@ def _run_spec_persistent_device(
         "proposal_impl": "persistent_device",
         "proposer_skip_unused_reads": bool(skip_unused_proposer_reads),
         "canonicalize_after_verify": bool(canonicalize_after_verify),
+        "overlap_verify_commit_proposer": bool(overlap_verify_commit_proposer),
         "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results/snapshots are skipped by default.",
         "rocprof_window": rocprof_window_meta,
         "cycle_marker_ns": [
