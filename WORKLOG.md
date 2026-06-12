@@ -85944,3 +85944,88 @@ speculative sampling / probability-ratio acceptance, near-tie/top-k greedy
 relaxation, relaxed LM-head/top-k materialization, and further GDN/order-relaxed
 verifier kernels.  Also explicitly called out exact no-holds that should remain
 in `docs/MTP.md` rather than being reframed as relaxed work.
+
+## 2026-06-13 - MTP D64 exact stack current-HEAD rerun
+
+Reran the retained D64 exact fallback stack on current HEAD after the reviewer
+correctly reweighted longer-horizon exactness above further speed work.  This
+is an exactness/diagnostic confirmation, not a promoted speed row.
+
+Primary D64 command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 64 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-decodebatched-exact-stack-d64-9prompt-rerun-20260613 \
+  --out /tmp/hipengine-mtp-b1-decodebatched-exact-stack-d64-9prompt-rerun-20260613.json
+```
+
+Result: exact D64 `9/9`, including the prior `translation` fork prompt.
+Aggregate prompt mean: observed `0.8475x`, actual `0.8432x`, wall
+`15.817 ms/cycle`, verify `14.095 ms/cycle`, proposal/update
+`1.704 ms/cycle`, visible density `1.482/cycle`, AR `110.52 tok/s`, MTP
+`93.25 tok/s`.  This confirms a deployable exact fallback exists, but it
+does not make the D32 `1.023x` fast row horizon-exact.
+
+Two cheap reductions were checked and no-held:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP -u HIPENGINE_GDN_TLOOP_C1_EXACT \
+  HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 1,2,4 --max-cycles 4 \
+  --out /tmp/hipengine-mtp-state-drift-audit-vtile1-lineout-exactsuffix-cycles1-2-4-20260613.json
+```
+
+Result: `state_mismatch` at cycle 1, linear layer 0 recurrent, max_abs
+`9.536743e-7`.  `VTILE=1` plus exact suffix is not a replacement for the
+serial-c1-equivalent GDN fallback.
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP -u HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 1,2 --max-cycles 2 \
+  --out /tmp/hipengine-mtp-state-drift-audit-exactgdn-exactsuffix-nolineout-cycles1-2-20260613.json
+```
+
+Result: `state_mismatch` at cycle 1, linear layer 1 conv, max_abs `0.015625`.
+Exact linear out is required because layer-0 output feeds downstream state; a
+post-accept resident-state repair is too late unless it replays the accepted
+path through the trunk.
+
+Reviewer follow-up folded into `docs/MTP.md`: keep RMSNorm/rotate/cast
+absorption as downstream work behind a wide reduced-DAG primitive.  Prior
+one-block/per-row producer fusions are already no-held; the live opportunity is
+prologue/epilogue absorption into an already-wide kernel without barrier/fill or
+HBM round trip.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-exact-stack-rerun.json`.
