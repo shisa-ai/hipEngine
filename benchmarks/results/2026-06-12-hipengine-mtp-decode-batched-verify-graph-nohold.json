@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "no_hold",
+  "candidate": "Opt-in verifier HIP graph replay for the current chain_attn_mode=decode_batched, num_splits=1 MTP verifier shape",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "workload": {
+    "prompt": "quicksort fixture tokens from /tmp/quicksort-prompt-tokens.txt",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "draft_vocab_cap": 32768,
+    "verifier_graph_control": "off",
+    "verifier_graph_candidate": "auto",
+    "steady_state_skip": 2
+  },
+  "prototype": {
+    "env_flag": "HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1",
+    "code_retained": false,
+    "scope": "Allowed decode_batched graph capture for split bucket 1, included the split bucket in the graph cache key, and fell back for other split buckets."
+  },
+  "correctness": {
+    "validate_smoke": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode validate --json /tmp/hipengine-mtp-decode-batched-graph-validate-smoke.json",
+      "status": "passed",
+      "exact_ar_match": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+      "graph_status": "captured_validated"
+    },
+    "auto_smoke": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode auto --json /tmp/hipengine-mtp-decode-batched-graph-auto-smoke.json",
+      "status": "passed",
+      "exact_ar_match": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+      "graph_status": "captured_validated_miss then replayed",
+      "graph_key_extra": ["decode_batched_splits", 1]
+    }
+  },
+  "profile": {
+    "control": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 --raw-root /tmp/hipengine-mtp-decode-batched-graph-off-control-rocprof --out /tmp/hipengine-mtp-decode-batched-graph-off-control-rocprof.json",
+      "calls_per_pass": 832.0,
+      "kernel_ms_per_pass": 12.60552309090909,
+      "host_ms_per_pass": 16.15305136363636
+    },
+    "candidate": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode auto --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 --raw-root /tmp/hipengine-mtp-decode-batched-graph-auto-rocprof --out /tmp/hipengine-mtp-decode-batched-graph-auto-rocprof.json",
+      "calls_per_pass": 832.0,
+      "kernel_ms_per_pass": 12.674252181818183,
+      "host_ms_per_pass": 16.182312636363637
+    },
+    "delta": {
+      "calls_per_pass": 0.0,
+      "kernel_ms_per_pass": 0.06872909090909207,
+      "host_ms_per_pass": 0.02926127272727652
+    }
+  },
+  "decision_reason": "The split-bucket graph path stayed exact and replayed after the first capture miss, but it did not reduce launch count or host marker time in the focused verifier profile. Kernel and host windows regressed slightly, so the prototype was removed and no suite timing was promoted."
+}

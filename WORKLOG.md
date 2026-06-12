@@ -83223,3 +83223,97 @@ Decision: no-hold. Keep `_W4_MULTI_ROW_DEFAULT_SAFE_SITES` unchanged and keep
 is exact but not backed by any live profile-path improvement. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-w4-all-sites-current-nohold.json`
 and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP decode_batched verifier graph no-held
+
+Tested the fresh verifier graph idea for the current best `decode_batched`
+path. The removed prototype allowed graph capture only for the current
+`num_splits=1` split bucket, added the split bucket to the verifier graph cache
+key, and fell back for other split buckets. It was gated behind
+`HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1`.
+
+Validation while the prototype was present:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode validate \
+  --json /tmp/hipengine-mtp-decode-batched-graph-validate-smoke.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode auto \
+  --json /tmp/hipengine-mtp-decode-batched-graph-auto-smoke.json
+```
+
+Both smokes passed exact AR with the locked accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`. The validate trace reported
+`captured_validated`; the auto trace reported `captured_validated_miss` on the
+first cycle and `replayed` afterward with graph key extra
+`["decode_batched_splits", 1]`.
+
+Focused verifier rocprof A/B:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-decode-batched-graph-off-control-rocprof \
+  --out /tmp/hipengine-mtp-decode-batched-graph-off-control-rocprof.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_DECODE_BATCHED_VERIFY_GRAPH=1 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode auto \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-decode-batched-graph-auto-rocprof \
+  --out /tmp/hipengine-mtp-decode-batched-graph-auto-rocprof.json
+```
+
+Result:
+
+- Calls/pass unchanged: `832.0 -> 832.0`.
+- Kernel: `12.605523 -> 12.674252 ms/pass`.
+- Host marker: `16.153051 -> 16.182313 ms/pass`.
+- Top buckets all moved flat/slightly negative; graph replay did not remove any
+  measured verifier work in this focused window.
+
+Decision: no-hold. The graph path is exact and replay-safe for the current
+one-split quicksort shape, but it does not improve the metric it should affect
+and slightly regresses both kernel and host windows. Prototype code removed;
+keep `decode_batched` verifier graph-off. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-decode-batched-verify-graph-nohold.json`
+and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
