@@ -1,0 +1,284 @@
+{
+  "commands": {
+    "py_compile": "python3 -m py_compile scripts/mtp_state_drift_audit.py",
+    "selected_state_audit": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 26,27 --max-cycles 27 --out /tmp/hipengine-mtp-state-drift-audit-selected-vs-ar-cycles26-27-20260613.json"
+  },
+  "cycles": [
+    {
+      "accepted": 1,
+      "commit_position": 47,
+      "commit_row": 1,
+      "committed_tokens": [
+        12,
+        15
+      ],
+      "context_after": 48,
+      "context_before": 46,
+      "control_next_token": 19,
+      "control_next_token_match": true,
+      "cycle": 26,
+      "mtp_scratch_vs_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "mtp_selected_state_vs_ar": {
+        "checked": null,
+        "failed": null,
+        "first_mismatch": {
+          "category": "linear_scratch",
+          "dtype": "float32",
+          "first_index": [
+            0,
+            0,
+            0
+          ],
+          "kind": "value",
+          "layer_index": 0,
+          "left_value": 0.00017054427007678896,
+          "max_abs": 3.814697265625e-06,
+          "mismatch_count": 319503,
+          "position": null,
+          "right_value": 0.0001705441827652976,
+          "shape": [
+            32,
+            128,
+            128
+          ],
+          "state": "recurrent"
+        },
+        "full_kv_cell": {
+          "checked": 20,
+          "failed": 20,
+          "first_mismatch": {
+            "dtype": "uint16",
+            "first_index": [
+              0,
+              31
+            ],
+            "kind": "value",
+            "layer_index": 3,
+            "left_value": 48837,
+            "max_abs": null,
+            "mismatch_count": 104,
+            "position": 47,
+            "right_value": 48836,
+            "shape": [
+              2,
+              256
+            ],
+            "state": "key_cell"
+          },
+          "passed": false
+        },
+        "linear_scratch": {
+          "checked": 60,
+          "failed": 59,
+          "first_mismatch": {
+            "dtype": "float32",
+            "first_index": [
+              0,
+              0,
+              0
+            ],
+            "kind": "value",
+            "layer_index": 0,
+            "left_value": 0.00017054427007678896,
+            "max_abs": 3.814697265625e-06,
+            "mismatch_count": 319503,
+            "position": null,
+            "right_value": 0.0001705441827652976,
+            "shape": [
+              32,
+              128,
+              128
+            ],
+            "state": "recurrent"
+          },
+          "passed": false
+        },
+        "passed": false
+      },
+      "next_token": 19,
+      "resident_vs_ar": {
+        "checked": null,
+        "failed": null,
+        "first_mismatch": {
+          "category": "linear",
+          "dtype": "float32",
+          "first_index": [
+            0,
+            0,
+            0
+          ],
+          "kind": "value",
+          "layer_index": 0,
+          "left_value": 0.00017054427007678896,
+          "max_abs": 3.814697265625e-06,
+          "mismatch_count": 319503,
+          "position": null,
+          "right_value": 0.0001705441827652976,
+          "shape": [
+            32,
+            128,
+            128
+          ],
+          "state": "recurrent"
+        },
+        "passed": false
+      }
+    },
+    {
+      "accepted": 0,
+      "commit_position": 48,
+      "commit_row": 0,
+      "committed_tokens": [
+        19
+      ],
+      "context_after": 49,
+      "context_before": 48,
+      "control_next_token": 220,
+      "control_next_token_match": false,
+      "cycle": 27,
+      "mtp_scratch_vs_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "mtp_selected_state_vs_ar": {
+        "checked": null,
+        "failed": null,
+        "first_mismatch": {
+          "category": "linear_scratch",
+          "dtype": "float32",
+          "first_index": [
+            0,
+            0,
+            0
+          ],
+          "kind": "value",
+          "layer_index": 0,
+          "left_value": 0.00022076661116443574,
+          "max_abs": 4.0531158447265625e-06,
+          "mismatch_count": 340522,
+          "position": null,
+          "right_value": 0.00022076652385294437,
+          "shape": [
+            32,
+            128,
+            128
+          ],
+          "state": "recurrent"
+        },
+        "full_kv_cell": {
+          "checked": 20,
+          "failed": 20,
+          "first_mismatch": {
+            "dtype": "uint16",
+            "first_index": [
+              0,
+              7
+            ],
+            "kind": "value",
+            "layer_index": 3,
+            "left_value": 16281,
+            "max_abs": null,
+            "mismatch_count": 128,
+            "position": 48,
+            "right_value": 16282,
+            "shape": [
+              2,
+              256
+            ],
+            "state": "key_cell"
+          },
+          "passed": false
+        },
+        "linear_scratch": {
+          "checked": 60,
+          "failed": 59,
+          "first_mismatch": {
+            "dtype": "float32",
+            "first_index": [
+              0,
+              0,
+              0
+            ],
+            "kind": "value",
+            "layer_index": 0,
+            "left_value": 0.00022076661116443574,
+            "max_abs": 4.0531158447265625e-06,
+            "mismatch_count": 340522,
+            "position": null,
+            "right_value": 0.00022076652385294437,
+            "shape": [
+              32,
+              128,
+              128
+            ],
+            "state": "recurrent"
+          },
+          "passed": false
+        },
+        "passed": false
+      },
+      "next_token": 51,
+      "resident_vs_ar": {
+        "checked": null,
+        "failed": null,
+        "first_mismatch": {
+          "category": "linear",
+          "dtype": "float32",
+          "first_index": [
+            0,
+            0,
+            0
+          ],
+          "kind": "value",
+          "layer_index": 0,
+          "left_value": 0.00022076661116443574,
+          "max_abs": 4.0531158447265625e-06,
+          "mismatch_count": 340522,
+          "position": null,
+          "right_value": 0.00022076652385294437,
+          "shape": [
+            32,
+            128,
+            128
+          ],
+          "state": "recurrent"
+        },
+        "passed": false
+      }
+    }
+  ],
+  "date": "2026-06-13",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "retained_ready": false,
+  "status": "diagnostic",
+  "summary": {
+    "cycle26": "after committing [12,15] from selected row 1, visible next_token still matches AR (19), scratch-to-resident copy is exact, but selected_state_vs_ar fails: linear scratch fails first at layer 0 recurrent max_abs 3.8147e-6 and full K/V cells fail bitwise for 20/20 checked cells",
+    "cycle27": "after committing [19] from selected row 0, visible next_token forks (51 vs 220), scratch-to-resident remains exact, selected_state_vs_ar fails with the same first category at layer 0 recurrent max_abs 4.0531e-6 and full K/V cells fail bitwise for 20/20 checked cells",
+    "interpretation": "The selected verifier row is already not serial-AR-equivalent at cycle 26, before the visible cycle-27 fork. The resident copy path is clean; the next audit should localize whether the selected-row state divergence is inherited from pre-existing resident recurrent/KV drift or introduced by the verifier row update kernel sequence.",
+    "next_action": "Run a pre/post selected-row state audit around cycle 26, comparing drifted verifier selected row against a clean verifier selected row from the AR resident state by layer/state.",
+    "raw_path": "/tmp/hipengine-mtp-state-drift-audit-selected-vs-ar-cycles26-27-20260613.json",
+    "script_change": "scripts/mtp_state_drift_audit.py now emits mtp_selected_state_vs_ar, comparing selected linear scratch row and committed full-attention K/V cell directly against the serial AR control state."
+  },
+  "workload": {
+    "candidate_budget": 1,
+    "chain_attn_mode": "decode_batched",
+    "compare_after_cycles": [
+      26,
+      27
+    ],
+    "decode_tokens": 64,
+    "graph_mode": "off",
+    "max_cycles": 27,
+    "prompt_name": "translation",
+    "prompt_tokens": 15
+  }
+}

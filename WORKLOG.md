@@ -84774,3 +84774,46 @@ blocker before longer D64 promotion or adaptive-budget policy work.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-state-cycle26-27-audit.json`.
+
+## 2026-06-13 - MTP D64 selected-state vs AR audit
+
+Extended `scripts/mtp_state_drift_audit.py` so each compared cycle also emits
+`mtp_selected_state_vs_ar`: selected linear verifier scratch row versus serial
+AR resident linear state, plus the committed full-attention K/V cell versus the
+serial AR K/V cell at the same position. This closes the previous gap where we
+only proved selected scratch -> resident copy equality.
+
+Validation / run:
+
+```bash
+python3 -m py_compile scripts/mtp_state_drift_audit.py
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 26,27 --max-cycles 27 \
+  --out /tmp/hipengine-mtp-state-drift-audit-selected-vs-ar-cycles26-27-20260613.json
+```
+
+Result:
+
+| cycle | visible next | scratch -> resident | selected linear scratch vs AR | selected full K/V cell vs AR |
+| ---: | --- | --- | --- | --- |
+| 26 | `19 == 19` | exact `60/60` | fail: layer 0 recurrent max_abs `3.814697e-6`, `59/60` linear records failed | fail: `20/20` K/V cells bit-mismatched; first is layer 3 key at position `47`, `104` mismatches |
+| 27 | `51 != 220` | exact `60/60` | fail: layer 0 recurrent max_abs `4.053116e-6`, `59/60` linear records failed | fail: `20/20` K/V cells bit-mismatched; first is layer 3 key at position `48`, `128` mismatches |
+
+Interpretation: cycle 26's selected row is already not serial-AR-equivalent
+while visible output still matches AR. The commit/copy path remains clean; the
+state being copied is already drifted. Next drill should separate inherited
+drift from verifier-update drift by comparing the drifted verifier selected row
+against a clean verifier selected row from AR resident state around cycle 26, by
+layer/state.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-selected-state-vs-ar-audit.json`.

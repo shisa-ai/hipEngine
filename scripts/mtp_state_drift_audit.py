@@ -260,6 +260,52 @@ def _compare_mtp_scratch_to_resident(
     return _state_compare_summary(records)
 
 
+def _compare_mtp_selected_linear_scratch_to_ar(
+    mtp: Qwen35ParoResidentSession,
+    control: Qwen35ParoResidentSession,
+    *,
+    selected_row: int,
+    slot: int = 0,
+) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    for layer_id in mtp.linear_layer_ids:
+        scratch = mtp.linear_scratch.get(int(layer_id))
+        if scratch is None:
+            records.append(
+                {
+                    "passed": False,
+                    "layer_index": int(layer_id),
+                    "state": "scratch",
+                    "mismatch": {"kind": "missing_scratch"},
+                }
+            )
+            continue
+        control_conv, control_recurrent = control._slot_linear_state(int(layer_id), int(slot))
+        for state_name, scratch_tensor, control_tensor in (
+            ("conv", scratch.tree_conv_state, control_conv),
+            ("recurrent", scratch.tree_recurrent_state, control_recurrent),
+        ):
+            row_nbytes = int(np.prod(control_tensor.shape)) * control_tensor.dtype.itemsize
+            scratch_host = _copy_tensor_slice_host(
+                mtp,
+                ptr=int(scratch_tensor.ptr) + int(selected_row) * row_nbytes,
+                dtype=control_tensor.dtype,
+                shape=control_tensor.shape,
+            )
+            control_host = _copy_tensor_host(control, control_tensor)
+            record = _compare_arrays(scratch_host, control_host)
+            record.update(
+                {
+                    "layer_index": int(layer_id),
+                    "state": state_name,
+                    "left": f"mtp_scratch_row_{int(selected_row)}",
+                    "right": "ar_resident",
+                }
+            )
+            records.append(record)
+    return _state_compare_summary(records)
+
+
 def _copy_kv_prefix(
     session: Qwen35ParoResidentSession,
     *,
@@ -279,6 +325,28 @@ def _copy_kv_prefix(
         raise ValueError("live_count exceeds KV cache capacity")
     shape = (int(live_count), heads, head_dim)
     return _copy_tensor_slice_host(session, ptr=int(tensor.ptr), dtype=tensor.dtype, shape=shape)
+
+
+def _copy_kv_cell(
+    session: Qwen35ParoResidentSession,
+    *,
+    layer_id: int,
+    slot: int,
+    position: int,
+    which: str,
+) -> np.ndarray:
+    key_cache, value_cache = session._slot_full_cache(int(layer_id), int(slot))
+    tensor = key_cache if which == "key" else value_cache
+    if tensor.dtype not in {DType.BF16, DType.FP16}:
+        raise ValueError(f"KV diagnostic expects 16-bit cache, got {tensor.dtype}")
+    if len(tensor.shape) != 4:
+        raise ValueError(f"expected rank-4 KV cache, got {tensor.shape}")
+    blocks, block_size, heads, head_dim = (int(dim) for dim in tensor.shape)
+    if int(position) < 0 or int(position) >= blocks * block_size:
+        raise ValueError("position exceeds KV cache capacity")
+    row_elems = heads * head_dim
+    ptr = int(tensor.ptr) + int(position) * row_elems * tensor.dtype.itemsize
+    return _copy_tensor_slice_host(session, ptr=ptr, dtype=tensor.dtype, shape=(heads, head_dim))
 
 
 def _compare_full_kv_prefixes(
@@ -309,6 +377,44 @@ def _compare_full_kv_prefixes(
     return _state_compare_summary(records)
 
 
+def _compare_mtp_selected_full_kv_to_ar(
+    mtp: Qwen35ParoResidentSession,
+    control: Qwen35ParoResidentSession,
+    *,
+    commit_position: int,
+    slot: int = 0,
+) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    for layer_id in mtp.full_caches:
+        for which in ("key", "value"):
+            mtp_host = _copy_kv_cell(
+                mtp,
+                layer_id=int(layer_id),
+                slot=int(slot),
+                position=int(commit_position),
+                which=which,
+            )
+            control_host = _copy_kv_cell(
+                control,
+                layer_id=int(layer_id),
+                slot=int(slot),
+                position=int(commit_position),
+                which=which,
+            )
+            record = _compare_arrays(mtp_host, control_host)
+            record.update(
+                {
+                    "layer_index": int(layer_id),
+                    "state": f"{which}_cell",
+                    "position": int(commit_position),
+                    "left": "mtp_selected_kv_cell",
+                    "right": "ar_resident_kv_cell",
+                }
+            )
+            records.append(record)
+    return _state_compare_summary(records)
+
+
 def _compare_resident_state(
     mtp: Qwen35ParoResidentSession,
     control: Qwen35ParoResidentSession,
@@ -333,6 +439,37 @@ def _compare_resident_state(
         "passed": first is None,
         "linear": linear,
         "full_kv_prefix": kv,
+        "first_mismatch": first,
+    }
+
+
+def _compare_mtp_selected_state_to_ar(
+    mtp: Qwen35ParoResidentSession,
+    control: Qwen35ParoResidentSession,
+    *,
+    selected_row: int,
+    commit_position: int,
+) -> dict[str, Any]:
+    linear = _compare_mtp_selected_linear_scratch_to_ar(
+        mtp,
+        control,
+        selected_row=int(selected_row),
+    )
+    kv = _compare_mtp_selected_full_kv_to_ar(
+        mtp,
+        control,
+        commit_position=int(commit_position),
+    )
+    first = None
+    for label, summary in (("linear_scratch", linear), ("full_kv_cell", kv)):
+        mismatch = summary.get("first_mismatch")
+        if isinstance(mismatch, dict):
+            first = {"category": label, **mismatch}
+            break
+    return {
+        "passed": first is None,
+        "linear_scratch": linear,
+        "full_kv_cell": kv,
         "first_mismatch": first,
     }
 
@@ -511,11 +648,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     context += len(committed)
                     compare_payload = None
                     scratch_payload = None
+                    selected_payload = None
                     if cycle in compare_cycles:
                         compare_payload = _compare_resident_state(mtp_session, control_session, live_count=context)
                         scratch_payload = _compare_mtp_scratch_to_resident(
                             mtp_session,
                             selected_row=int(verify.commit_row),
+                        )
+                        selected_payload = _compare_mtp_selected_state_to_ar(
+                            mtp_session,
+                            control_session,
+                            selected_row=int(verify.commit_row),
+                            commit_position=int(verify.commit_position),
                         )
                         if first_mismatch is None and not bool(compare_payload["passed"]):
                             first_mismatch = {
@@ -542,6 +686,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         record["resident_vs_ar"] = compare_payload
                     if scratch_payload is not None:
                         record["mtp_scratch_vs_resident"] = scratch_payload
+                    if selected_payload is not None:
+                        record["mtp_selected_state_vs_ar"] = selected_payload
                     cycle_records.append(record)
                     if len(generated) >= int(args.decode_tokens):
                         break
