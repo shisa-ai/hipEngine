@@ -84736,3 +84736,41 @@ prove the selected scratch row itself matches serial AR state.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-layer-drift-narrow-audit.json`.
+
+## 2026-06-13 - MTP D64 cycle 26/27 state audit
+
+Ran the existing resident-state audit at the narrowed handoff point. This
+checks MTP resident state against serial AR state after the selected committed
+cycles, and separately checks selected verifier scratch row -> resident copy
+equality.
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 26,27 --max-cycles 27 \
+  --out /tmp/hipengine-mtp-state-drift-audit-translation-b1-cycles26-27-20260613.json
+```
+
+Result:
+
+| cycle | context | committed | accepted / row | next vs AR | resident vs AR | scratch -> resident |
+| ---: | --- | --- | --- | --- | --- | --- |
+| 26 | `46 -> 48` | `[12,15]` | `1 / 1` | `19 == 19` | mismatch: linear layer 0 recurrent max_abs `3.814697e-6`, `319503` mismatches | exact `60/60` |
+| 27 | `48 -> 49` | `[19]` | `0 / 0` | `51 != 220` | mismatch: linear layer 0 recurrent max_abs `4.053116e-6`, `340522` mismatches | exact `60/60` |
+
+Interpretation: cycle 26 is already resident-state mismatched immediately after
+the accepted row-1 commit, while visible output still matches AR. The selected
+scratch row is copied into the resident slot exactly, so the next diagnostic
+needs to compare the selected scratch row itself against serial AR state,
+including linear recurrent/conv and full-attention K/V. This is a correctness
+blocker before longer D64 promotion or adaptive-budget policy work.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-state-cycle26-27-audit.json`.

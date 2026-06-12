@@ -1,0 +1,140 @@
+{
+  "commands": {
+    "state_drift_cycles_26_27": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 26,27 --max-cycles 27 --out /tmp/hipengine-mtp-state-drift-audit-translation-b1-cycles26-27-20260613.json"
+  },
+  "cycles": [
+    {
+      "accepted": 1,
+      "commit_position": 47,
+      "commit_row": 1,
+      "committed_tokens": [
+        12,
+        15
+      ],
+      "context_after": 48,
+      "context_before": 46,
+      "control_next_token": 19,
+      "control_next_token_match": true,
+      "cycle": 26,
+      "mtp_scratch_vs_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "next_token": 19,
+      "resident_vs_ar": {
+        "first_mismatch": {
+          "category": "linear",
+          "dtype": "float32",
+          "layer_index": 0,
+          "max_abs": 3.814697265625e-06,
+          "mismatch_count": 319503,
+          "shape": [
+            32,
+            128,
+            128
+          ],
+          "state": "recurrent"
+        },
+        "passed": false
+      }
+    },
+    {
+      "accepted": 0,
+      "commit_position": 48,
+      "commit_row": 0,
+      "committed_tokens": [
+        19
+      ],
+      "context_after": 49,
+      "context_before": 48,
+      "control_next_token": 220,
+      "control_next_token_match": false,
+      "cycle": 27,
+      "mtp_scratch_vs_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "next_token": 51,
+      "resident_vs_ar": {
+        "first_mismatch": {
+          "category": "linear",
+          "dtype": "float32",
+          "layer_index": 0,
+          "max_abs": 4.0531158447265625e-06,
+          "mismatch_count": 340522,
+          "shape": [
+            32,
+            128,
+            128
+          ],
+          "state": "recurrent"
+        },
+        "passed": false
+      }
+    }
+  ],
+  "date": "2026-06-13",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "retained_ready": false,
+  "status": "diagnostic",
+  "summary": {
+    "cycle26": "after committing [12,15] from commit_row=1, visible next_token still matches AR (19), resident_vs_ar is mismatched, and scratch_to_resident copy is exact",
+    "cycle27": "after committing [19] from commit_row=0, visible next_token forks (MTP 51 vs AR 220), resident_vs_ar is still mismatched, and scratch_to_resident copy remains exact",
+    "first_mismatch": {
+      "category": "linear",
+      "cycle": 26,
+      "dtype": "float32",
+      "layer_index": 0,
+      "left": "mtp_resident",
+      "mismatch": {
+        "first_flat_index": 0,
+        "first_index": [
+          0,
+          0,
+          0
+        ],
+        "kind": "value",
+        "left_value": 0.00017054427007678896,
+        "max_abs": 3.814697265625e-06,
+        "max_abs_index": [
+          14,
+          9,
+          79
+        ],
+        "mismatch_count": 319503,
+        "right_value": 0.0001705441827652976
+      },
+      "passed": false,
+      "phase": "post_commit",
+      "right": "ar_resident",
+      "shape": [
+        32,
+        128,
+        128
+      ],
+      "state": "recurrent"
+    },
+    "interpretation": "The cycle-26 selected row is copied into the resident slot exactly, but the resident state already differs from serial AR before the visible cycle-27 fork. The next diagnostic must compare the selected scratch row itself against serial AR state, including full-attention K/V and linear recurrent/conv states.",
+    "next_action": "Extend scripts/mtp_state_drift_audit.py with selected-scratch-row-vs-AR comparisons for linear state and full-attention K/V at the commit row, then run it at cycle 26.",
+    "raw_path": "/tmp/hipengine-mtp-state-drift-audit-translation-b1-cycles26-27-20260613.json"
+  },
+  "workload": {
+    "candidate_budget": 1,
+    "chain_attn_mode": "decode_batched",
+    "compare_after_cycles": [
+      26,
+      27
+    ],
+    "decode_tokens": 64,
+    "graph_mode": "off",
+    "max_cycles": 27,
+    "prompt_name": "translation",
+    "prompt_tokens": 15
+  }
+}
