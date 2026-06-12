@@ -83642,3 +83642,98 @@ Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json` and
 updated `docs/MTP.md`, `README.md`, `benchmarks/README.md`, and
 `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP B=1 current-best profile refresh
+
+After retaining fixed B=1 as the first exact break-even row, refreshed the
+quicksort D32 profile on the current no-env default stack. This was needed
+because most detailed verifier/proposer profile notes still described the B=3
+density row, while the active retained operating point is now B=1.
+
+Warmup smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b1-current-profile-warmup-smoke.json
+```
+
+Result: exact AR match with the retained B=1 accepted trace
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.
+
+Verifier profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-b1-current-verify-rocprof-20260612
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region verify_pass \
+  --raw-root /tmp/hipengine-mtp-b1-current-verify-rocprof-20260612 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-b1-current-verify-rocprof.json \
+  --top 60
+```
+
+Result: exact, `18` steady verifier windows, `833.0` launches/pass,
+`9.406981 ms/pass` kernel, `12.877328 ms/pass` host marker. Top families:
+
+- `w4_dual_gemv`: `80/pass`, `1.438210 ms/pass`.
+- `moe_gate_up_dual_gemv`: `40/pass`, `1.211004 ms/pass`.
+- `w4_single_gemv`: `90/pass`, `1.084891 ms/pass`.
+- `linear_attention_gdn_decode`: `30/pass`, `1.070959 ms/pass`.
+- `w8a16_linear`: `1/pass`, `0.807732 ms/pass`.
+- `moe_paro_rotate_in`: `160/pass`, `0.798016 ms/pass`.
+- `moe_down_gemv`: `40/pass`, `0.770148 ms/pass`.
+- `runtime_copy`: only `3/pass`, `0.008671 ms/pass`.
+
+Proposer-all profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-b1-current-proposer-all-rocprof-20260612
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region proposer_all \
+  --raw-root /tmp/hipengine-mtp-b1-current-proposer-all-rocprof-20260612 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-b1-current-proposer-all-rocprof.json \
+  --top 60
+```
+
+Result: exact, `18` steady proposer windows, `41.5` launches/cycle,
+`1.532538 ms/cycle` kernel, `1.790452 ms/cycle` host marker. Top families:
+
+- `lm_head_argmax`: `3/cycle`, `0.370517 ms/cycle`.
+- `proposer_dense_bf16`: `7.5/cycle`, `0.267647 ms/cycle`.
+- `proposer_attention`: `1.5/cycle`, `0.257118 ms/cycle`.
+- `proposer_expert_dense`: `3/cycle`, `0.185273 ms/cycle`.
+- `proposer_topk_router`: `1.5/cycle`, `0.172082 ms/cycle`.
+- `proposer_qkv_projection`: `1.5/cycle`, `0.128815 ms/cycle`.
+
+Decision: no speed row; retain as diagnostic priority reset. The B=1 verifier
+still has a large launch count and a `~3.47 ms/pass` host/kernel gap, so
+reduced-DAG verifier work remains relevant, but the live buckets are wide W4,
+GDN, LM-head, and MoE GEMV work, not fill/copy cleanup. The B=1 proposer is
+small and GPU-bound enough that whole-body proposer graph capture is now capped
+around `0.26 ms/cycle` before correctness/stream risks, so it should stay behind
+adaptive budget policy and verifier reduced-DAG work. Updated `docs/MTP.md`,
+`docs/MEGAKERNEL.md`, and `docs/REFACTOR.md` with the current B=1 framing.

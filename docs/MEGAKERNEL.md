@@ -7,13 +7,17 @@ purposes; `docs/MTP.md` remains the economics/`C_B` source of truth. Update both
 when the plan moves.
 
 Current baseline note (2026-06-12): the active break-even sprint is now locked
-in `docs/MTP.md` at the retained exact 9-prompt D32 row, **0.924x AR** with
-**19.44 ms/cycle** (`16.16 ms` verify + `1.25 ms` proposal/update in the current
-rollup). The wall milestone is crossed, but true `>1.0x` still needs about
-`18.2 ms/cycle` at the current `2.012` visible tokens/cycle, or acceptance
-density of at least `2.15` visible tokens/cycle at the current wall. The older
-45 ms / `C_B=4.67` tables below are retained as M16.3 groundwork, not the
-current sprint scoreboard.
+in `docs/MTP.md` at the retained exact 9-prompt D32 **B=1** row, **1.018x AR**
+with **14.173 ms/cycle** (`12.426 ms` verify + `1.733 ms` proposal/update in the
+suite rollup). The first `>1.0x` row is retained; this document is now a margin
+and future higher-density-kernel reference, not the sprint scoreboard. A fresh
+B=1 quicksort profile shows the verifier at `833` launches/pass,
+`9.407 ms/pass` kernel, and `12.877 ms/pass` host marker; proposer-all is
+`41.5` launches/cycle, `1.533 ms/cycle` kernel, and `1.790 ms/cycle` host
+marker. The older 45 ms / `C_B=4.67` tables below are retained as M16.3
+groundwork, not the current operating point. Any new reduced-DAG or megakernel
+work must beat the retained B=1 exact suite row while preserving or improving
+the B=3 density path.
 
 Companion evidence:
 - `benchmarks/results/2026-06-09-hipengine-m16.3-launch-census-batched-b3.json`
@@ -21,6 +25,9 @@ Companion evidence:
 - `benchmarks/results/2026-06-09-hipengine-economics-rerun-mtp-dflash-35b-27b.json`
 - `benchmarks/results/2026-06-09-hipengine-m16.3-b3-paro-ffn-megakernel-microbench.json`
 - `benchmarks/results/2026-06-11-hipengine-mtp-paro-ffn-megakernel-exact-blocked.json`
+- `benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json`
+- `benchmarks/results/2026-06-12-hipengine-mtp-b1-current-verify-rocprof.json`
+- `benchmarks/results/2026-06-12-hipengine-mtp-b1-current-proposer-all-rocprof.json`
 
 **Progress (2026-06-09):** B0/B1 (GGUF) and **B3** (PARO fused FFN megakernel)
 are built + validated; a pi-multiloop kernel-time optimize loop took the PARO
@@ -69,10 +76,12 @@ the 32-row shape better, not by collapsing launches (see §9, grid-reduction).
 
 MTP/DFlash speculative decode only beats AR when a verify cycle costs fewer
 AR-token-equivalents (`C_B`) than the tokens it emits. Current sprint state is
-tracked in `docs/MTP.md`; the retained 2026-06-12 row is `0.924x AR`,
-`19.44 ms/cycle`, and `2.012` visible tokens/cycle. The table below is the
-historical M16.3 kickoff state (W7900/gfx1100, 35B-A3B PARO MTP, B=3, batched,
-exact), retained to explain why this document exists:
+tracked in `docs/MTP.md`; the retained 2026-06-12 row is B=1 at `1.018x AR`,
+`14.173 ms/cycle`, and `1.617` visible tokens/cycle. B=3 remains the higher
+density target (`2.175` visible tokens/cycle) but is below break-even as a fixed
+operating point. The table below is the historical M16.3 kickoff state
+(W7900/gfx1100, 35B-A3B PARO MTP, B=3, batched, exact), retained to explain why
+this document exists:
 
 | metric | value |
 |---|---|
