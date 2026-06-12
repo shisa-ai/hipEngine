@@ -82545,3 +82545,36 @@ wall `19.375844 -> 19.411685 ms/cycle`, verify
 `2.011852/cycle`. Decision: keep the code and flag as fixed-address M12.7 graph
 infrastructure, but default-off and no speed promotion. Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-proposer-indexed-kv-write-nohold.json`.
+
+## 2026-06-12 - MTP M12.7 whole-body proposer graph capture no-held
+
+Tried the next M12.7 diagnostic after indexed K/V writes: capture the fixed-hidden
+`NativeMtpChainProposer.advance_with_previous_hidden()` body as a HIP graph while
+using graph-safe indexed K/V producers and bucketed attention with a
+device-resident live context length. The code was kept local only and removed
+after the probes below.
+
+Quicksort D32 controls:
+
+```bash
+HIPENGINE_MTP_PROPOSER_GRAPH_CAPTURE=0 ...
+HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=1 ...
+HIPENGINE_MTP_PROPOSER_BUCKETED_ATTENTION=1 ...
+```
+
+All three direct shapes stayed exact AR and kept the locked accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`. The graph-captured body did not: private-stream
+capture stayed exact AR but changed the accepted trace to
+`[1,3,0,1,1,0,2,0,0,1,0,0,2,2,0,2]`. Recapturing every advance, to remove replay
+freezing as the variable, still changed the trace to mostly zero accepts
+(`[1,0,0,0,0,0,1,0,...]`), and forcing
+`HIPENGINE_DFLASH_DRAFTER_DENSE=naive` did not fix it. Capturing the caller
+default stream is not available: HIP returns error 900, "operation not permitted
+when stream is capturing."
+
+Decision: no code retained and no speed row. M12.7 remains a design item, but
+not as a whole-body HIP graph around the current proposer. A useful retry needs
+either graph node parameter updates or a smaller capture-safe subgraph whose
+kernel launches are proven stream-honoring and candidate-sequence identical.
+Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-proposer-graph-capture-nohold.json`.
