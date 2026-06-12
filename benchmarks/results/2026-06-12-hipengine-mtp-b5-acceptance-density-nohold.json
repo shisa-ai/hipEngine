@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "no_hold",
+  "candidate": "Current-stack global chain candidate_budget=5 acceptance-density diagnostic",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "workload": {
+    "suite": "llama.cpp mtp-bench prompt suite, raw prompt render",
+    "decode_tokens": 32,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "comparison": "same-session candidate_budgets=3,5"
+  },
+  "b4_attempt": {
+    "status": "invalid_current_chain_budget",
+    "command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 4 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-b4-current-quicksort-smoke-20260612.json",
+    "error": "ValueError: candidate_budget must be one of (1, 2, 3, 5)"
+  },
+  "quicksort_b5_smoke": {
+    "command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 5 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-b5-current-quicksort-smoke-20260612.json",
+    "status": "passed",
+    "exact_ar_match": true,
+    "accepted_lengths": [5, 4, 0, 2, 0, 0, 1, 4, 2, 0, 2],
+    "active_budgets": [5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 3],
+    "acceptance_rate": 0.38461538461538464,
+    "decode_tok_s": 105.94592676833048
+  },
+  "suite_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3,5 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-b3-b5-current-9prompt-d32 --out /tmp/hipengine-mtp-b3-b5-current-9prompt-d32.json",
+  "suite_result": {
+    "source_artifact": "/tmp/hipengine-mtp-b3-b5-current-9prompt-d32.json",
+    "b3": {
+      "all_exact_ar_match": true,
+      "actual_decode_speedup_vs_ar": 0.9262248759005094,
+      "cycle_wall_ms_per_cycle": 19.424893483765434,
+      "verify_ms_per_cycle": 16.133456041513266,
+      "proposal_update_ms_per_cycle": 1.2525553136264884,
+      "cycle_cost_ar_tokens": 2.1439955782433753,
+      "visible_tokens_per_cycle": 2.011851851851852,
+      "accepted_per_cycle": 1.011851851851852,
+      "acceptance_rate": 0.350802961986189,
+      "ar_decode_ms_per_token": 9.053380075783934
+    },
+    "b5": {
+      "all_exact_ar_match": true,
+      "actual_decode_speedup_vs_ar": 0.773195623385141,
+      "cycle_wall_ms_per_cycle": 25.689115686533114,
+      "verify_ms_per_cycle": 20.44868541464075,
+      "proposal_update_ms_per_cycle": 1.2213513124098132,
+      "cycle_cost_ar_tokens": 2.838457682480608,
+      "visible_tokens_per_cycle": 2.220414821199135,
+      "accepted_per_cycle": 1.2204148211991348,
+      "acceptance_rate": 0.261201317737905,
+      "ar_decode_ms_per_token": 9.043355537869502
+    },
+    "delta_b5_minus_b3": {
+      "actual_decode_speedup_vs_ar": -0.15302925251536835,
+      "cycle_wall_ms_per_cycle": 6.26422220276768,
+      "verify_ms_per_cycle": 4.315229373127485,
+      "proposal_update_ms_per_cycle": -0.031204001216675156,
+      "cycle_cost_ar_tokens": 0.6944621042372327,
+      "visible_tokens_per_cycle": 0.20856296934728307,
+      "accepted_per_cycle": 0.20856296934728285,
+      "acceptance_rate": -0.089601644248284
+    },
+    "per_prompt": [
+      {"prompt": "code_python", "b3_ratio": 1.3185859709631969, "b5_ratio": 1.112603220011225, "b3_visible": 3.1, "b5_visible": 3.4444444444444446, "b3_cycle_cost": 2.2388821512369437, "b5_cycle_cost": 2.945809380487258},
+      {"prompt": "code_cpp", "b3_ratio": 0.936941381293891, "b5_ratio": 0.8250783438383629, "b3_visible": 2.0, "b5_visible": 2.3846153846153846, "b3_cycle_cost": 2.1342711280569766, "b5_cycle_cost": 2.840612277996552},
+      {"prompt": "explain_concept", "b3_ratio": 0.8047936890869448, "b5_ratio": 0.6506281957902266, "b3_visible": 1.7222222222222223, "b5_visible": 1.8235294117647058, "b3_cycle_cost": 2.102913028912551, "b5_cycle_cost": 2.7890598615131306},
+      {"prompt": "summarize", "b3_ratio": 0.9513449295801296, "b5_ratio": 0.7190330424973387, "b3_visible": 2.0, "b5_visible": 2.0, "b3_cycle_cost": 2.101962440452848, "b5_cycle_cost": 2.7811949574913153},
+      {"prompt": "qa_factual", "b3_ratio": 1.0084082573798745, "b5_ratio": 0.8488954988763586, "b3_visible": 2.1333333333333333, "b5_visible": 2.2857142857142856, "b3_cycle_cost": 2.1152135565007018, "b5_cycle_cost": 2.6922270349329147},
+      {"prompt": "translation", "b3_ratio": 0.6095263755041059, "b5_ratio": 0.45544394727642473, "b3_visible": 1.24, "b5_visible": 1.24, "b3_cycle_cost": 2.020068764532552, "b5_cycle_cost": 2.7381067613137455},
+      {"prompt": "creative_short", "b3_ratio": 0.9961755198959928, "b5_ratio": 0.8721586555396164, "b3_visible": 2.1333333333333333, "b5_visible": 2.4615384615384617, "b3_cycle_cost": 2.141197048453024, "b5_cycle_cost": 2.8219992976600574},
+      {"prompt": "stepwise_math", "b3_ratio": 0.9481249972981663, "b5_ratio": 0.8682233997211007, "b3_visible": 2.0, "b5_visible": 2.4615384615384617, "b3_cycle_cost": 2.1091092538100877, "b5_cycle_cost": 2.834815794017365},
+      {"prompt": "long_code_review", "b3_ratio": 0.7621227621022818, "b5_ratio": 0.6066963069156157, "b3_visible": 1.7777777777777777, "b5_visible": 1.8823529411764706, "b3_cycle_cost": 2.332342832234695, "b5_cycle_cost": 3.1022937769131347}
+    ]
+  },
+  "decision_reason": "B=5 is exact on quicksort and exact 9/9 on the prompt suite, but global B=5 is slower than B=3 on every prompt and in aggregate. The extra verifier row increases suite wall by 6.26 ms/cycle and cycle cost by 0.694 AR tokens while visible density rises only 0.209 tokens/cycle, dropping actual speedup from 0.926x to 0.773x. Keep B=3 as the retained global budget; higher-B work needs adaptive/per-prompt policy or deeper proposer quality, not a default budget increase."
+}

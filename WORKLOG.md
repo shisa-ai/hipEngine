@@ -83317,3 +83317,84 @@ and slightly regresses both kernel and host windows. Prototype code removed;
 keep `decode_batched` verifier graph-off. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-decode-batched-verify-graph-nohold.json`
 and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP B=5 acceptance-density diagnostic no-held
+
+Checked the first higher-budget acceptance-density lever on the current
+`decode_batched + graph_off` retained stack. The reviewer suggestion called out
+B=4/B=5; B=4 is not accepted by the current chain compiler:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 4 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b4-current-quicksort-smoke-20260612.json
+```
+
+Result: `ValueError: candidate_budget must be one of (1, 2, 3, 5)`.
+
+Supported higher budget B=5 quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 5 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b5-current-quicksort-smoke-20260612.json
+```
+
+Result: exact AR match, accepted lengths
+`[5,4,0,2,0,0,1,4,2,0,2]`, active budgets
+`[5,5,5,5,5,5,5,5,5,4,3]`, acceptance rate `0.3846`.
+
+Exact 9-prompt D32 same-session B=3/B=5 comparison:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3,5 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-b3-b5-current-9prompt-d32 \
+  --out /tmp/hipengine-mtp-b3-b5-current-9prompt-d32.json
+```
+
+Aggregate:
+
+- Exactness: B=3 `9/9`, B=5 `9/9`.
+- Actual speedup vs AR: `0.9262248759 -> 0.7731956234`.
+- Wall: `19.424893 -> 25.689116 ms/cycle`.
+- Verify: `16.133456 -> 20.448685 ms/cycle`.
+- Proposal/update: `1.252555 -> 1.221351 ms/cycle`.
+- Cycle cost: `2.143996 -> 2.838458` AR tokens.
+- Visible tokens/cycle: `2.011852 -> 2.220415`.
+- Accepted tokens/cycle: `1.011852 -> 1.220415`.
+- Acceptance rate: `0.350803 -> 0.261201`.
+
+Per-prompt B=5 was slower than B=3 on all 9 prompts. B=5 sometimes gains
+visible density, but the added verifier row costs too much; translation gained
+no visible density at all (`1.240 -> 1.240`) while cycle cost rose
+`2.020 -> 2.738`.
+
+Decision: no-hold as a global operating point. Keep B=3 as the retained default.
+Higher budgets should only come back as adaptive/per-prompt policy, vocab-cap
+diagnostics, or after proposer-quality improvements. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-b5-acceptance-density-nohold.json`
+and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
