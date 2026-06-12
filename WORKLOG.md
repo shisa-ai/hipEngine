@@ -83737,3 +83737,56 @@ small and GPU-bound enough that whole-body proposer graph capture is now capped
 around `0.26 ms/cycle` before correctness/stream risks, so it should stay behind
 adaptive budget policy and verifier reduced-DAG work. Updated `docs/MTP.md`,
 `docs/MEGAKERNEL.md`, and `docs/REFACTOR.md` with the current B=1 framing.
+
+## 2026-06-12 - MTP adaptive budget live-transition prototype no-held
+
+Fresh-eye follow-up after the retained B=1 break-even row. The per-prompt fixed
+B=1/B=2/B=3 oracle is still above the retained fixed-B=1 row, so I tried an
+online `full_accept_ladder` prototype in the persistent-device harness. The
+prototype changed the verifier rows per cycle under `graph_mode=off`, starting
+at B=1 and promoting after full-accept streaks.
+
+Validation before GPU was clean:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py scripts/mtp_prompt_suite_economics.py
+python3 scripts/mtp_chain_e2e_smoke.py --help | rg -n "adaptive|candidate-budget|graph-mode"
+python3 scripts/mtp_prompt_suite_economics.py --help | rg -n "adaptive|candidate-budgets|graph-mode"
+git diff --check
+```
+
+The B1-only narrowing smoke proved that using a smaller active verifier budget
+under a larger allocation is not inherently broken:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 900 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 16 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --adaptive-budget-policy full_accept_ladder \
+  --adaptive-promote-after-full 999 --adaptive-demote-after-zero 1 \
+  --adaptive-partial-action keep \
+  --json /tmp/hipengine-mtp-adaptive-budget-b1only-quicksort-smoke-20260612.json
+```
+
+Result: exact AR match, accepted lengths `[1,1,1,1,1,0,0,1,0]`, active budgets
+all `1`, no transitions.
+
+The real promotion path is unsafe in the current harness. A full B1/B2/B3 ladder
+first hit a GPU memory-access fault; after tightening the verifier capture
+placeholder to the active row shape, it hung with GPU0 busy and no JSON. A
+narrower B1/B2 ladder also hung with GPU0 busy and no JSON. Stuck processes were
+killed and the GPU returned idle afterward.
+
+Decision: no-hold the live adaptive implementation and remove the prototype
+script changes. Keep adaptive budget as a design item only. The next safe step
+is an offline policy replay over the fixed-budget D32 artifacts, followed by a
+specific verifier/proposer state-transition and scratch/canonicalization audit
+before any new runtime flag is exposed. Do not run a prompt-suite adaptive gate
+until B1->B2/B3 promotion is proven safe on the quicksort smoke.
