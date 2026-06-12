@@ -85713,3 +85713,65 @@ evidence for that operating point, not a reason to discard the B=1 win.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-proposer-shared-gate-up-dual-retained.json`.
+
+## 2026-06-13 - MTP B=1 current default 3-run confirmation
+
+Ran the harness-recommended 3-run confirmation for the current B=1 default
+MTP stack after promoting proposer shared gate/up dual dense.  This is a
+precision pass over the current retained row, not a new code change.
+
+Command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 21600 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-current-default-3run-d32-20260613 \
+  --out /tmp/hipengine-mtp-b1-current-default-3run-d32-20260613.json
+```
+
+Result: exact D32 `9/9`.  The 3-run mean is slightly lower than the one-run
+promotion artifact, so use these as the canonical current-best headline
+numbers:
+
+| Metric | 1-run promotion | 3-run confirmation |
+| --- | ---: | ---: |
+| Prompt-mean actual speedup | `1.0243017182x` | `1.0228510929x` |
+| Total-time speedup | `1.0151888571x` | `1.0137713133x` |
+| Prompt-mean AR tok/s | `111.1765` | `110.8230` |
+| Prompt-mean MTP tok/s | `113.9444` | `113.3939` |
+| Wall | `14.092674 ms/cycle` | `14.133971 ms/cycle` |
+| Verify | `12.373195 ms/cycle` | `12.414648 ms/cycle` |
+| Proposal/update | `1.699879 ms/cycle` | `1.700450 ms/cycle` |
+| Cycle cost | `1.564582` AR tokens | `1.564335` AR tokens |
+| Visible/cycle | `1.616708` | `1.616708` |
+
+Per-prompt 3-run ratios:
+
+| Prompt | Exact | Ratio | Cycle cost | Wall | Verify | Proposal/update | Visible/cycle |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `code_python` | yes | `1.109x` | `1.588` | `14.172 ms` | `12.458 ms` | `1.695 ms` | `1.824` |
+| `code_cpp` | yes | `1.074x` | `1.568` | `13.988 ms` | `12.435 ms` | `1.535 ms` | `1.684` |
+| `explain_concept` | yes | `0.965x` | `1.561` | `13.884 ms` | `12.355 ms` | `1.509 ms` | `1.550` |
+| `summarize` | yes | `1.037x` | `1.543` | `13.963 ms` | `12.403 ms` | `1.542 ms` | `1.600` |
+| `qa_factual` | yes | `1.085x` | `1.552` | `13.787 ms` | `12.273 ms` | `1.495 ms` | `1.684` |
+| `translation` | yes | `0.812x` | `1.492` | `13.313 ms` | `11.990 ms` | `1.304 ms` | `1.240` |
+| `creative_short` | yes | `1.074x` | `1.568` | `13.967 ms` | `12.461 ms` | `1.487 ms` | `1.684` |
+| `stepwise_math` | yes | `1.075x` | `1.566` | `14.096 ms` | `12.483 ms` | `1.594 ms` | `1.684` |
+| `long_code_review` | yes | `0.974x` | `1.642` | `16.037 ms` | `12.874 ms` | `3.143 ms` | `1.600` |
+
+Decision: retain the current B=1 default stack and use the 3-run numbers in
+the rollup.  The row remains above break-even and above the original sprint
+target with margin (`14.134 ms/cycle < 21.5 ms/cycle`, `1.023x` AR).  The
+next implementation work should return to adaptive budget design or real
+reduced-DAG verifier/proposer work.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-current-default-3run-retained.json`.

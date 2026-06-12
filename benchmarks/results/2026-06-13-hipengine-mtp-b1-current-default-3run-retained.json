@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-13",
+  "status": "accepted_positive",
+  "performance_claim": true,
+  "candidate": "35B-A3B MTP B=1 current default 3-run confirmation",
+  "decision": "retain_as_current_best_confirmation",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budgets": [1],
+    "runs_per_prompt": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "draft_vocab_cap_source": "no-env default",
+    "current_default_stack": [
+      "MTP canonicalize-after-verify skip",
+      "fused proposer router top-k+softmax",
+      "route-batched proposer expert loop",
+      "proposer shared gate/up dual dense",
+      "linear shared SiLU+down-rotate",
+      "linear/full shared-down+combine",
+      "linear A/B separate-output dual dense",
+      "one-split direct-gate full-attention decode"
+    ]
+  },
+  "correctness": {
+    "suite_exact_ar_match": "9/9",
+    "all_prompts_exact": true,
+    "visible_tokens_per_cycle": 1.6167079463364293,
+    "accepted_tokens_per_cycle": 0.6167079463364293
+  },
+  "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 21600 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1 --runs 3 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-current-default-3run-d32-20260613 --out /tmp/hipengine-mtp-b1-current-default-3run-d32-20260613.json",
+  "raw_json": "/tmp/hipengine-mtp-b1-current-default-3run-d32-20260613.json",
+  "aggregate": {
+    "actual_decode_speedup_vs_ar_prompt_mean": 1.0228510929065662,
+    "actual_decode_speedup_vs_ar_total_time": 1.0137713132601505,
+    "ar_decode_tok_s_prompt_mean_approx": 110.82299945317665,
+    "mtp_decode_tok_s_prompt_mean_approx": 113.39387266993096,
+    "cycle_wall_ms_per_cycle": 14.133971007923403,
+    "verify_ms_per_cycle": 12.414647540252277,
+    "proposal_update_ms_per_cycle": 1.7004496120951778,
+    "cycle_cost_ar_tokens": 1.5643353946522376,
+    "visible_tokens_per_cycle": 1.6167079463364293,
+    "accepted_tokens_per_cycle": 0.6167079463364293,
+    "ar_total_seconds": 2.600826148599085,
+    "mtp_total_seconds": 2.565495900880429
+  },
+  "delta_vs_1run_promotion_artifact": {
+    "reference_artifact": "benchmarks/results/2026-06-13-hipengine-mtp-b1-proposer-shared-gate-up-dual-retained.json",
+    "actual_decode_speedup_vs_ar_prompt_mean": -0.0014506253040451,
+    "actual_decode_speedup_vs_ar_total_time": -0.0014175438263439,
+    "cycle_wall_ms_per_cycle": 0.041296962691206,
+    "verify_ms_per_cycle": 0.041452988389459,
+    "proposal_update_ms_per_cycle": 0.000570710184472,
+    "cycle_cost_ar_tokens": -0.0002466578866895,
+    "visible_tokens_per_cycle": 0.0000000000000002
+  },
+  "delta_vs_retained_b1_base": {
+    "reference_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json",
+    "actual_decode_speedup_vs_ar_prompt_mean": 0.0044934986923775,
+    "actual_decode_speedup_vs_ar_total_time": 0.0046833132601505,
+    "cycle_wall_ms_per_cycle": -0.038557250707487,
+    "verify_ms_per_cycle": -0.01157598113592,
+    "proposal_update_ms_per_cycle": -0.032366586776956,
+    "cycle_cost_ar_tokens": -0.0095232154557907,
+    "visible_tokens_per_cycle": 0.0
+  },
+  "per_prompt": [
+    {"prompt": "code_python", "exact": true, "ratio": 1.108610163747571, "cycle_cost_ar_tokens": 1.5878660791569024, "wall_ms": 14.171852294117647, "verify_ms": 12.457781019346678, "proposal_update_ms": 1.6951170320823497, "visible_tokens_per_cycle": 1.8235294117647058},
+    {"prompt": "code_cpp", "exact": true, "ratio": 1.074040671032647, "cycle_cost_ar_tokens": 1.567823313696134, "wall_ms": 13.988072140350875, "verify_ms": 12.435027185762138, "proposal_update_ms": 1.5348262406820268, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "explain_concept", "exact": true, "ratio": 0.9650817834304374, "cycle_cost_ar_tokens": 1.5606058706700079, "wall_ms": 13.884079333333334, "verify_ms": 12.354989831025401, "proposal_update_ms": 1.5092758423027892, "visible_tokens_per_cycle": 1.55},
+    {"prompt": "summarize", "exact": true, "ratio": 1.0372024845271308, "cycle_cost_ar_tokens": 1.5432163661549747, "wall_ms": 13.962579750000002, "verify_ms": 12.402528753348937, "proposal_update_ms": 1.541768041594575, "visible_tokens_per_cycle": 1.6000000000000003},
+    {"prompt": "qa_factual", "exact": true, "ratio": 1.085183036726992, "cycle_cost_ar_tokens": 1.5516690798721935, "wall_ms": 13.787150543859648, "verify_ms": 12.27303672777979, "proposal_update_ms": 1.495481521838851, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "translation", "exact": true, "ratio": 0.8119984978075788, "cycle_cost_ar_tokens": 1.4919385753711056, "wall_ms": 13.312631466666668, "verify_ms": 11.990167051553726, "proposal_update_ms": 1.3040881045162678, "visible_tokens_per_cycle": 1.24},
+    {"prompt": "creative_short", "exact": true, "ratio": 1.0742138352360293, "cycle_cost_ar_tokens": 1.5675545058714946, "wall_ms": 13.966597719298244, "verify_ms": 12.460655140641487, "proposal_update_ms": 1.4865873994207697, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "stepwise_math", "exact": true, "ratio": 1.075217168530474, "cycle_cost_ar_tokens": 1.566129543918853, "wall_ms": 14.096153473684211, "verify_ms": 12.483285817628106, "proposal_update_ms": 1.5936012363486123, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "long_code_review", "exact": true, "ratio": 0.9741121951202345, "cycle_cost_ar_tokens": 1.6422152171584739, "wall_ms": 16.03662235, "verify_ms": 12.874356335184226, "proposal_update_ms": 3.143301090070357, "visible_tokens_per_cycle": 1.6000000000000003}
+  ],
+  "notes": [
+    "This confirms the current default B=1 row with the harness-recommended 3 runs per prompt.",
+    "The 3-run mean is slightly lower than the 1-run promotion artifact but still above the retained B=1 base and above AR."
+  ]
+}
