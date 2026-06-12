@@ -83826,3 +83826,62 @@ only to prove that the retained fixed-budget artifact is insufficient for exact
 adaptive-policy selection. Next adaptive evidence must come from either a dense
 per-offset budget probe or from fixing/auditing the live B1->B2/B3 transition
 path; until then, keep implementation priority on verifier reduced-DAG work.
+
+## 2026-06-12 - MTP B=1 fused verifier LM-head recheck no-held
+
+Rechecked the existing opt-in fused verifier LM-head on the current best B=1
+stack because the retained row changed the economics: B=1 still has a visible
+W8A16 LM-head bucket, and the old no-hold was from the B=3 current-stack
+profile. This was a cheap exactness/profile closure pass, not a new promotion
+attempt.
+
+Smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b1-fused-lm-head-smoke-20260612.json
+```
+
+Result: exact AR match; accepted trace matched the locked B=1 current-stack
+trace exactly: `[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.
+
+Profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-b1-fused-lm-head-rocprof-20260612
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region verify_pass \
+  --raw-root /tmp/hipengine-mtp-b1-fused-lm-head-rocprof-20260612 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-b1-fused-lm-head-rocprof.json \
+  --top 80
+```
+
+Comparison against
+`benchmarks/results/2026-06-12-hipengine-mtp-b1-current-verify-rocprof.json`:
+calls/pass `833 -> 832`, kernel `9.407 -> 9.874 ms/pass`, host marker
+`12.877 -> 13.340 ms/pass`, and W8A16 LM-head body `0.808 -> 1.280 ms/pass`.
+
+Decision: no-hold for MTP. The saved argmax launch is real and documented, but
+the replacement fused W8A16 body costs about `+0.47 ms/pass`, so the net
+verifier window regresses. Keep `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD`
+default-off and treat it as refactor/test-only unless a new fused body beats
+the retained unfused multi-row W8A16 kernel on both B=1 and B=3 profiles.
