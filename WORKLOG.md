@@ -82304,3 +82304,17 @@ current `0.924x / 19.44 ms` stack and the locked profile
 
 Updated `docs/MTP.md` so future reduced-DAG work does not burn a session on
 either layout trap. No performance claim and no code change in this unit.
+
+## 2026-06-12 - MTP acceptance-density backlog threshold cleanup
+
+Folded the latest acceptance-density reviewer note into `docs/MTP.md` without
+changing the current implementation order. The endgame remains after the
+reduced-DAG/proposer grind, but the gates are now sharper:
+
+- B=4/B=5 promotes only if exact same-suite `actual_ratio` improves, or if
+  `delta_visible / delta_wall` beats the current AR rate (`~0.1106` tokens/ms).
+- Draft vocab-cap experiments are worth running only if rejected-row counters
+  show material cap-caused misses, roughly `5-10%` of rejections or more.
+- Tree stays deferred; lower wall alone does not make the old tree overhead
+  cheaper, so any retest should start with chain-plus-one-sibling at the first
+  rejection boundary after per-depth histograms justify it.
