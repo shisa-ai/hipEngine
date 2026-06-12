@@ -132,6 +132,25 @@ def _zero_accept_streaks(accepted_lengths: Sequence[int]) -> list[int]:
     return streaks
 
 
+def _zero_accept_streaks_from_diagnostic_cycles(cycles: Sequence[dict[str, Any]]) -> list[int]:
+    streaks: list[int] = []
+    current = 0
+    for cycle in cycles:
+        if str(cycle.get("policy") or "mtp_verify") != "mtp_verify":
+            if current:
+                streaks.append(current)
+                current = 0
+            continue
+        if int(cycle.get("accepted") or 0) == 0:
+            current += 1
+        elif current:
+            streaks.append(current)
+            current = 0
+    if current:
+        streaks.append(current)
+    return streaks
+
+
 def _diagnostic_reason(
     *,
     accepted: int,
@@ -242,13 +261,20 @@ def _summarize_acceptance_diagnostics(
     draft_vocab_cap: int | None,
 ) -> dict[str, Any]:
     accept_depth_hist: dict[str, int] = {}
+    accept_depth_hist_mtp_verify_only: dict[str, int] = {}
     first_reject_depth_hist: dict[str, int] = {}
     reason_counts: dict[str, int] = {}
+    policy_counts: dict[str, int] = {}
     per_depth: dict[str, dict[str, int]] = {}
     for accepted in accepted_lengths:
         key = str(int(accepted))
         accept_depth_hist[key] = accept_depth_hist.get(key, 0) + 1
     for cycle in cycles:
+        policy = str(cycle.get("policy") or "mtp_verify")
+        policy_counts[policy] = policy_counts.get(policy, 0) + 1
+        if policy == "mtp_verify":
+            key = str(int(cycle.get("accepted") or 0))
+            accept_depth_hist_mtp_verify_only[key] = accept_depth_hist_mtp_verify_only.get(key, 0) + 1
         reason = str(cycle.get("first_rejected_reason") or "unknown")
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
         depth = cycle.get("first_rejected_depth")
@@ -276,14 +302,16 @@ def _summarize_acceptance_diagnostics(
                     bucket["target_outside_draft_vocab_cap"] += 1
                 elif row.get("proposed_matches_target") is False:
                     bucket["draft_top1_miss"] += 1
-    zero_streaks = _zero_accept_streaks(accepted_lengths)
+    zero_streaks = _zero_accept_streaks_from_diagnostic_cycles(cycles)
     return {
         "enabled": True,
         "draft_vocab_cap": draft_vocab_cap,
         "cycles": list(cycles),
         "summary": {
             "cycle_count": len(cycles),
+            "policy_counts": policy_counts,
             "accept_depth_hist": accept_depth_hist,
+            "accept_depth_hist_mtp_verify_only": accept_depth_hist_mtp_verify_only,
             "first_reject_depth_hist": first_reject_depth_hist,
             "first_reject_reason_counts": reason_counts,
             "zero_accept_streaks": zero_streaks,
@@ -931,7 +959,16 @@ def _run_spec_persistent_device(
     rocprof_warmup_cycles: int = 0,
     rocprof_verify_cycles: int = 0,
     acceptance_diagnostics: bool = False,
+    ar_fallback_zero_streak: int = 0,
+    ar_fallback_tokens: int = 1,
+    ar_fallback_until_end: bool = False,
 ) -> tuple[list[int], dict[str, Any]]:
+    ar_fallback_zero_streak = int(ar_fallback_zero_streak)
+    ar_fallback_tokens = int(ar_fallback_tokens)
+    if ar_fallback_zero_streak < 0:
+        raise ValueError("ar_fallback_zero_streak must be >= 0")
+    if ar_fallback_tokens < 1:
+        raise ValueError("ar_fallback_tokens must be >= 1")
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_tokens) + int(decode_tokens) + int(candidate_budget) + 4
     generated: list[int] = []
@@ -942,6 +979,10 @@ def _run_spec_persistent_device(
     proposal_decode_update_seconds = 0.0
     proposal_snapshot_saves = 0
     proposal_snapshot_skips = 0
+    ar_fallback_cycles = 0
+    ar_fallback_tokens_committed = 0
+    ar_fallback_seconds = 0.0
+    ar_fallback_proposer_update_seconds = 0.0
     acceptance_diagnostic_cycles: list[dict[str, Any]] = []
     draft_vocab_cap: int | None = None
     capture_rows = max_sequence + 2
@@ -1011,6 +1052,7 @@ def _run_spec_persistent_device(
                 )
                 proposal_prefill_seconds += time.perf_counter() - prefill_started
                 cycles = 0
+                zero_accept_streak = 0
                 decode_started = time.perf_counter()
                 while len(generated) < int(decode_tokens):
                     decode_offset = len(generated)
@@ -1031,6 +1073,96 @@ def _run_spec_persistent_device(
                         root = int(step_result.token_id)
                         context += 1
                         break
+                    if ar_fallback_zero_streak > 0 and zero_accept_streak >= ar_fallback_zero_streak:
+                        fallback_window = (
+                            int(decode_tokens) - len(generated)
+                            if ar_fallback_until_end
+                            else min(int(ar_fallback_tokens), int(decode_tokens) - len(generated))
+                        )
+                        for _fallback_idx in range(fallback_window):
+                            if len(generated) >= int(decode_tokens):
+                                break
+                            cycles += 1
+                            decode_offset = len(generated)
+                            cycle_t_ns_start = time.perf_counter_ns()
+                            rocprof_window.range_push(f"mtp_ar_fallback_cycle_{cycles}")
+                            fallback_started = time.perf_counter()
+                            streak_before_fallback = int(zero_accept_streak)
+                            step_result = session.step(
+                                root,
+                                position=context,
+                                sample=True,
+                            )
+                            if step_result is None:
+                                raise RuntimeError("AR fallback step produced no root")
+                            bonus = int(step_result.token_id)
+                            committed = [root]
+                            generated.extend(committed)
+                            accepted_lengths.append(0)
+                            active_budgets.append(0)
+                            ar_fallback_cycles += 1
+                            ar_fallback_tokens_committed += 1
+                            if acceptance_diagnostics:
+                                acceptance_diagnostic_cycles.append(
+                                    {
+                                        "cycle": int(cycles),
+                                        "decode_offset": int(decode_offset),
+                                        "root_position": int(context),
+                                        "root_token": int(root),
+                                        "policy": "ar_fallback",
+                                        "active_budget": 0,
+                                        "verify_budget": 0,
+                                        "accepted": 0,
+                                        "full_accept": False,
+                                        "first_rejected_depth": None,
+                                        "first_rejected_proposed_token": None,
+                                        "first_rejected_target_top1_token": int(bonus),
+                                        "first_rejected_target_in_draft_vocab_cap": (
+                                            None if draft_vocab_cap is None else bool(int(bonus) < int(draft_vocab_cap))
+                                        ),
+                                        "first_rejected_reason": "ar_fallback_zero_accept_streak",
+                                        "zero_accept_streak_before_fallback": streak_before_fallback,
+                                        "fallback_window_tokens": int(fallback_window),
+                                        "fallback_until_end": bool(ar_fallback_until_end),
+                                        "per_depth": [],
+                                    }
+                                )
+                            if len(proposal_trace) < 16:
+                                proposal_trace.append(
+                                    {
+                                        "cycle": int(cycles),
+                                        "policy": "ar_fallback",
+                                        "root_position": int(context),
+                                        "root_token": int(root),
+                                        "accepted": 0,
+                                        "committed_tokens": committed,
+                                        "bonus_token": int(bonus),
+                                        "zero_accept_streak_before_fallback": streak_before_fallback,
+                                        "fallback_until_end": bool(ar_fallback_until_end),
+                                        "proposer_cache_len_before_update": int(proposer.cache_len),
+                                    }
+                                )
+                            if (not ar_fallback_until_end) and len(generated) < int(decode_tokens):
+                                update_started = time.perf_counter()
+                                rocprof_window.range_push(f"mtp_ar_fallback_proposer_update_{cycles}")
+                                proposer.advance_with_previous_hidden(
+                                    input_token=bonus,
+                                    position=proposer.position + 1,
+                                    read_expert_topk=not skip_unused_proposer_reads,
+                                    read_lm_head_value=not skip_unused_proposer_reads,
+                                )
+                                rocprof_window.range_pop()
+                                update_delta = time.perf_counter() - update_started
+                                proposal_decode_update_seconds += update_delta
+                                ar_fallback_proposer_update_seconds += update_delta
+                            context += 1
+                            root = bonus
+                            zero_accept_streak = 0
+                            ar_fallback_seconds += time.perf_counter() - fallback_started
+                            cycle_t_ns_end = time.perf_counter_ns()
+                            rocprof_window.range_pop()
+                            cycle_marker_ns.append((cycles, cycle_t_ns_start, cycle_t_ns_end))
+                        continue
                     cycles += 1
                     if (
                         rocprof_resume_window_enabled
@@ -1142,6 +1274,10 @@ def _run_spec_persistent_device(
                     verify_seconds += time.perf_counter() - t_verify
                     accepted = int(verify.accepted_count)
                     accepted_lengths.append(accepted)
+                    if accepted == 0:
+                        zero_accept_streak += 1
+                    else:
+                        zero_accept_streak = 0
                     bonus = int(verify.next_token) if verify.next_token is not None else int(verify.target_top1[min(accepted, len(verify.target_top1) - 1)])
                     if acceptance_diagnostics:
                         acceptance_diagnostic_cycles.append(
@@ -1263,6 +1399,13 @@ def _run_spec_persistent_device(
         "proposal_snapshot_saves": int(proposal_snapshot_saves),
         "proposal_snapshot_skips": int(proposal_snapshot_skips),
         "verify_seconds": verify_seconds,
+        "ar_fallback_zero_streak": int(ar_fallback_zero_streak),
+        "ar_fallback_tokens_per_window": int(ar_fallback_tokens),
+        "ar_fallback_until_end": bool(ar_fallback_until_end),
+        "ar_fallback_cycles": int(ar_fallback_cycles),
+        "ar_fallback_tokens": int(ar_fallback_tokens_committed),
+        "ar_fallback_seconds": float(ar_fallback_seconds),
+        "ar_fallback_proposer_update_seconds": float(ar_fallback_proposer_update_seconds),
         "accepted_lengths": accepted_lengths,
         "active_budgets": active_budgets,
         "acceptance_rate": (sum(accepted_lengths) / sum(active_budgets)) if active_budgets and sum(active_budgets) else 0.0,
@@ -1339,6 +1482,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             rocprof_warmup_cycles=int(getattr(args, "rocprof_warmup_cycles", 0)),
             rocprof_verify_cycles=int(getattr(args, "rocprof_verify_cycles", 0)),
             acceptance_diagnostics=bool(getattr(args, "acceptance_diagnostics", False)),
+            ar_fallback_zero_streak=int(getattr(args, "ar_fallback_zero_streak", 0)),
+            ar_fallback_tokens=int(getattr(args, "ar_fallback_tokens", 1)),
+            ar_fallback_until_end=bool(getattr(args, "ar_fallback_until_end", False)),
         )
     else:
         spec_tokens, spec = _run_spec_smoke(
@@ -1397,6 +1543,35 @@ def main() -> int:
             "persistent_device only: include per-cycle acceptance-density diagnostics "
             "(accept depth histograms, first rejected depth/reason, cap representability, "
             "and zero-accept streaks) in the JSON output. Diagnostics only; no policy change."
+        ),
+    )
+    parser.add_argument(
+        "--ar-fallback-zero-streak",
+        type=int,
+        default=0,
+        help=(
+            "persistent_device only: after this many consecutive zero-accept MTP "
+            "verify cycles, skip the next --ar-fallback-tokens tokens through the "
+            "target AR path while keeping proposer state aligned. 0 disables."
+        ),
+    )
+    parser.add_argument(
+        "--ar-fallback-tokens",
+        type=int,
+        default=1,
+        help=(
+            "persistent_device only: number of target AR tokens to emit per "
+            "--ar-fallback-zero-streak trigger. Exactness policy diagnostic; "
+            "default 1."
+        ),
+    )
+    parser.add_argument(
+        "--ar-fallback-until-end",
+        action="store_true",
+        help=(
+            "persistent_device only: when --ar-fallback-zero-streak triggers, "
+            "finish the remaining decode with plain target AR and do not realign "
+            "the proposer for MTP resume."
         ),
     )
     parser.add_argument(

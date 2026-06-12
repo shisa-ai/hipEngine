@@ -44,6 +44,10 @@ SUMMARY_FIELDS = (
     "proposal_snapshot_skips_mean",
     "proposal_snapshot_saves_per_cycle_mean",
     "proposal_snapshot_skips_per_cycle_mean",
+    "ar_fallback_cycles_mean",
+    "ar_fallback_tokens_mean",
+    "ar_fallback_ms_per_cycle_mean",
+    "ar_fallback_proposer_update_ms_per_cycle_mean",
     "ar_decode_ms_per_token_mean",
 )
 
@@ -209,6 +213,15 @@ def _economics_command(args: argparse.Namespace, *, prompt_tokens_file: Path, pr
         cmd += ["--verify-gpu-accept", str(args.verify_gpu_accept)]
     if args.acceptance_diagnostics:
         cmd.append("--acceptance-diagnostics")
+    if int(getattr(args, "ar_fallback_zero_streak", 0)) > 0:
+        cmd += [
+            "--ar-fallback-zero-streak",
+            str(int(args.ar_fallback_zero_streak)),
+            "--ar-fallback-tokens",
+            str(int(args.ar_fallback_tokens)),
+        ]
+        if bool(getattr(args, "ar_fallback_until_end", False)):
+            cmd.append("--ar-fallback-until-end")
     if args.llama_target_cycle_cost is not None:
         cmd += ["--llama-target-cycle-cost", str(args.llama_target_cycle_cost)]
     return cmd
@@ -329,6 +342,30 @@ def main() -> int:
         action="store_true",
         help="Retain per-cycle MTP acceptance diagnostics from child smoke runs in the suite artifact.",
     )
+    parser.add_argument(
+        "--ar-fallback-zero-streak",
+        type=int,
+        default=0,
+        help=(
+            "Opt-in MTP policy diagnostic: after this many consecutive zero-accept "
+            "cycles, have the child smoke skip the next --ar-fallback-tokens tokens "
+            "through target AR. 0 disables."
+        ),
+    )
+    parser.add_argument(
+        "--ar-fallback-tokens",
+        type=int,
+        default=1,
+        help="Number of target AR tokens to emit per --ar-fallback-zero-streak trigger.",
+    )
+    parser.add_argument(
+        "--ar-fallback-until-end",
+        action="store_true",
+        help=(
+            "When --ar-fallback-zero-streak triggers, finish remaining decode with "
+            "plain target AR instead of resuming MTP."
+        ),
+    )
     parser.add_argument("--llama-target-cycle-cost", type=float, default=2.0)
     parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)
     parser.add_argument(
@@ -383,6 +420,9 @@ def main() -> int:
         "small_batch_decode_threshold": int(args.small_batch_decode_threshold) if args.small_batch_decode_threshold is not None else None,
         "verify_gpu_accept": args.verify_gpu_accept,
         "acceptance_diagnostics": bool(args.acceptance_diagnostics),
+        "ar_fallback_zero_streak": int(args.ar_fallback_zero_streak),
+        "ar_fallback_tokens": int(args.ar_fallback_tokens),
+        "ar_fallback_until_end": bool(args.ar_fallback_until_end),
         "dry_run": bool(args.dry_run),
         "results": results,
         "aggregate_by_budget": {} if args.dry_run else _aggregate_across_prompts(results),

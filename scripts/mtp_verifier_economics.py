@@ -107,6 +107,10 @@ def _economics_from_smoke(smoke: dict[str, Any], *, llama_target_cycle_cost: flo
     proposal_prefill_seconds = float(mtp.get("proposal_prefill_seconds") or 0.0)
     proposal_snapshot_saves = int(mtp.get("proposal_snapshot_saves") or 0)
     proposal_snapshot_skips = int(mtp.get("proposal_snapshot_skips") or 0)
+    ar_fallback_cycles = int(mtp.get("ar_fallback_cycles") or 0)
+    ar_fallback_tokens = int(mtp.get("ar_fallback_tokens") or 0)
+    ar_fallback_seconds = float(mtp.get("ar_fallback_seconds") or 0.0)
+    ar_fallback_proposer_update_seconds = float(mtp.get("ar_fallback_proposer_update_seconds") or 0.0)
 
     # Each successful speculative verify cycle commits the root target token plus
     # the accepted draft prefix.  The harness may finish with a terminal AR token
@@ -166,6 +170,17 @@ def _economics_from_smoke(smoke: dict[str, Any], *, llama_target_cycle_cost: flo
         "proposal_snapshot_skips": proposal_snapshot_skips,
         "proposal_snapshot_saves_per_cycle": proposal_snapshot_saves / cycles,
         "proposal_snapshot_skips_per_cycle": proposal_snapshot_skips / cycles,
+        "ar_fallback_zero_streak": int(mtp.get("ar_fallback_zero_streak") or 0),
+        "ar_fallback_tokens_per_window": int(mtp.get("ar_fallback_tokens_per_window") or 1),
+        "ar_fallback_until_end": bool(mtp.get("ar_fallback_until_end")),
+        "ar_fallback_cycles": ar_fallback_cycles,
+        "ar_fallback_tokens": ar_fallback_tokens,
+        "ar_fallback_seconds": ar_fallback_seconds,
+        "ar_fallback_proposer_update_seconds": ar_fallback_proposer_update_seconds,
+        "ar_fallback_ms_per_cycle": (ar_fallback_seconds / ar_fallback_cycles * 1000.0) if ar_fallback_cycles else 0.0,
+        "ar_fallback_proposer_update_ms_per_cycle": (
+            ar_fallback_proposer_update_seconds / ar_fallback_cycles * 1000.0
+        ) if ar_fallback_cycles else 0.0,
         "cycle_cost_ar_tokens": cycle_cost_ar_tokens,
         "verify_cost_ar_tokens": verify_cost_ar_tokens,
         "proposal_update_cost_ar_tokens": proposal_update_cost_ar_tokens,
@@ -203,6 +218,12 @@ def _aggregate_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "proposal_snapshot_skips",
         "proposal_snapshot_saves_per_cycle",
         "proposal_snapshot_skips_per_cycle",
+        "ar_fallback_cycles",
+        "ar_fallback_tokens",
+        "ar_fallback_seconds",
+        "ar_fallback_proposer_update_seconds",
+        "ar_fallback_ms_per_cycle",
+        "ar_fallback_proposer_update_ms_per_cycle",
         "observed_cycle_speedup_vs_ar",
         "perfect_accept_speedup_ceiling_vs_ar",
         "required_avg_visible_tokens_for_1x",
@@ -260,6 +281,15 @@ def _run_one(
     ]
     if bool(getattr(args, "acceptance_diagnostics", False)):
         cmd.append("--acceptance-diagnostics")
+    if int(getattr(args, "ar_fallback_zero_streak", 0)) > 0:
+        cmd += [
+            "--ar-fallback-zero-streak",
+            str(int(args.ar_fallback_zero_streak)),
+            "--ar-fallback-tokens",
+            str(int(args.ar_fallback_tokens)),
+        ]
+        if bool(getattr(args, "ar_fallback_until_end", False)):
+            cmd.append("--ar-fallback-until-end")
     env = os.environ.copy()
     if args.small_batch_decode_threshold is not None:
         env["HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD"] = str(args.small_batch_decode_threshold)
@@ -308,6 +338,30 @@ def main() -> int:
         "--acceptance-diagnostics",
         action="store_true",
         help="Forward --acceptance-diagnostics to mtp_chain_e2e_smoke.py and retain the diagnostics in this artifact.",
+    )
+    parser.add_argument(
+        "--ar-fallback-zero-streak",
+        type=int,
+        default=0,
+        help=(
+            "Forward opt-in B=1/AR fallback policy: after this many consecutive "
+            "zero-accept MTP cycles, skip the next --ar-fallback-tokens through "
+            "target AR. 0 disables."
+        ),
+    )
+    parser.add_argument(
+        "--ar-fallback-tokens",
+        type=int,
+        default=1,
+        help="Number of target AR tokens to emit per --ar-fallback-zero-streak trigger.",
+    )
+    parser.add_argument(
+        "--ar-fallback-until-end",
+        action="store_true",
+        help=(
+            "When --ar-fallback-zero-streak triggers, finish remaining decode with "
+            "plain target AR instead of resuming MTP."
+        ),
     )
     parser.add_argument("--llama-target-cycle-cost", type=float, default=2.0)
     parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-mtp-verifier-economics"))

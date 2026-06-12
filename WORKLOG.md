@@ -84025,3 +84025,109 @@ audit exists. The next acceptance-density implementation candidate should be a
 fixed online B=1/AR fallback or skip-MTP window driven by zero-accept streaks,
 because it avoids changing verifier row shape and directly targets the bad
 tail.
+
+## 2026-06-12 - MTP AR fallback policy retained opt-in, not default
+
+Implemented the A3 acceptance-density policy hook as an exact, default-off
+diagnostic. `scripts/mtp_chain_e2e_smoke.py` now accepts
+`--ar-fallback-zero-streak`, `--ar-fallback-tokens`, and
+`--ar-fallback-until-end` for `persistent_device` runs. When enabled, repeated
+zero-accept MTP verify cycles can route subsequent tokens through the target AR
+path, append explicit `policy=ar_fallback` diagnostic cycles, and keep the
+proposal/economics wrappers aware of fallback cycles/tokens/time. The default
+remains unchanged.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py scripts/mtp_prompt_suite_economics.py
+python3 scripts/mtp_chain_e2e_smoke.py --help | rg -n "ar-fallback|acceptance-diagnostics"
+python3 scripts/mtp_verifier_economics.py --help | rg -n "ar-fallback|acceptance-diagnostics"
+python3 scripts/mtp_prompt_suite_economics.py --help | rg -n "ar-fallback|acceptance-diagnostics"
+```
+
+Focused quicksort smoke proving fallback/resume mechanics:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics --ar-fallback-zero-streak 3 --ar-fallback-tokens 1 \
+  --json /tmp/hipengine-mtp-b1-ar-fallback-quicksort-smoke-20260612.json
+```
+
+Result: exact AR match, fallback fired once, and proposer resume produced the
+same final AR output.
+
+Resumable AR-window probe on the known low-density `translation` tail:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-names translation --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics --ar-fallback-zero-streak 3 --ar-fallback-tokens 4 \
+  --raw-root /tmp/hipengine-mtp-b1-ar-fallback-z3w4-translation-20260612 \
+  --out /tmp/hipengine-mtp-b1-ar-fallback-z3w4-translation-20260612.json
+```
+
+Result: exact, but no-hold as a resumable policy. Translation ratio was
+`0.760962x`, wall `13.818 ms/cycle`, visible `1.192/cycle`, fallback cycles
+`8`; this is worse than same-stack fixed B=1 translation controls around
+`0.807-0.812x` because proposer realignment makes short fallback windows too
+expensive.
+
+Full 9-prompt D32 abandon-to-AR-tail policy:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics --ar-fallback-zero-streak 4 --ar-fallback-tokens 1 --ar-fallback-until-end \
+  --raw-root /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d32-20260612 \
+  --out /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d32-20260612.json
+```
+
+Same-session fixed B=1 control:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-control-samesession-9prompt-d32-20260612 \
+  --out /tmp/hipengine-mtp-b1-control-samesession-9prompt-d32-20260612.json
+```
+
+Result: both runs exact `9/9`. Control prompt-mean was `1.028400x`,
+total-time speedup `1.019164x`, wall `14.170 ms/cycle`, visible
+`1.617/cycle`. Policy prompt-mean was `1.028906x`, total-time speedup
+`1.023977x`, wall `13.912 ms/cycle`, visible `1.597/cycle`. The policy fired
+only on `translation`, improving that prompt `0.812183x -> 0.889397x` with
+`23` fallback cycles; other prompt deltas are timing noise because no fallback
+fired.
+
+Decision: retain the opt-in code and compact diagnostic artifact, but do not
+flip the current default from this one-run global delta. The real improvement is
+kept, but it is not yet a promoted current-best row. Require repeat or longer
+decode evidence before considering `--ar-fallback-until-end` as a default.
+Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-ar-fallback-policy-diagnostic.json`.

@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "candidate": "B=1 AR fallback-until-end after 4 consecutive zero-accept cycles",
+  "decision": "retain opt-in policy code; do not flip default from one-run global delta",
+  "decision_reason": "Exact 9-prompt D32 and translation improves materially, but same-session global prompt-mean delta is only +0.0005x and total-time delta +0.0048x; keep as A3 evidence and require repeat/longer gate before current-best default promotion.",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budgets": [
+      1
+    ],
+    "runs_per_prompt": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "ar_fallback_zero_streak": 4,
+    "ar_fallback_tokens": 1,
+    "ar_fallback_until_end": true
+  },
+  "correctness": {
+    "control_exact": true,
+    "policy_exact": true
+  },
+  "commands": {
+    "control": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-control-samesession-9prompt-d32-20260612 --out /tmp/hipengine-mtp-b1-control-samesession-9prompt-d32-20260612.json",
+    "policy": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --ar-fallback-zero-streak 4 --ar-fallback-tokens 1 --ar-fallback-until-end --raw-root /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d32-20260612 --out /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d32-20260612.json"
+  },
+  "source_artifacts": {
+    "control": "/tmp/hipengine-mtp-b1-control-samesession-9prompt-d32-20260612.json",
+    "policy": "/tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d32-20260612.json"
+  },
+  "aggregate": {
+    "control_prompt_mean": 1.0283995245067494,
+    "policy_prompt_mean": 1.0289056585825929,
+    "delta_prompt_mean": 0.0005061340758434341,
+    "control_total_time_speedup": 1.0191641946782082,
+    "policy_total_time_speedup": 1.0239766822154897,
+    "delta_total_time_speedup": 0.0048124875372814735,
+    "control_wall_ms": 14.170403988111454,
+    "policy_wall_ms": 13.91212146995184,
+    "control_visible": 1.6167079463364293,
+    "policy_visible": 1.59744868707717,
+    "policy_fallback_cycles_mean": 2.5555555555555554
+  },
+  "per_prompt": [
+    {
+      "prompt": "code_python",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 1.1117860607767205,
+      "policy_ratio": 1.1045829795379118,
+      "delta_ratio": -0.00720308123880864,
+      "control_wall_ms": 14.204995823529412,
+      "policy_wall_ms": 14.244590705882354,
+      "control_visible": 1.8235294117647058,
+      "policy_visible": 1.8235294117647058,
+      "fallback_cycles": 0.0
+    },
+    {
+      "prompt": "code_cpp",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 1.1130554906619037,
+      "policy_ratio": 1.0516321087932692,
+      "delta_ratio": -0.0614233818686345,
+      "control_wall_ms": 14.032907315789474,
+      "policy_wall_ms": 14.344132263157894,
+      "control_visible": 1.6842105263157894,
+      "policy_visible": 1.6842105263157894,
+      "fallback_cycles": 0.0
+    },
+    {
+      "prompt": "explain_concept",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 0.9761136325919232,
+      "policy_ratio": 1.0014403247274093,
+      "delta_ratio": 0.025326692135486106,
+      "control_wall_ms": 13.8787723,
+      "policy_wall_ms": 13.824696249999999,
+      "control_visible": 1.55,
+      "policy_visible": 1.55,
+      "fallback_cycles": 0.0
+    },
+    {
+      "prompt": "summarize",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 1.024505031034781,
+      "policy_ratio": 1.0105508490393698,
+      "delta_ratio": -0.013954181995411208,
+      "control_wall_ms": 13.961289400000002,
+      "policy_wall_ms": 14.093056449999999,
+      "control_visible": 1.6,
+      "policy_visible": 1.6,
+      "fallback_cycles": 0.0
+    },
+    {
+      "prompt": "qa_factual",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 1.0934645624821246,
+      "policy_ratio": 1.0741451205979604,
+      "delta_ratio": -0.019319441884164235,
+      "control_wall_ms": 14.05449552631579,
+      "policy_wall_ms": 13.940463684210528,
+      "control_visible": 1.6842105263157894,
+      "policy_visible": 1.6842105263157894,
+      "fallback_cycles": 0.0
+    },
+    {
+      "prompt": "translation",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 0.8121830500933419,
+      "policy_ratio": 0.8893969280605636,
+      "delta_ratio": 0.07721387796722168,
+      "control_wall_ms": 13.41386428,
+      "policy_wall_ms": 10.7585051,
+      "control_visible": 1.24,
+      "policy_visible": 1.0666666666666667,
+      "fallback_cycles": 23.0
+    },
+    {
+      "prompt": "creative_short",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 1.0775952966971492,
+      "policy_ratio": 1.0798350153232015,
+      "delta_ratio": 0.0022397186260523227,
+      "control_wall_ms": 13.900413473684209,
+      "policy_wall_ms": 13.911450263157894,
+      "control_visible": 1.6842105263157894,
+      "policy_visible": 1.6842105263157894,
+      "fallback_cycles": 0.0
+    },
+    {
+      "prompt": "stepwise_math",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 1.074953446379665,
+      "policy_ratio": 1.0742677534931082,
+      "delta_ratio": -0.0006856928865568435,
+      "control_wall_ms": 13.993940473684212,
+      "policy_wall_ms": 14.023621263157892,
+      "control_visible": 1.6842105263157894,
+      "policy_visible": 1.6842105263157894,
+      "fallback_cycles": 0.0
+    },
+    {
+      "prompt": "long_code_review",
+      "exact_control": true,
+      "exact_policy": true,
+      "control_ratio": 0.9719391498431362,
+      "policy_ratio": 0.9742998476705421,
+      "delta_ratio": 0.0023606978274058887,
+      "control_wall_ms": 16.0929573,
+      "policy_wall_ms": 16.06857725,
+      "control_visible": 1.6,
+      "policy_visible": 1.6,
+      "fallback_cycles": 0.0
+    }
+  ],
+  "resumable_window_probe": {
+    "status": "no_hold_translation_probe",
+    "policy": {
+      "ar_fallback_zero_streak": 3,
+      "ar_fallback_tokens": 4,
+      "ar_fallback_until_end": false
+    },
+    "exact_ar_match": true,
+    "ratio": 0.7609624591126618,
+    "wall_ms": 13.817904576923075,
+    "visible_tokens_per_cycle": 1.1923076923076923,
+    "fallback_cycles": 8.0,
+    "decision": "No-hold as a resumable AR window: exact on translation, but ratio 0.761x regressed versus same-stack fixed B=1 translation controls around 0.807-0.812x because proposer realignment made fallback tokens too expensive."
+  }
+}
