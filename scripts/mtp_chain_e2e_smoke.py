@@ -949,6 +949,7 @@ def _run_spec_persistent_device(
     *,
     decode_tokens: int,
     candidate_budget: int,
+    active_budget_cap: int = 0,
     backend: str,
     chain_attn_mode: str,
     graph_mode: str = "off",
@@ -965,11 +966,16 @@ def _run_spec_persistent_device(
     ar_fallback_until_end: bool = False,
 ) -> tuple[list[int], dict[str, Any]]:
     confidence_threshold = float(confidence_threshold)
+    active_budget_cap = int(active_budget_cap)
     ar_fallback_zero_streak = int(ar_fallback_zero_streak)
     ar_fallback_after_mtp_cycles = int(ar_fallback_after_mtp_cycles)
     ar_fallback_tokens = int(ar_fallback_tokens)
     if confidence_threshold < 0.0 or confidence_threshold > 1.0:
         raise ValueError("confidence_threshold must be in [0, 1]")
+    if active_budget_cap < 0:
+        raise ValueError("active_budget_cap must be >= 0")
+    if active_budget_cap > int(candidate_budget):
+        raise ValueError("active_budget_cap cannot exceed candidate_budget")
     if ar_fallback_zero_streak < 0:
         raise ValueError("ar_fallback_zero_streak must be >= 0")
     if ar_fallback_after_mtp_cycles < 0:
@@ -1068,6 +1074,8 @@ def _run_spec_persistent_device(
                     decode_offset = len(generated)
                     remaining = int(decode_tokens) - len(generated)
                     active_budget = min(int(candidate_budget), max(0, remaining - 1))
+                    if active_budget_cap > 0:
+                        active_budget = min(active_budget, active_budget_cap)
                     if active_budget <= 0:
                         step_result = session.step_with_hidden_taps(
                             root,
@@ -1527,6 +1535,8 @@ def _run_spec_persistent_device(
         "proposal_snapshot_saves": int(proposal_snapshot_saves),
         "proposal_snapshot_skips": int(proposal_snapshot_skips),
         "verify_seconds": verify_seconds,
+        "active_budget_cap": int(active_budget_cap),
+        "verify_budget": int(candidate_budget),
         "ar_fallback_zero_streak": int(ar_fallback_zero_streak),
         "ar_fallback_after_mtp_cycles": int(ar_fallback_after_mtp_cycles),
         "ar_fallback_tokens_per_window": int(ar_fallback_tokens),
@@ -1604,6 +1614,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prompt_tokens,
             decode_tokens=int(args.decode_tokens),
             candidate_budget=int(args.candidate_budget),
+            active_budget_cap=int(getattr(args, "active_budget_cap", 0)),
             backend=str(args.backend),
             chain_attn_mode=str(args.chain_attn_mode),
             graph_mode=str(args.graph_mode),
@@ -1639,6 +1650,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "prompt_tokens": list(prompt_tokens),
         "decode_tokens": int(args.decode_tokens),
         "candidate_budget": int(args.candidate_budget),
+        "active_budget_cap": int(getattr(args, "active_budget_cap", 0)),
         "ar_tokens": ar_tokens,
         "mtp_tokens": spec_tokens,
         "exact_ar_match": spec_tokens == ar_tokens,
@@ -1655,6 +1667,17 @@ def main() -> int:
     parser.add_argument("--prompt-tokens", default="151646")
     parser.add_argument("--decode-tokens", type=int, default=3)
     parser.add_argument("--candidate-budget", type=int, default=2)
+    parser.add_argument(
+        "--active-budget-cap",
+        type=int,
+        default=0,
+        help=(
+            "persistent_device diagnostic: cap the active drafted candidates "
+            "while keeping verifier allocation/rows at --candidate-budget. "
+            "0 disables. Used to test max-shape adaptive-budget safety without "
+            "changing verifier scratch shape mid-run."
+        ),
+    )
     parser.add_argument("--proposal-impl", choices=("reload_d2h", "persistent_device", "persistent_device_b1"), default="reload_d2h")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")

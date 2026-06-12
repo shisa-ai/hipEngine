@@ -85409,3 +85409,91 @@ selection or max-shape live budget transitions, not this DFlash-style gate.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-confidence-gate-nohold.json`.
+
+## 2026-06-13 - MTP max-shape active-budget cap no-hold
+
+Implemented a diagnostic `--active-budget-cap` path through
+`scripts/mtp_chain_e2e_smoke.py`, `scripts/mtp_verifier_economics.py`, and
+`scripts/mtp_prompt_suite_economics.py`.  It caps the active drafted candidates
+while keeping the verifier allocation/row budget at `--candidate-budget`, so we
+can test the reviewer suggestion that adaptive B might avoid live row-shape
+transitions by always allocating max-B rows.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py \
+  scripts/mtp_verifier_economics.py scripts/mtp_prompt_suite_economics.py
+python3 -m json.tool \
+  benchmarks/results/2026-06-13-hipengine-mtp-active-budget-cap-nohold.json \
+  >/tmp/mtp-active-budget-cap-nohold.json
+git diff --check
+```
+
+Quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 \
+  --candidate-budget 3 --active-budget-cap 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --json /tmp/hipengine-mtp-b3-activecap1-quicksort-smoke-20260613.json
+```
+
+Result: exact AR held, but the path paid B=3-shaped verifier cost while only
+using B=1 active drafts.  Direct smoke: AR `112.014 tok/s`, MTP
+`80.302 tok/s` (`0.717x`), wall `19.106 ms/cycle`, verify
+`17.323 ms/cycle`, proposal/update `1.761 ms/cycle`, visible density
+`1.600/cycle`, accepted lengths
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.  Economics wrapper rerun:
+`0.729x`, cycle cost `2.099` AR tokens, wall `19.012 ms/cycle`, verify
+`17.250 ms/cycle`, proposal/update `1.744 ms/cycle`, visible density
+`1.550/cycle`.
+
+Full D32 suite command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --active-budget-cap 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b3-activecap1-9prompt-d32-20260613 \
+  --out /tmp/hipengine-mtp-b3-activecap1-9prompt-d32-20260613.json
+```
+
+Result: no-hold.  The first five prompts completed exact, but `translation`
+failed exactness at generated token index `6` (`AR=5494`, `MTP=72931`):
+
+| Prompt | Exact | Speedup | Wall | Verify | Visible/cycle |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `code_python` | yes | `0.835x` | `19.230 ms` | `17.444 ms` | `1.824` |
+| `code_cpp` | yes | `0.800x` | `18.768 ms` | `17.156 ms` | `1.684` |
+| `explain_concept` | yes | `0.725x` | `18.708 ms` | `17.127 ms` | `1.550` |
+| `summarize` | yes | `0.758x` | `18.904 ms` | `17.292 ms` | `1.600` |
+| `qa_factual` | yes | `0.790x` | `18.911 ms` | `17.337 ms` | `1.684` |
+| `translation` | no | n/a | `18.347 ms` | `16.971 ms` | n/a |
+
+Decision: keep `--active-budget-cap` as an opt-in diagnostic only.  It proves
+the simple inactive-row/max-shape approach is not a deployable adaptive policy:
+it is slower than fixed B=1 and not exact on the D32 suite.  Next adaptive work
+should use fixed per-prompt budget selection, a non-oracle prompt-level selector,
+or safe per-budget buckets rather than assuming inactive padded verifier rows are
+free and exact.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-active-budget-cap-nohold.json`.

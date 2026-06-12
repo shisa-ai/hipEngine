@@ -287,6 +287,8 @@ def _run_one(
         "--json",
         str(json_path),
     ]
+    if int(getattr(args, "active_budget_cap", 0)) > 0:
+        cmd += ["--active-budget-cap", str(int(args.active_budget_cap))]
     if bool(getattr(args, "acceptance_diagnostics", False)):
         cmd.append("--acceptance-diagnostics")
     if float(getattr(args, "confidence_threshold", 0.0) or 0.0) > 0.0:
@@ -336,6 +338,16 @@ def main() -> int:
     parser.add_argument("--prompt-tokens-file", type=Path)
     parser.add_argument("--decode-tokens", type=int, default=32)
     parser.add_argument("--candidate-budgets", default=",".join(str(x) for x in DEFAULT_BUDGETS))
+    parser.add_argument(
+        "--active-budget-cap",
+        type=int,
+        default=0,
+        help=(
+            "Forward --active-budget-cap to mtp_chain_e2e_smoke.py. Diagnostic "
+            "only: caps active drafted candidates while keeping verifier rows "
+            "at the selected --candidate-budgets value."
+        ),
+    )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--proposal-impl", choices=("persistent_device", "persistent_device_b1", "reload_d2h"), default="persistent_device")
     parser.add_argument("--backend", default="hip_gfx1151")
@@ -439,6 +451,7 @@ def main() -> int:
         "prompt_tokens": prompt_tokens,
         "decode_tokens": int(args.decode_tokens),
         "candidate_budgets": budgets,
+        "active_budget_cap": int(args.active_budget_cap),
         "runs_per_budget": int(args.runs),
         "proposal_impl": str(args.proposal_impl),
         "chain_attn_mode": str(args.chain_attn_mode),

@@ -272,6 +272,8 @@ def _economics_command(
     ]
     if args.small_batch_decode_threshold is not None:
         cmd += ["--small-batch-decode-threshold", str(args.small_batch_decode_threshold)]
+    if int(getattr(args, "active_budget_cap", 0)) > 0:
+        cmd += ["--active-budget-cap", str(int(args.active_budget_cap))]
     if args.verify_gpu_accept is not None:
         cmd += ["--verify-gpu-accept", str(args.verify_gpu_accept)]
     if args.acceptance_diagnostics:
@@ -452,6 +454,16 @@ def main() -> int:
     parser.add_argument("--decode-tokens", type=int, default=192)
     parser.add_argument("--candidate-budgets", default="3")
     parser.add_argument(
+        "--active-budget-cap",
+        type=int,
+        default=0,
+        help=(
+            "Diagnostic fixed-shape adaptive-budget probe. Forwarded to child "
+            "smokes to cap active drafted candidates while keeping verifier "
+            "rows at --candidate-budgets."
+        ),
+    )
+    parser.add_argument(
         "--prompt-budget-map",
         help=(
             "Diagnostic fixed-per-prompt policy. Accepts comma-separated "
@@ -566,6 +578,7 @@ def main() -> int:
         "tokenization": encoder.tokenization,
         "decode_tokens": int(args.decode_tokens),
         "candidate_budgets": [int(x) for x in _split_csv(args.candidate_budgets)],
+        "active_budget_cap": int(args.active_budget_cap),
         "prompt_budget_map": args.prompt_budget_map_resolved,
         "runs_per_prompt": int(args.runs),
         "proposal_impl": str(args.proposal_impl),

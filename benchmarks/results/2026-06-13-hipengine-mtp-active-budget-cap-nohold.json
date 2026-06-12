@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "date": "2026-06-13",
+  "status": "diagnostic_no_hold",
+  "performance_claim": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "workload": {
+    "prompt_suite": "9-prompt D32",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "active_budget_cap": 1,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": "default cap65536 (HIPENGINE_MTP_DRAFT_VOCAB_CAP unset)"
+  },
+  "purpose": "Test whether adaptive budget can avoid B1/B2/B3 live row-shape transitions by allocating B=3 verifier rows and capping only active drafted candidates.",
+  "commands": {
+    "quicksort_smoke": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --active-budget-cap 1 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --json /tmp/hipengine-mtp-b3-activecap1-quicksort-smoke-20260613.json",
+    "quicksort_economics": "python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --active-budget-cap 1 --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b3-activecap1-quicksort-econ-20260613 --out /tmp/hipengine-mtp-b3-activecap1-quicksort-econ-20260613.json",
+    "prompt_suite": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --active-budget-cap 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b3-activecap1-9prompt-d32-20260613 --out /tmp/hipengine-mtp-b3-activecap1-9prompt-d32-20260613.json"
+  },
+  "results": {
+    "quicksort_smoke": {
+      "exact_ar_match": true,
+      "ar_decode_tok_s": 112.01405483256876,
+      "mtp_decode_tok_s": 80.30244066426526,
+      "actual_speedup_vs_ar": 0.7168961143697197,
+      "cycle_wall_ms_per_cycle": 19.1059833,
+      "verify_ms_per_cycle": 17.32318561989814,
+      "proposal_update_ms_per_cycle": 1.7613330157473683,
+      "visible_tokens_per_cycle": 1.6,
+      "accepted_lengths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    "quicksort_economics": {
+      "exact_ar_match": true,
+      "actual_speedup_vs_ar": 0.7292550801572876,
+      "cycle_cost_ar_tokens": 2.099260907696716,
+      "visible_tokens_per_cycle": 1.55,
+      "cycle_wall_ms_per_cycle": 19.01205705,
+      "verify_ms_per_cycle": 17.24968299968168,
+      "proposal_update_ms_per_cycle": 1.7441640957258642
+    },
+    "partial_prompt_suite": {
+      "completed_exact_prompts_before_failure": 5,
+      "failed_prompt": "translation",
+      "failed_prompt_status": "exact_ar_mismatch",
+      "first_mismatch_generated_token_index": 6,
+      "first_mismatch_ar_token": 5494,
+      "first_mismatch_mtp_token": 72931,
+      "failed_prompt_wall_ms_per_cycle": 18.34742972,
+      "failed_prompt_verify_ms_per_cycle": 16.9711354095,
+      "failed_prompt_proposal_update_ms_per_cycle": 1.3556323573,
+      "exact_prompt_rows": [
+        {
+          "prompt": "code_python",
+          "actual_speedup_vs_ar": 0.8347515653265776,
+          "cycle_cost_ar_tokens": 2.146484042663103,
+          "visible_tokens_per_cycle": 1.8235294117647058,
+          "cycle_wall_ms_per_cycle": 19.22972476470588,
+          "verify_ms_per_cycle": 17.444127020152177,
+          "proposal_update_ms_per_cycle": 1.7662510851069408
+        },
+        {
+          "prompt": "code_cpp",
+          "actual_speedup_vs_ar": 0.7998666347015415,
+          "cycle_cost_ar_tokens": 2.1052897509951625,
+          "visible_tokens_per_cycle": 1.6842105263157894,
+          "cycle_wall_ms_per_cycle": 18.76834642105263,
+          "verify_ms_per_cycle": 17.156399259539814,
+          "proposal_update_ms_per_cycle": 1.594712688146453
+        },
+        {
+          "prompt": "explain_concept",
+          "actual_speedup_vs_ar": 0.7249211050767866,
+          "cycle_cost_ar_tokens": 2.1017761776910007,
+          "visible_tokens_per_cycle": 1.55,
+          "cycle_wall_ms_per_cycle": 18.70777485,
+          "verify_ms_per_cycle": 17.127191461622715,
+          "proposal_update_ms_per_cycle": 1.5625121421180665
+        },
+        {
+          "prompt": "summarize",
+          "actual_speedup_vs_ar": 0.7575956396310701,
+          "cycle_cost_ar_tokens": 2.111611243350449,
+          "visible_tokens_per_cycle": 1.6,
+          "cycle_wall_ms_per_cycle": 18.90401555,
+          "verify_ms_per_cycle": 17.29226968018338,
+          "proposal_update_ms_per_cycle": 1.5940296580083668
+        },
+        {
+          "prompt": "qa_factual",
+          "actual_speedup_vs_ar": 0.7899279611165406,
+          "cycle_cost_ar_tokens": 2.131747125397467,
+          "visible_tokens_per_cycle": 1.6842105263157894,
+          "cycle_wall_ms_per_cycle": 18.910954842105266,
+          "verify_ms_per_cycle": 17.33654628409759,
+          "proposal_update_ms_per_cycle": 1.5551980437808914
+        }
+      ]
+    }
+  },
+  "decision": "No-hold. The active-mask max-shape approach avoids live verifier row-shape transitions, but it still pays B=3-shaped verifier cost and fails exactness on the D32 translation prompt.",
+  "next_action": "Do not build adaptive policy by padding inactive verifier rows in the current chain path. Use fixed per-prompt budget selection, a non-oracle prompt-level selector, or safe per-budget buckets if adaptive budget is revisited."
+}
