@@ -83023,3 +83023,107 @@ claim. Ratio moved `0.9231x -> 0.9244x`, below the retained `0.9273x` row.
 Decision: no-hold, prototype code removed. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-proposer-route-expert-graph-nohold.json`
 and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP W4 all-sites current-stack recheck no-held
+
+Rechecked the historical full/risky M12.6 W4 multi-row site mask on the current
+`0.927x` stack. This was worth one current-stack pass because
+`single_linear_out` and `single_full_v` were later promoted default-on and the
+old exactness failure may no longer apply.
+
+Exact quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-w4-all-sites-smoke-20260612.json
+```
+
+Result: exact AR match, locked accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Exact 9-prompt D32 same-session A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-w4-all-sites-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-w4-all-sites-on-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-w4-all-sites-off-control-9prompt-d32 \
+  --out /tmp/hipengine-mtp-w4-all-sites-off-control-9prompt-d32.json
+```
+
+Both were exact `9/9`, including `translation`, with unchanged visible/accepted
+density. The all-sites run sampled slightly faster: ratio
+`0.9250719156 -> 0.9289457423`, wall
+`19.345435 -> 19.284950 ms/cycle`, verify
+`16.062510 -> 16.003971 ms/cycle`.
+
+Focused quicksort verifier rocprof A/B:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-w4-all-sites-off-control-rocprof \
+  --out /tmp/hipengine-mtp-w4-all-sites-off-control-rocprof.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-w4-all-sites-on-rocprof \
+  --out /tmp/hipengine-mtp-w4-all-sites-on-rocprof.json
+```
+
+Profile result: no live launch/path movement. Both runs had `832.0` calls/pass.
+`w4_single_gemv` was unchanged (`1.337118 -> 1.337121 ms/pass`) and total
+kernel/host moved the wrong way: `12.627725 -> 12.635705 ms/pass`; host marker
+`0.177349696 -> 0.177553942 s` over 11 passes.
+
+Decision: no-hold. Keep `_W4_MULTI_ROW_DEFAULT_SAFE_SITES` unchanged and keep
+`HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all` diagnostic-only. The suite wall sample
+is exact but not backed by any live profile-path improvement. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-w4-all-sites-current-nohold.json`
+and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.

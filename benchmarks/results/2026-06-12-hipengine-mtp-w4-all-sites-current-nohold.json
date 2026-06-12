@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "status": "diagnostic_no_hold",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": "llama.cpp-compatible 9-prompt suite, D32, B=3, decode_batched, graph_mode=off",
+  "candidate": {
+    "env": "HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all",
+    "purpose": "Recheck the full/risky M12.6 W4 multi-row site mask on the current 0.927x stack after single_linear_out and single_full_v were promoted."
+  },
+  "correctness": {
+    "quicksort_smoke_exact": true,
+    "quicksort_accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "prompt_suite_exact_off": "9/9",
+    "prompt_suite_exact_on": "9/9",
+    "acceptance_density_changed": false
+  },
+  "prompt_suite_ab": {
+    "off_control_json": "/tmp/hipengine-mtp-w4-all-sites-off-control-9prompt-d32.json",
+    "on_json": "/tmp/hipengine-mtp-w4-all-sites-on-9prompt-d32.json",
+    "off": {
+      "actual_ratio": 0.925071915627852,
+      "wall_ms_per_cycle": 19.34543521641975,
+      "verify_ms_per_cycle": 16.06251037336834,
+      "proposal_update_ms_per_cycle": 1.2485819742842406,
+      "visible_tokens_per_cycle": 2.011851851851852,
+      "accepted_per_cycle": 1.011851851851852,
+      "ar_ms_per_token": 9.001996186270844
+    },
+    "on": {
+      "actual_ratio": 0.928945742349375,
+      "wall_ms_per_cycle": 19.284950194845678,
+      "verify_ms_per_cycle": 16.003970556222708,
+      "proposal_update_ms_per_cycle": 1.2433114195929518,
+      "visible_tokens_per_cycle": 2.011851851851852,
+      "accepted_per_cycle": 1.011851851851852,
+      "ar_ms_per_token": 9.011986711508749
+    },
+    "delta_on_minus_off": {
+      "actual_ratio": 0.0038738267215230326,
+      "wall_ms_per_cycle": -0.06048502157407398,
+      "verify_ms_per_cycle": -0.05853981714563261,
+      "proposal_update_ms_per_cycle": -0.005270554691288787,
+      "visible_tokens_per_cycle": 0.0,
+      "accepted_per_cycle": 0.0,
+      "ar_ms_per_token": 0.00999052523790489
+    }
+  },
+  "rocprof_ab": {
+    "off_control_json": "/tmp/hipengine-mtp-w4-all-sites-off-control-rocprof.json",
+    "on_json": "/tmp/hipengine-mtp-w4-all-sites-on-rocprof.json",
+    "off": {
+      "kernel_calls_per_pass": 832.0,
+      "kernel_ms_per_pass": 12.627725454545454,
+      "host_window_seconds": 0.177349696,
+      "w4_single_gemv_ms_per_pass": 1.337118,
+      "w4_dual_gemv_ms_per_pass": 1.835141
+    },
+    "on": {
+      "kernel_calls_per_pass": 832.0,
+      "kernel_ms_per_pass": 12.635705090909092,
+      "host_window_seconds": 0.177553942,
+      "w4_single_gemv_ms_per_pass": 1.337121,
+      "w4_dual_gemv_ms_per_pass": 1.836402
+    },
+    "delta_on_minus_off": {
+      "kernel_calls_per_pass": 0.0,
+      "kernel_ms_per_pass": 0.007979636363637965,
+      "host_window_seconds": 0.00020424599999999127,
+      "w4_single_gemv_ms_per_pass": 0.000003,
+      "w4_dual_gemv_ms_per_pass": 0.001261
+    }
+  },
+  "decision": "no_hold",
+  "decision_reason": "The current-stack full all-site mask is exact, including translation, and the prompt-suite wall sample was slightly positive. It is not promoted because the focused verifier profile shows identical launch count and effectively identical W4 buckets, with total kernel and host marker slightly worse. The apparent suite win is not backed by a live code-path or kernel-family improvement.",
+  "commands": {
+    "quicksort_smoke_on": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-w4-all-sites-smoke-20260612.json",
+    "suite_on": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-w4-all-sites-on-9prompt-d32 --out /tmp/hipengine-mtp-w4-all-sites-on-9prompt-d32.json",
+    "suite_off_control": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-w4-all-sites-off-control-9prompt-d32 --out /tmp/hipengine-mtp-w4-all-sites-off-control-9prompt-d32.json",
+    "rocprof_off_control": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 --raw-root /tmp/hipengine-mtp-w4-all-sites-off-control-rocprof --out /tmp/hipengine-mtp-w4-all-sites-off-control-rocprof.json",
+    "rocprof_on": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 --raw-root /tmp/hipengine-mtp-w4-all-sites-on-rocprof --out /tmp/hipengine-mtp-w4-all-sites-on-rocprof.json"
+  }
+}
