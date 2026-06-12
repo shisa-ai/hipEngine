@@ -1,0 +1,325 @@
+{
+  "commands": {
+    "cycles_25_26": "for CYCLE in 25 26; do OUT=\"/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle${CYCLE}-20260613.json\"; env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-cycle \"$CYCLE\" --compare-rows 0,1 --out \"$OUT\"; done"
+  },
+  "cycles": [
+    {
+      "accepted_match": true,
+      "all_target_top1_match": true,
+      "clean_verify": {
+        "accepted": 0,
+        "commit_position": 44,
+        "commit_row": 0,
+        "next_token": 24,
+        "target_top1": [
+          24,
+          248046
+        ],
+        "target_top1_values": [
+          20.47806167602539,
+          13.653396606445312
+        ]
+      },
+      "context": 44,
+      "cycle": 24,
+      "draft_candidates": [
+        26
+      ],
+      "first_hidden_bit_mismatch": {
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 6.103515625e-05,
+        "mismatch_count": 138,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 79,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.375,
+        "mismatch_count": 2021,
+        "row": 0
+      },
+      "mtp_verify": {
+        "accepted": 0,
+        "commit_position": 44,
+        "commit_row": 0,
+        "next_token": 24,
+        "target_top1": [
+          24,
+          248046
+        ],
+        "target_top1_values": [
+          20.274436950683594,
+          13.382718086242676
+        ]
+      },
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 3.337860107421875e-06,
+        "mismatch_count": 337550,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle24-20260613.json",
+      "root": 15,
+      "seconds": 47.09518387611024,
+      "visible_next_token_match": true
+    },
+    {
+      "accepted_match": true,
+      "all_target_top1_match": false,
+      "clean_verify": {
+        "accepted": 0,
+        "commit_position": 45,
+        "commit_row": 0,
+        "next_token": 12,
+        "target_top1": [
+          12,
+          248046
+        ],
+        "target_top1_values": [
+          20.787086486816406,
+          13.444652557373047
+        ]
+      },
+      "context": 45,
+      "cycle": 25,
+      "draft_candidates": [
+        26
+      ],
+      "first_hidden_bit_mismatch": {
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 0.0001220703125,
+        "mismatch_count": 132,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 80,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.53125,
+        "mismatch_count": 2025,
+        "row": 1
+      },
+      "mtp_verify": {
+        "accepted": 0,
+        "commit_position": 45,
+        "commit_row": 0,
+        "next_token": 12,
+        "target_top1": [
+          12,
+          220
+        ],
+        "target_top1_values": [
+          20.956369400024414,
+          13.9520845413208
+        ]
+      },
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 3.814697265625e-06,
+        "mismatch_count": 331708,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle25-20260613.json",
+      "root": 24,
+      "seconds": 46.77240131795406,
+      "visible_next_token_match": true
+    },
+    {
+      "accepted_match": true,
+      "all_target_top1_match": true,
+      "clean_verify": {
+        "accepted": 1,
+        "commit_position": 47,
+        "commit_row": 1,
+        "next_token": 19,
+        "target_top1": [
+          15,
+          19
+        ],
+        "target_top1_values": [
+          19.751676559448242,
+          23.98134994506836
+        ]
+      },
+      "context": 46,
+      "cycle": 26,
+      "draft_candidates": [
+        15
+      ],
+      "first_hidden_bit_mismatch": {
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 3.0517578125e-05,
+        "mismatch_count": 75,
+        "row": 1
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 79,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.375,
+        "mismatch_count": 2021,
+        "row": 1
+      },
+      "mtp_verify": {
+        "accepted": 1,
+        "commit_position": 47,
+        "commit_row": 1,
+        "next_token": 19,
+        "target_top1": [
+          15,
+          19
+        ],
+        "target_top1_values": [
+          19.939926147460938,
+          23.93671226501465
+        ]
+      },
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 3.814697265625e-06,
+        "mismatch_count": 320631,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle26-20260613.json",
+      "root": 12,
+      "seconds": 47.10968435718678,
+      "visible_next_token_match": true
+    },
+    {
+      "accepted_match": true,
+      "all_target_top1_match": false,
+      "clean_verify": {
+        "accepted": 0,
+        "commit_position": 48,
+        "commit_row": 0,
+        "next_token": 220,
+        "target_top1": [
+          220,
+          220
+        ],
+        "target_top1_values": [
+          18.79779624938965,
+          15.380106925964355
+        ]
+      },
+      "context": 48,
+      "cycle": 27,
+      "draft_candidates": [
+        26
+      ],
+      "first_hidden_bit_mismatch": {
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 0.000244140625,
+        "mismatch_count": 131,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 79,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.328125,
+        "mismatch_count": 2020,
+        "row": 0
+      },
+      "mtp_verify": {
+        "accepted": 0,
+        "commit_position": 48,
+        "commit_row": 0,
+        "next_token": 51,
+        "target_top1": [
+          51,
+          220
+        ],
+        "target_top1_values": [
+          18.77215576171875,
+          15.496694564819336
+        ]
+      },
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 3.814697265625e-06,
+        "mismatch_count": 319503,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle27-20260613.json",
+      "root": 19,
+      "seconds": 46.69848508294672,
+      "visible_next_token_match": false
+    }
+  ],
+  "date": "2026-06-13",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "retained_ready": false,
+  "status": "diagnostic",
+  "summary": {
+    "cycle24": "all target top1 rows match clean AR state; visible next token matches",
+    "cycle25": "row 1 target top1 differs (MTP 220 vs clean 248046), but accepted=0 and visible next token remains 12 in both paths",
+    "cycle26": "accepted=1, commit_row=1, all target top1 rows and visible next token match clean AR state; the committed row is still hidden-drifted",
+    "cycle27": "accepted=0 and visible row0 next token forks: MTP 51 vs clean 220",
+    "interpretation": "The first sampled top1 mismatch appears on an uncommitted row at cycle 25. The visible fork happens after the cycle-26 accepted-row commit, making the cycle-26 row1 state update/commit the next highest-value audit point.",
+    "next_action": "Compare the cycle-26 committed row1 linear/full-attention state updates against the clean AR post-token-19 state per layer, including full-attention K/V and linear recurrent/conv states, rather than only selected scratch-to-resident copy equality."
+  },
+  "workload": {
+    "backend": "hip_gfx1100",
+    "candidate_budget": 1,
+    "chain_attn_mode": "decode_batched",
+    "compare_rows": [
+      0,
+      1
+    ],
+    "decode_tokens": 64,
+    "graph_mode": "off",
+    "prompt_name": "translation",
+    "prompt_render": "raw",
+    "prompt_tokens": 15,
+    "sampled_cycles": [
+      24,
+      25,
+      26,
+      27
+    ]
+  }
+}

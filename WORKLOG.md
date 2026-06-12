@@ -84693,3 +84693,46 @@ the earliest divergent layer/state update.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-layer-drift-growth-audit.json`.
+
+## 2026-06-13 - MTP D64 cycle 25/26 narrow audit
+
+Narrowed the token-visible drift bracket from the growth sweep by comparing
+cycles 25 and 26 on the same D64 `translation`, B=1, `decode_batched`,
+graph-off setup.
+
+```bash
+for CYCLE in 25 26; do
+  OUT="/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle${CYCLE}-20260613.json"
+  env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+    HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+    PYTHONPATH=. timeout 3600 \
+    python3 scripts/mtp_layer_drift_audit.py \
+    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+    --prompt-name translation --prompt-render raw --decode-tokens 64 \
+    --candidate-budget 1 --backend hip_gfx1100 \
+    --chain-attn-mode decode_batched --graph-mode off \
+    --compare-cycle "$CYCLE" --compare-rows 0,1 \
+    --out "$OUT"
+done
+```
+
+Result:
+
+| cycle | context/root/draft | accepted / commit row | MTP top1 / next | clean top1 / next | interpretation |
+| ---: | --- | --- | --- | --- | --- |
+| 25 | `45 / 24 / [26]` | `0 / 0` | `[12,220]` / `12` | `[12,248046]` / `12` | row 1 top-1 already differs, but it is not visible because the draft is rejected |
+| 26 | `46 / 12 / [15]` | `1 / 1` | `[15,19]` / `19` | `[15,19]` / `19` | accepted row 1 still matches clean output, but hidden/state drift remains |
+| 27 | `48 / 19 / [26]` | `0 / 0` | `[51,220]` / `51` | `[220,220]` / `220` | visible row-0 fork after the cycle-26 accepted-row commit |
+
+Interpretation: the first sampled target-top1 mismatch is cycle 25 row 1, but
+the first visible next-token fork remains cycle 27. Cycle 26 is the critical
+handoff: it accepts row 1 and commits token `19` while still matching clean AR
+top-1. The next audit should compare the cycle-26 committed row-1 linear and
+full-attention state updates against clean AR post-token-19 state per layer,
+including full K/V and linear recurrent/conv state. The existing commit-copy
+audit only proves selected scratch is copied into resident exactly; it does not
+prove the selected scratch row itself matches serial AR state.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-layer-drift-narrow-audit.json`.
