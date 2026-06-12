@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "rejected",
+  "performance_claim": false,
+  "candidate": "Full-vocab MTP draft LM-head after cap65536 retained row",
+  "decision": "no-hold; keep cap65536 as the default operating point",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "workload": {
+    "suite": "llama.cpp mtp-bench prompt suite, raw prompt render",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap_control": 65536,
+    "draft_vocab_cap_candidate": 0,
+    "candidate_meaning": "0 means full model vocabulary"
+  },
+  "correctness": {
+    "quicksort_full_vocab_exact": true,
+    "suite_full_vocab_exact": "9/9",
+    "quicksort_full_vocab_accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+  },
+  "commands": {
+    "full_vocab_quicksort_smoke": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-b3-vocabfull-current-quicksort-smoke-20260612.json",
+    "full_vocab_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-b3-vocabfull-current-9prompt-d32 --out /tmp/hipengine-mtp-b3-vocabfull-current-9prompt-d32.json",
+    "cap65536_control_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=65536 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-b3-vocab65536-current-9prompt-d32 --out /tmp/hipengine-mtp-b3-vocab65536-current-9prompt-d32.json"
+  },
+  "suite_control_cap65536": {
+    "source_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-vocab65536-retained.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.967162217211696,
+    "cycle_wall_ms_per_cycle": 20.021099262153033,
+    "verify_ms_per_cycle": 16.211890624516265,
+    "proposal_update_ms_per_cycle": 1.440284690517342,
+    "cycle_cost_ar_tokens": 2.2206498997583703,
+    "visible_tokens_per_cycle": 2.174774114774115,
+    "accepted_per_cycle": 1.1747741147741149,
+    "acceptance_rate": 0.4068413011476364,
+    "ar_decode_ms_per_token": 9.009403315657336
+  },
+  "suite_candidate_full_vocab": {
+    "source_artifact": "/tmp/hipengine-mtp-b3-vocabfull-current-9prompt-d32.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.8804356006744756,
+    "cycle_wall_ms_per_cycle": 22.9738773650481,
+    "verify_ms_per_cycle": 16.28386557494994,
+    "proposal_update_ms_per_cycle": 2.4368002030877425,
+    "cycle_cost_ar_tokens": 2.5504378181032874,
+    "visible_tokens_per_cycle": 2.2741920452065383,
+    "accepted_per_cycle": 1.2741920452065378,
+    "acceptance_rate": 0.4425991805836767,
+    "ar_decode_ms_per_token": 9.003615250144826
+  },
+  "delta_full_vocab_minus_cap65536": {
+    "actual_decode_speedup_vs_ar": -0.08672661653722044,
+    "cycle_wall_ms_per_cycle": 2.952778102895066,
+    "verify_ms_per_cycle": 0.07197495043367487,
+    "proposal_update_ms_per_cycle": 0.9965155125704005,
+    "cycle_cost_ar_tokens": 0.3297879183449171,
+    "visible_tokens_per_cycle": 0.09941793043242347,
+    "accepted_per_cycle": 0.09941793043242291,
+    "acceptance_rate": 0.03575787943604029
+  },
+  "per_prompt_candidate_full_vocab": [
+    {"prompt": "code_python", "ratio": 1.233062270747022, "visible": 3.4444444444444446, "wall_ms": 23.618824555555555, "proposal_update_ms": 2.740850413425101, "cycle_cost_ar_tokens": 2.658379619402189},
+    {"prompt": "code_cpp", "ratio": 0.9022996590569309, "visible": 2.2857142857142856, "wall_ms": 22.6241605, "proposal_update_ms": 2.207017719878682, "cycle_cost_ar_tokens": 2.5328622760567017},
+    {"prompt": "explain_concept", "ratio": 0.80961407957703, "visible": 2.066666666666667, "wall_ms": 22.42039066666667, "proposal_update_ms": 2.282427344471216, "cycle_cost_ar_tokens": 2.51598926285583},
+    {"prompt": "summarize", "ratio": 0.8468874479868926, "visible": 2.1333333333333333, "wall_ms": 22.527917466666665, "proposal_update_ms": 2.260906264806787, "cycle_cost_ar_tokens": 2.518700356503121},
+    {"prompt": "qa_factual", "ratio": 0.9748918996894325, "visible": 2.4615384615384617, "wall_ms": 22.461887307692308, "proposal_update_ms": 2.187444488159739, "cycle_cost_ar_tokens": 2.524568807016349},
+    {"prompt": "translation", "ratio": 0.5504606052564002, "visible": 1.3478260869565217, "wall_ms": 21.798257347826084, "proposal_update_ms": 2.261105226352811, "cycle_cost_ar_tokens": 2.4484454930309094},
+    {"prompt": "creative_short", "ratio": 0.973921312639783, "visible": 2.4615384615384617, "wall_ms": 22.454573307692307, "proposal_update_ms": 2.2283415130984325, "cycle_cost_ar_tokens": 2.527099240818696},
+    {"prompt": "stepwise_math", "ratio": 0.8336529142128046, "visible": 2.1333333333333333, "wall_ms": 22.85384266666667, "proposal_update_ms": 2.250850045432647, "cycle_cost_ar_tokens": 2.5586668444160856},
+    {"prompt": "long_code_review", "ratio": 0.7991302169039841, "visible": 2.1333333333333333, "wall_ms": 26.005042466666666, "proposal_update_ms": 3.5122588121642666, "cycle_cost_ar_tokens": 2.669228462829705}
+  ],
+  "decision_reason": "Full vocab recovered a small amount of acceptance versus cap65536 (+0.099 visible tokens/cycle), but the larger draft LM-head made proposal/update nearly 1.0 ms/cycle slower and total wall nearly 3.0 ms/cycle slower. The exact 9-prompt D32 ratio regressed from 0.967x to 0.880x. Keep cap65536 and make it the no-env default; use HIPENGINE_MTP_DRAFT_VOCAB_CAP=0 only as an explicit diagnostic."
+}

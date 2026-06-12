@@ -83473,3 +83473,94 @@ same-suite ratio `0.926x -> 0.967x`. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-vocab65536-retained.json` and
 updated `docs/MTP.md`, `README.md`, `benchmarks/README.md`, and
 `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP full-vocab draft cap no-held; cap65536 defaulted
+
+Checked whether the remaining cap65536 first-reject misses were worth paying for
+full-vocab draft LM-head. The code's no-env default was still full vocab
+(`HIPENGINE_MTP_DRAFT_VOCAB_CAP=0` semantics), so this was also a default-policy
+cleanup.
+
+Full-vocab quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=0 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b3-vocabfull-current-quicksort-smoke-20260612.json
+```
+
+Result: exact AR match, same accepted trace as cap65536:
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Full-vocab D32 suite:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=0 \
+  PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-b3-vocabfull-current-9prompt-d32 \
+  --out /tmp/hipengine-mtp-b3-vocabfull-current-9prompt-d32.json
+```
+
+Compared with the retained cap65536 artifact:
+
+- Exactness: full vocab `9/9`.
+- Actual speedup vs AR: `0.9671622172 -> 0.8804356007`.
+- Wall: `20.021099 -> 22.973877 ms/cycle`.
+- Verify: `16.211891 -> 16.283866 ms/cycle`.
+- Proposal/update: `1.440285 -> 2.436800 ms/cycle`.
+- Cycle cost: `2.220650 -> 2.550438` AR tokens.
+- Visible tokens/cycle: `2.174774 -> 2.274192`.
+- Accepted draft tokens/cycle: `1.174774 -> 1.274192`.
+- Acceptance rate: `0.406841 -> 0.442599`.
+
+Decision: no-hold full vocab. It recovers only `+0.099` visible tokens/cycle but
+costs `+2.95 ms/cycle` wall and nearly `+1.0 ms/cycle` proposal/update, so the
+ratio regresses hard. Changed `NativeMtpChainProposer` so the no-env draft vocab
+default is the retained cap `65536`; explicit
+`HIPENGINE_MTP_DRAFT_VOCAB_CAP=0` still selects full vocab for diagnostics.
+Added pure unit coverage:
+
+```bash
+PYTHONPATH=. pytest -q tests/test_mtp_native_vocab_cap.py
+```
+
+Result: `5 passed`.
+
+No-env default quicksort smoke after the code change:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b3-vocab-default-current-quicksort-smoke-20260612.json
+```
+
+Result: exact AR match, accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-full-vocab-nohold.json` and updated
+`docs/MTP.md`, `README.md`, `benchmarks/README.md`, and
+`benchmarks/CHANGELOG.md`.

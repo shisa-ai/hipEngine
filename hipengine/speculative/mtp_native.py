@@ -54,6 +54,9 @@ from hipengine.loading.qwen35_paro import normalize_qwen35_weight_name
 from hipengine.loading.safetensors import read_tensor_storage_bytes
 
 
+_DEFAULT_DRAFT_VOCAB_CAP = 65536
+
+
 def _f32_to_bf16_bits(array: np.ndarray) -> np.ndarray:
     f32 = np.asarray(array, dtype=np.float32)
     u32 = f32.view(np.uint32).copy()
@@ -125,6 +128,14 @@ def _shared_gate_up_dual_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL", False)
 
 
+def _draft_vocab_from_env(vocab: int) -> int:
+    if vocab <= 0:
+        raise ValueError("vocab must be positive")
+    raw = os.environ.get("HIPENGINE_MTP_DRAFT_VOCAB_CAP", str(_DEFAULT_DRAFT_VOCAB_CAP))
+    cap = int(raw or 0)
+    return cap if 0 < cap < vocab else vocab
+
+
 def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic], buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> tuple[np.ndarray, DeviceBuffer]:
     host = np.zeros(shape, dtype=dtype)
     buf = malloc(host.nbytes, runtime=runtime)
@@ -179,8 +190,7 @@ class NativeMtpChainProposer:
         # capped row range cuts the dominant per-advance GEMV bytes (~1.7 ms at
         # full 248k vocab); exactness is unaffected (drafts only steer
         # acceptance — verify commits target tokens over the FULL vocab).
-        cap = int(os.environ.get("HIPENGINE_MTP_DRAFT_VOCAB_CAP", "0") or 0)
-        self.draft_vocab = cap if 0 < cap < self.vocab else self.vocab
+        self.draft_vocab = _draft_vocab_from_env(self.vocab)
         self._vocab_topk_host: tuple | None = None
         self.q_heads = int(self.config.num_attention_heads)
         self.kv_heads = int(self.config.num_key_value_heads)
