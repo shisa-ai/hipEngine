@@ -84863,3 +84863,42 @@ should localize the earliest resident recurrent/K/V producer drift before cycle
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-cycle26-selected-clean-compare.json`.
+
+## 2026-06-13 - MTP D64 early selected-state vs AR audit
+
+Ran the selected-state audit at the first two MTP cycles for the D64
+`translation` failure. This sharpens the drift source from "inherited before
+cycle 26" to "introduced by the first verifier update versus serial c1 AR".
+
+Command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 1,2 --max-cycles 2 \
+  --out /tmp/hipengine-mtp-state-drift-audit-selected-vs-ar-cycles1-2-20260613.json
+```
+
+Result:
+
+| Cycle | Visible next | Commit | Scratch -> resident | Selected linear scratch vs AR | Selected full K/V cell vs AR |
+| ---: | --- | --- | --- | --- | --- |
+| 1 | `248068 == 248068` | row 0, token `[271]`, position 15 | exact `60/60` | fail: layer 0 recurrent, max_abs `9.5367e-7`, `103835` mismatches, `59/60` linear records failed | fail: `20/20` K/V cells, first layer 3 key at position 15, `116` mismatches |
+| 2 | `248069 == 248069` | row 1, tokens `[248068,271]`, position 17 | exact `60/60` | fail: layer 0 recurrent, max_abs `1.4305e-6`, `200236` mismatches, `59/60` linear records failed | fail: `20/20` K/V cells, first layer 3 key at position 17, `171` mismatches |
+
+Interpretation: cycle 1 starts from clean prompt state and still returns the
+same next token as serial AR, but the selected verifier row is already not
+serial-AR-equivalent. The selected scratch-to-resident copy is exact, so this is
+not a late commit/copy bug. The next diagnostic should compare the cycle-1
+verifier/multi-row state producer against the serial c1 decode producer,
+starting with linear layer 0 recurrent and full-attention layer 3 K/V.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-early-selected-state-vs-ar-audit.json`.

@@ -1,0 +1,157 @@
+{
+  "date": "2026-06-13",
+  "kind": "mtp_d64_state_drift_diagnostic",
+  "performance_claim": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "backend": "hip_gfx1100",
+  "prompt": {
+    "name": "translation",
+    "render": "raw",
+    "text": "Translate to French: 'The quick brown fox jumps over the lazy dog.'",
+    "prompt_tokens": 15,
+    "decode_tokens": 64
+  },
+  "configuration": {
+    "candidate_budget": 1,
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": "unset",
+    "compare_after_cycles": [
+      1,
+      2
+    ],
+    "max_cycles": 2
+  },
+  "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 1,2 --max-cycles 2 --out /tmp/hipengine-mtp-state-drift-audit-selected-vs-ar-cycles1-2-20260613.json",
+  "source_output": "/tmp/hipengine-mtp-state-drift-audit-selected-vs-ar-cycles1-2-20260613.json",
+  "status": "state_mismatch",
+  "seconds": 46.42415022593923,
+  "generated_prefix": [
+    271,
+    248068,
+    271
+  ],
+  "first_mismatch": {
+    "cycle": 1,
+    "phase": "post_commit",
+    "category": "linear",
+    "layer_index": 0,
+    "state": "recurrent",
+    "dtype": "float32",
+    "shape": [
+      32,
+      128,
+      128
+    ],
+    "mismatch_count": 103835,
+    "first_index": [
+      0,
+      0,
+      1
+    ],
+    "max_abs": 9.5367431640625e-7,
+    "max_abs_index": [
+      14,
+      9,
+      79
+    ]
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "context_before": 15,
+      "context_after": 16,
+      "draft_candidates": [
+        760
+      ],
+      "committed_tokens": [
+        271
+      ],
+      "accepted": 0,
+      "commit_row": 0,
+      "commit_position": 15,
+      "next_token": 248068,
+      "control_next_token": 248068,
+      "control_next_token_match": true,
+      "resident_vs_ar": {
+        "passed": false,
+        "first_category": "linear",
+        "first_layer": 0,
+        "first_state": "recurrent",
+        "max_abs": 9.5367431640625e-7,
+        "mismatch_count": 103835
+      },
+      "mtp_scratch_vs_resident": {
+        "passed": true,
+        "checked": 60,
+        "failed": 0
+      },
+      "mtp_selected_state_vs_ar": {
+        "passed": false,
+        "first_category": "linear_scratch",
+        "first_layer": 0,
+        "first_state": "recurrent",
+        "max_abs": 9.5367431640625e-7,
+        "mismatch_count": 103835,
+        "linear_scratch_checked": 60,
+        "linear_scratch_failed": 59,
+        "full_kv_cell_checked": 20,
+        "full_kv_cell_failed": 20,
+        "first_full_kv_layer": 3,
+        "first_full_kv_state": "key_cell",
+        "first_full_kv_position": 15,
+        "first_full_kv_mismatch_count": 116
+      }
+    },
+    {
+      "cycle": 2,
+      "context_before": 16,
+      "context_after": 18,
+      "draft_candidates": [
+        271
+      ],
+      "committed_tokens": [
+        248068,
+        271
+      ],
+      "accepted": 1,
+      "commit_row": 1,
+      "commit_position": 17,
+      "next_token": 248069,
+      "control_next_token": 248069,
+      "control_next_token_match": true,
+      "resident_vs_ar": {
+        "passed": false,
+        "first_category": "linear",
+        "first_layer": 0,
+        "first_state": "recurrent",
+        "max_abs": 1.430511474609375e-6,
+        "mismatch_count": 200236
+      },
+      "mtp_scratch_vs_resident": {
+        "passed": true,
+        "checked": 60,
+        "failed": 0
+      },
+      "mtp_selected_state_vs_ar": {
+        "passed": false,
+        "first_category": "linear_scratch",
+        "first_layer": 0,
+        "first_state": "recurrent",
+        "max_abs": 1.430511474609375e-6,
+        "mismatch_count": 200236,
+        "linear_scratch_checked": 60,
+        "linear_scratch_failed": 59,
+        "full_kv_cell_checked": 20,
+        "full_kv_cell_failed": 20,
+        "first_full_kv_layer": 3,
+        "first_full_kv_state": "key_cell",
+        "first_full_kv_position": 17,
+        "first_full_kv_mismatch_count": 171
+      }
+    }
+  ],
+  "interpretation": "The D64 translation target-state drift is present immediately after the first MTP verifier commit. Cycle 1 still has visible next-token equality, and selected scratch-to-resident copy is exact, but selected verifier state already differs from serial AR at linear layer 0 recurrent and all checked full-attention K/V cells. This points at the verifier/multi-row producer path versus serial c1 AR state, not the later resident commit copy or adaptive policy threshold.",
+  "next_action": "Compare the cycle-1 verifier update path against the serial c1 decode producer for the same prompt token, starting at linear layer 0 recurrent and full-attention layer 3 K/V cell."
+}
