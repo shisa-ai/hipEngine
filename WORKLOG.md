@@ -84647,3 +84647,49 @@ not a legal runtime value. This closes the cheap B=1 config retune pass:
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-lmhead-threads-nohold.json`.
+
+## 2026-06-13 - MTP D64 layer drift growth sweep
+
+Extended the D64 `translation` resident-state drift audit after the cycle-27
+layer/logit comparator. This is a correctness diagnostic only, not a speed row.
+
+```bash
+for CYCLE in 2 4 8 16 24; do
+  OUT="/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle${CYCLE}-20260613.json"
+  env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+    HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+    PYTHONPATH=. timeout 3600 \
+    python3 scripts/mtp_layer_drift_audit.py \
+    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+    --prompt-name translation --prompt-render raw --decode-tokens 64 \
+    --candidate-budget 1 --backend hip_gfx1100 \
+    --chain-attn-mode decode_batched --graph-mode off \
+    --compare-cycle "$CYCLE" --compare-rows 0,1 \
+    --out "$OUT"
+done
+```
+
+Result: sampled cycle 1 is bit-clean, sampled cycle 2 is already resident /
+hidden bit-drifted, sampled cycles 2/4/8/16/24 still produce the same target
+top-1 rows as the clean AR resident state, and sampled cycle 27 is the first
+sampled top-1 divergence. The key points:
+
+| cycle | context | MTP top1 | clean top1 | first hidden mismatch | largest hidden drift |
+| ---: | ---: | --- | --- | --- | --- |
+| 1 | 15 | `[248068,3841]` | `[248068,3841]` | none | layer 0 row 0 max_abs `0.0` |
+| 2 | 16 | `[271,248069]` | `[271,248069]` | layer 1 row 0 max_abs `0.000244` | layer 39 row 1 max_abs `0.313965` |
+| 4 | 20 | `[5494,72931]` | `[5494,72931]` | layer 0 row 0 max_abs `0.000122` | layer 38 row 1 max_abs `0.09375` |
+| 8 | 24 | `[796,796]` | `[796,796]` | layer 1 row 0 max_abs `0.000244` | layer 38 row 0 max_abs `0.1875` |
+| 16 | 34 | `[13,248044]` | `[13,248044]` | layer 0 row 1 max_abs `0.000061` | layer 39 row 0 max_abs `0.066406` |
+| 24 | 44 | `[24,248046]` | `[24,248046]` | layer 0 row 0 max_abs `0.000061` | layer 39 row 0 max_abs `0.375` |
+| 27 | 48 | `[51,220]` | `[220,220]` | layer 0 row 0 max_abs `0.000244` | layer 39 row 0 max_abs `0.328125` |
+
+Interpretation: the D64 fork is accumulated resident-state drift, not a final
+linear-state commit copy and not a locally bad verifier batch from clean state.
+The token-visible top-1 flip is now bracketed after sampled cycle 24 and no
+later than cycle 27. Next correctness drill: run cycles 25 and 26, then bisect
+the earliest divergent layer/state update.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-layer-drift-growth-audit.json`.

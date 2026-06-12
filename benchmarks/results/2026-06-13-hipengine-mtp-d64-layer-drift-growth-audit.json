@@ -1,0 +1,415 @@
+{
+  "commands": {
+    "cycle1_smoke": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 8 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-cycle 1 --compare-rows 0,1 --out /tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle1-smoke-20260613.json",
+    "cycle27": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-cycle 27 --compare-rows 0,1 --out /tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle27-20260613.json",
+    "cycle_sweep": "for CYCLE in 2 4 8 16 24; do OUT=\"/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle${CYCLE}-20260613.json\"; env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-cycle \"$CYCLE\" --compare-rows 0,1 --out \"$OUT\"; done"
+  },
+  "cycles": [
+    {
+      "clean_next_token": 248068,
+      "clean_target_top1": [
+        248068,
+        3841
+      ],
+      "context": 15,
+      "cycle": 1,
+      "draft_candidates": [
+        760
+      ],
+      "first_hidden_bit_mismatch": null,
+      "hidden_checked": 80,
+      "hidden_failed": 0,
+      "hidden_passed": true,
+      "largest_hidden_drift": {
+        "capture_index": 0,
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 0.0,
+        "mismatch_count": 0,
+        "row": 0
+      },
+      "mtp_next_token": 248068,
+      "mtp_target_top1": [
+        248068,
+        3841
+      ],
+      "pre_verify_resident_first_mismatch": null,
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle1-smoke-20260613.json",
+      "root": 271,
+      "seconds": 45.772677899105474,
+      "top1_matches_clean": true
+    },
+    {
+      "clean_next_token": 248069,
+      "clean_target_top1": [
+        271,
+        248069
+      ],
+      "context": 16,
+      "cycle": 2,
+      "draft_candidates": [
+        271
+      ],
+      "first_hidden_bit_mismatch": {
+        "capture_index": 1,
+        "layer_index": 1,
+        "layer_type": "linear_attention",
+        "max_abs": 0.000244140625,
+        "mismatch_count": 257,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 78,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "capture_index": 39,
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.31396484375,
+        "mismatch_count": 2016,
+        "row": 1
+      },
+      "mtp_next_token": 248069,
+      "mtp_target_top1": [
+        271,
+        248069
+      ],
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 9.5367431640625e-07,
+        "mismatch_count": 103835,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle2-20260613.json",
+      "root": 248068,
+      "seconds": 46.376544089987874,
+      "top1_matches_clean": true
+    },
+    {
+      "clean_next_token": 5494,
+      "clean_target_top1": [
+        5494,
+        72931
+      ],
+      "context": 20,
+      "cycle": 4,
+      "draft_candidates": [
+        52543
+      ],
+      "first_hidden_bit_mismatch": {
+        "capture_index": 0,
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 0.0001220703125,
+        "mismatch_count": 123,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 79,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "capture_index": 38,
+        "layer_index": 38,
+        "layer_type": "linear_attention",
+        "max_abs": 0.09375,
+        "mismatch_count": 2003,
+        "row": 1
+      },
+      "mtp_next_token": 5494,
+      "mtp_target_top1": [
+        5494,
+        72931
+      ],
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 1.9073486328125e-06,
+        "mismatch_count": 213548,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle4-20260613.json",
+      "root": 2229,
+      "seconds": 46.1306832828559,
+      "top1_matches_clean": true
+    },
+    {
+      "clean_next_token": 796,
+      "clean_target_top1": [
+        796,
+        796
+      ],
+      "context": 24,
+      "cycle": 8,
+      "draft_candidates": [
+        11
+      ],
+      "first_hidden_bit_mismatch": {
+        "capture_index": 1,
+        "layer_index": 1,
+        "layer_type": "linear_attention",
+        "max_abs": 0.000244140625,
+        "mismatch_count": 306,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 78,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "capture_index": 38,
+        "layer_index": 38,
+        "layer_type": "linear_attention",
+        "max_abs": 0.1875,
+        "mismatch_count": 1986,
+        "row": 0
+      },
+      "mtp_next_token": 796,
+      "mtp_target_top1": [
+        796,
+        796
+      ],
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 1.9073486328125e-06,
+        "mismatch_count": 283591,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle8-20260613.json",
+      "root": 72931,
+      "seconds": 46.380078247981146,
+      "top1_matches_clean": true
+    },
+    {
+      "clean_next_token": 248044,
+      "clean_target_top1": [
+        13,
+        248044
+      ],
+      "context": 34,
+      "cycle": 16,
+      "draft_candidates": [
+        13
+      ],
+      "first_hidden_bit_mismatch": {
+        "capture_index": 0,
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 6.103515625e-05,
+        "mismatch_count": 144,
+        "row": 1
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 79,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "capture_index": 39,
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.06640625,
+        "mismatch_count": 2007,
+        "row": 0
+      },
+      "mtp_next_token": 248044,
+      "mtp_target_top1": [
+        13,
+        248044
+      ],
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 3.933906555175781e-06,
+        "mismatch_count": 312749,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle16-20260613.json",
+      "root": 2131,
+      "seconds": 46.73157079005614,
+      "top1_matches_clean": true
+    },
+    {
+      "clean_next_token": 24,
+      "clean_target_top1": [
+        24,
+        248046
+      ],
+      "context": 44,
+      "cycle": 24,
+      "draft_candidates": [
+        26
+      ],
+      "first_hidden_bit_mismatch": {
+        "capture_index": 0,
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 6.103515625e-05,
+        "mismatch_count": 138,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 79,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "capture_index": 39,
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.375,
+        "mismatch_count": 2021,
+        "row": 0
+      },
+      "mtp_next_token": 24,
+      "mtp_target_top1": [
+        24,
+        248046
+      ],
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 3.337860107421875e-06,
+        "mismatch_count": 337550,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle24-20260613.json",
+      "root": 15,
+      "seconds": 47.09518387611024,
+      "top1_matches_clean": true
+    },
+    {
+      "clean_next_token": 220,
+      "clean_target_top1": [
+        220,
+        220
+      ],
+      "context": 48,
+      "cycle": 27,
+      "draft_candidates": [
+        26
+      ],
+      "first_hidden_bit_mismatch": {
+        "capture_index": 0,
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "max_abs": 0.000244140625,
+        "mismatch_count": 131,
+        "row": 0
+      },
+      "hidden_checked": 80,
+      "hidden_failed": 79,
+      "hidden_passed": false,
+      "largest_hidden_drift": {
+        "capture_index": 39,
+        "layer_index": 39,
+        "layer_type": "full_attention",
+        "max_abs": 0.328125,
+        "mismatch_count": 2020,
+        "row": 0
+      },
+      "mtp_next_token": 51,
+      "mtp_target_top1": [
+        51,
+        220
+      ],
+      "pre_verify_resident_first_mismatch": {
+        "category": "linear",
+        "dtype": "float32",
+        "layer_index": 0,
+        "max_abs": 3.814697265625e-06,
+        "mismatch_count": 319503,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "raw_path": "/tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle27-20260613.json",
+      "root": 19,
+      "seconds": 46.69848508294672,
+      "top1_matches_clean": false
+    }
+  ],
+  "date": "2026-06-13",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "retained_ready": false,
+  "status": "diagnostic",
+  "summary": {
+    "cycle27_fork": {
+      "clean_next_token": 220,
+      "clean_target_top1": [
+        220,
+        220
+      ],
+      "context": 48,
+      "draft_candidates": [
+        26
+      ],
+      "mtp_next_token": 51,
+      "mtp_target_top1": [
+        51,
+        220
+      ],
+      "root": 19
+    },
+    "first_sampled_hidden_drift_cycle": 2,
+    "first_sampled_top1_divergence_cycle": 27,
+    "interpretation": "Resident target state is bit-clean at cycle 1, bit-drifted by cycle 2, still top-1 equivalent at sampled cycles through 24, and top-1 divergent at sampled cycle 27. This points at accumulated resident-state drift, not a final linear-state commit copy or an isolated verifier-batch math failure.",
+    "last_sampled_cycle_with_clean_top1": 24,
+    "next_action": "Run narrowed layer/logit audits for cycles 25 and 26, then bisect the earliest divergent layer/state update once the top-1 flip onset is bracketed.",
+    "top1_divergence_bracket": "after cycle 24 and no later than cycle 27"
+  },
+  "workload": {
+    "backend": "hip_gfx1100",
+    "candidate_budget": 1,
+    "chain_attn_mode": "decode_batched",
+    "compare_rows": [
+      0,
+      1
+    ],
+    "decode_tokens": 64,
+    "graph_mode": "off",
+    "prompt_name": "translation",
+    "prompt_render": "raw",
+    "prompt_tokens": 15,
+    "sampled_cycles": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      24,
+      27
+    ]
+  }
+}
