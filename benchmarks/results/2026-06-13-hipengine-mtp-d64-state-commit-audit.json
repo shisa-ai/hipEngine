@@ -1,0 +1,184 @@
+{
+  "date": "2026-06-13",
+  "status": "diagnostic_in_progress",
+  "performance_claim": false,
+  "retained_ready": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100, HIP_VISIBLE_DEVICES=0",
+  "workload": {
+    "prompt": "translation",
+    "prompt_render": "raw",
+    "decode_tokens": 64,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "graph_mode": "off",
+    "draft_vocab_cap": "default 65536"
+  },
+  "diagnostic": {
+    "script": "scripts/mtp_state_drift_audit.py",
+    "purpose": "Compare resident MTP verifier-committed target state with a serial AR control after the same committed tokens.",
+    "state_compared": [
+      "linear-attention resident conv/recurrent states for all linear layers",
+      "live full-attention K/V prefix for all full-attention layers",
+      "selected MTP verifier scratch row vs resident slot after commit"
+    ],
+    "validation": [
+      "python3 -m py_compile scripts/mtp_state_drift_audit.py",
+      "python3 scripts/mtp_state_drift_audit.py --help"
+    ]
+  },
+  "runs": [
+    {
+      "name": "decode_batched_chain_tloop_cycles_1_4",
+      "raw_json": "/tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycles1-4-20260613.json",
+      "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 1,2,3,4 --max-cycles 4 --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycles1-4-20260613.json",
+      "status": "state_mismatch",
+      "token_next_match_through_cycle": 4,
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "commit_copy": {
+        "scratch_vs_resident_passed": true,
+        "checked_per_cycle": 60
+      },
+      "first_resident_mismatch": {
+        "cycle": 1,
+        "category": "linear",
+        "layer_index": 0,
+        "state": "recurrent",
+        "dtype": "float32",
+        "max_abs": 9.5367431640625e-7,
+        "mismatch_count": 103835
+      },
+      "first_kv_mismatch": {
+        "cycle": 1,
+        "layer_index": 3,
+        "state": "key_prefix",
+        "first_index": [
+          15,
+          0,
+          0
+        ],
+        "mismatch_count": 116
+      }
+    },
+    {
+      "name": "decode_batched_chain_tloop_gdn_vtile1_cycles_1_4",
+      "raw_json": "/tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-gdn-vtile1-cycles1-4-20260613.json",
+      "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 1,2,3,4 --max-cycles 4 --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-gdn-vtile1-cycles1-4-20260613.json",
+      "status": "state_mismatch",
+      "token_next_match_through_cycle": 4,
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "commit_copy": {
+        "scratch_vs_resident_passed": true,
+        "checked_per_cycle": 60
+      },
+      "interpretation": "VTILE=1 changes the bit-drift pattern and fixed earlier forced-handoff probes, but it does not make resident state bit-exact to AR through cycle 4."
+    },
+    {
+      "name": "c1_loop_tree_tloop_cycles_1_4",
+      "raw_json": "/tmp/hipengine-mtp-state-audit-translation-b1-c1loop-tree-tloop-cycles1-4-20260613.json",
+      "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --compare-after-cycles 1,2,3,4 --max-cycles 4 --out /tmp/hipengine-mtp-state-audit-translation-b1-c1loop-tree-tloop-cycles1-4-20260613.json",
+      "status": "state_mismatch",
+      "token_next_match_through_cycle": 4,
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "commit_copy": {
+        "scratch_vs_resident_passed": true,
+        "checked_per_cycle": 60
+      },
+      "interpretation": "The slow c1/full-attention plus tree-tloop linear path still has tiny resident-state drift versus serial AR, so bit drift is not unique to decode_batched or chain_tloop."
+    },
+    {
+      "name": "decode_batched_chain_tloop_cycles_32",
+      "raw_json": "/tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycles32-20260613.json",
+      "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 4,8,12,16,20,24,28,32 --max-cycles 32 --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycles32-20260613.json",
+      "status": "state_mismatch",
+      "first_token_visible_divergence": {
+        "cycle": 27,
+        "context_before": 48,
+        "context_after": 49,
+        "committed_tokens": [
+          19
+        ],
+        "draft_candidates": [
+          26
+        ],
+        "accepted": 0,
+        "commit_row": 0,
+        "commit_position": 48,
+        "mtp_next_token": 51,
+        "ar_control_next_token": 220
+      },
+      "checked_state_cycles": [
+        4,
+        8,
+        12,
+        16,
+        20,
+        24,
+        28,
+        32
+      ]
+    },
+    {
+      "name": "decode_batched_chain_tloop_cycle_26_27_focus",
+      "raw_json": "/tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycle26-27-20260613.json",
+      "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 26,27 --max-cycles 27 --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycle26-27-20260613.json",
+      "status": "state_mismatch",
+      "cycle_26": {
+        "context_before": 46,
+        "context_after": 48,
+        "committed_tokens": [
+          12,
+          15
+        ],
+        "accepted": 1,
+        "mtp_next_token": 19,
+        "ar_control_next_token": 19,
+        "next_token_match": true,
+        "linear_first_mismatch_max_abs": 3.814697265625e-6,
+        "kv_first_mismatch_count": 4121,
+        "scratch_vs_resident_passed": true
+      },
+      "cycle_27": {
+        "context_before": 48,
+        "context_after": 49,
+        "committed_tokens": [
+          19
+        ],
+        "accepted": 0,
+        "mtp_next_token": 51,
+        "ar_control_next_token": 220,
+        "next_token_match": false,
+        "linear_first_mismatch_max_abs": 4.0531158447265625e-6,
+        "kv_first_mismatch_count": 4249,
+        "scratch_vs_resident_passed": true
+      }
+    }
+  ],
+  "conclusions": [
+    "The single-launch linear-state commit path is not the immediate culprit: selected verifier scratch rows match the committed resident slot bit-for-bit in every compared cycle.",
+    "MTP resident state is not bit-exact to serial AR immediately after the first verifier commit, but tokens remain exact until cycle 27 on this trace.",
+    "The token-visible fork reproduces the known D64 translation mismatch at context 48: after committing token 19, MTP predicts 51 while serial AR predicts 220.",
+    "GDN VTILE=1 and c1_loop+tree_tloop do not eliminate early resident bit drift, so the next audit should compare verifier layer outputs/logits at cycle 27 against a clean AR-prefix control rather than spend more time on fallback thresholds."
+  ],
+  "next_actions": [
+    "Add a cycle-27 layer-output/logit comparator that replays the exact root token 19 from both the drifted MTP resident state and a clean AR resident state, then bisection-searches the first layer/stage where the top-1 path diverges.",
+    "Use the existing full/linear attention trace hooks for that comparator; keep it diagnostic-only and default-off.",
+    "Do not promote D64 AR fallback or adaptive policy defaults until this state drift is fixed or bounded by an exact longer-horizon gate."
+  ]
+}

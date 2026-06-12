@@ -84279,3 +84279,121 @@ small-batch threshold, and LM-head threads. The adaptive-budget retry should
 use max-shape verifier scratch/capture allocation and vary only active rows,
 preferably starting with per-prompt budget selection from an online confidence
 proxy, rather than another sparse fixed-budget replay.
+
+## 2026-06-13 - MTP D64 state-commit audit: commit copy ruled out
+
+Added `scripts/mtp_state_drift_audit.py`, a correctness-only diagnostic that
+drives one persistent-device MTP verifier session and one serial AR control
+session through the same committed tokens.  After selected MTP cycles it
+compares:
+
+- all resident linear-attention conv/recurrent states;
+- all live full-attention K/V prefixes;
+- the selected verifier scratch row against the committed resident slot.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_state_drift_audit.py
+python3 scripts/mtp_state_drift_audit.py --help
+```
+
+Focused runs on W7900/gfx1100, raw `translation`, B=1, D64, graph off, default
+draft vocab cap 65536:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 1,2,3,4 --max-cycles 4 \
+  --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycles1-4-20260613.json
+```
+
+Result: state differs from serial AR after cycle 1, but all next-token checks
+match through cycle 4.  First resident mismatch is linear layer 0 recurrent
+state, FP32 max abs `9.54e-7`; full-attention layer 3 key prefix also differs
+by BF16 bits on the newly committed row.  Crucially, `mtp_scratch_vs_resident`
+passes for all 60 linear state entries at every compared cycle, so the
+linear-state commit copy is not the immediate culprit.
+
+Two controls:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1 HIP_VISIBLE_DEVICES=0 \
+  HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 1,2,3,4 --max-cycles 4 \
+  --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-gdn-vtile1-cycles1-4-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0 HIP_VISIBLE_DEVICES=0 \
+  HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --compare-after-cycles 1,2,3,4 --max-cycles 4 \
+  --out /tmp/hipengine-mtp-state-audit-translation-b1-c1loop-tree-tloop-cycles1-4-20260613.json
+```
+
+Both controls still show tiny resident-state bit drift versus serial AR while
+keeping next tokens exact through cycle 4, and both keep the selected scratch
+row -> resident slot copy exact.  `HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1` changes
+the drift pattern but does not make state bit-exact; `c1_loop + tree_tloop`
+confirms the bit drift is not unique to `decode_batched` full attention.
+
+Extended fork run:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 4,8,12,16,20,24,28,32 --max-cycles 32 \
+  --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycles32-20260613.json
+```
+
+Result: reproduces the known D64 fork at MTP cycle 27 / context 48.  After
+committing token `19` (`draft=[26]`, accepted `0`, commit row `0`, commit
+position `48`), the drifted MTP resident state predicts next token `51`, while
+the serial AR control predicts `220`.
+
+Narrow fork capture:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 26,27 --max-cycles 27 \
+  --out /tmp/hipengine-mtp-state-audit-translation-b1-decode-batched-cycle26-27-20260613.json
+```
+
+Cycle 26 remains token-exact: context `46 -> 48`, committed `[12,15]`, next
+token `19` on both MTP and AR.  Cycle 27 is token-visible: context `48 -> 49`,
+committed `[19]`, MTP next `51`, AR next `220`.  The selected verifier scratch
+row still matches the resident slot bit-for-bit at both cycles.
+
+Decision: keep this as diagnostic evidence, not a speed row.  The final
+linear-state commit copy is ruled out; next work should compare cycle-27
+layer outputs/logits between the drifted MTP resident state and a clean AR
+resident state to find the first stage where top-1 changes.  Do not run more
+fallback/adaptive policy promotion attempts until this longer-horizon state
+drift is fixed or explicitly bounded.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-state-commit-audit.json`.
