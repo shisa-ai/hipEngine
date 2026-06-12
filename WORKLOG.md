@@ -81571,3 +81571,113 @@ env -u HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT HIP_VISIBLE_DEVICES=0 HIPENGI
 - Exact AR: true.
 - Accepted lengths unchanged:
   `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+## 2026-06-12 - MTP linear shared SiLU+down-rotate fusion promoted
+
+Implemented the next small reduced-DAG verifier slice in the MoE C dispatcher:
+`HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=1` now routes the linear-attn shared
+expert through the existing exact FP16 `silu_mul_pair_rotate_out` kernel,
+replacing the old `silu_mul_separate_out_fp16 + paro_rotate1_fp16` pair. This
+preserves the old FP16 activation rounding point before PARO rotation and
+removes one launch from each of the 30 linear-attention layers.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py hipengine/runtime/moe_c1_dispatch.py tests/test_moe_c1_dispatch.py
+PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py tests/test_paro_silu_plan.py
+```
+
+- Targeted tests: `8 passed`.
+
+Opt-in quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Verifier profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-rocprof \
+  --out /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-rocprof.json
+```
+
+Compared to retained full shared-down+combine profile
+`benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json`:
+
+- Verify calls: `902 -> 872/pass`.
+- Verify kernel: `12.714 -> 12.700 ms/pass`.
+- Verify host window: `16.482 -> 16.359 ms/pass`.
+- `moe_paro_rotate_in`: `190 -> 160 calls/pass`, `0.951 -> 0.809 ms/pass`.
+- New fused pair-rotate family: `30 calls/pass`, `0.167 ms/pass`.
+
+Same-session 9-prompt D32 suite A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-9prompt-d32.json
+```
+
+- Exact: `9/9 -> 9/9`.
+- Accepted lengths and active budgets: identical.
+- Actual ratio: `0.917304 -> 0.919396` (+0.23% relative).
+- Wall: `19.547048 -> 19.496479 ms/cycle` (-0.050569 ms, -0.26%).
+- Verify: `16.277693 -> 16.216783 ms/cycle` (-0.060910 ms, -0.37%).
+- Proposal/update: `1.240718 -> 1.246238 ms/cycle` (noise/up).
+- Visible/accepted density unchanged: `2.011852` / `1.011852` per cycle.
+
+Decision:
+
+- Promote default-on with opt-out
+  `HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0`.
+- Added compact retained artifact
+  `benchmarks/results/2026-06-12-hipengine-mtp-linear-shared-silu-rotate-fused-retained.json`.
+- Updated `docs/MTP.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`. Current 35B-A3B MTP row is now `0.919x`,
+  `19.496 ms/cycle`, `16.217 ms` verify, and `1.246 ms` proposal/update.
+
+Default-on smoke after flipping the env default:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-default-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.

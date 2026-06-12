@@ -121,6 +121,20 @@ def _full_shared_down_combine_fused_enabled() -> bool:
     return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
 
 
+def _linear_shared_silu_rotate_fused_enabled() -> bool:
+    """Fuse linear shared SiLU and down-rotate in the C dispatcher.
+
+    Default-on after the 2026-06-12 W7900 D32 9-prompt gate proved this small
+    reduced-DAG slice exact and same-suite positive. Opt out with
+    ``HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0``.
+    """
+
+    value = os.environ.get("HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED")
+    if value is None or value.strip() == "":
+        return True
+    return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
+
+
 def _linear_shared_down_mode() -> int:
     value = os.environ.get("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH")
     if value is None or value.strip() == "":
@@ -361,6 +375,10 @@ def _build_fns_table() -> MoeC1Fns:
     fns.silu_mul_separate_out_fp16 = addr(
         silu_lib, "hipengine_silu_mul_separate_out_fp16",
     )
+    if _linear_shared_silu_rotate_fused_enabled():
+        fns.silu_mul_pair_rotate_out_fp16 = addr(
+            silu_lib, "hipengine_silu_mul_pair_rotate_out_fp16",
+        )
     fns.awq_fusedw4_prefill_dual_fp16 = addr(
         awq_lib, "hipengine_awq_fusedw4_prefill_dual_fp16",
     )

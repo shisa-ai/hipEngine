@@ -122,6 +122,13 @@ typedef hipengine_err_t (*silu_mul_separate_out_fp16_fn)(
     int64_t, int64_t, int64_t,
     void*);
 
+// silu_mul_pair_rotate_out_fp16:
+//   gate, up, pairs, theta, scales, out, rows, features, group_size, krot, stream
+typedef hipengine_err_t (*silu_mul_pair_rotate_out_fp16_fn)(
+    void*, void*, void*, void*, void*, void*,
+    int64_t, int64_t, int64_t, int64_t,
+    void*);
+
 // awq_fusedw4_prefill_dual_fp16:
 //   x_a, x_b, qw_a, qz_a, s_a, qw_b, qz_b, s_b, out_a, out_b,
 //   rows, in_features, out_packed_a, out_packed_b, group_size, tile_m, tile_n,
@@ -192,6 +199,7 @@ struct MoeC1Fns {
     void* gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16;
     void* silu_mul_dual_rotate_out_fp16;
     void* silu_mul_separate_out_fp16;
+    void* silu_mul_pair_rotate_out_fp16; // linear-attn reduced-DAG default
     void* awq_fusedw4_prefill_dual_fp16;       // linear-attn only
     void* gemv_awq_dual_pack8_output_tiled_split_transposed_fp16; // linear-attn opt-in
     void* awq_fusedw4_prefill_fp16;            // linear-attn only
@@ -521,8 +529,19 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
         }
     }
 
-    // ---- 8a. Shared silu/mul separate: gate_out, up_out -> intermediate ----
-    {
+    // ---- 8a-9. Shared silu/mul + optional down rotate fusion ----
+    if (fns->silu_mul_pair_rotate_out_fp16 != nullptr) {
+        auto fn = reinterpret_cast<silu_mul_pair_rotate_out_fp16_fn>(
+            fns->silu_mul_pair_rotate_out_fp16);
+        DISPATCH_CHECK(fn(
+            args->shared_gate_out, args->shared_up_out,
+            args->shared_down_pairs, args->shared_down_theta,
+            args->shared_down_channel_scales,
+            args->shared_down_input,
+            args->tokens, args->shared_expert_intermediate_size,
+            args->group_size, args->krot_shared_down,
+            args->stream));
+    } else {
         auto fn = reinterpret_cast<silu_mul_separate_out_fp16_fn>(
             fns->silu_mul_separate_out_fp16);
         // silu_mul_separate uses a default `threads=256` in the Python wrapper;
@@ -534,12 +553,10 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
             args->tokens, args->shared_expert_intermediate_size,
             args->combine_threads,  // 256
             args->stream));
-    }
 
-    // ---- 9. Shared down rotate (linear-attn only): intermediate -> shared_down_input ----
-    {
-        auto fn = reinterpret_cast<paro_rotate1_fp16_fn>(fns->paro_rotate1_fp16);
-        DISPATCH_CHECK(fn(
+        // Shared down rotate (linear-attn only): intermediate -> shared_down_input.
+        auto rotate_fn = reinterpret_cast<paro_rotate1_fp16_fn>(fns->paro_rotate1_fp16);
+        DISPATCH_CHECK(rotate_fn(
             args->shared_intermediate, args->shared_down_input,
             args->shared_down_pairs, args->shared_down_theta,
             args->shared_down_channel_scales,

@@ -82,6 +82,7 @@ class MoeC1Fns(ctypes.Structure):
         ("gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16", ctypes.c_void_p),
         ("silu_mul_dual_rotate_out_fp16", ctypes.c_void_p),
         ("silu_mul_separate_out_fp16", ctypes.c_void_p),
+        ("silu_mul_pair_rotate_out_fp16", ctypes.c_void_p),  # linear-attn reduced-DAG default
         ("awq_fusedw4_prefill_dual_fp16", ctypes.c_void_p),    # linear-attn only
         ("gemv_awq_dual_pack8_output_tiled_split_transposed_fp16", ctypes.c_void_p),  # linear-attn opt-in
         ("awq_fusedw4_prefill_fp16", ctypes.c_void_p),         # linear-attn only

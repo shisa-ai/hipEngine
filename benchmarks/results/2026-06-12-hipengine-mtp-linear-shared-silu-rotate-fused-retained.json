@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": "llama.cpp MTP prompt suite, 9 prompts, D32, B=3",
+  "runtime_config": {
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "baseline_env": "HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0",
+    "retained_env": "HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=1"
+  },
+  "change": "Route the linear-attention MoE C dispatcher through the existing exact FP16 silu_mul_pair_rotate_out kernel for the shared expert down input, replacing silu_mul_separate_out_fp16 + paro_rotate1_fp16 while preserving the FP16 activation rounding point.",
+  "correctness": {
+    "targeted_tests": "python3 -m py_compile hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py hipengine/runtime/moe_c1_dispatch.py tests/test_moe_c1_dispatch.py && PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py tests/test_paro_silu_plan.py",
+    "targeted_tests_result": "8 passed",
+    "quicksort_opt_in_smoke": "exact_ar_match=true; accepted_lengths=[3,3,2,0,2,0,0,1,3,0,2,0,2]",
+    "quicksort_default_smoke": "exact_ar_match=true; accepted_lengths=[3,3,2,0,2,0,0,1,3,0,2,0,2]",
+    "prompt_suite_exact": "9/9",
+    "accepted_lengths_identical": true,
+    "active_budgets_identical": true
+  },
+  "suite_ab": {
+    "off_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-off-9prompt-d32 --out /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-off-9prompt-d32.json",
+    "on_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-9prompt-d32 --out /tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-9prompt-d32.json",
+    "off": {
+      "actual_decode_speedup_vs_ar": 0.9173037670934507,
+      "cycle_cost_ar_tokens": 2.1668522312552136,
+      "avg_visible_tokens_per_cycle": 2.011851851851852,
+      "avg_accepted_per_cycle": 1.011851851851852,
+      "acceptance_rate": 0.350802961986189,
+      "cycle_wall_ms_per_cycle": 19.547047615648147,
+      "verify_ms_per_cycle": 16.277692709089383,
+      "proposal_update_ms_per_cycle": 1.2407180597792944,
+      "ar_decode_ms_per_token": 9.014286940024855
+    },
+    "on": {
+      "actual_decode_speedup_vs_ar": 0.9193956029048171,
+      "cycle_cost_ar_tokens": 2.1620998646544014,
+      "avg_visible_tokens_per_cycle": 2.011851851851852,
+      "avg_accepted_per_cycle": 1.011851851851852,
+      "acceptance_rate": 0.350802961986189,
+      "cycle_wall_ms_per_cycle": 19.49647886645062,
+      "verify_ms_per_cycle": 16.216782652974175,
+      "proposal_update_ms_per_cycle": 1.246238434536348,
+      "ar_decode_ms_per_token": 9.010230020471177
+    },
+    "delta": {
+      "actual_decode_speedup_vs_ar_abs": 0.002091835811366405,
+      "actual_decode_speedup_vs_ar_rel_pct": 0.2280417770434489,
+      "cycle_wall_ms_per_cycle": -0.050568749197527296,
+      "cycle_wall_rel_pct": -0.25870274729900955,
+      "verify_ms_per_cycle": -0.06091005611520828,
+      "verify_rel_pct": -0.37419342657326615,
+      "proposal_update_ms_per_cycle": 0.005520374757053581,
+      "cycle_cost_ar_tokens": -0.004752366600812241
+    }
+  },
+  "verify_profile": {
+    "baseline_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json",
+    "on_tmp_artifact": "/tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-rocprof.json",
+    "region": "verify_pass",
+    "selected_marker_windows": 11,
+    "baseline": {
+      "kernel_calls_per_pass": 902.0,
+      "kernel_time_ms_per_pass": 12.714392727272726,
+      "host_window_ms_per_pass": 16.481617,
+      "moe_paro_rotate_in_calls_per_pass": 190.0,
+      "moe_paro_rotate_in_ms_per_pass": 0.9509740909090909,
+      "silu_calls_per_pass": 30.0,
+      "silu_ms_per_pass": 0.055106181818181825
+    },
+    "on": {
+      "kernel_calls_per_pass": 872.0,
+      "kernel_time_ms_per_pass": 12.700465272727272,
+      "host_window_ms_per_pass": 16.358589,
+      "moe_paro_rotate_in_calls_per_pass": 160.0,
+      "moe_paro_rotate_in_ms_per_pass": 0.8088684545454545,
+      "silu_pair_rotate_calls_per_pass": 30.0,
+      "silu_pair_rotate_ms_per_pass": 0.16650654545454546
+    },
+    "delta": {
+      "kernel_calls_per_pass": -30.0,
+      "kernel_time_ms_per_pass": -0.013927454545453895,
+      "host_window_ms_per_pass": -0.12302799999999991
+    }
+  },
+  "decision": "Promote default-on with opt-out HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0. The exact same-session prompt-suite gate is positive with identical acceptance, and the verifier profile confirms the intended 30-launch reduction."
+}
