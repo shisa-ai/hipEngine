@@ -82728,3 +82728,24 @@ Decision: no-hold and prototype code removed. Do not retry this local
 QKV+split-only shape without a broader proposer fusion that pays end-to-end.
 Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-proposer-qkv-split-q-gate-nohold.json`.
+
+## 2026-06-12 - MTP acceptance-density endgame notes tightened
+
+Updated `docs/MTP.md` to fold the latest acceptance-density review into the
+deferred endgame section without changing the current implementation order. The
+doc now makes the first pass diagnostic-only: per-depth accept histograms,
+first-rejected-depth reasons, target/proposed token ids, cap-representability,
+and per-prompt zero-accept streaks before changing B or fallback policy.
+
+The B=4/B=5 row now records the marginal payoff rule explicitly: at the current
+`19.440 ms/cycle` and `2.012` visible tokens/cycle, a larger-B row must add
+visible tokens faster than AR's `~0.111 tokens/ms`; if B=4 costs `3-4 ms`, it
+needs roughly `0.33-0.44` additional visible tokens/cycle just to match the AR
+denominator. The quicksort accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]` reaches depth 3 on `4/13` cycles, which is enough
+to instrument B=4 later but not enough to promote it without D32 suite evidence.
+
+The vocab-cap diagnostic now separates cap-caused first rejections from genuine
+prediction misses before any `32768 -> 65536/full` sweep. Tree work remains
+deferred, with chain-plus-one-sibling-at-first-rejection preferred before
+reopening full tree search. No benchmark was run; this is a docs/planning unit.
