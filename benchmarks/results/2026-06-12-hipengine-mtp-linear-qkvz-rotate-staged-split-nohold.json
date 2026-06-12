@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "status": "rejected_no_hold",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "candidate": "Linear-attention QKV/Z separate-output rotate-staged dual W4 GEMV",
+  "decision": "no-hold; prototype code removed",
+  "decision_reason": "A split-output keyed staged-rotate prototype passed wrapper dispatch, HIP build, and a small synthetic GPU bit-exact comparison against rotate2 plus dual decode split, but the full B=3 QKV/Z verifier smoke hung with GPU busy. The in-kernel spin barrier is unsafe at the real grid size because many consumer GEMV blocks can occupy scheduling slots while producer rotate blocks still need to run.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "stable quicksort prompt",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "correctness": {
+    "wrapper_dispatch_tests": "passed while prototype existed",
+    "small_synthetic_gpu_bit_exact": true,
+    "full_model_quicksort_smoke": "hung; terminated manually before JSON output",
+    "promotable_exactness": false
+  },
+  "commands": {
+    "dispatch_and_synthetic_tests": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_qwen35_decode_state.py tests/test_paro_awq_gemv_multi_row_decode.py -k 'linear_qkv_z_fp16 or dual_rotate_staged_split'",
+    "hip_build": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -c \"from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv; build_paro_awq_gemv(load=True); print('built paro_awq_gemv')\"",
+    "quicksort_smoke_opt_in": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_QKVZ_ROTATE_STAGED_SPLIT=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-linear-qkvz-rotate-staged-split-smoke.json"
+  },
+  "baseline_profile": {
+    "source": "/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json",
+    "kernel_calls_per_pass": 842.0,
+    "kernel_ms_per_pass": 12.63632818181818,
+    "host_ms_per_pass": 16.219855090909093
+  },
+  "candidate_profile": null,
+  "notes": "Do not retry this as another same-kernel global spin barrier at the real QKV/Z grid size. A real reopen needs a scheduling-safe design, such as a producer-only rotate stage followed by a separate consumer stage that removes other work elsewhere, or a cooperative/persistent topology that guarantees all producer blocks run before consumers wait."
+}

@@ -140,6 +140,14 @@ Current profile triage after the `0.924x / 19.44 ms` row:
     contiguous `qkv` and `z` buffers through the split-dual decode kernel. A
     real retry requires a new keyed-barrier, separate-output rotate-staged dual
     W4 ABI plus exact kernel tests before any MTP smoke/profile.
+  - 2026-06-12 no-hold: that separate-output ABI was prototyped and removed.
+    Wrapper dispatch, HIP build, and a small synthetic GPU comparison against
+    `paro_rotate2_fp16 + gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16`
+    passed, but the full B=3 QKV/Z smoke hung with GPU busy before writing JSON.
+    The same-kernel spin barrier is unsafe at the real `1536` pack x `4` row
+    grid because consumer GEMV blocks can occupy scheduler slots while producer
+    rotate blocks still need to run. Reopen only with a scheduling-safe design,
+    not another global in-kernel producer/consumer wait.
 
 Acceptance-density backlog for the endgame:
 
@@ -282,6 +290,7 @@ External review ranking, folded into the live plan:
 | Shared-down + shared-gate/residual combine | Parallel-epilogue retry promoted default-on 2026-06-12. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.8843x -> 0.8859x`, wall `20.315 -> 20.204 ms/cycle`, verify `16.523 -> 16.402 ms/cycle`; profile removes 30 combine launches/pass (`942 -> 912`) and moves kernel `12.871 -> 12.781 ms/pass`. The earlier thread-0 epilogue remains no-held and should not be restored. |
 | Linear shared SiLU+down-rotate fusion | Promoted default-on 2026-06-12 through the existing exact pair-rotate kernel. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.9173x -> 0.9194x`, wall `19.547 -> 19.496 ms/cycle`, verify `16.278 -> 16.217 ms/cycle`; profile removes 30 launches/pass (`902 -> 872`) and moves host `16.482 -> 16.359 ms/pass`. |
 | Linear A/B separate-output dual dense GEMV | Promoted default-on 2026-06-12 for small-batch rows. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.9201x -> 0.9240x`, wall `19.480 -> 19.440 ms/cycle`, verify `16.197 -> 16.155 ms/cycle`; profile removes 30 launches/pass (`872 -> 842`) and moves host `16.311 -> 16.220 ms/pass`. |
+| Linear QKV/Z separate-output rotate-staged dual W4 | Checked/no-hold 2026-06-12. The prototype built and passed small synthetic exactness, but the real B=3 verifier smoke hung with GPU busy due to the same-kernel producer/consumer spin barrier at the large QKV/Z grid; code removed. Reopen only with a scheduling-safe topology, not another keyed spin barrier. |
 | `single_linear_out` exact multi-row path | Already default-on after current-stack 9-prompt exactness; not pending. |
 | Specialized proposer router top-k | Promoted default-on 2026-06-12 for the actual 256-expert/top-8 sidecar shape. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.8244x -> 0.8806x`, wall `21.686 -> 20.379 ms/cycle`; profiler router family `1.714 -> 0.373 ms/cycle`. |
 | M12.7 proposer graph capture | Keep as P2 but profile-bound. Post-route-batching proposer all-region has about `0.53 ms/cycle` host gap above kernel time, and direct capture must solve by-value cache pointer/context-length dynamics. |

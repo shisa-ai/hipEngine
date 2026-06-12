@@ -82318,3 +82318,57 @@ reduced-DAG/proposer grind, but the gates are now sharper:
 - Tree stays deferred; lower wall alone does not make the old tree overhead
   cheaper, so any retest should start with chain-plus-one-sibling at the first
   rejection boundary after per-depth histograms justify it.
+
+## 2026-06-12 - MTP QKV/Z rotate-staged split no-hold
+
+Tried the next reduced-DAG probe: a rows>1 linear-attn QKV/Z
+separate-output rotate-staged dual W4 GEMV, opt-in as
+`HIPENGINE_LINEAR_QKVZ_ROTATE_STAGED_SPLIT=1`. The goal was to remove the
+separate `paro_rotate2_fp16` launch while preserving the current split-dual
+decode layout (`scratch.qkv` and `scratch.z` are separate contiguous row-major
+buffers at B=3).
+
+Prototype evidence while the code existed:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 -c "from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv; build_paro_awq_gemv(load=True); print('built paro_awq_gemv')"
+```
+
+Built successfully.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  pytest -q tests/test_qwen35_decode_state.py tests/test_paro_awq_gemv_multi_row_decode.py \
+  -k 'linear_qkv_z_fp16 or dual_rotate_staged_split'
+```
+
+Passed `4` selected tests, including a small synthetic GPU bit-exact comparison
+against the retained `paro_rotate2_fp16 +
+gemv_awq_dual_pack8_multi_row_decode_split_transposed_fp16` chain.
+
+Full model smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_QKVZ_ROTATE_STAGED_SPLIT=1 PYTHONPATH=. timeout 1800 \
+python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-linear-qkvz-rotate-staged-split-smoke.json
+```
+
+No JSON was written; the process sat with GPU0 at 100% busy and no progress,
+then was terminated manually. Diagnosis: the same-kernel producer/consumer
+spin barrier is unsafe at the real QKV/Z grid (`out_packed_a + out_packed_b =
+1536`, rows `4`). Consumer GEMV blocks can occupy scheduler slots and spin
+before all producer rotate blocks run. The small-grid synthetic test was not
+enough to expose this.
+
+Decision: no-hold. Removed the prototype code and tests. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-linear-qkvz-rotate-staged-split-nohold.json`
+plus `docs/MTP.md` / `benchmarks/CHANGELOG.md` notes. Reopen only with a
+scheduling-safe topology, not another keyed in-kernel global spin barrier.
