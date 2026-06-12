@@ -86044,3 +86044,17 @@ exact D64 `9/9`, observed `0.848x`, actual `0.843x`, wall
 
 Decision unchanged: keep this as an opt-in correctness fallback below the D32
 current-best row, not as a promoted speed row.
+
+## 2026-06-13 - MTP historical tracker cleanup
+
+Cleaned up the old M12 implementation track in `docs/MTP.md` so it no longer
+shows M12.7 proposer graph capture and M12.8 adaptive B/fallback policy as
+generic `Pending` items.  The live top table already has the current evidence:
+whole-body proposer graph capture is no-held/re-scoped to smaller capture-safe
+subgraphs, and adaptive B has measured oracle headroom but no promoted runtime
+selector after the confidence gate, max-shape active-budget cap, offline replay,
+and live ladder no-holds.
+
+`rg -n "\\bPending\\b" docs/MTP.md` now has no matches.  Remaining `TBD`
+markers are historical budget-shape placeholders, not unresolved items in the
+current break-even sprint table.
