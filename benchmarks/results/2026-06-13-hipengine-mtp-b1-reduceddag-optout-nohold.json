@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "date": "2026-06-13",
+  "status": "diagnostic_no_hold",
+  "performance_claim": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "workload": {
+    "prompt": "quicksort",
+    "decode_tokens": 32,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": "default cap65536 (HIPENGINE_MTP_DRAFT_VOCAB_CAP unset)"
+  },
+  "purpose": "Recheck whether B=3-promoted reduced-DAG defaults still hold after the retained operating point moved to B=1 rows=2.",
+  "commands": {
+    "default": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613 --out /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613.json",
+    "optout": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED=0 HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0 HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=0 timeout 1800 python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-reduceddag-off-quicksort-20260613 --out /tmp/hipengine-mtp-b1-reduceddag-off-quicksort-20260613.json"
+  },
+  "disabled_flags": {
+    "HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED": "0",
+    "HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED": "0",
+    "HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED": "0",
+    "HIPENGINE_LINEAR_AB_DUAL_SEPARATE": "0"
+  },
+  "results": {
+    "default": {
+      "exact_ar_match": true,
+      "actual_speedup_vs_ar": 0.9544146863714007,
+      "cycle_cost_ar_tokens": 1.5872946274688262,
+      "visible_tokens_per_cycle": 1.55,
+      "cycle_wall_ms_per_cycle": 14.1764866,
+      "verify_ms_per_cycle": 12.431005388498306,
+      "proposal_update_ms_per_cycle": 1.7255410784855485,
+      "ar_decode_tok_s": 111.96671447979404,
+      "mtp_decode_tok_s": 106.86267668426879,
+      "accepted_lengths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    "optout": {
+      "exact_ar_match": true,
+      "actual_speedup_vs_ar": 0.9300579793379623,
+      "cycle_cost_ar_tokens": 1.63309226073934,
+      "visible_tokens_per_cycle": 1.55,
+      "cycle_wall_ms_per_cycle": 14.656566800000002,
+      "verify_ms_per_cycle": 12.919855245854706,
+      "proposal_update_ms_per_cycle": 1.7192712984979153,
+      "ar_decode_tok_s": 111.42392915231281,
+      "mtp_decode_tok_s": 103.63071439729632,
+      "accepted_lengths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    "delta_optout_minus_default": {
+      "actual_speedup_vs_ar": -0.0243567070334384,
+      "cycle_cost_ar_tokens": 0.04579763327051378,
+      "visible_tokens_per_cycle": 0.0,
+      "cycle_wall_ms_per_cycle": 0.4800802000000019,
+      "verify_ms_per_cycle": 0.48884985735639946,
+      "proposal_update_ms_per_cycle": -0.006269779987633197,
+      "mtp_decode_tok_s": -3.2319622869724684
+    }
+  },
+  "decision": "No-hold for the opt-out group. The retained reduced-DAG defaults remain exact and faster at the B=1 operating point.",
+  "next_action": "Keep the current defaults on. Future reduced-DAG work should remove additional launches or use broader structural composites, not revert the retained B=3 slices for B=1."
+}

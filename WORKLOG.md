@@ -85497,3 +85497,74 @@ free and exact.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-active-budget-cap-nohold.json`.
+
+## 2026-06-13 - MTP B=1 reduced-DAG opt-out recheck no-hold
+
+Rechecked whether the B=3-promoted reduced-DAG defaults still hold after the
+retained operating point moved to B=1 (`rows=2`).  The test disables the current
+retained MoE/shared reduced-DAG slices as a group:
+
+- `HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED=0`
+- `HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0`
+- `HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0`
+- `HIPENGINE_LINEAR_AB_DUAL_SEPARATE=0`
+
+Baseline command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613 \
+  --out /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613.json
+```
+
+Opt-out command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. \
+  HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED=0 \
+  HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED=0 \
+  HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED=0 \
+  HIPENGINE_LINEAR_AB_DUAL_SEPARATE=0 \
+  timeout 1800 \
+  python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-reduceddag-off-quicksort-20260613 \
+  --out /tmp/hipengine-mtp-b1-reduceddag-off-quicksort-20260613.json
+```
+
+Results:
+
+| Config | Exact | Speedup | Cycle cost | Wall | Verify | Proposal/update | Visible/cycle |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Default | yes | `0.954x` | `1.587` | `14.176 ms` | `12.431 ms` | `1.726 ms` | `1.550` |
+| Reduced-DAG opt-out | yes | `0.930x` | `1.633` | `14.657 ms` | `12.920 ms` | `1.719 ms` | `1.550` |
+
+Accepted trace was identical:
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.
+
+Decision: no-hold for the opt-out group.  The retained reduced-DAG defaults still
+hold at B=1; disabling them regresses wall by `+0.480 ms/cycle` and verify by
+`+0.489 ms/cycle` with no acceptance-density change.  Future reduced-DAG work
+should remove additional launches or build broader structural composites, not
+revert these retained slices for B=1.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-reduceddag-optout-nohold.json`.
