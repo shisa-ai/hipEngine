@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "status": "rejected",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "candidate": "Opt-in HIP graph replay for the fixed-pointer route-batched proposer expert subgraph",
+  "decision": "no-hold; experiment code removed",
+  "decision_reason": "The graph replay stayed exact but did not improve the metric it should directly affect. Same-session graph-on versus graph-off showed identical visible/accepted density and a slightly better total wall from verifier noise, while proposal/update regressed from 1.2492 to 1.2550 ms/cycle. Because the candidate only changes proposer selected-expert dispatch, the verifier-side wall movement is not retained evidence.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "llama.cpp mtp-bench prompt suite, raw prompt render",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768,
+    "current_stack": "direct-gate full attention, route-batched proposer expert, fused proposer router, retained reduced-DAG verifier defaults"
+  },
+  "correctness": {
+    "quicksort_smoke_exact": true,
+    "quicksort_accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "suite_exact_candidate": "9/9",
+    "suite_exact_control": "9/9",
+    "accepted_density_changed": false
+  },
+  "commands": {
+    "unit_tests": "python3 -m py_compile hipengine/speculative/mtp_native.py tests/test_mtp_input_fusion_kernel.py && PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py -q",
+    "quicksort_smoke_candidate": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT_GRAPH=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-route-expert-graph-smoke-20260612.json",
+    "suite_candidate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT_GRAPH=1 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-route-expert-graph-on-9prompt-d32 --out /tmp/hipengine-mtp-route-expert-graph-on-9prompt-d32.json",
+    "suite_control": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-route-expert-graph-off-control-9prompt-d32 --out /tmp/hipengine-mtp-route-expert-graph-off-control-9prompt-d32.json"
+  },
+  "suite_control": {
+    "source_artifact": "/tmp/hipengine-mtp-route-expert-graph-off-control-9prompt-d32.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.9231033155665688,
+    "cycle_cost_ar_tokens": 2.151518813401543,
+    "cycle_wall_ms_per_cycle": 19.376171294660494,
+    "verify_ms_per_cycle": 16.092332879528346,
+    "proposal_update_ms_per_cycle": 1.2492052268633551,
+    "visible_tokens_per_cycle": 2.011851851851852,
+    "accepted_per_cycle": 1.011851851851852,
+    "ar_decode_ms_per_token": 8.99956009056445
+  },
+  "suite_candidate": {
+    "source_artifact": "/tmp/hipengine-mtp-route-expert-graph-on-9prompt-d32.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.9244435027595768,
+    "cycle_cost_ar_tokens": 2.148732797217848,
+    "cycle_wall_ms_per_cycle": 19.34626626925926,
+    "verify_ms_per_cycle": 16.03304237365165,
+    "proposal_update_ms_per_cycle": 1.2550265568647718,
+    "visible_tokens_per_cycle": 2.011851851851852,
+    "accepted_per_cycle": 1.011851851851852,
+    "ar_decode_ms_per_token": 8.996114931101651
+  },
+  "delta_candidate_minus_control": {
+    "actual_decode_speedup_vs_ar": 0.0013401871930079912,
+    "cycle_cost_ar_tokens": -0.002786016183694784,
+    "cycle_wall_ms_per_cycle": -0.029905025401234298,
+    "verify_ms_per_cycle": -0.05929050587669593,
+    "proposal_update_ms_per_cycle": 0.0058213300014167135,
+    "visible_tokens_per_cycle": 0.0,
+    "accepted_per_cycle": 0.0,
+    "ar_decode_ms_per_token": -0.003445159462799552
+  },
+  "prototype_scope": "The removed prototype captured only the four fixed-pointer route-batched selected-expert proposer kernels after router top-k and before shared expert work. It did not capture dynamic K/V writes, attention context length, shared expert, LM-head, or verifier work."
+}

@@ -82943,3 +82943,83 @@ tightened `docs/MTP.md` so the later diagnostic pass is explicit about:
   promoted path.
 
 No benchmark or speed claim in this entry.
+
+## 2026-06-12 - MTP proposer route-expert graph no-held
+
+Tested a narrower M12.7 graph-capture retry than the whole-body proposer graph:
+only the fixed-pointer route-batched selected-expert subgraph after router top-k
+and before shared expert work. The prototype was guarded by
+`HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT_GRAPH=1` and captured the four
+route-batched expert kernels:
+
+- `dflash_dense_bf16_to_bf16_expert_routes` gate/up;
+- `dflash_silu_mul_gate_up_routes_bf16`;
+- `dflash_dense_bf16_to_bf16_expert_routes` down;
+- `mtp_accumulate_routes_bf16_to_f32`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py tests/test_mtp_input_fusion_kernel.py
+PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py -q
+```
+
+Exact quicksort smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT_GRAPH=1 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-route-expert-graph-smoke-20260612.json
+```
+
+Result: exact AR match, locked accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Exact 9-prompt D32 same-session A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT_GRAPH=1 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-route-expert-graph-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-route-expert-graph-on-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-route-expert-graph-off-control-9prompt-d32 \
+  --out /tmp/hipengine-mtp-route-expert-graph-off-control-9prompt-d32.json
+```
+
+Both runs were exact `9/9` with identical visible/accepted density. Graph-on
+moved total wall `19.376 -> 19.346 ms/cycle`, but this was not retained because
+the directly affected proposal/update metric regressed
+`1.2492 -> 1.2550 ms/cycle`; the apparent wall gain came from verifier-window
+noise (`16.092 -> 16.033 ms/cycle`), which this proposer-only subgraph cannot
+claim. Ratio moved `0.9231x -> 0.9244x`, below the retained `0.9273x` row.
+
+Decision: no-hold, prototype code removed. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-proposer-route-expert-graph-nohold.json`
+and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
