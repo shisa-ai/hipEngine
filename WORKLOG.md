@@ -81814,3 +81814,41 @@ Decision:
   `benchmarks/results/2026-06-12-hipengine-mtp-proposer-shared-gate-up-dual-nohold.json`.
 - Updated `docs/MTP.md` and refreshed the acceptance-density endgame table to
   the current `19.496 ms/cycle`, `2.012` visible/cycle baseline.
+
+## 2026-06-12 - MTP current-profile triage after 0.919x row
+
+Read-only triage of the next wall-cut candidate list after the retained
+linear shared SiLU+down-rotate row (`0.919x`, `19.50 ms/cycle`, exact D32
+`9/9`):
+
+- Current retained verifier profile
+  `/tmp/hipengine-mtp-linear-shared-silu-rotate-fused-on-rocprof.json` is
+  `872` launches/pass, `12.700 ms` kernel/pass, and `16.359 ms` host
+  marker/pass on W7900/gfx1100, quicksort D32 B=3,
+  `chain_attn_mode=decode_batched`, graph off.
+- Fill/copy cleanup is not the next headline item: verifier `runtime_copy` is
+  only `2` launches/pass and `0.0068 ms/pass`, and there is no meaningful
+  `fillBufferAligned` bucket in the current verifier window.
+- Stale full-attn rotate/KV flags are already no-held:
+  `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED` and
+  `HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED` have rejected artifacts. Do not
+  spend suite time there unless a future callsite/shape is materially different.
+- Linear-state commit is already the retained chunked one-launch path
+  (`HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED=1`). It remains visible at about
+  `0.20 ms/pass`, but the prior 32 KiB chunk trial was not a total-profile win;
+  further commit work belongs with inter-cycle overlap or a broader commit
+  design.
+- Full-attn shared gate/up has one remaining small-batch dual W4 path, but
+  switching it to split output-tiled would lose the packed gate/up buffer that
+  feeds the fused SiLU+down-rotate path. Treat that as a controlled micro
+  experiment only, not the next high-ceiling lever.
+- Acceptance-density suggestions from review are already captured in
+  `docs/MTP.md` and remain endgame work: B=4/B=5 with per-depth histograms
+  first, vocab-cap rejection census second, then adaptive B/AR fallback,
+  tree/rejection-boundary sibling, and relaxed speculative sampling out of the
+  exact-default sprint.
+
+Decision: keep the next implementation push focused on real reduced-DAG
+verifier composites and the bounded proposer graph-capture design. Avoid
+rerunning stale exact-but-negative micro-fusions unless the current profile
+shows a changed callsite or a new design removes actual DAG nodes.

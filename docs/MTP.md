@@ -89,6 +89,29 @@ Current priority order after folding in the external review:
 | Done | Resident state/cache Tensor view caching | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=1` caches `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` non-owning Tensor views with explicit invalidation. Exact `9/9`, identical acceptance, wall `26.642 -> 26.426 ms/cycle`, verify `21.506 -> 21.278 ms/cycle`, ratio `0.6924x -> 0.6986x`; graph-off host control `32.52 -> 31.70 ms/pass`. |
 | Done | `single_linear_out` / `single_full_v` exact multi-row routing | Already retained | Default-on after exact D32 gates | Not pending next work; keep the retained paths and remove their opt-outs after the follow-up defaults-only gates in `docs/REFACTOR.md`. |
 
+Current profile triage after the `0.919x / 19.50 ms` row:
+
+- The retained `decode_batched + graph_off` verifier profile is down to about
+  `872` launches/pass, `12.70 ms` kernel/pass, and `16.36 ms` host marker/pass
+  on the quicksort D32 B=3 shape.
+- Do not spend the next implementation unit on fill/copy cleanup unless a fresh
+  profile shows a live bucket again: current `runtime_copy` is only
+  `2` launches/pass and `0.0068 ms/pass`, and `fillBufferAligned` is effectively
+  absent from the verifier window.
+- The reviewer-flagged linear-state commit item is already the retained chunked
+  one-launch path. It is still visible (`~0.20 ms/pass`), but prior 32 KiB
+  chunk tuning only saved about `2 us` in-kernel and worsened the total profile,
+  so further commit work belongs with inter-cycle overlap or a broader commit
+  design, not as a standalone hot item.
+- The old full-attn KV/rotate flags
+  (`HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED`,
+  `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED`) have rejected artifacts and should
+  not be re-run as generic "maybe" checks. Reopen only if the callsite and
+  shape differ from those artifacts.
+- The remaining high-leverage wall path is still real reduced-DAG work:
+  remove named projection/router/MoE/attention launches or fuse structural
+  composites. A C wrapper around the same launches is not enough.
+
 Acceptance-density backlog for the endgame:
 
 | Rank | Diagnostic / policy | Why it matters | First gate |
