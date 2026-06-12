@@ -82683,3 +82683,48 @@ output index 9 (`156973 -> 149315`), and `accepted_lengths` were all zero over
 should not be retried as a direct epilogue swap; a future attempt needs a
 full-proposer hidden/logit comparator around the shared expert tail. Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-proposer-shared-down-accum-fused-nohold.json`.
+
+## 2026-06-12 - MTP proposer QKV+query/gate split no-held
+
+Tried another proposer-local launch cut: fuse
+`dflash_qkv_proj_bf16_mixed + mtp_split_q_gate_f32_bf16` so the Q projection
+writes query FP32 and gate BF16 directly, removing one split launch per proposer
+advance. The prototype was behind
+`HIPENGINE_MTP_PROPOSER_QKV_SPLIT_Q_GATE=1`.
+
+Focused checks passed before the full gates:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q \
+  tests/test_mtp_input_fusion_kernel.py::test_mtp_proposer_shared_gate_up_dual_optin \
+  tests/test_mtp_input_fusion_kernel.py::test_mtp_proposer_qkv_split_q_gate_matches_two_launch_path
+```
+
+The new fused kernel also matched the old two-launch path bitwise in a one-off
+real-shape synthetic probe at `rows=1,in=2048,q_heads=16,head_dim=256,kv=512`.
+Important gate note: the bare `mtp_chain_e2e_smoke.py` default one-token prompt
+is not the current retained MTP gate; the documented quicksort prompt tokens are.
+With `PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)`, the opt-in
+quicksort smoke was exact and matched the locked accepted trace:
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Proposer marker profile A/B on quicksort:
+
+- off: `91.82` calls/pass, `2.9766 ms/pass` kernel, `3.5369 ms/pass` host
+  marker.
+- on: `88.73` calls/pass, `2.9805 ms/pass` kernel, `3.5185 ms/pass` host
+  marker.
+
+The launch-count and host-marker deltas were real but too small/noisy, so the
+full 9-prompt D32 suite decided it:
+
+- off: exact `9/9`, ratio `0.92639x`, wall `19.357 ms/cycle`, verify
+  `16.074 ms/cycle`, proposal/update `1.247 ms/cycle`, visible/cycle `2.012`.
+- on: exact `9/9`, identical accepted lengths/active budgets, ratio `0.92166x`,
+  wall `19.399 ms/cycle`, verify `16.113 ms/cycle`, proposal/update
+  `1.261 ms/cycle`, visible/cycle `2.012`.
+
+Decision: no-hold and prototype code removed. Do not retry this local
+QKV+split-only shape without a broader proposer fusion that pays end-to-end.
+Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-proposer-qkv-split-q-gate-nohold.json`.

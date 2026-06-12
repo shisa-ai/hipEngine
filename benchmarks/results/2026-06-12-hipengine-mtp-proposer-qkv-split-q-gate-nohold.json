@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "status": "no_hold",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "llama.cpp mtp-bench 9-prompt D32",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "candidate": {
+    "flag": "HIPENGINE_MTP_PROPOSER_QKV_SPLIT_Q_GATE=1",
+    "description": "Prototype fused the proposer DFlash Q/K/V projection with the immediate MTP query/gate split, writing query FP32 and gate BF16 directly and removing one mtp_split_q_gate launch per proposer advance.",
+    "code_retained": false
+  },
+  "correctness": {
+    "focused_gpu_equivalence": "new fused QKV+split kernel matched dflash_qkv_proj_bf16_mixed + mtp_split_q_gate_f32_bf16 bitwise on a small HIP test and on a one-off real-shape synthetic probe at rows=1,in=2048,q_heads=16,head_dim=256,kv_features=512",
+    "quicksort_smoke": {
+      "exact_ar_match": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+    },
+    "prompt_suite": {
+      "control_exact": "9/9",
+      "candidate_exact": "9/9",
+      "accepted_lengths_identical": true,
+      "active_budgets_identical": true
+    }
+  },
+  "profile": {
+    "region": "proposer_all",
+    "control": {
+      "kernel_calls_per_pass": 91.81818181818181,
+      "kernel_ms_per_pass": 2.976644545454546,
+      "host_ms_per_pass": 3.5369010909090908
+    },
+    "candidate": {
+      "kernel_calls_per_pass": 88.72727272727273,
+      "kernel_ms_per_pass": 2.9804690909090907,
+      "host_ms_per_pass": 3.518490636363637
+    },
+    "delta_candidate_minus_control": {
+      "kernel_calls_per_pass": -3.090909090909079,
+      "kernel_ms_per_pass": 0.003824545454544831,
+      "host_ms_per_pass": -0.01841045454545389
+    }
+  },
+  "suite_result": {
+    "control": {
+      "actual_ratio": 0.9263933703018005,
+      "cycle_wall_ms": 19.357429663179012,
+      "verify_ms": 16.073781214589772,
+      "proposal_update_ms": 1.246894570175317,
+      "visible_per_cycle": 2.011851851851852,
+      "cycle_cost_ar_tokens": 2.1451287705511937
+    },
+    "candidate": {
+      "actual_ratio": 0.9216570153661641,
+      "cycle_wall_ms": 19.398941736481483,
+      "verify_ms": 16.11333844144139,
+      "proposal_update_ms": 1.2611079440354427,
+      "visible_per_cycle": 2.011851851851852,
+      "cycle_cost_ar_tokens": 2.153607921144158
+    },
+    "delta_candidate_minus_control": {
+      "actual_ratio": -0.0047363549356364,
+      "cycle_wall_ms": 0.04151207330247075,
+      "verify_ms": 0.03955722685161689,
+      "proposal_update_ms": 0.014213373860125778,
+      "visible_per_cycle": 0.0,
+      "cycle_cost_ar_tokens": 0.008479150592964224
+    }
+  },
+  "decision": "No-hold. The prototype removed about 3.09 proposer launches per profiled pass and had a tiny host-marker win, but same-suite wall/proposal/update/ratio regressed with identical acceptance. Prototype code was removed."
+}
