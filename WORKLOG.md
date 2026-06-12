@@ -82471,3 +82471,18 @@ moved proposal/update `1.308 -> 1.319 ms/cycle` and MTP decode tok/s
 `118.512 -> 118.423`. No speed row and experiment code removed. Revisit only as
 part of a fixed-address/device-indexed KV-write graph body. Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-proposer-bucketed-attention-nohold.json`.
+
+## 2026-06-12 - MTP M12.7 graphability audit
+
+Docs-only follow-up while continuing the non-acceptance wall-cut list. Re-read
+the retained proposer stack after route batching and bucketed-attention no-hold:
+`NativeMtpChainProposer.advance()` still bakes `key_cache_dst`,
+`value_cache_dst`, and `context_len` from host `cache_len`, while the harness
+mixes result-producing advances with state-only repair advances. The HIP runtime
+wrapper exposes graph capture/instantiate/launch, but no graph-node parameter
+update calls, so M12.7 cannot be a cheap capture wrapper around the current
+function without freezing stale cache slots. Updated `docs/MTP.md` to make the
+first real prerequisite explicit: fixed base pointers plus device-read metadata,
+with graph-safe proposer KV writes either in the QKV/rotary producers or in an
+indexed K/V copy kernel consuming a device cache-slot scalar, paired with the
+bucketed attention live-context scalar. No benchmark claim and no code change.
