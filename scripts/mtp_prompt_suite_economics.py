@@ -34,6 +34,8 @@ SUMMARY_FIELDS = (
     "cycle_cost_ar_tokens_mean",
     "observed_cycle_speedup_vs_ar_mean",
     "actual_decode_speedup_vs_ar_mean",
+    "ar_decode_tok_s_mean",
+    "mtp_decode_tok_s_mean",
     "avg_visible_tokens_per_cycle_mean",
     "avg_accepted_per_cycle_mean",
     "acceptance_rate_mean",
@@ -104,6 +106,47 @@ def _split_csv(value: str | None) -> list[str]:
     if value is None:
         return []
     return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def _parse_prompt_budget_map(value: str | None) -> dict[str, int]:
+    if not value:
+        return {}
+    text = str(value).strip()
+    data: Any
+    if text.startswith("{"):
+        data = json.loads(text)
+    else:
+        path = Path(text)
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            data = None
+
+    if isinstance(data, dict):
+        if isinstance(data.get("oracle_bound"), dict) and isinstance(data["oracle_bound"].get("choices"), dict):
+            data = data["oracle_bound"]["choices"]
+        elif isinstance(data.get("prompt_budget_map"), dict):
+            data = data["prompt_budget_map"]
+        elif isinstance(data.get("choices"), dict):
+            data = data["choices"]
+    if isinstance(data, dict):
+        out = {str(name): int(budget) for name, budget in data.items()}
+    else:
+        out = {}
+        for part in _split_csv(text):
+            if "=" not in part:
+                raise ValueError(
+                    "--prompt-budget-map must be a JSON object, a JSON artifact "
+                    "with oracle_bound.choices, or comma-separated name=budget pairs"
+                )
+            name, budget = part.split("=", 1)
+            out[str(name).strip()] = int(str(budget).strip())
+    if not out:
+        raise ValueError("--prompt-budget-map resolved to an empty map")
+    bad = {name: budget for name, budget in out.items() if int(budget) <= 0}
+    if bad:
+        raise ValueError(f"prompt budgets must be positive integers: {bad!r}")
+    return out
 
 
 def _safe_name(name: str) -> str:
@@ -178,7 +221,24 @@ def _load_prompt_encoder(model: Path, mode: str) -> PromptEncoder:
     raise ValueError(f"unknown prompt render mode: {mode}")
 
 
-def _economics_command(args: argparse.Namespace, *, prompt_tokens_file: Path, prompt_raw_root: Path, out_path: Path) -> list[str]:
+def _candidate_budgets_for_prompt(args: argparse.Namespace, prompt_name: str) -> str:
+    prompt_budget_map = getattr(args, "prompt_budget_map_resolved", {}) or {}
+    if not prompt_budget_map:
+        return str(args.candidate_budgets)
+    if prompt_name not in prompt_budget_map:
+        raise ValueError(f"--prompt-budget-map missing selected prompt: {prompt_name}")
+    return str(int(prompt_budget_map[prompt_name]))
+
+
+def _economics_command(
+    args: argparse.Namespace,
+    *,
+    prompt_name: str,
+    prompt_tokens_file: Path,
+    prompt_raw_root: Path,
+    out_path: Path,
+) -> list[str]:
+    candidate_budgets = _candidate_budgets_for_prompt(args, prompt_name)
     cmd = [
         sys.executable,
         "scripts/mtp_verifier_economics.py",
@@ -189,7 +249,7 @@ def _economics_command(args: argparse.Namespace, *, prompt_tokens_file: Path, pr
         "--decode-tokens",
         str(args.decode_tokens),
         "--candidate-budgets",
-        str(args.candidate_budgets),
+        str(candidate_budgets),
         "--runs",
         str(args.runs),
         "--proposal-impl",
@@ -261,6 +321,55 @@ def _aggregate_across_prompts(results: list[dict[str, Any]]) -> dict[str, Any]:
     return by_budget
 
 
+def _aggregate_selected_policy(
+    results: list[dict[str, Any]],
+    prompt_budget_map: dict[str, int],
+    *,
+    decode_tokens: int,
+) -> dict[str, Any]:
+    if not prompt_budget_map:
+        return {}
+    rows: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for result in results:
+        name = str(result.get("name"))
+        budget = str(int(prompt_budget_map[name]))
+        row = (result.get("by_budget") or {}).get(budget)
+        if row is None:
+            missing.append(f"{name}:B{budget}")
+            continue
+        rows.append(row)
+    if missing:
+        raise ValueError(f"selected policy missing result rows: {', '.join(missing)}")
+    summary: dict[str, Any] = {
+        "prompts": len(rows),
+        "all_exact_ar_match": all(bool(row.get("all_exact_ar_match")) for row in rows),
+        "budget_choices": {str(name): int(budget) for name, budget in prompt_budget_map.items()},
+    }
+    for field in SUMMARY_FIELDS:
+        vals = [row[field] for row in rows if row.get(field) is not None]
+        summary[f"{field}_across_prompts_mean"] = _mean(vals)
+        summary[f"{field}_across_prompts_std"] = _std(vals)
+    for field in ("proposal_snapshot_saves_mean", "proposal_snapshot_skips_mean"):
+        vals = [row[field] for row in rows if row.get(field) is not None]
+        summary[f"{field}_across_prompts_sum"] = float(sum(vals)) if vals else None
+    ar_seconds = [
+        float(decode_tokens) / float(row["ar_decode_tok_s_mean"])
+        for row in rows
+        if row.get("ar_decode_tok_s_mean")
+    ]
+    mtp_seconds = [
+        float(decode_tokens) / float(row["mtp_decode_tok_s_mean"])
+        for row in rows
+        if row.get("mtp_decode_tok_s_mean")
+    ]
+    if len(ar_seconds) == len(rows) and len(mtp_seconds) == len(rows) and sum(mtp_seconds) > 0.0:
+        summary["actual_decode_speedup_vs_ar_total_time"] = float(sum(ar_seconds) / sum(mtp_seconds))
+        summary["ar_decode_seconds_sum"] = float(sum(ar_seconds))
+        summary["mtp_decode_seconds_sum"] = float(sum(mtp_seconds))
+    return summary
+
+
 def _run_prompt(args: argparse.Namespace, *, prompt: dict[str, str], encoder: PromptEncoder) -> dict[str, Any]:
     prompt_name = str(prompt["name"])
     prompt_dir = args.raw_root / _safe_name(prompt_name)
@@ -275,10 +384,18 @@ def _run_prompt(args: argparse.Namespace, *, prompt: dict[str, str], encoder: Pr
     prompt_text_file.write_text(encoded.rendered_text, encoding="utf-8")
     economics_out = prompt_dir / "economics.json"
     economics_log = prompt_dir / "economics.log"
-    cmd = _economics_command(args, prompt_tokens_file=prompt_tokens_file, prompt_raw_root=prompt_dir / "raw", out_path=economics_out)
+    candidate_budgets = _candidate_budgets_for_prompt(args, prompt_name)
+    cmd = _economics_command(
+        args,
+        prompt_name=prompt_name,
+        prompt_tokens_file=prompt_tokens_file,
+        prompt_raw_root=prompt_dir / "raw",
+        out_path=economics_out,
+    )
 
     result: dict[str, Any] = {
         "name": prompt_name,
+        "selected_candidate_budgets": candidate_budgets,
         "prompt_render_mode": encoder.mode,
         "source_prompt_chars": len(encoded.source_text),
         "rendered_prompt_chars": len(encoded.rendered_text),
@@ -329,6 +446,15 @@ def main() -> int:
     )
     parser.add_argument("--decode-tokens", type=int, default=192)
     parser.add_argument("--candidate-budgets", default="3")
+    parser.add_argument(
+        "--prompt-budget-map",
+        help=(
+            "Diagnostic fixed-per-prompt policy. Accepts comma-separated "
+            "name=budget pairs, a JSON object, or an artifact containing "
+            "oracle_bound.choices. When set, each selected prompt runs only "
+            "its mapped fixed budget."
+        ),
+    )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--proposal-impl", choices=("persistent_device", "persistent_device_b1", "reload_d2h"), default="persistent_device")
     parser.add_argument("--backend", default="hip_gfx1151")
@@ -378,6 +504,20 @@ def main() -> int:
 
     suite = _load_prompt_suite(args.prompts_file)
     prompts = _select_prompts(suite, names_csv=args.prompt_names, limit=args.limit)
+    args.prompt_budget_map_resolved = _parse_prompt_budget_map(args.prompt_budget_map)
+    if args.prompt_budget_map_resolved:
+        selected_prompt_names = [str(prompt["name"]) for prompt in prompts]
+        selected_names = set(selected_prompt_names)
+        missing = sorted(selected_names.difference(args.prompt_budget_map_resolved))
+        extra = sorted(set(args.prompt_budget_map_resolved).difference(selected_names))
+        if missing:
+            raise ValueError(f"--prompt-budget-map missing selected prompt(s): {', '.join(missing)}")
+        if extra:
+            print(f"[prompt-suite] ignoring map entries for unselected prompts: {', '.join(extra)}", flush=True)
+        args.prompt_budget_map_resolved = {
+            name: int(args.prompt_budget_map_resolved[name])
+            for name in selected_prompt_names
+        }
     if args.list_prompts:
         for prompt in prompts:
             print(f"{prompt['name']}\t{len(prompt['prompt'])} chars")
@@ -411,6 +551,7 @@ def main() -> int:
         "tokenization": encoder.tokenization,
         "decode_tokens": int(args.decode_tokens),
         "candidate_budgets": [int(x) for x in _split_csv(args.candidate_budgets)],
+        "prompt_budget_map": args.prompt_budget_map_resolved,
         "runs_per_prompt": int(args.runs),
         "proposal_impl": str(args.proposal_impl),
         "backend": str(args.backend),
@@ -426,6 +567,15 @@ def main() -> int:
         "dry_run": bool(args.dry_run),
         "results": results,
         "aggregate_by_budget": {} if args.dry_run else _aggregate_across_prompts(results),
+        "selected_policy_aggregate": (
+            {}
+            if args.dry_run or not args.prompt_budget_map_resolved
+            else _aggregate_selected_policy(
+                results,
+                args.prompt_budget_map_resolved,
+                decode_tokens=int(args.decode_tokens),
+            )
+        ),
         "go_no_go_rule": {
             "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",
             "hits_1p5x": "avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5",

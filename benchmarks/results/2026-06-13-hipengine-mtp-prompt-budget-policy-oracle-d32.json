@@ -1,0 +1,190 @@
+{
+  "baseline_fixed_b1_current_best": {
+    "actual_decode_speedup_vs_ar_prompt_mean": 1.0183575942141887,
+    "actual_decode_speedup_vs_ar_total_time": 1.009088,
+    "artifact": "benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json",
+    "cycle_wall_ms_per_cycle": 14.17252825863089,
+    "visible_tokens_per_cycle": 1.6167079463364293
+  },
+  "commands": {
+    "dry_run": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1,2,3 --prompt-budget-map benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --dry-run --out /tmp/hipengine-mtp-prompt-budget-policy-dryrun.json",
+    "measured": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1,2,3 --runs 1 --prompt-budget-map benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-prompt-budget-policy-oracle-d32-20260613 --out /tmp/hipengine-mtp-prompt-budget-policy-oracle-d32-20260613.json",
+    "validation": "python3 -m py_compile scripts/mtp_prompt_suite_economics.py; python3 -m json.tool benchmarks/results/2026-06-13-hipengine-mtp-prompt-budget-policy-oracle-d32.json"
+  },
+  "correctness": {
+    "all_exact_ar_match": true,
+    "exact_prompts": 9,
+    "total_prompts": 9
+  },
+  "date": "2026-06-13",
+  "decision": "retain_as_policy_design_evidence_not_default",
+  "decision_reason": "Exact D32 9/9 and measured prompt mean 1.041x / total-time 1.027x beat fixed B=1, but budget choices are oracle-selected from prior fixed-budget evidence, so this is retained as adaptive/per-prompt policy design evidence rather than a deployable default.",
+  "delta_vs_fixed_b1_current_best": {
+    "prompt_mean_speedup_abs": 0.02305251953704701,
+    "prompt_mean_speedup_relative_percent": 2.263695942173971,
+    "total_time_speedup_abs": 0.017420189061237767,
+    "total_time_speedup_relative_percent": 1.7263300189119146
+  },
+  "full_artifact": "/tmp/hipengine-mtp-prompt-budget-policy-oracle-d32-20260613.json",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "metrics": {
+    "acceptance_rate_prompt_mean": 0.5649195293296927,
+    "accepted_tokens_per_cycle_prompt_mean": 0.9447128505023242,
+    "actual_decode_speedup_vs_ar_prompt_mean": 1.0414101137512357,
+    "actual_decode_speedup_vs_ar_total_time": 1.0265081890612378,
+    "ar_decode_seconds_sum": 2.5891079320572317,
+    "ar_decode_tok_s_prompt_mean": 111.3231704246354,
+    "cycle_cost_ar_tokens_prompt_mean": 1.8132869937898053,
+    "cycle_wall_ms_per_cycle_prompt_mean": 16.283971208672963,
+    "mtp_decode_seconds_sum": 2.5222477128263563,
+    "mtp_decode_tok_s_prompt_mean": 116.015036747652,
+    "observed_cycle_speedup_vs_ar_prompt_mean": 1.0555563504293597,
+    "proposal_update_ms_per_cycle_prompt_mean": 1.6627566736253097,
+    "verify_ms_per_cycle_prompt_mean": 13.910081030929836,
+    "visible_tokens_per_cycle_prompt_mean": 1.9447128505023241
+  },
+  "model": "Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar",
+  "next_action": "Replace oracle map with an online prompt-level selector, likely depth-1 proposer confidence or a cheap warmup probe, while continuing to avoid live row-shape transitions until max-shape scratch is audited.",
+  "per_prompt": [
+    {
+      "accepted_tokens_per_cycle": 2.1,
+      "actual_decode_speedup_vs_ar": 1.262981017814213,
+      "cycle_cost_ar_tokens": 2.3024904388521454,
+      "cycle_wall_ms_per_cycle": 20.4637126,
+      "exact_ar_match": true,
+      "prompt": "code_python",
+      "proposal_update_ms_per_cycle": 1.6175974858924747,
+      "selected_budget": 3,
+      "verify_ms_per_cycle": 16.703210305422544,
+      "visible_tokens_per_cycle": 3.1
+    },
+    {
+      "accepted_tokens_per_cycle": 1.1333333333333333,
+      "actual_decode_speedup_vs_ar": 1.0744262688918709,
+      "cycle_cost_ar_tokens": 1.985216170918333,
+      "cycle_wall_ms_per_cycle": 17.655405,
+      "exact_ar_match": true,
+      "prompt": "code_cpp",
+      "proposal_update_ms_per_cycle": 1.4430460675309102,
+      "selected_budget": 2,
+      "verify_ms_per_cycle": 15.140319320683679,
+      "visible_tokens_per_cycle": 2.1333333333333333
+    },
+    {
+      "accepted_tokens_per_cycle": 0.55,
+      "actual_decode_speedup_vs_ar": 0.9759237507335791,
+      "cycle_cost_ar_tokens": 1.5518320091329196,
+      "cycle_wall_ms_per_cycle": 13.814447050000002,
+      "exact_ar_match": true,
+      "prompt": "explain_concept",
+      "proposal_update_ms_per_cycle": 1.5391581691801548,
+      "selected_budget": 1,
+      "verify_ms_per_cycle": 12.257689679972827,
+      "visible_tokens_per_cycle": 1.55
+    },
+    {
+      "accepted_tokens_per_cycle": 0.6,
+      "actual_decode_speedup_vs_ar": 1.0288105096232534,
+      "cycle_cost_ar_tokens": 1.5548881980472058,
+      "cycle_wall_ms_per_cycle": 13.8958144,
+      "exact_ar_match": true,
+      "prompt": "summarize",
+      "proposal_update_ms_per_cycle": 1.5714161098003387,
+      "selected_budget": 1,
+      "verify_ms_per_cycle": 12.306964979507029,
+      "visible_tokens_per_cycle": 1.6
+    },
+    {
+      "accepted_tokens_per_cycle": 1.1333333333333333,
+      "actual_decode_speedup_vs_ar": 1.084203358512331,
+      "cycle_cost_ar_tokens": 1.9673114858791432,
+      "cycle_wall_ms_per_cycle": 17.4916754,
+      "exact_ar_match": true,
+      "prompt": "qa_factual",
+      "proposal_update_ms_per_cycle": 1.365343000118931,
+      "selected_budget": 2,
+      "verify_ms_per_cycle": 15.08204711911579,
+      "visible_tokens_per_cycle": 2.1333333333333333
+    },
+    {
+      "accepted_tokens_per_cycle": 0.24,
+      "actual_decode_speedup_vs_ar": 0.8008478080784504,
+      "cycle_cost_ar_tokens": 1.5109443359091097,
+      "cycle_wall_ms_per_cycle": 13.410670839999998,
+      "exact_ar_match": true,
+      "prompt": "translation",
+      "proposal_update_ms_per_cycle": 1.3337559159845114,
+      "selected_budget": 1,
+      "verify_ms_per_cycle": 12.057139473035932,
+      "visible_tokens_per_cycle": 1.24
+    },
+    {
+      "accepted_tokens_per_cycle": 1.4615384615384615,
+      "actual_decode_speedup_vs_ar": 1.1124831994650843,
+      "cycle_cost_ar_tokens": 2.2122561443697815,
+      "cycle_wall_ms_per_cycle": 19.620692153846154,
+      "exact_ar_match": true,
+      "prompt": "creative_short",
+      "proposal_update_ms_per_cycle": 1.301044329571036,
+      "selected_budget": 3,
+      "verify_ms_per_cycle": 16.272482462227345,
+      "visible_tokens_per_cycle": 2.4615384615384617
+    },
+    {
+      "accepted_tokens_per_cycle": 0.6842105263157895,
+      "actual_decode_speedup_vs_ar": 1.0694105132259186,
+      "cycle_cost_ar_tokens": 1.5745634482033635,
+      "cycle_wall_ms_per_cycle": 14.055212684210526,
+      "exact_ar_match": true,
+      "prompt": "stepwise_math",
+      "proposal_update_ms_per_cycle": 1.622740289588508,
+      "selected_budget": 1,
+      "verify_ms_per_cycle": 12.41483388615674,
+      "visible_tokens_per_cycle": 1.6842105263157894
+    },
+    {
+      "accepted_tokens_per_cycle": 0.6,
+      "actual_decode_speedup_vs_ar": 0.9636045974164207,
+      "cycle_cost_ar_tokens": 1.6600807127962474,
+      "cycle_wall_ms_per_cycle": 16.14811075,
+      "exact_ar_match": true,
+      "prompt": "long_code_review",
+      "proposal_update_ms_per_cycle": 3.170708694960922,
+      "selected_budget": 1,
+      "verify_ms_per_cycle": 12.95604205224663,
+      "visible_tokens_per_cycle": 1.6
+    }
+  ],
+  "performance_claim": false,
+  "policy": {
+    "budget_choices": {
+      "code_cpp": 2,
+      "code_python": 3,
+      "creative_short": 3,
+      "explain_concept": 1,
+      "long_code_review": 1,
+      "qa_factual": 2,
+      "stepwise_math": 1,
+      "summarize": 1,
+      "translation": 1
+    },
+    "runtime_transition_scope": "none; each prompt runs one fixed budget, so this does not exercise live B1->B2/B3 transitions or max-shape scratch",
+    "source_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json",
+    "type": "fixed_per_prompt_oracle_from_prior_B1_B2_B3_artifact"
+  },
+  "raw_root": "/tmp/hipengine-mtp-prompt-budget-policy-oracle-d32-20260613",
+  "schema_version": 1,
+  "status": "diagnostic_retained_policy_oracle",
+  "workload": {
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "decode_tokens": 32,
+    "draft_vocab_cap": "65536 default (HIPENGINE_MTP_DRAFT_VOCAB_CAP unset)",
+    "graph_mode": "off",
+    "hip_arch": "gfx1100",
+    "prompt_suite": "benchmarks/fixtures/llamacpp_mtp_bench_prompts.json",
+    "prompts": 9,
+    "proposal_impl": "persistent_device",
+    "runs_per_prompt": 1
+  }
+}

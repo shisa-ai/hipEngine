@@ -85206,3 +85206,97 @@ Do not default it on: the retained D32 current-best row remains faster at
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-decodebatched-exact-suffix-retained.json`.
+
+## 2026-06-13 - MTP fixed-per-prompt budget oracle diagnostic
+
+Added a diagnostic fixed-per-prompt budget map to
+`scripts/mtp_prompt_suite_economics.py`.  `--prompt-budget-map` accepts
+comma-separated `name=budget` pairs, a JSON object, or an artifact containing
+`oracle_bound.choices`; when set, each selected prompt runs one fixed budget.
+This deliberately avoids live verifier row-shape transitions inside a prompt,
+so it does not exercise the prior B1->B2/B3 adaptive-budget hang path.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_prompt_suite_economics.py
+
+env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1,2,3 \
+  --prompt-budget-map benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off --dry-run \
+  --out /tmp/hipengine-mtp-prompt-budget-policy-dryrun.json
+```
+
+Dry-run map resolved as expected:
+
+| Prompt | Budget |
+| --- | ---: |
+| `code_python` | 3 |
+| `code_cpp` | 2 |
+| `explain_concept` | 1 |
+| `summarize` | 1 |
+| `qa_factual` | 2 |
+| `translation` | 1 |
+| `creative_short` | 3 |
+| `stepwise_math` | 1 |
+| `long_code_review` | 1 |
+
+Measured run:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1,2,3 --runs 1 \
+  --prompt-budget-map benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-prompt-budget-policy-oracle-d32-20260613 \
+  --out /tmp/hipengine-mtp-prompt-budget-policy-oracle-d32-20260613.json
+```
+
+Result: exact D32 `9/9`.  Selected-policy aggregate:
+
+| Metric | Value |
+| --- | ---: |
+| Prompt-mean actual speedup | `1.041410x` |
+| Total-time actual speedup | `1.026508x` |
+| Prompt-mean observed speedup | `1.055556x` |
+| Prompt-mean wall | `16.284 ms/cycle` |
+| Prompt-mean verify | `13.910 ms/cycle` |
+| Prompt-mean proposal/update | `1.663 ms/cycle` |
+| Prompt-mean visible density | `1.945 tokens/cycle` |
+| Prompt-mean accepted draft density | `0.945 tokens/cycle` |
+
+Per-prompt exact rows:
+
+| Prompt | B | Actual speedup | C_B | Visible/cycle |
+| --- | ---: | ---: | ---: | ---: |
+| `code_python` | 3 | `1.263x` | `2.302` | `3.100` |
+| `code_cpp` | 2 | `1.074x` | `1.985` | `2.133` |
+| `explain_concept` | 1 | `0.976x` | `1.552` | `1.550` |
+| `summarize` | 1 | `1.029x` | `1.555` | `1.600` |
+| `qa_factual` | 2 | `1.084x` | `1.967` | `2.133` |
+| `translation` | 1 | `0.801x` | `1.511` | `1.240` |
+| `creative_short` | 3 | `1.112x` | `2.212` | `2.462` |
+| `stepwise_math` | 1 | `1.069x` | `1.575` | `1.684` |
+| `long_code_review` | 1 | `0.964x` | `1.660` | `1.600` |
+
+Decision: retain this as adaptive/per-prompt policy design evidence, not as the
+default MTP policy.  It improves over fixed B=1 (`1.018x` prompt mean,
+`1.009x` total-time) and confirms real headroom above the retained row, but the
+budget map is oracle-selected from prior fixed-budget outcomes.  The next
+adaptive step should replace the oracle map with an online prompt-level selector
+(for example depth-1 proposer confidence or a cheap warmup probe), while
+continuing to avoid live row-shape transitions until max-shape scratch/capture
+allocation is audited.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-prompt-budget-policy-oracle-d32.json`.
