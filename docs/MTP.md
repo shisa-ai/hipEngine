@@ -182,7 +182,23 @@ For B sweeps, use the ratio gate rather than intuition: the current row is
 `2.012 / 19.440 = 0.1035` visible tokens/ms, while AR is about
 `1 / 9.044 = 0.1106` tokens/ms. A larger B row must either beat the current
 suite ratio immediately or show enough per-depth acceptance to justify the extra
-verify row after the next wall-cut unit lands.
+verify row after the next wall-cut unit lands. As a concrete marginal rule, if
+B=4 adds roughly `3-4 ms/cycle`, it needs about `0.33-0.44` additional visible
+tokens/cycle just to match the AR denominator. The stable quicksort trace is a
+useful wiring smoke only, not a policy oracle: its B=3 accepted lengths are more
+favorable than the full prompt suite, so the A1 decision must come from D32
+suite histograms.
+
+For vocab-cap work, count representability at the first rejected depth before
+running a cap sweep. If target top-1 tokens outside the current `32768` cap are
+not a visible share of rejections, larger caps are likely just proposer LM-head
+cost. If they are, compare `32768`, `65536`, and full vocab on exactness,
+acceptance density, proposer wall, and total ratio in the same artifact.
+
+Relaxed speculative sampling is deliberately excluded from this sprint's default
+lane. It can preserve a target distribution with acceptance probability
+`min(1, p_target(x) / p_draft(x))`, but it requires distribution access and a
+new accept/reject kernel rather than the current exact top-1 equality gate.
 
 Meta-bias for this sprint: prefer launch-count reduction, host round-trip
 compression, graph capture, and C-side batching only when it removes actual DAG

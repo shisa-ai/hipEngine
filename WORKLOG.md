@@ -82587,3 +82587,16 @@ in `docs/MTP.md` so they no longer imply the same fixed-address whole-body graph
 is still the next implementation step. M12.7 remains only as a smaller
 capture-safe subgraph or graph-node-parameter-update design item. No code or
 benchmark claim.
+
+## 2026-06-12 - MTP acceptance-density endgame guardrails
+
+Docs-only follow-up from the acceptance-density review while keeping policy work
+deferred until the wall-cut list is exhausted. Updated `docs/MTP.md` to make the
+B-sweep gate explicit: the current `19.440 ms/cycle`, `2.012` visible/cycle row
+is `0.1035` visible tokens/ms versus AR at `0.1106` tokens/ms, so a B=4 row that
+adds `3-4 ms/cycle` must recover about `0.33-0.44` visible tokens/cycle before
+it can pay. Also clarified that quicksort accepted-length traces are only a
+wiring smoke, not a suite policy oracle; vocab-cap sweeps should start with
+first-rejected-depth representability counters; and relaxed speculative sampling
+stays out of the exact-default sprint because it needs distribution access and a
+new accept/reject kernel. No benchmark claim and no code change.
