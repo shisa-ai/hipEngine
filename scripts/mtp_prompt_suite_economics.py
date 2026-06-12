@@ -50,6 +50,9 @@ SUMMARY_FIELDS = (
     "ar_fallback_tokens_mean",
     "ar_fallback_ms_per_cycle_mean",
     "ar_fallback_proposer_update_ms_per_cycle_mean",
+    "confidence_threshold_mean",
+    "confidence_ar_fallback_cycles_mean",
+    "confidence_ar_fallback_tokens_mean",
     "ar_decode_ms_per_token_mean",
 )
 
@@ -273,6 +276,8 @@ def _economics_command(
         cmd += ["--verify-gpu-accept", str(args.verify_gpu_accept)]
     if args.acceptance_diagnostics:
         cmd.append("--acceptance-diagnostics")
+    if float(getattr(args, "confidence_threshold", 0.0) or 0.0) > 0.0:
+        cmd += ["--confidence-threshold", str(float(args.confidence_threshold))]
     if int(getattr(args, "ar_fallback_zero_streak", 0)) > 0:
         cmd += [
             "--ar-fallback-zero-streak",
@@ -469,6 +474,16 @@ def main() -> int:
         help="Retain per-cycle MTP acceptance diagnostics from child smoke runs in the suite artifact.",
     )
     parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.0,
+        help=(
+            "Opt-in MTP whole-cycle confidence gate. In persistent chain mode, "
+            "child smokes route low-confidence depth-1 cycles through exact AR "
+            "instead of running the verifier. 0 disables."
+        ),
+    )
+    parser.add_argument(
         "--ar-fallback-zero-streak",
         type=int,
         default=0,
@@ -558,6 +573,7 @@ def main() -> int:
         "hip_arch": str(args.hip_arch),
         "chain_attn_mode": str(args.chain_attn_mode),
         "graph_mode": str(args.graph_mode),
+        "confidence_threshold": float(args.confidence_threshold),
         "small_batch_decode_threshold": int(args.small_batch_decode_threshold) if args.small_batch_decode_threshold is not None else None,
         "verify_gpu_accept": args.verify_gpu_accept,
         "acceptance_diagnostics": bool(args.acceptance_diagnostics),

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-13",
+  "status": "no_hold",
+  "performance_claim": false,
+  "candidate": "MTP persistent-chain whole-cycle confidence gate",
+  "decision": "do_not_promote",
+  "decision_reason": "The opt-in whole-cycle gate stayed exact on D32 9/9 and skipped verifier passes, but it reduced acceptance density and raised total cycle wall enough to regress the retained B=1 row from 1.018x prompt mean / 1.009x total-time to 0.859x prompt mean / 0.850x total-time.",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "confidence_threshold": 0.9,
+    "policy": "if depth-1 MTP top-1 probability proxy < threshold, emit one exact target AR token and realign the proposer instead of running verify_chain"
+  },
+  "commands": {
+    "b3_quicksort_thr_0p5": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --confidence-threshold 0.5 --acceptance-diagnostics --json /tmp/hipengine-mtp-b3-confidence-gate050-quicksort-smoke-20260613.json",
+    "b3_quicksort_thr_0p9": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --confidence-threshold 0.9 --acceptance-diagnostics --json /tmp/hipengine-mtp-b3-confidence-gate090-quicksort-smoke-20260613.json",
+    "b1_quicksort_thr_0p9": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 1 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --confidence-threshold 0.9 --acceptance-diagnostics --json /tmp/hipengine-mtp-b1-confidence-gate090-quicksort-smoke-20260613.json",
+    "suite_b1_thr_0p9": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --confidence-threshold 0.9 --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-confidence-gate090-9prompt-d32-20260613 --out /tmp/hipengine-mtp-b1-confidence-gate090-9prompt-d32-20260613.json",
+    "validation": "python3 -m py_compile scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py scripts/mtp_prompt_suite_economics.py; git diff --check"
+  },
+  "correctness": {
+    "suite_exact_ar_match": true,
+    "suite_exact_prompts": 9,
+    "suite_total_prompts": 9,
+    "b1_quicksort_exact": true,
+    "b3_quicksort_exact": true
+  },
+  "baseline_fixed_b1_current_best": {
+    "artifact": "benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json",
+    "actual_decode_speedup_vs_ar_prompt_mean": 1.0183575942141887,
+    "actual_decode_speedup_vs_ar_total_time": 1.009088,
+    "cycle_wall_ms_per_cycle": 14.17252825863089,
+    "verify_ms_per_cycle": 12.426223521388197,
+    "proposal_update_ms_per_cycle": 1.7328161988721338,
+    "cycle_cost_ar_tokens": 1.5738586101080283,
+    "visible_tokens_per_cycle": 1.6167079463364293,
+    "mtp_decode_tok_s_prompt_mean_approx": 113.14005200898596
+  },
+  "candidate_suite_b1_thr_0p9": {
+    "actual_decode_speedup_vs_ar_prompt_mean": 0.8588212155188912,
+    "actual_decode_speedup_vs_ar_total_time": 0.8504263161874656,
+    "observed_cycle_speedup_vs_ar_prompt_mean": 0.866520602954951,
+    "cycle_wall_ms_per_cycle": 15.272604680535075,
+    "verify_ms_per_cycle": 8.539969516419667,
+    "proposal_update_ms_per_cycle": 1.6033490547877045,
+    "cycle_cost_ar_tokens": 1.6916020011769206,
+    "visible_tokens_per_cycle": 1.4647615504998734,
+    "accepted_tokens_per_cycle": 0.4647615504998732,
+    "ar_decode_tok_s_prompt_mean": 110.90274544493997,
+    "mtp_decode_tok_s_prompt_mean": 95.29711555375258,
+    "ar_decode_seconds_sum": 2.6003796835429966,
+    "mtp_decode_seconds_sum": 3.057736612856388,
+    "confidence_ar_fallback_cycles_per_prompt_mean": 9.666666666666666
+  },
+  "delta_vs_fixed_b1_current_best": {
+    "prompt_mean_speedup_abs": -0.15953637869529746,
+    "prompt_mean_speedup_relative_percent": -15.665956767618662,
+    "total_time_speedup_abs": -0.15866168381253435,
+    "cycle_wall_ms_per_cycle": 1.100076421904184,
+    "verify_ms_per_cycle": -3.8862540049685297,
+    "visible_tokens_per_cycle": -0.1519463958365559
+  },
+  "quick_smokes": {
+    "b3_threshold_0p5": {
+      "exact_ar_match": true,
+      "decode_tok_s": 111.48161756250391,
+      "verify_seconds": 0.20994994789361954,
+      "confidence_ar_fallback_cycles": 0,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+    },
+    "b3_threshold_0p9": {
+      "exact_ar_match": true,
+      "decode_tok_s": 104.43002274806994,
+      "verify_seconds": 0.2074274376500398,
+      "confidence_ar_fallback_cycles": 2,
+      "accepted_lengths": [3, 3, 0, 1, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+    },
+    "b1_threshold_0p9": {
+      "exact_ar_match": true,
+      "decode_tok_s": 96.14037346808489,
+      "verify_seconds": 0.24885000474750996,
+      "confidence_ar_fallback_cycles": 2,
+      "accepted_lengths": [1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0]
+    }
+  },
+  "per_prompt": [
+    {"prompt": "code_python", "actual_decode_speedup_vs_ar": 1.0392108393023365, "cycle_cost_ar_tokens": 1.7018377206931616, "visible_tokens_per_cycle": 1.8235294117647058, "confidence_ar_fallback_cycles": 2},
+    {"prompt": "code_cpp", "actual_decode_speedup_vs_ar": 0.8513235143748499, "cycle_cost_ar_tokens": 1.7912157559798911, "visible_tokens_per_cycle": 1.55, "confidence_ar_fallback_cycles": 6},
+    {"prompt": "explain_concept", "actual_decode_speedup_vs_ar": 0.915401511997701, "cycle_cost_ar_tokens": 1.4403989693511334, "visible_tokens_per_cycle": 1.3478260869565217, "confidence_ar_fallback_cycles": 14},
+    {"prompt": "summarize", "actual_decode_speedup_vs_ar": 0.7812340071330657, "cycle_cost_ar_tokens": 1.8614976444371387, "visible_tokens_per_cycle": 1.4545454545454546, "confidence_ar_fallback_cycles": 10},
+    {"prompt": "qa_factual", "actual_decode_speedup_vs_ar": 0.810923433869439, "cycle_cost_ar_tokens": 1.6717984429252162, "visible_tokens_per_cycle": 1.3478260869565217, "confidence_ar_fallback_cycles": 13},
+    {"prompt": "translation", "actual_decode_speedup_vs_ar": 0.7325763014744981, "cycle_cost_ar_tokens": 1.6127701368607172, "visible_tokens_per_cycle": 1.1923076923076923, "confidence_ar_fallback_cycles": 14},
+    {"prompt": "creative_short", "actual_decode_speedup_vs_ar": 0.8418251273886792, "cycle_cost_ar_tokens": 1.6523944059046984, "visible_tokens_per_cycle": 1.391304347826087, "confidence_ar_fallback_cycles": 12},
+    {"prompt": "stepwise_math", "actual_decode_speedup_vs_ar": 0.9237353381060575, "cycle_cost_ar_tokens": 1.8228942259131193, "visible_tokens_per_cycle": 1.6842105263157894, "confidence_ar_fallback_cycles": 4},
+    {"prompt": "long_code_review", "actual_decode_speedup_vs_ar": 0.8331608660233943, "cycle_cost_ar_tokens": 1.6696107085272094, "visible_tokens_per_cycle": 1.391304347826087, "confidence_ar_fallback_cycles": 12}
+  ],
+  "raw_artifacts": {
+    "suite": "/tmp/hipengine-mtp-b1-confidence-gate090-9prompt-d32-20260613.json",
+    "raw_root": "/tmp/hipengine-mtp-b1-confidence-gate090-9prompt-d32-20260613",
+    "b3_threshold_0p5": "/tmp/hipengine-mtp-b3-confidence-gate050-quicksort-smoke-20260613.json",
+    "b3_threshold_0p9": "/tmp/hipengine-mtp-b3-confidence-gate090-quicksort-smoke-20260613.json",
+    "b1_threshold_0p9": "/tmp/hipengine-mtp-b1-confidence-gate090-quicksort-smoke-20260613.json"
+  },
+  "next_action": "Do not promote whole-cycle confidence gating for MTP. Continue adaptive work with per-prompt budget selection or max-shape live budget transitions; confidence gating may be revisited only with a better calibrated selector that proves it does not sacrifice accepted tokens."
+}

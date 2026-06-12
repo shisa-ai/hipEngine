@@ -964,9 +964,12 @@ def _run_spec_persistent_device(
     ar_fallback_tokens: int = 1,
     ar_fallback_until_end: bool = False,
 ) -> tuple[list[int], dict[str, Any]]:
+    confidence_threshold = float(confidence_threshold)
     ar_fallback_zero_streak = int(ar_fallback_zero_streak)
     ar_fallback_after_mtp_cycles = int(ar_fallback_after_mtp_cycles)
     ar_fallback_tokens = int(ar_fallback_tokens)
+    if confidence_threshold < 0.0 or confidence_threshold > 1.0:
+        raise ValueError("confidence_threshold must be in [0, 1]")
     if ar_fallback_zero_streak < 0:
         raise ValueError("ar_fallback_zero_streak must be >= 0")
     if ar_fallback_after_mtp_cycles < 0:
@@ -987,6 +990,8 @@ def _run_spec_persistent_device(
     ar_fallback_tokens_committed = 0
     ar_fallback_seconds = 0.0
     ar_fallback_proposer_update_seconds = 0.0
+    confidence_ar_fallback_cycles = 0
+    confidence_ar_fallback_tokens = 0
     acceptance_diagnostic_cycles: list[dict[str, Any]] = []
     draft_vocab_cap: int | None = None
     capture_rows = max_sequence + 2
@@ -1198,9 +1203,110 @@ def _run_spec_persistent_device(
                     rocprof_window.range_push(f"mtp_verify_cycle_{cycles}")
                     cycle_t_ns_start = time.perf_counter_ns()
                     rocprof_window.range_push(f"mtp_proposer_draft_{cycles}")
+                    candidates = [int(proposer.current.token)]
+                    confidence_p1: float | None = None
+                    if tree_mode == "chain" and confidence_threshold > 0.0:
+                        confidence_p1 = float(proposer.top1_prob_proxy())
+                    if (
+                        tree_mode == "chain"
+                        and confidence_threshold > 0.0
+                        and confidence_p1 is not None
+                        and confidence_p1 < confidence_threshold
+                    ):
+                        rocprof_window.range_pop()
+                        rocprof_window.range_push(f"mtp_confidence_ar_fallback_{cycles}")
+                        fallback_started = time.perf_counter()
+                        step_result = session.step(
+                            root,
+                            position=context,
+                            sample=True,
+                        )
+                        if step_result is None:
+                            raise RuntimeError("confidence-gated AR fallback step produced no root")
+                        bonus = int(step_result.token_id)
+                        committed = [root]
+                        generated.extend(committed)
+                        accepted_lengths.append(0)
+                        active_budgets.append(0)
+                        ar_fallback_cycles += 1
+                        ar_fallback_tokens_committed += 1
+                        confidence_ar_fallback_cycles += 1
+                        confidence_ar_fallback_tokens += 1
+                        if acceptance_diagnostics:
+                            acceptance_diagnostic_cycles.append(
+                                {
+                                    "cycle": int(cycles),
+                                    "decode_offset": int(decode_offset),
+                                    "root_position": int(context),
+                                    "root_token": int(root),
+                                    "policy": "confidence_ar_fallback",
+                                    "active_budget": 0,
+                                    "verify_budget": 0,
+                                    "accepted": 0,
+                                    "full_accept": False,
+                                    "first_rejected_depth": 0,
+                                    "first_rejected_proposed_token": int(candidates[0]),
+                                    "first_rejected_target_top1_token": int(bonus),
+                                    "first_rejected_target_in_draft_vocab_cap": (
+                                        None if draft_vocab_cap is None else bool(int(bonus) < int(draft_vocab_cap))
+                                    ),
+                                    "first_rejected_reason": "low_confidence_whole_cycle_gate",
+                                    "confidence_threshold": float(confidence_threshold),
+                                    "depth1_top1_prob_proxy": float(confidence_p1),
+                                    "per_depth": [
+                                        {
+                                            "depth": 0,
+                                            "accepted": False,
+                                            "proposed_token": int(candidates[0]),
+                                            "target_top1_token": int(bonus),
+                                            "proposed_matches_target": bool(int(candidates[0]) == int(bonus)),
+                                            "target_in_draft_vocab_cap": (
+                                                None if draft_vocab_cap is None else bool(int(bonus) < int(draft_vocab_cap))
+                                            ),
+                                            "top1_prob_proxy": float(confidence_p1),
+                                        }
+                                    ],
+                                }
+                            )
+                        if len(proposal_trace) < 16:
+                            proposal_trace.append(
+                                {
+                                    "cycle": int(cycles),
+                                    "policy": "confidence_ar_fallback",
+                                    "root_position": int(context),
+                                    "root_token": int(root),
+                                    "draft_candidates": candidates,
+                                    "accepted": 0,
+                                    "committed_tokens": committed,
+                                    "bonus_token": int(bonus),
+                                    "confidence_threshold": float(confidence_threshold),
+                                    "depth1_top1_prob_proxy": float(confidence_p1),
+                                    "proposer_cache_len_before_update": int(proposer.cache_len),
+                                }
+                            )
+                        if len(generated) < int(decode_tokens):
+                            update_started = time.perf_counter()
+                            rocprof_window.range_push(f"mtp_confidence_ar_fallback_proposer_update_{cycles}")
+                            proposer.advance_with_previous_hidden(
+                                input_token=bonus,
+                                position=proposer.position + 1,
+                                read_expert_topk=not skip_unused_proposer_reads,
+                                read_lm_head_value=not skip_unused_proposer_reads,
+                            )
+                            rocprof_window.range_pop()
+                            update_delta = time.perf_counter() - update_started
+                            proposal_decode_update_seconds += update_delta
+                            ar_fallback_proposer_update_seconds += update_delta
+                        context += 1
+                        root = bonus
+                        zero_accept_streak = 0
+                        ar_fallback_seconds += time.perf_counter() - fallback_started
+                        cycle_t_ns_end = time.perf_counter_ns()
+                        rocprof_window.range_pop()
+                        cycle_marker_ns.append((cycles, cycle_t_ns_start, cycle_t_ns_end))
+                        continue
                     snapshots = [proposer.save_state(0)]
                     proposal_snapshot_saves += 1
-                    candidates = [int(proposer.current.token)]
                     # Gated branching tree (#99 -> persistent): on
                     # low-confidence depth-1 cycles, spend the budget on a
                     # root-sibling branch instead of a deeper chain. Tree and
@@ -1429,6 +1535,9 @@ def _run_spec_persistent_device(
         "ar_fallback_tokens": int(ar_fallback_tokens_committed),
         "ar_fallback_seconds": float(ar_fallback_seconds),
         "ar_fallback_proposer_update_seconds": float(ar_fallback_proposer_update_seconds),
+        "confidence_threshold": float(confidence_threshold),
+        "confidence_ar_fallback_cycles": int(confidence_ar_fallback_cycles),
+        "confidence_ar_fallback_tokens": int(confidence_ar_fallback_tokens),
         "accepted_lengths": accepted_lengths,
         "active_budgets": active_budgets,
         "acceptance_rate": (sum(accepted_lengths) / sum(active_budgets)) if active_budgets and sum(active_budgets) else 0.0,

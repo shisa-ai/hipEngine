@@ -85300,3 +85300,112 @@ allocation is audited.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-prompt-budget-policy-oracle-d32.json`.
+
+## 2026-06-13 - MTP whole-cycle confidence gate no-hold
+
+Tested the DFlash-style whole-cycle confidence gate on the MTP persistent chain
+path. The implementation is diagnostic/opt-in: `--confidence-threshold <thr>`
+now routes a normal chain cycle through exact target AR when the current
+depth-1 MTP top-1 probability proxy is below the threshold, then advances the
+proposer with the AR bonus token so later MTP cycles stay aligned. Threshold
+`0` preserves the prior path.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py \
+  scripts/mtp_verifier_economics.py scripts/mtp_prompt_suite_economics.py
+git diff --check
+python3 -m json.tool \
+  benchmarks/results/2026-06-13-hipengine-mtp-confidence-gate-nohold.json \
+  >/tmp/mtp-confidence-gate-nohold.json
+```
+
+Quicksort smokes:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 \
+  --candidate-budget 3 --proposal-impl persistent_device \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --confidence-threshold 0.5 --acceptance-diagnostics \
+  --json /tmp/hipengine-mtp-b3-confidence-gate050-quicksort-smoke-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 \
+  --candidate-budget 3 --proposal-impl persistent_device \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --confidence-threshold 0.9 --acceptance-diagnostics \
+  --json /tmp/hipengine-mtp-b3-confidence-gate090-quicksort-smoke-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 \
+  --candidate-budget 1 --proposal-impl persistent_device \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --confidence-threshold 0.9 --acceptance-diagnostics \
+  --json /tmp/hipengine-mtp-b1-confidence-gate090-quicksort-smoke-20260613.json
+```
+
+Results:
+
+| Check | Exact | Decode tok/s | Confidence AR fallback cycles | Accepted trace |
+| --- | --- | ---: | ---: | --- |
+| B=3, thr=0.5 | yes | `111.482` | `0` | `[3,3,2,0,2,0,0,1,3,0,2,0,2]` |
+| B=3, thr=0.9 | yes | `104.430` | `2` | `[3,3,0,1,0,2,0,0,1,3,0,2,0,2]` |
+| B=1, thr=0.9 | yes | `96.140` | `2` | `[1,1,1,0,1,1,0,1,0,0,0,1,1,1,0,1,0,0,1,0]` |
+
+Full suite:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --confidence-threshold 0.9 --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-confidence-gate090-9prompt-d32-20260613 \
+  --out /tmp/hipengine-mtp-b1-confidence-gate090-9prompt-d32-20260613.json
+```
+
+Result: exact D32 `9/9`, but no-hold. Versus the retained fixed B=1 row:
+
+| Metric | Retained B=1 | Confidence gate B=1 thr=0.9 |
+| --- | ---: | ---: |
+| Prompt-mean actual speedup | `1.018x` | `0.859x` |
+| Total-time speedup | `1.009x` | `0.850x` |
+| Wall | `14.173 ms/cycle` | `15.273 ms/cycle` |
+| Verify | `12.426 ms/cycle` | `8.540 ms/cycle` |
+| Proposal/update | `1.733 ms/cycle` | `1.603 ms/cycle` |
+| Visible density | `1.617/cycle` | `1.465/cycle` |
+| Confidence AR fallback cycles | `0` | `9.67/prompt mean` |
+
+Interpretation: the gate does skip verifier work, but the MTP confidence proxy is
+not a good enough accept/reject separator here. It sacrifices real accepted
+tokens, adds AR fallback/proposer update cost, and raises total cycle wall. Keep
+`--confidence-threshold 0` as the default and do not use this as the online
+adaptive selector. Adaptive budget work should continue with per-prompt budget
+selection or max-shape live budget transitions, not this DFlash-style gate.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-confidence-gate-nohold.json`.
