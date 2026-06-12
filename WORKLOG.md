@@ -82578,3 +82578,12 @@ either graph node parameter updates or a smaller capture-safe subgraph whose
 kernel launches are proven stream-honoring and candidate-sequence identical.
 Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-proposer-graph-capture-nohold.json`.
+
+## 2026-06-12 - MTP M12.7 duplicate tracker cleanup
+
+Docs-only cleanup after the whole-body proposer graph capture no-hold. Updated
+the top priority table, lower M12.7 tracker row, and external-review ranking row
+in `docs/MTP.md` so they no longer imply the same fixed-address whole-body graph
+is still the next implementation step. M12.7 remains only as a smaller
+capture-safe subgraph or graph-node-parameter-update design item. No code or
+benchmark claim.
