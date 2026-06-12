@@ -82420,3 +82420,17 @@ path in the 30 linear-attention layers. Also recorded that
 `HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED` is a rejected prefill diagnostic from
 `docs/OPTIMIZE.md`, not the current decode verifier tail; the chain verifier
 already uses the retained `paro_rotate1_f32_to_fp16` decode-tail slice.
+
+## 2026-06-12 - MTP fill/copy cleanup lane closed on current stack
+
+Docs-only tracker cleanup while walking the open MTP spike rows. Current retained
+rocprof artifacts no longer support spending sprint time on per-layer fill/copy
+cleanup: `benchmarks/results/2026-06-12-hipengine-mtp-canonicalize-skip-decode-batched-rocprof.json`
+shows `runtime_copy` at `2.0` calls/pass and `0.00665 ms/pass`, and
+`benchmarks/results/2026-06-12-hipengine-mtp-full-shared-down-combine-fused-on-rocprof.json`
+shows the same shape at `0.00674 ms/pass`; the newer linear A/B dual-separate
+profile in `/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json`
+keeps it at `2.0` calls/pass and `0.00688 ms/pass`. No verifier fill family is
+present in those summaries. Updated `docs/MTP.md` to mark the fill/copy lane
+closed on the current stack and to reopen it only from fresh material live-bucket
+evidence plus local write-before-read proof.
