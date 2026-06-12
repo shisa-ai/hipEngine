@@ -48,7 +48,7 @@ Current best retained stack after the 2026-06-12 host/cache/proposer-router/redu
   identical accepted lengths and active budgets relative to the
   linear A/B dual-separate opt-out control.
 - Current wall: **`19.44 ms/cycle = 16.16 ms verify + 1.25 ms proposal/update`**.
-- Wall milestone status: crossed (`19.60 ms < 21.5 ms`). True `>1.0x`
+- Wall milestone status: crossed (`19.44 ms < 21.5 ms`). True `>1.0x`
   break-even at the current visible-token density is stricter: with
   `2.012` visible tokens/cycle and `9.044 ms/token` AR, wall would need to be
   about **`18.2 ms/cycle`**, or visible density must rise to at least
@@ -150,6 +150,11 @@ Current profile triage after the `0.924x / 19.44 ms` row:
     not another global in-kernel producer/consumer wait.
 
 Acceptance-density backlog for the endgame:
+
+This is the place to bank policy ideas while keeping the current implementation
+push focused on wall-clock reductions. At the current B=3 density, wall cuts
+alone need about `18.2 ms/cycle`; if the next reduced-DAG/proposer units leave
+the row near `19-20 ms/cycle`, acceptance density becomes the co-equal lever.
 
 | Rank | Diagnostic / policy | Why it matters | First gate |
 | --- | --- | --- | --- |
@@ -2460,12 +2465,19 @@ was rechecked and no-held because higher VGPR pressure offset the smaller grid.
 | M7.B.2| Tile-size sweep on the 32-context decode shape; promote per CPU-ref correctness gate     |                  ~1–2  | **Closed / VTILE=4 retained** | `-0.56 ms/pass` kernel time in the M16 profile; current exact stack keeps the retained GDN kernel | `benchmarks/results/2026-06-09-hipengine-m16-gdn-chain-dvtiling.json`; `VTILE=8` no-held in `benchmarks/results/2026-06-11-hipengine-mtp-gdn-vtile8-rocprof.json` |
 | **M7.B total** |                                                                               |              **~2–3** | **Closed** | Kernel-time headroom banked; not a current wall lever | Broader wall work stays on reduced-DAG/proposer/acceptance-density, not more local GDN tiling. |
 
-#### M7.C tracker — small-batch prefill→GEMV switch (RECHARTERED 2026-05-21)
+#### M7.C tracker — small-batch prefill→GEMV switch (CLOSED / HISTORICAL)
 
 Projected savings target: **~8–9 ms** of the 11.0 ms combined budget for the
 two `awq_fusedw4_prefill_*_fp16` kernels. This phase was originally framed as
 “runtime_memset elimination” — see M7.C.1 below for what the M7.0 trace actually
 showed once the classifier bug was fixed.
+
+2026-06-12 status: do not reopen this tracker as written. The current exact B=3
+MTP path has already absorbed the useful safe-mask/split-output lessons through
+M7.C.6, M12.6, M16.4, and later C-dispatch routing; the locked current profile
+has no `w4_single_prefill_smallbatch` bucket left. New work should start from
+the live `842 calls/pass` profile and reduced-DAG table above, not from the old
+threshold-bump plan.
 
 Dispatch sites to change (all in `hipengine/runtime/qwen35_paro.py`,
 `if tokens == 1: ... else: awq_fusedw4_prefill_*` blocks):
@@ -2490,11 +2502,11 @@ value”. M7.C extends the same logic to the FP16 path for small batches.
 |-----|-----------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
 | M7.C.1| **Identify culprit** — LANDED. Six dispatch sites listed above use prefill kernels for `tokens > 1`. The 11 ms “memset” was a `_family` classifier substring match against “fill” in “prefill”. | 0 (diagnostic) | ✅ **Landed** | 0 | this section + corrected M7.0 artifact |
 | M7.C.2| Add a `_small_batch_decode_threshold` constant + env override; change the six dispatch sites from `if tokens == 1` to `if tokens <= _small_batch_decode_threshold()`. | ~6–8 | ⚠️ **Partial / reverted** | 0 (kept helper only) | Investigation report: see below + commit log |
-| M7.C.3| Cross-check: prefill batches (16+ tokens) still take the prefill kernel; verify with a `--rocprof-warmup-cycles 0 --prefill-only` smoke run | 0 | _Blocked on M7.C.6_ | _TBD_ | _TBD_ (gate only) |
-| M7.C.4| Correctness: full B=3 chain still exact-AR-match on the quicksort fixture; KL/top-1 unchanged | 0 | _Blocked on M7.C.6_ | _TBD_ | _TBD_ (gate only) |
-| M7.C.5| Re-run M7.0 rocprof; new per-pass kernel ms drops by ~7–8 ms (the prefill kernels fall out, replaced by ~85 μs / 4 μs/row GEMVs at < 3 ms total). | 0 | _Blocked on M7.C.6_ | _TBD_ | _TBD_            |
+| M7.C.3| Cross-check: prefill batches (16+ tokens) still take the prefill kernel; verify with a `--rocprof-warmup-cycles 0 --prefill-only` smoke run | 0 | **Superseded** | n/a | Historical prefill guard. Not part of the current B=3 verifier hot path; rerun only if prefill dispatch changes. |
+| M7.C.4| Correctness: full B=3 chain still exact-AR-match on the quicksort fixture; KL/top-1 unchanged | 0 | **Closed** | n/a | Covered by later exact quicksort and 9-prompt D32 rows for M7.C.6, M12.6 `single_linear_out`/`single_full_v`, M16.4, and current best `0.924x` stack. |
+| M7.C.5| Re-run M7.0 rocprof; new per-pass kernel ms drops by ~7–8 ms (the prefill kernels fall out, replaced by ~85 μs / 4 μs/row GEMVs at < 3 ms total). | 0 | **Superseded** | n/a | The current profile is the authority: `842 calls/pass`, `12.636 ms` kernel/pass, `16.220 ms` host/pass, and no `w4_single_prefill_smallbatch` bucket. |
 | M7.C.6| **Split dual GEMV into two single GEMVs at `tokens > 1`** for `project_full_attention_qkv_fp16` (site #1) and `project_linear_attention_qkv_z_fp16` (site #2), mirroring the bf16 sibling pattern at `project_linear_attention_qkv_z_bf16` line ~1075. Adds an `elif tokens <= _small_batch_decode_threshold():` branch that issues two `gemv_awq_pack8_transposed_fp16` calls writing each view's backing pointer directly. | ~6–8 (revised: **~1 ms kernel + ~4 ms wall**) | ✅ **Landed** | **+15.8%** MTP tok/s (23.96 → 27.74) | benchmarks/results/2026-05-21-hipengine-mtp-m7c6-small-batch-dispatch-split.json |
-| **M7.C total** |                                                                               |              **~6–8** | landed     |  **+15.8% MTP tok/s** (kernel ~+1ms within noise; wall-clock confirms) |                  |
+| **M7.C total** |                                                                               |              **~6–8** | **Closed** |  **+15.8% MTP tok/s** from M7.C.6; later paths supersede the old tracker | Use the live reduced-DAG profile for further work. |
 
 ##### M7.C.2 investigation report (2026-05-21)
 

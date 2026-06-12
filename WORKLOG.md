@@ -82395,3 +82395,16 @@ those artifacts and to block the tempting standalone "GDN scalar pre-pass"
 idea: `VTILE=4` already computes shared q/k scales plus `beta`/`decay` once per
 four `dv` columns, and a separate pre-pass would add another launch to the
 dispatch-floored verifier. No code change and no new performance claim.
+
+## 2026-06-12 - MTP stale small-batch W4 tracker cleanup
+
+Docs-only cleanup after reviewing the old M7.C small-batch prefill-to-GEMV
+tracker against the current `842 calls/pass` profile and the retained exact
+`0.924x / 19.44 ms` MTP row. Marked M7.C.3-M7.C.5 closed/superseded rather than
+"blocked on M7.C.6": the useful safe-mask and split-output lessons are already
+absorbed by M7.C.6, M12.6 `single_linear_out`/`single_full_v`, M16.4, and later
+C-dispatch routing, and the current profile has no `w4_single_prefill_smallbatch`
+bucket left. Also tightened the acceptance-density backlog language: B=4/B=5,
+vocab-cap rejection census, adaptive fallback, tree/sibling retest, and relaxed
+sampling remain documented, but policy changes stay endgame work after the next
+reduced-DAG/proposer wall-cut units.
