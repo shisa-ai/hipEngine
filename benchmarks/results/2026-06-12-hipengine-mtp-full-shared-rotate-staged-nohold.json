@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "status": "rejected_no_hold",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "candidate": "Full-attention C-dispatch shared gate/up keyed staged rotate plus dual W4 GEMV",
+  "decision": "no-hold; prototype code removed",
+  "decision_reason": "The diagnostic removed the intended 10 full-attention shared rotate launches per verifier pass and stayed exact on the quicksort smoke, but the staged dual GEMV body cost more than the saved launch/rotate time, increasing both verifier kernel time and host marker time.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "stable quicksort prompt",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "correctness": {
+    "quicksort_smoke_exact": true,
+    "accepted_lengths_changed": false,
+    "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+  },
+  "commands": {
+    "unit_smoke": "PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py",
+    "quicksort_smoke_opt_in": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_ROTATE_STAGED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-full-shared-rotate-staged-smoke.json",
+    "rocprof_opt_in": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_ROTATE_STAGED=1 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-full-shared-rotate-staged-rocprof-20260612-r1 --out /tmp/hipengine-mtp-full-shared-rotate-staged-rocprof-20260612-r1.json"
+  },
+  "baseline_profile": {
+    "source": "/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json",
+    "kernel_calls_per_pass": 842.0,
+    "kernel_ms_per_pass": 12.63632818181818,
+    "host_ms_per_pass": 16.219855090909093,
+    "moe_paro_rotate_in_calls_per_pass": 160.0,
+    "moe_paro_rotate_in_ms_per_pass": 0.8121321818181818,
+    "w4_dual_gemv_calls_per_pass": 80.0,
+    "w4_dual_gemv_ms_per_pass": 1.8336264545454546
+  },
+  "candidate_profile": {
+    "source": "/tmp/hipengine-mtp-full-shared-rotate-staged-rocprof-20260612-r1.json",
+    "kernel_calls_per_pass": 832.0,
+    "kernel_ms_per_pass": 12.69660290909091,
+    "host_ms_per_pass": 16.236179454545454,
+    "moe_paro_rotate_in_calls_per_pass": 150.0,
+    "moe_paro_rotate_in_ms_per_pass": 0.7665510909090909,
+    "w4_dual_gemv_calls_per_pass": 80.0,
+    "w4_dual_gemv_ms_per_pass": 1.9500348181818181,
+    "staged_shared_rotate_gemv_calls_per_pass": 10.0,
+    "staged_shared_rotate_gemv_ms_per_pass": 0.19343745454545455
+  },
+  "delta_candidate_minus_baseline": {
+    "kernel_calls_per_pass": -10.0,
+    "kernel_ms_per_pass": 0.06027472727272887,
+    "host_ms_per_pass": 0.016324363636362194,
+    "moe_paro_rotate_in_calls_per_pass": -10.0,
+    "moe_paro_rotate_in_ms_per_pass": -0.045581090909090925,
+    "w4_dual_gemv_calls_per_pass": 0.0,
+    "w4_dual_gemv_ms_per_pass": 0.11640836363636354
+  },
+  "notes": "This tested the rotate-once/no-barrier-reset shared path that remained as a possible reopen condition after older M13.B shared-rotate diagnostics. The keyed staged full-attention variant is still negative on the current 0.924x stack."
+}

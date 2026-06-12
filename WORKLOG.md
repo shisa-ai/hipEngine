@@ -82200,3 +82200,67 @@ change. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-linear-ab-dual-separate-retained.json`
 and updated `docs/MTP.md`, `benchmarks/README.md`, and
 `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP full-attn shared rotate staged C-dispatch no-hold
+
+Tested the remaining "rotate once / no barrier reset" version of shared-expert
+input-rotate fusion in the full-attention C dispatcher. The prototype was
+scoped to the 10 full-attn layers only so the retained linear-attn C-dispatch
+path stayed intact. It used the existing keyed HBM-staged
+`gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16` body to replace
+`paro_rotate2_fp16 + gemv_awq_dual_pack8_transposed_fp16` for full-attn shared
+gate/up.
+
+Narrow unit smoke while the prototype was present:
+
+```bash
+PYTHONPATH=. pytest -q tests/test_moe_c1_dispatch.py
+```
+
+- Passed `6/6`.
+
+Quicksort exact smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_ROTATE_STAGED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-full-shared-rotate-staged-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Verifier profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_ROTATE_STAGED=1 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-full-shared-rotate-staged-rocprof-20260612-r1 \
+  --out /tmp/hipengine-mtp-full-shared-rotate-staged-rocprof-20260612-r1.json
+```
+
+Compared against the current retained profile
+`/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json`:
+
+- Calls/pass `842 -> 832`.
+- `moe_paro_rotate_in` calls/pass `160 -> 150`; time `0.812 -> 0.767 ms/pass`.
+- `w4_dual_gemv` time `1.834 -> 1.950 ms/pass`; the staged shared rotate
+  body itself was `10` calls/pass and `0.193 ms/pass`.
+- Total verifier kernel `12.636 -> 12.697 ms/pass`.
+- Host marker `16.220 -> 16.236 ms/pass`.
+
+Decision: no-hold. This exact/staged shape removed the intended full-attn shared
+rotate launches, but the keyed staged dual GEMV cost outweighed the launch and
+rotate saving. Removed the prototype code; no speed row promoted. Added
+artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-full-shared-rotate-staged-nohold.json`
+and updated `docs/MTP.md` plus `benchmarks/CHANGELOG.md`.
