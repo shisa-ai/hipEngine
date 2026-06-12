@@ -84470,3 +84470,41 @@ fixed or explicitly bounded.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-layer-drift-audit.json`.
+
+## 2026-06-13 - MTP B=1 c1_loop retune no-held
+
+Started the cheap B=1 operating-point retune pass after the retained row moved
+from B=3 (`rows=4`) to B=1 (`rows=2`). This first A/B checks whether the old
+`decode_batched` full-attention win still holds at two verifier rows.
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-b1-c1loop-retune-d32-20260613 \
+  --out /tmp/hipengine-mtp-b1-c1loop-retune-d32-20260613.json
+```
+
+Result: exact `9/9`, but no-hold. Compared with the retained B=1
+`decode_batched` row (`benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json`),
+`c1_loop` keeps the same visible density (`1.617/cycle`) and acceptance
+(`0.617/cycle`), but regresses the economics:
+
+- prompt-mean ratio: `1.018x -> 0.919x`;
+- wall: `14.173 -> 15.818 ms/cycle`;
+- verify: `12.426 -> 14.075 ms/cycle`;
+- cycle cost: `1.574 -> 1.747` AR tokens.
+
+Decision: keep `decode_batched` as the retained B=1 full-attention mode.
+`c1_loop` remains useful as a diagnostic state-path control only. Remaining
+cheap B=1 retunes are W4 multi-row site mask, small-batch decode threshold at
+the rows=2 boundary, and LM-head thread count.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-c1loop-retune-nohold.json`.

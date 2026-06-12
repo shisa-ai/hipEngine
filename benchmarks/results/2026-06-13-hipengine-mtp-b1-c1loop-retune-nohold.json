@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-13",
+  "status": "rejected_no_hold",
+  "performance_claim": false,
+  "candidate": "35B-A3B MTP B=1 chain_attn_mode=c1_loop retune",
+  "decision": "keep retained B=1 decode_batched graph_off",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budget": 1,
+    "runs": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "c1_loop",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "draft_vocab_cap_source": "no-env default",
+    "small_batch_decode_threshold": 7
+  },
+  "correctness": {
+    "suite_exact_ar_match": "9/9",
+    "all_exact_ar_match": true
+  },
+  "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode c1_loop --graph-mode off --raw-root /tmp/hipengine-mtp-b1-c1loop-retune-d32-20260613 --out /tmp/hipengine-mtp-b1-c1loop-retune-d32-20260613.json",
+  "raw_artifact": "/tmp/hipengine-mtp-b1-c1loop-retune-d32-20260613.json",
+  "retained_baseline_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json",
+  "metrics": {
+    "candidate_c1_loop": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 0.9190561169026679,
+      "cycle_wall_ms_per_cycle": 15.817708041785345,
+      "verify_ms_per_cycle": 14.074594533004605,
+      "proposal_update_ms_per_cycle": 1.729906627972904,
+      "cycle_cost_ar_tokens": 1.7474547530099946,
+      "visible_tokens_per_cycle": 1.6167079463364293,
+      "accepted_tokens_per_cycle": 0.6167079463364293
+    },
+    "retained_decode_batched": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 1.0183575942141887,
+      "actual_decode_speedup_vs_ar_total_time": 1.009088,
+      "cycle_wall_ms_per_cycle": 14.17252825863089,
+      "verify_ms_per_cycle": 12.426223521388197,
+      "proposal_update_ms_per_cycle": 1.7328161988721338,
+      "cycle_cost_ar_tokens": 1.5738586101080283,
+      "visible_tokens_per_cycle": 1.6167079463364293,
+      "accepted_tokens_per_cycle": 0.6167079463364293
+    },
+    "delta_c1_minus_decode_batched": {
+      "actual_decode_speedup_vs_ar_prompt_mean": -0.09930147731152084,
+      "cycle_wall_ms_per_cycle": 1.645179783154454,
+      "verify_ms_per_cycle": 1.6483710116164083,
+      "proposal_update_ms_per_cycle": -0.0029095708992297187,
+      "cycle_cost_ar_tokens": 0.17359614290196634,
+      "visible_tokens_per_cycle": 0.0
+    }
+  },
+  "decision_reason": "At B=1 rows=2, c1_loop keeps the same acceptance/visible density as decode_batched but raises verifier wall by about 1.65 ms/cycle and regresses prompt-mean ratio by about 0.099x. Keep decode_batched as the retained B=1 mode; c1_loop remains useful only as a diagnostic state-path control."
+}
