@@ -82749,3 +82749,41 @@ The vocab-cap diagnostic now separates cap-caused first rejections from genuine
 prediction misses before any `32768 -> 65536/full` sweep. Tree work remains
 deferred, with chain-plus-one-sibling-at-first-rejection preferred before
 reopening full tree search. No benchmark was run; this is a docs/planning unit.
+
+## 2026-06-12 - MTP LM-head thread-count sweep no-held
+
+Checked whether the current verifier LM-head bucket could be improved with the
+existing `HIPENGINE_QWEN35_LM_HEAD_THREADS` knob. This is not a retained speed
+row; it was a bounded profile diagnostic on the retained
+`decode_batched + graph_off` B=3 quicksort path.
+
+Both alternates passed the exact quicksort smoke with the locked accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_LM_HEAD_THREADS={256,512} PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off
+```
+
+Profile result against the retained `128`-thread artifact
+`/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json`:
+
+- `128` baseline: `842` calls/pass, verifier kernel `12.636 ms/pass`,
+  host marker `16.220 ms/pass`, W8A16 LM-head `1.450 ms/pass`.
+- `256`: exact but verifier kernel `13.427 ms/pass`, host marker
+  `16.973 ms/pass`, W8A16 LM-head `2.251 ms/pass`.
+- `512`: exact but verifier kernel `15.737 ms/pass`, host marker
+  `19.267 ms/pass`, W8A16 LM-head `4.572 ms/pass`.
+
+Decision: no-hold; keep `HIPENGINE_QWEN35_LM_HEAD_THREADS=128` default and do
+not run the full D32 suite for this knob unless a new LM-head kernel changes the
+threading tradeoff. Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-lmhead-thread-sweep-nohold.json`.

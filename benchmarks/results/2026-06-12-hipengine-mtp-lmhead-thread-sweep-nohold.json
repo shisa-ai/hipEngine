@@ -1,0 +1,63 @@
+{
+  "schema": "hipengine.benchmark_result.v1",
+  "date": "2026-06-12",
+  "status": "no_hold",
+  "performance_claim": false,
+  "reason": "alternate verifier LM-head thread counts kept quicksort exact but regressed the current retained verifier profile before a 9-prompt suite run was justified",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "stable quicksort prompt",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "baseline": {
+    "env": {
+      "HIPENGINE_QWEN35_LM_HEAD_THREADS": "128"
+    },
+    "source_artifact": "/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json",
+    "kernel_calls_per_pass": 842.0,
+    "kernel_ms_per_pass": 12.63632818181818,
+    "host_window_ms_per_pass": 16.220,
+    "w8a16_lm_head_ms_per_pass": 1.4498307272727273
+  },
+  "candidates": [
+    {
+      "env": {
+        "HIPENGINE_QWEN35_LM_HEAD_THREADS": "256"
+      },
+      "exact_quicksort": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+      "profile_artifact": "/tmp/hipengine-mtp-lmhead-threads-256-rocprof.json",
+      "kernel_calls_per_pass": 842.0,
+      "kernel_ms_per_pass": 13.427172454545454,
+      "host_window_ms_per_pass": 16.972736727272727,
+      "w8a16_lm_head_ms_per_pass": 2.2509455454545457,
+      "decision": "no_hold"
+    },
+    {
+      "env": {
+        "HIPENGINE_QWEN35_LM_HEAD_THREADS": "512"
+      },
+      "exact_quicksort": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+      "profile_artifact": "/tmp/hipengine-mtp-lmhead-threads-512-rocprof.json",
+      "kernel_calls_per_pass": 842.0,
+      "kernel_ms_per_pass": 15.737063272727273,
+      "host_window_ms_per_pass": 19.26599227272727,
+      "w8a16_lm_head_ms_per_pass": 4.571868,
+      "decision": "no_hold"
+    }
+  ],
+  "commands": {
+    "exact_smoke_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_LM_HEAD_THREADS=<threads> PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-lmhead-threads-<threads>-smoke.json",
+    "rocprof_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_LM_HEAD_THREADS=<threads> PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$(cat /tmp/quicksort-prompt-tokens.txt)\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --out /tmp/hipengine-mtp-lmhead-threads-<threads>-rocprof.json --raw-root /tmp/hipengine-mtp-lmhead-threads-<threads>-rocprof --top 20"
+  }
+}
