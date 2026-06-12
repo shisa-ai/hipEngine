@@ -1,0 +1,368 @@
+{
+  "schema": 1,
+  "status": "diagnostic",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "purpose": "hipEngine MTP verifier economics over the llama.cpp mtp-bench prompt suite.",
+  "source_prompt_suite": {
+    "gist": "https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090",
+    "raw": "https://gist.githubusercontent.com/am17an/228edfb84ed082aa88e3865d6fa27090/raw/0bee1e2b88904e62670d0df1cf0991883b0815d7/mtp-bench.py",
+    "llama_cpp_evidence": "https://github.com/ggml-org/llama.cpp/pull/22673#issuecomment-4380579942",
+    "llama_cpp_pr_23287": "https://github.com/ggml-org/llama.cpp/pull/23287",
+    "note": "The original script sends these prompts as single user chat messages to an OpenAI-compatible llama.cpp server. hipEngine encodes the raw prompt text unless a future tokenizer/template option is added."
+  },
+  "prompts_file": "/home/lhl/hipEngine/benchmarks/fixtures/llamacpp_mtp_bench_prompts.json",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "prompt_render_mode": "raw",
+  "tokenization": "raw prompt text encoded with model tokenizer.json",
+  "decode_tokens": 16,
+  "candidate_budgets": [
+    1
+  ],
+  "runs_per_prompt": 1,
+  "proposal_impl": "persistent_device",
+  "backend": "hip_gfx1100",
+  "hip_arch": "gfx1100",
+  "chain_attn_mode": "decode_batched",
+  "graph_mode": "off",
+  "small_batch_decode_threshold": 7,
+  "verify_gpu_accept": null,
+  "acceptance_diagnostics": true,
+  "dry_run": false,
+  "results": [
+    {
+      "name": "code_python",
+      "prompt_render_mode": "raw",
+      "source_prompt_chars": 102,
+      "rendered_prompt_chars": 102,
+      "prompt_chars": 102,
+      "prompt_tokens": 20,
+      "prompt_tokens_file": "/tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/prompt-tokens.txt",
+      "prompt_source_file": "/tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/prompt-source.txt",
+      "prompt_text_file": "/tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/prompt.txt",
+      "economics_json": "/tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/economics.json",
+      "economics_log": "/tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/economics.log",
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/prompt-tokens.txt --decode-tokens 16 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/raw --out /tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612/code_python/economics.json --small-batch-decode-threshold 7 --acceptance-diagnostics --llama-target-cycle-cost 2.0",
+      "subprocess_wall_seconds": 46.75804822798818,
+      "by_budget": {
+        "1": {
+          "all_exact_ar_match": true,
+          "cycle_cost_ar_tokens_mean": 1.7322161927461812,
+          "observed_cycle_speedup_vs_ar_mean": 1.0824283988636865,
+          "actual_decode_speedup_vs_ar_mean": 1.0140173119777511,
+          "avg_visible_tokens_per_cycle_mean": 1.875,
+          "avg_accepted_per_cycle_mean": 0.875,
+          "acceptance_rate_mean": 0.875,
+          "cycle_wall_ms_per_cycle_mean": 15.49709225,
+          "verify_ms_per_cycle_mean": 13.72713892487809,
+          "proposal_update_ms_per_cycle_mean": 1.7503588751424104,
+          "proposal_snapshot_saves_mean": 8.0,
+          "proposal_snapshot_skips_mean": 0.0,
+          "proposal_snapshot_saves_per_cycle_mean": 1.0,
+          "proposal_snapshot_skips_per_cycle_mean": 0.0,
+          "ar_decode_ms_per_token_mean": 8.946396133978851,
+          "accepted_lengths_by_run": [
+            [
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "active_budgets_by_run": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "acceptance_diagnostics_by_run": [
+            {
+              "cycles": [
+                {
+                  "accepted": 0,
+                  "active_budget": 1,
+                  "cycle": 1,
+                  "decode_offset": 0,
+                  "first_rejected_depth": 0,
+                  "first_rejected_proposed_token": 760,
+                  "first_rejected_reason": "target_outside_draft_vocab_cap",
+                  "first_rejected_target_in_draft_vocab_cap": false,
+                  "first_rejected_target_top1_token": 71093,
+                  "full_accept": false,
+                  "per_depth": [
+                    {
+                      "accepted": false,
+                      "depth": 0,
+                      "proposed_matches_target": false,
+                      "proposed_token": 760,
+                      "target_in_draft_vocab_cap": false,
+                      "target_top1_token": 71093
+                    }
+                  ],
+                  "root_position": 20,
+                  "root_token": 271,
+                  "verify_budget": 1
+                },
+                {
+                  "accepted": 1,
+                  "active_budget": 1,
+                  "cycle": 2,
+                  "decode_offset": 1,
+                  "first_rejected_depth": null,
+                  "first_rejected_proposed_token": null,
+                  "first_rejected_reason": "full_accept",
+                  "first_rejected_target_in_draft_vocab_cap": null,
+                  "first_rejected_target_top1_token": null,
+                  "full_accept": true,
+                  "per_depth": [
+                    {
+                      "accepted": true,
+                      "depth": 0,
+                      "proposed_matches_target": true,
+                      "proposed_token": 12305,
+                      "target_in_draft_vocab_cap": true,
+                      "target_top1_token": 12305
+                    }
+                  ],
+                  "root_position": 21,
+                  "root_token": 71093,
+                  "verify_budget": 1
+                },
+                {
+                  "accepted": 1,
+                  "active_budget": 1,
+                  "cycle": 3,
+                  "decode_offset": 3,
+                  "first_rejected_depth": null,
+                  "first_rejected_proposed_token": null,
+                  "first_rejected_reason": "full_accept",
+                  "first_rejected_target_in_draft_vocab_cap": null,
+                  "first_rejected_target_top1_token": null,
+                  "full_accept": true,
+                  "per_depth": [
+                    {
+                      "accepted": true,
+                      "depth": 0,
+                      "proposed_matches_target": true,
+                      "proposed_token": 727,
+                      "target_in_draft_vocab_cap": true,
+                      "target_top1_token": 727
+                    }
+                  ],
+                  "root_position": 23,
+                  "root_token": 198,
+                  "verify_budget": 1
+                },
+                {
+                  "accepted": 1,
+                  "active_budget": 1,
+                  "cycle": 4,
+                  "decode_offset": 5,
+                  "first_rejected_depth": null,
+                  "first_rejected_proposed_token": null,
+                  "first_rejected_reason": "full_accept",
+                  "first_rejected_target_in_draft_vocab_cap": null,
+                  "first_rejected_target_top1_token": null,
+                  "full_accept": true,
+                  "per_depth": [
+                    {
+                      "accepted": true,
+                      "depth": 0,
+                      "proposed_matches_target": true,
+                      "proposed_token": 1393,
+                      "target_in_draft_vocab_cap": true,
+                      "target_top1_token": 1393
+                    }
+                  ],
+                  "root_position": 25,
+                  "root_token": 73111,
+                  "verify_budget": 1
+                },
+                {
+                  "accepted": 1,
+                  "active_budget": 1,
+                  "cycle": 5,
+                  "decode_offset": 7,
+                  "first_rejected_depth": null,
+                  "first_rejected_proposed_token": null,
+                  "first_rejected_reason": "full_accept",
+                  "first_rejected_target_in_draft_vocab_cap": null,
+                  "first_rejected_target_top1_token": null,
+                  "full_accept": true,
+                  "per_depth": [
+                    {
+                      "accepted": true,
+                      "depth": 0,
+                      "proposed_matches_target": true,
+                      "proposed_token": 514,
+                      "target_in_draft_vocab_cap": true,
+                      "target_top1_token": 514
+                    }
+                  ],
+                  "root_position": 27,
+                  "root_token": 25,
+                  "verify_budget": 1
+                },
+                {
+                  "accepted": 1,
+                  "active_budget": 1,
+                  "cycle": 6,
+                  "decode_offset": 9,
+                  "first_rejected_depth": null,
+                  "first_rejected_proposed_token": null,
+                  "first_rejected_reason": "full_accept",
+                  "first_rejected_target_in_draft_vocab_cap": null,
+                  "first_rejected_target_top1_token": null,
+                  "full_accept": true,
+                  "per_depth": [
+                    {
+                      "accepted": true,
+                      "depth": 0,
+                      "proposed_matches_target": true,
+                      "proposed_token": 1411,
+                      "target_in_draft_vocab_cap": true,
+                      "target_top1_token": 1411
+                    }
+                  ],
+                  "root_position": 29,
+                  "root_token": 8,
+                  "verify_budget": 1
+                },
+                {
+                  "accepted": 1,
+                  "active_budget": 1,
+                  "cycle": 7,
+                  "decode_offset": 11,
+                  "first_rejected_depth": null,
+                  "first_rejected_proposed_token": null,
+                  "first_rejected_reason": "full_accept",
+                  "first_rejected_target_in_draft_vocab_cap": null,
+                  "first_rejected_target_top1_token": null,
+                  "full_accept": true,
+                  "per_depth": [
+                    {
+                      "accepted": true,
+                      "depth": 0,
+                      "proposed_matches_target": true,
+                      "proposed_token": 25,
+                      "target_in_draft_vocab_cap": true,
+                      "target_top1_token": 25
+                    }
+                  ],
+                  "root_position": 31,
+                  "root_token": 514,
+                  "verify_budget": 1
+                },
+                {
+                  "accepted": 1,
+                  "active_budget": 1,
+                  "cycle": 8,
+                  "decode_offset": 13,
+                  "first_rejected_depth": null,
+                  "first_rejected_proposed_token": null,
+                  "first_rejected_reason": "full_accept",
+                  "first_rejected_target_in_draft_vocab_cap": null,
+                  "first_rejected_target_top1_token": null,
+                  "full_accept": true,
+                  "per_depth": [
+                    {
+                      "accepted": true,
+                      "depth": 0,
+                      "proposed_matches_target": true,
+                      "proposed_token": 262,
+                      "target_in_draft_vocab_cap": true,
+                      "target_top1_token": 262
+                    }
+                  ],
+                  "root_position": 33,
+                  "root_token": 198,
+                  "verify_budget": 1
+                }
+              ],
+              "draft_vocab_cap": 65536,
+              "enabled": true,
+              "summary": {
+                "accept_depth_hist": {
+                  "0": 1,
+                  "1": 7
+                },
+                "cycle_count": 8,
+                "first_reject_depth_hist": {
+                  "0": 1
+                },
+                "first_reject_reason_counts": {
+                  "full_accept": 7,
+                  "target_outside_draft_vocab_cap": 1
+                },
+                "max_zero_accept_streak": 1,
+                "per_depth": {
+                  "0": {
+                    "accepted": 7,
+                    "draft_top1_miss": 0,
+                    "observed": 8,
+                    "rejected": 1,
+                    "target_outside_draft_vocab_cap": 1
+                  }
+                },
+                "zero_accept_streaks": [
+                  1
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "aggregate_by_budget": {
+    "1": {
+      "prompts": 1,
+      "all_exact_ar_match": true,
+      "cycle_cost_ar_tokens_mean_across_prompts_mean": 1.7322161927461812,
+      "cycle_cost_ar_tokens_mean_across_prompts_std": 0.0,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_mean": 1.0824283988636865,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_std": 0.0,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_mean": 1.0140173119777511,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_std": 0.0,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_mean": 1.875,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_std": 0.0,
+      "avg_accepted_per_cycle_mean_across_prompts_mean": 0.875,
+      "avg_accepted_per_cycle_mean_across_prompts_std": 0.0,
+      "acceptance_rate_mean_across_prompts_mean": 0.875,
+      "acceptance_rate_mean_across_prompts_std": 0.0,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_mean": 15.49709225,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_std": 0.0,
+      "verify_ms_per_cycle_mean_across_prompts_mean": 13.72713892487809,
+      "verify_ms_per_cycle_mean_across_prompts_std": 0.0,
+      "proposal_update_ms_per_cycle_mean_across_prompts_mean": 1.7503588751424104,
+      "proposal_update_ms_per_cycle_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_saves_mean_across_prompts_mean": 8.0,
+      "proposal_snapshot_saves_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_skips_mean_across_prompts_mean": 0.0,
+      "proposal_snapshot_skips_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_mean": 1.0,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_mean": 0.0,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_std": 0.0,
+      "ar_decode_ms_per_token_mean_across_prompts_mean": 8.946396133978851,
+      "ar_decode_ms_per_token_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_saves_mean_across_prompts_sum": 8.0,
+      "proposal_snapshot_skips_mean_across_prompts_sum": 0.0
+    }
+  },
+  "go_no_go_rule": {
+    "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",
+    "hits_1p5x": "avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5",
+    "final_confirmation": "Use >=3 runs per prompt/budget before promoting any performance claim."
+  }
+}

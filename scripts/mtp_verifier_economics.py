@@ -179,6 +179,7 @@ def _economics_from_smoke(smoke: dict[str, Any], *, llama_target_cycle_cost: flo
         "llama_like_cycle_cost_target_ar_tokens": llama_target_cycle_cost,
         "llama_like_gap_multiplier": _safe_div(cycle_cost_ar_tokens or 0.0, llama_target_cycle_cost),
         "proposal_trace_sample": mtp.get("proposal_trace_sample"),
+        "acceptance_diagnostics": mtp.get("acceptance_diagnostics"),
     }
 
 
@@ -216,6 +217,7 @@ def _aggregate_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "all_exact_ar_match": all(bool(r.get("exact_ar_match")) for r in runs),
         "accepted_lengths_by_run": [r.get("accepted_lengths") for r in runs],
         "active_budgets_by_run": [r.get("active_budgets") for r in runs],
+        "acceptance_diagnostics_by_run": [r.get("acceptance_diagnostics") for r in runs if r.get("acceptance_diagnostics")],
     }
     for field in numeric_fields:
         vals = [r[field] for r in runs if r.get(field) is not None]
@@ -256,6 +258,8 @@ def _run_one(
         "--json",
         str(json_path),
     ]
+    if bool(getattr(args, "acceptance_diagnostics", False)):
+        cmd.append("--acceptance-diagnostics")
     env = os.environ.copy()
     if args.small_batch_decode_threshold is not None:
         env["HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD"] = str(args.small_batch_decode_threshold)
@@ -300,6 +304,11 @@ def main() -> int:
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--small-batch-decode-threshold", type=int, default=7)
     parser.add_argument("--verify-gpu-accept", default=None)
+    parser.add_argument(
+        "--acceptance-diagnostics",
+        action="store_true",
+        help="Forward --acceptance-diagnostics to mtp_chain_e2e_smoke.py and retain the diagnostics in this artifact.",
+    )
     parser.add_argument("--llama-target-cycle-cost", type=float, default=2.0)
     parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-mtp-verifier-economics"))
     parser.add_argument(
@@ -362,6 +371,7 @@ def main() -> int:
         "graph_mode": str(args.graph_mode),
         "small_batch_decode_threshold": int(args.small_batch_decode_threshold) if args.small_batch_decode_threshold is not None else None,
         "verify_gpu_accept": args.verify_gpu_accept,
+        "acceptance_diagnostics": bool(args.acceptance_diagnostics),
         "llama_target_cycle_cost_ar_tokens": float(args.llama_target_cycle_cost),
         "go_no_go_rule": {
             "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",

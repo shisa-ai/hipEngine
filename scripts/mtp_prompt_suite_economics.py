@@ -207,6 +207,8 @@ def _economics_command(args: argparse.Namespace, *, prompt_tokens_file: Path, pr
         cmd += ["--small-batch-decode-threshold", str(args.small_batch_decode_threshold)]
     if args.verify_gpu_accept is not None:
         cmd += ["--verify-gpu-accept", str(args.verify_gpu_accept)]
+    if args.acceptance_diagnostics:
+        cmd.append("--acceptance-diagnostics")
     if args.llama_target_cycle_cost is not None:
         cmd += ["--llama-target-cycle-cost", str(args.llama_target_cycle_cost)]
     return cmd
@@ -221,6 +223,7 @@ def _summary_for_economics(economics: dict[str, Any]) -> dict[str, Any]:
             **{field: aggregate.get(field) for field in SUMMARY_FIELDS},
             "accepted_lengths_by_run": aggregate.get("accepted_lengths_by_run"),
             "active_budgets_by_run": aggregate.get("active_budgets_by_run"),
+            "acceptance_diagnostics_by_run": aggregate.get("acceptance_diagnostics_by_run"),
         }
     return out
 
@@ -321,6 +324,11 @@ def main() -> int:
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--small-batch-decode-threshold", type=int, default=7)
     parser.add_argument("--verify-gpu-accept", default=None)
+    parser.add_argument(
+        "--acceptance-diagnostics",
+        action="store_true",
+        help="Retain per-cycle MTP acceptance diagnostics from child smoke runs in the suite artifact.",
+    )
     parser.add_argument("--llama-target-cycle-cost", type=float, default=2.0)
     parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)
     parser.add_argument(
@@ -374,6 +382,7 @@ def main() -> int:
         "graph_mode": str(args.graph_mode),
         "small_batch_decode_threshold": int(args.small_batch_decode_threshold) if args.small_batch_decode_threshold is not None else None,
         "verify_gpu_accept": args.verify_gpu_accept,
+        "acceptance_diagnostics": bool(args.acceptance_diagnostics),
         "dry_run": bool(args.dry_run),
         "results": results,
         "aggregate_by_budget": {} if args.dry_run else _aggregate_across_prompts(results),

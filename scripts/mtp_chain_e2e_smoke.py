@@ -118,6 +118,181 @@ def _env_flag(name: str, default: bool = True) -> bool:
     return raw.strip().lower() not in {"0", "false", "off", "no"}
 
 
+def _zero_accept_streaks(accepted_lengths: Sequence[int]) -> list[int]:
+    streaks: list[int] = []
+    current = 0
+    for accepted in accepted_lengths:
+        if int(accepted) == 0:
+            current += 1
+        elif current:
+            streaks.append(current)
+            current = 0
+    if current:
+        streaks.append(current)
+    return streaks
+
+
+def _diagnostic_reason(
+    *,
+    accepted: int,
+    active_budget: int,
+    proposed: int | None,
+    target: int | None,
+    draft_vocab_cap: int | None,
+) -> str:
+    if int(accepted) >= int(active_budget):
+        return "full_accept"
+    if proposed is None:
+        return "missing_candidate"
+    if target is None:
+        return "missing_target_top1"
+    if draft_vocab_cap is not None and int(target) >= int(draft_vocab_cap):
+        return "target_outside_draft_vocab_cap"
+    if int(proposed) == int(target):
+        return "accepted_prefix_inconsistent"
+    return "draft_top1_miss"
+
+
+def _acceptance_diagnostic_cycle(
+    *,
+    cycle: int,
+    decode_offset: int,
+    root_position: int,
+    root_token: int,
+    candidates: Sequence[int],
+    target_top1: Sequence[int],
+    bonus_token: int | None,
+    active_budget: int,
+    verify_budget: int,
+    accepted: int,
+    draft_vocab_cap: int | None,
+    use_tree: bool = False,
+) -> dict[str, Any]:
+    target_by_depth: dict[int, int] = {}
+    for depth, token in enumerate(target_top1[: int(active_budget)]):
+        target_by_depth[int(depth)] = int(token)
+    for depth in range(min(int(accepted), len(candidates))):
+        target_by_depth.setdefault(int(depth), int(candidates[depth]))
+    if int(accepted) < int(active_budget) and bonus_token is not None:
+        target_by_depth.setdefault(int(accepted), int(bonus_token))
+    first_rejected_depth = int(accepted) if int(accepted) < int(active_budget) else None
+    proposed = (
+        int(candidates[first_rejected_depth])
+        if first_rejected_depth is not None and first_rejected_depth < len(candidates)
+        else None
+    )
+    target = target_by_depth.get(int(first_rejected_depth)) if first_rejected_depth is not None else None
+    reason = (
+        "tree_mode_not_classified"
+        if use_tree
+        else _diagnostic_reason(
+            accepted=int(accepted),
+            active_budget=int(active_budget),
+            proposed=proposed,
+            target=target,
+            draft_vocab_cap=draft_vocab_cap,
+        )
+    )
+    per_depth: list[dict[str, Any]] = []
+    for depth in range(int(active_budget)):
+        depth_proposed = int(candidates[depth]) if depth < len(candidates) else None
+        depth_target = target_by_depth.get(int(depth))
+        per_depth.append(
+            {
+                "depth": int(depth),
+                "proposed_token": depth_proposed,
+                "target_top1_token": depth_target,
+                "accepted": bool(depth < int(accepted)),
+                "target_in_draft_vocab_cap": (
+                    None
+                    if depth_target is None or draft_vocab_cap is None
+                    else bool(int(depth_target) < int(draft_vocab_cap))
+                ),
+                "proposed_matches_target": (
+                    None
+                    if depth_proposed is None or depth_target is None
+                    else bool(int(depth_proposed) == int(depth_target))
+                ),
+            }
+        )
+    return {
+        "cycle": int(cycle),
+        "decode_offset": int(decode_offset),
+        "root_position": int(root_position),
+        "root_token": int(root_token),
+        "active_budget": int(active_budget),
+        "verify_budget": int(verify_budget),
+        "accepted": int(accepted),
+        "full_accept": bool(int(accepted) >= int(active_budget)),
+        "first_rejected_depth": first_rejected_depth,
+        "first_rejected_proposed_token": proposed,
+        "first_rejected_target_top1_token": target,
+        "first_rejected_target_in_draft_vocab_cap": (
+            None if target is None or draft_vocab_cap is None else bool(int(target) < int(draft_vocab_cap))
+        ),
+        "first_rejected_reason": reason,
+        "per_depth": per_depth,
+    }
+
+
+def _summarize_acceptance_diagnostics(
+    cycles: Sequence[dict[str, Any]],
+    *,
+    accepted_lengths: Sequence[int],
+    draft_vocab_cap: int | None,
+) -> dict[str, Any]:
+    accept_depth_hist: dict[str, int] = {}
+    first_reject_depth_hist: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+    per_depth: dict[str, dict[str, int]] = {}
+    for accepted in accepted_lengths:
+        key = str(int(accepted))
+        accept_depth_hist[key] = accept_depth_hist.get(key, 0) + 1
+    for cycle in cycles:
+        reason = str(cycle.get("first_rejected_reason") or "unknown")
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        depth = cycle.get("first_rejected_depth")
+        if depth is not None:
+            key = str(int(depth))
+            first_reject_depth_hist[key] = first_reject_depth_hist.get(key, 0) + 1
+        for row in cycle.get("per_depth") or []:
+            key = str(int(row.get("depth", 0)))
+            bucket = per_depth.setdefault(
+                key,
+                {
+                    "observed": 0,
+                    "accepted": 0,
+                    "rejected": 0,
+                    "target_outside_draft_vocab_cap": 0,
+                    "draft_top1_miss": 0,
+                },
+            )
+            bucket["observed"] += 1
+            if row.get("accepted"):
+                bucket["accepted"] += 1
+            else:
+                bucket["rejected"] += 1
+                if row.get("target_in_draft_vocab_cap") is False:
+                    bucket["target_outside_draft_vocab_cap"] += 1
+                elif row.get("proposed_matches_target") is False:
+                    bucket["draft_top1_miss"] += 1
+    zero_streaks = _zero_accept_streaks(accepted_lengths)
+    return {
+        "enabled": True,
+        "draft_vocab_cap": draft_vocab_cap,
+        "cycles": list(cycles),
+        "summary": {
+            "cycle_count": len(cycles),
+            "accept_depth_hist": accept_depth_hist,
+            "first_reject_depth_hist": first_reject_depth_hist,
+            "first_reject_reason_counts": reason_counts,
+            "zero_accept_streaks": zero_streaks,
+            "max_zero_accept_streak": max(zero_streaks) if zero_streaks else 0,
+            "per_depth": per_depth,
+        },
+    }
+
+
 def _mtp_proposer_skip_unused_reads_enabled() -> bool:
     """Skip MTP proposer host reads/results that the persistent chain discards."""
 
@@ -755,6 +930,7 @@ def _run_spec_persistent_device(
     confidence_threshold: float = 0.0,
     rocprof_warmup_cycles: int = 0,
     rocprof_verify_cycles: int = 0,
+    acceptance_diagnostics: bool = False,
 ) -> tuple[list[int], dict[str, Any]]:
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_tokens) + int(decode_tokens) + int(candidate_budget) + 4
@@ -766,6 +942,8 @@ def _run_spec_persistent_device(
     proposal_decode_update_seconds = 0.0
     proposal_snapshot_saves = 0
     proposal_snapshot_skips = 0
+    acceptance_diagnostic_cycles: list[dict[str, Any]] = []
+    draft_vocab_cap: int | None = None
     capture_rows = max_sequence + 2
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
@@ -822,6 +1000,7 @@ def _run_spec_persistent_device(
                 max_mtp_tokens=len(prompt_tokens) + 2 * int(decode_tokens) + 8,
                 runtime=session.runtime,
             ) as proposer, _OptionalHipStream(session.runtime, enabled=overlap_verify_commit_proposer) as proposer_update_stream:
+                draft_vocab_cap = int(proposer.draft_vocab)
                 prefill_started = time.perf_counter()
                 proposer.prefill_from_target_hidden_rows(
                     prompt_tokens,
@@ -834,6 +1013,7 @@ def _run_spec_persistent_device(
                 cycles = 0
                 decode_started = time.perf_counter()
                 while len(generated) < int(decode_tokens):
+                    decode_offset = len(generated)
                     remaining = int(decode_tokens) - len(generated)
                     active_budget = min(int(candidate_budget), max(0, remaining - 1))
                     if active_budget <= 0:
@@ -962,9 +1142,26 @@ def _run_spec_persistent_device(
                     verify_seconds += time.perf_counter() - t_verify
                     accepted = int(verify.accepted_count)
                     accepted_lengths.append(accepted)
+                    bonus = int(verify.next_token) if verify.next_token is not None else int(verify.target_top1[min(accepted, len(verify.target_top1) - 1)])
+                    if acceptance_diagnostics:
+                        acceptance_diagnostic_cycles.append(
+                            _acceptance_diagnostic_cycle(
+                                cycle=cycles,
+                                decode_offset=decode_offset,
+                                root_position=context,
+                                root_token=root,
+                                candidates=candidates,
+                                target_top1=verify.target_top1[: 1 + active_budget],
+                                bonus_token=bonus,
+                                active_budget=active_budget,
+                                verify_budget=verify_budget,
+                                accepted=accepted,
+                                draft_vocab_cap=draft_vocab_cap,
+                                use_tree=use_tree,
+                            )
+                        )
                     committed = [root, *accepted_tokens]
                     generated.extend(committed)
-                    bonus = int(verify.next_token) if verify.next_token is not None else int(verify.target_top1[min(accepted, len(verify.target_top1) - 1)])
                     if len(proposal_trace) < 16:
                         proposal_trace.append(
                             {
@@ -1056,7 +1253,7 @@ def _run_spec_persistent_device(
         rocprof_window_meta["profiled_cycle_range"] = [int(rocprof_window_first_cycle), int(rocprof_window_last_cycle)]
         if rocprof_window_t_start is not None and rocprof_window_t_end is not None:
             rocprof_window_meta["profiled_cycle_seconds"] = float(rocprof_window_t_end - rocprof_window_t_start)
-    return generated[: int(decode_tokens)], {
+    spec: dict[str, Any] = {
         "seconds": seconds,
         "decode_seconds": decode_seconds,
         "tok_s": int(decode_tokens) / seconds if seconds > 0 else None,
@@ -1082,6 +1279,13 @@ def _run_spec_persistent_device(
             for cycle_idx, start_ns, end_ns in cycle_marker_ns
         ],
     }
+    if acceptance_diagnostics:
+        spec["acceptance_diagnostics"] = _summarize_acceptance_diagnostics(
+            acceptance_diagnostic_cycles,
+            accepted_lengths=accepted_lengths,
+            draft_vocab_cap=draft_vocab_cap,
+        )
+    return generated[: int(decode_tokens)], spec
 
 
 def _parse_int_list(text: str) -> list[int]:
@@ -1134,6 +1338,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             confidence_threshold=float(getattr(args, "confidence_threshold", 0.0)),
             rocprof_warmup_cycles=int(getattr(args, "rocprof_warmup_cycles", 0)),
             rocprof_verify_cycles=int(getattr(args, "rocprof_verify_cycles", 0)),
+            acceptance_diagnostics=bool(getattr(args, "acceptance_diagnostics", False)),
         )
     else:
         spec_tokens, spec = _run_spec_smoke(
@@ -1185,6 +1390,15 @@ def main() -> int:
     parser.add_argument("--pmin-sweep", action="store_true", help="reload_d2h only: sweep per-position p-min x B (chain path), sharing one resident target runner. Reports zero-accept reduction, avg-accept, estimated C_B (#98 launch model), tok/s.")
     parser.add_argument("--sweep-budgets", default="1,2,3", help="comma-separated candidate budgets for --pmin-sweep (must be in {1,2,3,5})")
     parser.add_argument("--sweep-pmins", default="0.0,0.5,0.65", help="comma-separated p-min thresholds for --pmin-sweep")
+    parser.add_argument(
+        "--acceptance-diagnostics",
+        action="store_true",
+        help=(
+            "persistent_device only: include per-cycle acceptance-density diagnostics "
+            "(accept depth histograms, first rejected depth/reason, cap representability, "
+            "and zero-accept streaks) in the JSON output. Diagnostics only; no policy change."
+        ),
+    )
     parser.add_argument(
         "--rocprof-warmup-cycles",
         type=int,

@@ -83885,3 +83885,90 @@ the replacement fused W8A16 body costs about `+0.47 ms/pass`, so the net
 verifier window regresses. Keep `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD`
 default-off and treat it as refactor/test-only unless a new fused body beats
 the retained unfused multi-row W8A16 kernel on both B=1 and B=3 profiles.
+
+## 2026-06-12 - MTP acceptance-density diagnostics wired
+
+Added the A0 acceptance-density instrumentation called out in `docs/MTP.md`.
+`scripts/mtp_chain_e2e_smoke.py --acceptance-diagnostics` now records
+per-cycle accept depth, first rejected depth, proposed token, target correction
+token, rejection reason (`draft_top1_miss` vs
+`target_outside_draft_vocab_cap`), cap representability, per-depth counters,
+and zero-accept streaks. `scripts/mtp_verifier_economics.py` and
+`scripts/mtp_prompt_suite_economics.py` forward the flag and retain the
+diagnostic payload in their artifacts. This is diagnostics-only: no policy
+change and no performance claim.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py scripts/mtp_prompt_suite_economics.py
+python3 scripts/mtp_chain_e2e_smoke.py --help | rg -n "acceptance-diagnostics|candidate-budget|graph-mode"
+python3 scripts/mtp_verifier_economics.py --help | rg -n "acceptance-diagnostics|candidate-budgets|graph-mode"
+python3 scripts/mtp_prompt_suite_economics.py --help | rg -n "acceptance-diagnostics|candidate-budgets|graph-mode"
+```
+
+Focused B=1 quicksort diagnostic:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --json /tmp/hipengine-mtp-b1-acceptance-diagnostics-smoke-20260612.json
+```
+
+Result: exact AR match with the retained accepted trace
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`. The diagnostic classified all
+`9` B=1 rejections as `draft_top1_miss`, with `0` cap-caused rejections and
+max zero-accept streak `3`.
+
+Economics wrapper validation:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 16 --candidate-budgets 1 \
+  --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-acceptance-diagnostics-economics-20260612 \
+  --out /tmp/hipengine-mtp-acceptance-diagnostics-economics-20260612.json
+```
+
+Result: exact, payload retained in `acceptance_diagnostics_by_run`.
+
+Compact prompt-suite proof artifact:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-names code_python --decode-tokens 16 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-acceptance-diagnostics-artifact-20260612 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-acceptance-diagnostics-smoke.json
+```
+
+Result: exact `code_python` D16 B=1, `8` cycles, `7` full accepts, `1` first
+rejection at depth 0. That one rejection was classified
+`target_outside_draft_vocab_cap`, proving the new diagnostic can distinguish
+cap misses from genuine draft top-1 misses. Next adaptive-policy evidence should
+run the full D32 B=1/B=2/B=3 prompt suite with `--acceptance-diagnostics`
+before another live policy attempt.
