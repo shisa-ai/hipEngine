@@ -82930,6 +82930,102 @@ or a true single kernel with no wait on unscheduled blocks. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-linear-out-rotate-gemv-staged-nohold.json`
 and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
 
+### 2026-06-12 — MTP full-attn Q/K/V triple projection diagnostic: exact no-hold
+
+Tried the next reduced-DAG verifier slice: collapse each full-attention layer's
+current Q/K dual multi-row projection plus V single projection into one mixed
+Q/K/V split W4 launch. The prototype was gated behind
+`HIPENGINE_FULL_QKV_TRIPLE_PROJECT=1` and preserved the current numerics by
+using decode-dequant for Q/K and the current promoted prefill-dequant
+`single_full_v` path for V.
+
+Focused GPU correctness passed during prototype validation:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  python3 -m pytest -q \
+  tests/test_paro_awq_gemv_multi_row_decode.py::test_qkv_mixed_triple_matches_current_qk_dual_plus_v_single
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  python3 -m pytest -q tests/test_paro_awq_gemv_multi_row_decode.py
+```
+
+Results: new focused QKV triple equality test passed for rows `2,3,4,5,6,8`;
+full AWQ multi-row decode file passed while the prototype was present.
+
+Quicksort exact smoke also passed and kept the locked accepted trace:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_FULL_QKV_TRIPLE_PROJECT=1 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-full-qkv-triple-smoke.json
+```
+
+Result: exact AR match, accepted trace
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Important measurement note: an initial off/on rocprof pair was accidentally run
+concurrently on the same GPU and was discarded as timing-contaminated. The
+decision below uses the sequential A/B only.
+
+Sequential focused verifier profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-full-qkv-triple-off-seq-rocprof \
+  --out /tmp/hipengine-mtp-full-qkv-triple-off-seq-rocprof.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_FULL_QKV_TRIPLE_PROJECT=1 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --steady-state-skip 2 \
+  --raw-root /tmp/hipengine-mtp-full-qkv-triple-on-seq-rocprof \
+  --out /tmp/hipengine-mtp-full-qkv-triple-on-seq-rocprof.json
+```
+
+Clean result:
+
+- exactness / accepted trace unchanged.
+- calls/pass: `832 -> 822` (intended -10 launches/pass).
+- kernel: `12.623116 -> 14.532624 ms/pass`.
+- host marker: `16.136666 -> 18.052625 ms/pass`.
+- `w4_dual_gemv`: `80 -> 70 calls/pass`, `1.840762 -> 1.603237 ms/pass`.
+- `w4_single_gemv`: `90 calls/pass` unchanged but `1.327727 -> 3.423211 ms/pass`;
+  max metadata shows the new monolithic kernel spills (`vgpr 256`, scratch
+  `336 B`) vs baseline `vgpr 192`, scratch `0`.
+
+Decision: no-hold. The launch removal is real and exact, but the monolithic
+three-output row-loop kernel spills enough to add `+1.91 ms/pass` kernel and
+`+1.92 ms/pass` host marker. Prototype code removed. Do not retry this exact
+Q/K/V triple shape unless the implementation avoids the register/scratch blow-up.
+Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-full-qkv-triple-project-nohold.json`
+and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
+
 ## 2026-06-12 - MTP acceptance-density endgame notes tightened
 
 Docs-only planning update after another reviewer pass on acceptance density. Kept
