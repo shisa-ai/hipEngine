@@ -83398,3 +83398,78 @@ Higher budgets should only come back as adaptive/per-prompt policy, vocab-cap
 diagnostics, or after proposer-quality improvements. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-b5-acceptance-density-nohold.json`
 and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP draft vocab cap 65536 retained
+
+Followed the acceptance-density diagnostic after the B=5 no-hold. The old
+current stack used draft vocab cap `32768`. A conservative first-rejection
+census over `/tmp/hipengine-mtp-b3-b5-current-9prompt-d32.json` found B=3 had
+`149` cycles, `119` reject cycles, and `36` first rejected target tokens outside
+cap `32768` (`30.25%` of reject cycles), so the cap was a real acceptance
+candidate rather than a cosmetic knob.
+
+Quicksort cap65536 smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=65536 \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b3-vocab65536-current-quicksort-smoke-20260612.json
+```
+
+Result: exact AR match. The quicksort accepted trace stayed
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`, so cap65536 did not perturb the stable wiring
+smoke.
+
+Exact 9-prompt D32 cap65536 suite:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=65536 \
+  PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-b3-vocab65536-current-9prompt-d32 \
+  --out /tmp/hipengine-mtp-b3-vocab65536-current-9prompt-d32.json
+```
+
+Compared against the same-day cap32768 B=3 control from
+`/tmp/hipengine-mtp-b3-b5-current-9prompt-d32.json`:
+
+- Exactness: cap32768 `9/9`, cap65536 `9/9`.
+- Actual speedup vs AR: `0.9262248759 -> 0.9671622172`.
+- Wall: `19.424893 -> 20.021099 ms/cycle`.
+- Verify: `16.133456 -> 16.211891 ms/cycle`.
+- Proposal/update: `1.252555 -> 1.440285 ms/cycle`.
+- Cycle cost: `2.143996 -> 2.220650` AR tokens.
+- Visible tokens/cycle: `2.011852 -> 2.174774`.
+- Accepted draft tokens/cycle: `1.011852 -> 1.174774`.
+- Acceptance rate: `0.350803 -> 0.406841`.
+- AR denominator: `9.053380 -> 9.009403 ms/token`.
+
+Per-prompt, cap65536 improved ratio on `code_cpp`, `explain_concept`,
+`qa_factual`, `creative_short`, `stepwise_math`, and `long_code_review`,
+regressed `code_python`, `summarize`, and `translation`, and improved the prompt
+mean enough to retain globally. A cap65536 rejection census still found
+`22/107` first rejected target tokens outside cap65536, so full vocab remains a
+separate diagnostic, but it must beat cap65536 after the larger proposer
+LM-head cost.
+
+Decision: retain `HIPENGINE_MTP_DRAFT_VOCAB_CAP=65536` as the current MTP
+operating point. The wall cost rises by `0.596 ms/cycle`, but the recovered
+acceptance lifts visible density by `0.163 tokens/cycle` and moves the exact
+same-suite ratio `0.926x -> 0.967x`. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-vocab65536-retained.json` and
+updated `docs/MTP.md`, `README.md`, `benchmarks/README.md`, and
+`benchmarks/CHANGELOG.md`.

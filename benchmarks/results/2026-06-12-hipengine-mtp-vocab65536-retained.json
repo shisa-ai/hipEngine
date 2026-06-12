@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "accepted",
+  "performance_claim": true,
+  "candidate": "Raise retained MTP draft vocab cap from 32768 to 65536",
+  "decision": "retained config row",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "workload": {
+    "suite": "llama.cpp mtp-bench prompt suite, raw prompt render",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap_control": 32768,
+    "draft_vocab_cap_candidate": 65536
+  },
+  "correctness": {
+    "quicksort_cap65536_exact": true,
+    "suite_cap65536_exact": "9/9",
+    "quicksort_cap65536_accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+  },
+  "commands": {
+    "cap65536_quicksort_smoke": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=65536 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-b3-vocab65536-current-quicksort-smoke-20260612.json",
+    "cap65536_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=65536 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-b3-vocab65536-current-9prompt-d32 --out /tmp/hipengine-mtp-b3-vocab65536-current-9prompt-d32.json",
+    "cap32768_control_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3,5 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-b3-b5-current-9prompt-d32 --out /tmp/hipengine-mtp-b3-b5-current-9prompt-d32.json"
+  },
+  "cap_block_census": {
+    "method": "Conservative first-rejected-target-token census reconstructed from exact B=3 suite ar_tokens, accepted_lengths, and active_budgets. Counts only cycles where accepted < active_budget and the first rejected target token is outside the given cap.",
+    "cap32768_control": {
+      "cycles": 149,
+      "reject_cycles": 119,
+      "first_reject_target_out_of_cap": 36,
+      "out_of_cap_reject_rate": 0.3025210084033613
+    },
+    "cap65536_candidate": {
+      "cycles": 138,
+      "reject_cycles": 107,
+      "first_reject_target_outside_32768": 25,
+      "first_reject_target_outside_65536": 22
+    }
+  },
+  "suite_control_cap32768": {
+    "source_artifact": "/tmp/hipengine-mtp-b3-b5-current-9prompt-d32.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.9262248759005094,
+    "cycle_wall_ms_per_cycle": 19.424893483765434,
+    "verify_ms_per_cycle": 16.133456041513266,
+    "proposal_update_ms_per_cycle": 1.2525553136264884,
+    "cycle_cost_ar_tokens": 2.1439955782433753,
+    "visible_tokens_per_cycle": 2.011851851851852,
+    "accepted_per_cycle": 1.011851851851852,
+    "acceptance_rate": 0.350802961986189,
+    "ar_decode_ms_per_token": 9.053380075783934
+  },
+  "suite_candidate_cap65536": {
+    "source_artifact": "/tmp/hipengine-mtp-b3-vocab65536-current-9prompt-d32.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.967162217211696,
+    "cycle_wall_ms_per_cycle": 20.021099262153033,
+    "verify_ms_per_cycle": 16.211890624516265,
+    "proposal_update_ms_per_cycle": 1.440284690517342,
+    "cycle_cost_ar_tokens": 2.2206498997583703,
+    "visible_tokens_per_cycle": 2.174774114774115,
+    "accepted_per_cycle": 1.1747741147741149,
+    "acceptance_rate": 0.4068413011476364,
+    "ar_decode_ms_per_token": 9.009403315657336
+  },
+  "delta_cap65536_minus_cap32768": {
+    "actual_decode_speedup_vs_ar": 0.04093734131118665,
+    "cycle_wall_ms_per_cycle": 0.5962057783875991,
+    "verify_ms_per_cycle": 0.07843458300299844,
+    "proposal_update_ms_per_cycle": 0.18772937689085367,
+    "cycle_cost_ar_tokens": 0.07665432151499507,
+    "visible_tokens_per_cycle": 0.16292226292226308,
+    "accepted_per_cycle": 0.16292226292226286,
+    "acceptance_rate": 0.056038339161447404
+  },
+  "per_prompt": [
+    {"prompt": "code_python", "cap32768_ratio": 1.3185859709631969, "cap65536_ratio": 1.2740950975649727, "cap32768_visible": 3.1, "cap65536_visible": 3.1, "cap32768_cycle_cost": 2.2388821512369437, "cap65536_cycle_cost": 2.3183600101967623},
+    {"prompt": "code_cpp", "cap32768_ratio": 0.936941381293891, "cap65536_ratio": 1.0229442808621958, "cap32768_visible": 2.0, "cap65536_visible": 2.2857142857142856, "cap32768_cycle_cost": 2.1342711280569766, "cap65536_cycle_cost": 2.234085786763373},
+    {"prompt": "explain_concept", "cap32768_ratio": 0.8047936890869448, "cap65536_ratio": 0.9272360034377924, "cap32768_visible": 1.7222222222222223, "cap65536_visible": 2.066666666666667, "cap32768_cycle_cost": 2.102913028912551, "cap65536_cycle_cost": 2.1849910608124543},
+    {"prompt": "summarize", "cap32768_ratio": 0.9513449295801296, "cap65536_ratio": 0.9140340734666825, "cap32768_visible": 2.0, "cap65536_visible": 2.0, "cap32768_cycle_cost": 2.101962440452848, "cap65536_cycle_cost": 2.187747638393209},
+    {"prompt": "qa_factual", "cap32768_ratio": 1.0084082573798745, "cap65536_ratio": 1.0497253567270264, "cap32768_visible": 2.1333333333333333, "cap65536_visible": 2.2857142857142856, "cap32768_cycle_cost": 2.1152135565007018, "cap65536_cycle_cost": 2.177111579926077},
+    {"prompt": "translation", "cap32768_ratio": 0.6095263755041059, "cap65536_ratio": 0.5874183717962943, "cap32768_visible": 1.24, "cap65536_visible": 1.24, "cap32768_cycle_cost": 2.020068764532552, "cap65536_cycle_cost": 2.1064168178019314},
+    {"prompt": "creative_short", "cap32768_ratio": 0.9961755198959928, "cap65536_ratio": 1.1153686556424947, "cap32768_visible": 2.1333333333333333, "cap65536_visible": 2.4615384615384617, "cap32768_cycle_cost": 2.141197048453024, "cap65536_cycle_cost": 2.206603016590958},
+    {"prompt": "stepwise_math", "cap32768_ratio": 0.9481249972981663, "cap65536_ratio": 0.9721245575755607, "cap32768_visible": 2.0, "cap65536_visible": 2.1333333333333333, "cap32768_cycle_cost": 2.1091092538100877, "cap65536_cycle_cost": 2.1941852243104267},
+    {"prompt": "long_code_review", "cap32768_ratio": 0.7621227621022818, "cap65536_ratio": 0.8415135578322454, "cap32768_visible": 1.7777777777777777, "cap65536_visible": 2.0, "cap32768_cycle_cost": 2.332342832234695, "cap65536_cycle_cost": 2.376347963030141}
+  ],
+  "decision_reason": "The 32768 cap produced a nontrivial first-rejected-token out-of-cap rate, and the cap65536 A/B converts enough of that into accepted tokens to outweigh the larger proposer LM-head cost on the 9-prompt D32 suite. Although wall increases by 0.596 ms/cycle, visible density rises by 0.163 tokens/cycle and the exact-suite ratio improves from 0.926x to 0.967x. Promote cap65536 as the retained MTP operating point; full-vocab remains an open diagnostic because cap65536 still has out-of-cap first rejections but may be too expensive."
+}

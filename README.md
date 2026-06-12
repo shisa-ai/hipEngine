@@ -203,7 +203,8 @@ the MoE target AR path is much cheaper.
 | Path | Model / workload | W7900 result | Status |
 | --- | --- | ---: | --- |
 | DFlash B=4 online-gated | Qwen3.6-27B-PARO dense target + z-lab Qwen3.6-27B-DFlash drafter, 9-prompt D64 | **1.231x AR** (`40.10` vs `32.57 tok/s`) | Exact `9/9`, deployable retained row; artifact: [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json). |
-| MTP B=3 persistent chain | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, graph-auto verifier, draft vocab cap 32768 | **0.758x AR** locked baseline (`83.4` vs `~110 tok/s`), `27.8 ms/cycle` | Exact but below AR; current sprint target is `<21.5 ms/cycle` for `>1.0x`. See [`docs/MTP.md`](docs/MTP.md) and artifacts [`baseline`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json) / [`rocprof`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json). |
+| MTP B=3 persistent chain, locked sprint baseline | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, graph-auto verifier, draft vocab cap 32768 | **0.758x AR** (`83.4` vs `~110 tok/s`), `27.8 ms/cycle` | Exact but below AR; retained as the sprint baseline. Artifacts: [`baseline`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json) / [`rocprof`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json). |
+| MTP B=3 persistent chain, current best | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, `decode_batched`, graph off, draft vocab cap 65536 | **0.967x AR** (`107.35` vs `111.00 tok/s`), `20.021 ms/cycle` | Exact `9/9`, WIP just short of break-even. Needs about `19.6 ms/cycle` at current density or `2.22` visible tokens/cycle at current wall. See [`docs/MTP.md`](docs/MTP.md) and [`cap65536 artifact`](benchmarks/results/2026-06-12-hipengine-mtp-vocab65536-retained.json). |
 
 ## Concurrency (batched decode)
 
