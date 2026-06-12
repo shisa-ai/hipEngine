@@ -82600,3 +82600,37 @@ wiring smoke, not a suite policy oracle; vocab-cap sweeps should start with
 first-rejected-depth representability counters; and relaxed speculative sampling
 stays out of the exact-default sprint because it needs distribution access and a
 new accept/reject kernel. No benchmark claim and no code change.
+
+## 2026-06-12 - MTP full-attn shared gate/up split-output no-held
+
+Tried a distinct full-attn C-dispatch lookalike from the retained linear-attn
+shared gate/up split-output route: route full-attention shared gate/up through
+split output-tiled dual W4 plus `silu_mul_pair_rotate_out_fp16` instead of the
+packed `gemv_awq_dual_pack8_transposed_fp16 + silu_mul_dual_rotate_out_fp16`
+chain. The first local attempt exposed an integration bug (full-attn C-dispatch
+did not populate `shared_gate_out` / `shared_up_out` because the old path only
+used `shared_up_packed`); after fixing that locally, the path ran but failed
+exact AR.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_FULL_SHARED_GATE_UP_SPLIT_OUTPUT_TILED=1 PYTHONPATH=. timeout 1200 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --out /tmp/hipengine-mtp-full-shared-gate-up-split-smoke.json
+```
+
+Result: `status=exact_ar_mismatch`, `exact_ar_match=false`, first mismatch at
+output index 9 (`156973 -> 149315`), and `accepted_lengths` were all zero over
+31 cycles. Decision: no-hold and code removed. The split-output GEMV primitive
+is exact, but this full-attn integration is not equivalent to the packed
+full-attn shared path, likely because the pair-rotate and packed dual-rotate
+helpers do not preserve the same rounding/layout semantics at this callsite.
+Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-full-shared-gate-up-split-output-tiled-nohold.json`.

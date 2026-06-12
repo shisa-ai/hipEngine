@@ -1,0 +1,33 @@
+{
+  "date": "2026-06-12",
+  "name": "hipengine-mtp-full-shared-gate-up-split-output-tiled-nohold",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "workload": {
+    "prompt": "stable quicksort smoke",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "experiment": {
+    "env": {
+      "HIPENGINE_FULL_SHARED_GATE_UP_SPLIT_OUTPUT_TILED": "1"
+    },
+    "description": "Route full-attention shared gate/up through split output-tiled dual W4 plus pair SiLU/down-rotate instead of packed dual W4 plus dual SiLU/down-rotate.",
+    "code_retained": false
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_FULL_SHARED_GATE_UP_SPLIT_OUTPUT_TILED=1 PYTHONPATH=. timeout 1200 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --out /tmp/hipengine-mtp-full-shared-gate-up-split-smoke.json",
+  "correctness": {
+    "status": "exact_ar_mismatch",
+    "exact_ar_match": false,
+    "first_mismatch_index": 9,
+    "ar_token": 156973,
+    "mtp_token": 149315,
+    "accepted_lengths": "31 cycles, all zero",
+    "acceptance_rate": 0.0
+  },
+  "decision": "No-hold. The split-output GEMV primitive is exact, but this full-attention integration is not equivalent to the packed full-attn shared gate/up path. Experiment code removed; do not retry this topology without a separate exactness proof for pair-rotate vs packed dual-rotate at the full-attn shared shape."
+}
