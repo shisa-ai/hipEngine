@@ -82264,3 +82264,16 @@ rotate saving. Removed the prototype code; no speed row promoted. Added
 artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-full-shared-rotate-staged-nohold.json`
 and updated `docs/MTP.md` plus `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP acceptance-density endgame doc refinement
+
+Reviewed the acceptance-density suggestions for the 35B MTP break-even sprint.
+Kept the wall/reduced-DAG path as the current implementation priority, but
+updated `docs/MTP.md` so the endgame backlog starts with a diagnostics-only
+counter pass before changing policy. The deferred acceptance pass should collect
+per-depth accept histograms, rejected-row target top-1 ids, draft-cap
+representability, and zero-accept streaks across the exact 9-prompt D32 suite.
+Policy A/Bs remain sequenced after the wall path stabilizes: B=4 first, then
+vocab-cap sensitivity, adaptive B/AR fallback for zero-accept streaks,
+rejection-boundary sibling/tree retest, and relaxed speculative sampling as a
+separate opt-in quality tier rather than the exact-default sprint.
