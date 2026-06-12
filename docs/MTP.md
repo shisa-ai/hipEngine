@@ -2764,21 +2764,26 @@ Keep the existing exact-equality gate. The benchmark rollup (`benchmarks/README.
 
 This phase doesn’t add per-kernel savings; it picks the chain depth and acceptance policy that maximize end-to-end MTP/AR on the fast verifier. Projected MTP/AR is the perfect-accept ceiling at the listed B given the post-M10 verifier wall; “measured target” assumes 60–80% acceptance.
 
-2026-06-12 status: current retained operating point is B=3 at `0.967x`,
-`20.021 ms/cycle`, and `2.175` visible tokens/cycle after raising the draft
-vocab cap to `65536`. The first higher-budget diagnostic has now been checked:
-B=4 is unsupported by the current chain compiler, and supported B=5 is exact but
-globally negative on the D32 suite (`0.926x -> 0.773x`). Future policy work
-belongs in adaptive/per-prompt selection, full-vocab cap diagnostics, or
-proposer-quality improvements, not a blanket budget increase.
+2026-06-13 status: current retained D32 operating point is B=1 at `1.018x`,
+`14.173 ms/cycle`, and `1.617` visible tokens/cycle after the cap65536 and
+reduced-DAG/proposer wins. Fixed B=2 and B=3 remain exact but are no-held as
+global operating points on the same suite; B=3 still carries useful density for
+per-prompt/adaptive policy, not the fixed default. The first higher-budget
+diagnostic has also been checked: B=4 is unsupported by the current chain
+compiler, and supported B=5 is exact but globally negative on the D32 suite
+(`0.926x -> 0.773x`). Future policy work belongs in adaptive/per-prompt
+selection, full-vocab/cap diagnostics, or proposer-quality improvements, not a
+blanket budget increase. Longer-horizon promotion remains blocked on the D64
+`translation` target-state drift audit.
 
 | #    | Operating point                                                  | Projected ceiling MTP/AR | Projected measured MTP/AR | Status   | Actual measured MTP/AR | Artifact / source |
 |------|------------------------------------------------------------------|-------------------------:|--------------------------:|----------|-----------------------:|-------------------|
-| M11.1| Chain B=2 (drafts/verify=2, target rows=3)                       |                  ~1.5×  |              ~1.2–1.4×    | **Deferred** | _TBD_ | Run only as part of the acceptance-density diagnostic sweep. |
-| M11.2| Chain B=3 (drafts/verify=3, target rows=4) — default candidate   |                  ~2.0×  |              ~1.3–1.7×    | **Current retained operating point** | `0.967x` | Current exact 9-prompt D32 best: `20.021 ms/cycle`, `2.175` visible tokens/cycle with draft vocab cap `65536`. |
+| M11.0| Chain B=1 (drafts/verify=1, target rows=2)                       |                  ~1.3×  |              ~1.0–1.1×    | **Current retained operating point** | `1.018x` | Exact 9-prompt D32 best: `14.173 ms/cycle`, `1.617` visible tokens/cycle, artifact `benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json`. |
+| M11.1| Chain B=2 (drafts/verify=2, target rows=3)                       |                  ~1.5×  |              ~1.2–1.4×    | **No-hold as fixed global budget** | `0.963x` | Exact on the B1/B2/B3 D32 sweep, but slower than B=1 at the fixed operating point; keep for adaptive/per-prompt policy. |
+| M11.2| Chain B=3 (drafts/verify=3, target rows=4)                       |                  ~2.0×  |              ~1.3–1.7×    | **No-hold as fixed global budget; density source for policy** | `0.968x` | Exact D32 and higher density (`2.175` visible tokens/cycle), but fixed-B wall/cost loses to B=1; keep as an adaptive/per-prompt candidate. |
 | M11.3| Chain B=4/B=5 higher budget                                      |                  ~2.0×+ |              ~1.2–1.6×    | **B=5 no-hold globally; B=4 unsupported** | B=5 `0.773x` | B=4 is rejected by the current chain compiler (`allowed_budgets=(1,2,3,5)`). B=5 exact D32 `9/9` but regresses same-session ratio `0.926x -> 0.773x`; use only as future adaptive/per-prompt diagnostic. |
 | M11.4| DDTree B=4/8 (tree drafts)                                       |                _≥2.0×_  |                    _TBD_  | **No-hold for current B=3 tree; defer hybrid retest** | B=3 tree `0.61x` vs chain `0.76x` old row | Revisit only if histograms show recoverable first-rejection cases. |
-| **M11 retained row** |                                                          |               **>=1.5x** |                  **>=1.3x** | **Superseded by current top table** | `0.967x` current best | Use benchmarks rollup/top table for retained rows; use acceptance backlog for future B sweeps. |
+| **M11 retained row** |                                                          |               **>=1.5x** |                  **>=1.3x** | **Superseded by current top table** | `1.018x` current best | Use benchmarks rollup/top table for retained rows; use acceptance backlog for future B sweeps. |
 
 ### Out-of-scope (don’t pre-build)
 
