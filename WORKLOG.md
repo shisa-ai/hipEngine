@@ -84968,3 +84968,60 @@ full-attention layer 3 K/V after controlling the preceding hidden/state input.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-cycle1-producer-split-audit.json`.
+
+## 2026-06-13 - MTP D64 cycle-1 layer-0 producer parity
+
+Added `scripts/mtp_cycle1_layer0_parity.py`, a focused correctness diagnostic
+that starts separate clean serial and verifier resident sessions from the same
+prompt, runs only serial c1 layer 0 on one session, runs the normal B+1 verifier
+on the other session, and compares row-0 linear-attention intermediates plus
+Conv/GDN state outputs. This is diagnostic-only (`performance_claim=false`).
+
+Validation / runs:
+
+```bash
+python3 -m py_compile scripts/mtp_cycle1_layer0_parity.py
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_cycle1_layer0_parity.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --candidate-token 760 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --out /tmp/hipengine-mtp-cycle1-layer0-parity-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0 \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_cycle1_layer0_parity.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --candidate-token 760 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --out /tmp/hipengine-mtp-cycle1-layer0-parity-tree-tloop-20260613.json
+```
+
+Result:
+
+| Variant | Exact through | First intermediate mismatch | Materialized state mismatch | Commit/copy |
+| --- | --- | --- | --- | --- |
+| chain t-loop | pre-state, `attn_input`, `qkv_rot`, `z_rot`, `qkv`, `z`, `a`, `b`, `conv_out` | `recurrent_out`, max_abs `7.45e-9`, `2808` mismatches | layer-0 recurrent, max_abs `9.54e-7`, `103835` mismatches | verifier scratch row -> resident exact for conv and recurrent |
+| tree t-loop | pre-state, `attn_input`, `qkv_rot`, `z_rot`, `qkv`, `z`, `a`, `b`, `conv_out` | `recurrent_out`, max_abs `1.12e-8`, `2999` mismatches | layer-0 recurrent, max_abs `9.54e-7`, `147052` mismatches | verifier scratch row -> resident exact for conv and recurrent |
+
+Both runs used root `271`, accepted `0`, committed row `0` at position `15`,
+and produced verifier top-1 `[248068, 3841]` / next token `248068`.
+
+Interpretation: the D64 drift source is now pinned to verifier GDN recurrence
+arithmetic/order versus serial c1 decode. Linear projections and Conv are
+bit-exact before GDN, and the verifier commit/copy path remains exact. The next
+fix should provide a serial-c1-equivalent verifier GDN recurrence path (or a
+strict fallback for committed rows) before promoting D64, adaptive B, higher B,
+cap changes, AR fallback, or tree/sibling policies.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-cycle1-layer0-parity.json`.

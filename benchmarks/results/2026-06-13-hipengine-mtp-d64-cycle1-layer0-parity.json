@@ -1,0 +1,97 @@
+{
+  "name": "hipengine-mtp-d64-cycle1-layer0-parity",
+  "date": "2026-06-13",
+  "performance_claim": false,
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "translation",
+    "prompt_render": "raw",
+    "decode_tokens": 64,
+    "candidate_budget": 1,
+    "candidate_token": 760,
+    "chain_attn_mode": "c1_loop",
+    "graph_mode": "off"
+  },
+  "commands": [
+    "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_cycle1_layer0_parity.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --candidate-token 760 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --out /tmp/hipengine-mtp-cycle1-layer0-parity-20260613.json",
+    "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0 PYTHONPATH=. timeout 3600 python3 scripts/mtp_cycle1_layer0_parity.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --candidate-token 760 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --out /tmp/hipengine-mtp-cycle1-layer0-parity-tree-tloop-20260613.json"
+  ],
+  "chain_tloop": {
+    "status": "mismatch",
+    "root": 271,
+    "verify": {
+      "accepted": 0,
+      "commit_row": 0,
+      "commit_position": 15,
+      "next_token": 248068,
+      "target_top1": [248068, 3841],
+      "linear_attn_mode": "chain_tloop"
+    },
+    "pre_state_passed": true,
+    "first_intermediate_mismatch": {
+      "name": "recurrent_out",
+      "dtype": "float32",
+      "shape": [4096],
+      "mismatch_count": 2808,
+      "max_abs": 7.450580596923828e-9
+    },
+    "state_mismatch": {
+      "name": "recurrent_state_serial_vs_verifier_scratch",
+      "dtype": "float32",
+      "shape": [32, 128, 128],
+      "mismatch_count": 103835,
+      "max_abs": 9.5367431640625e-7
+    },
+    "passed_before_first_mismatch": [
+      "attn_input",
+      "qkv_rot",
+      "z_rot",
+      "qkv",
+      "z",
+      "a",
+      "b",
+      "conv_out"
+    ],
+    "verifier_scratch_to_resident": "exact for layer-0 conv and recurrent state"
+  },
+  "tree_tloop": {
+    "status": "mismatch",
+    "root": 271,
+    "verify": {
+      "accepted": 0,
+      "commit_row": 0,
+      "commit_position": 15,
+      "next_token": 248068,
+      "target_top1": [248068, 3841],
+      "linear_attn_mode": "tree_tloop"
+    },
+    "pre_state_passed": true,
+    "first_intermediate_mismatch": {
+      "name": "recurrent_out",
+      "dtype": "float32",
+      "shape": [4096],
+      "mismatch_count": 2999,
+      "max_abs": 1.1175870895385742e-8
+    },
+    "state_mismatch": {
+      "name": "recurrent_state_serial_vs_verifier_scratch",
+      "dtype": "float32",
+      "shape": [32, 128, 128],
+      "mismatch_count": 147052,
+      "max_abs": 9.5367431640625e-7
+    },
+    "passed_before_first_mismatch": [
+      "attn_input",
+      "qkv_rot",
+      "z_rot",
+      "qkv",
+      "z",
+      "a",
+      "b",
+      "conv_out"
+    ],
+    "verifier_scratch_to_resident": "exact for layer-0 conv and recurrent state"
+  },
+  "interpretation": "Cycle-1 root row starts from identical prefill state and matches serial c1 through layer-0 Conv input/output. Both verifier t-loop GDN producers diverge first at FP32 recurrent_out, and the materialized recurrent state then differs by about 1e-6. The verifier scratch-to-resident copy remains exact. Next fix target is serial-c1-equivalent verifier GDN recurrence arithmetic/order, not full-attention mode, commit copy, or budget policy."
+}
