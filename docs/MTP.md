@@ -84,6 +84,7 @@ Current priority order after folding in the external review:
 | No-hold | Thread-0 shared-down + shared-gate/residual combine epilogue | 0 ms retained | Exact but kernel-negative | Prototype removed 30 linear-attn combine launches/pass and kept quicksort exact with identical accepted lengths, but the fused output-tiled shared-down kernel grew from `0.348 -> 0.814 ms/pass`; net profile regressed calls `942 -> 912/pass`, kernel `12.860 -> 13.255 ms/pass`, host `16.832 -> 17.076 ms/pass`. Superseded by the retained parallel-epilogue implementation above; do not reintroduce the serial shape. |
 | No-hold | Final RMSNorm FP16-to-BF16 fused cast | 0 ms retained | Exact but suite wall/verify-negative | Replacing verifier final `paro_rmsnorm_out_fp16 + fp16_to_bf16` with one exact BF16-writing kernel removed one launch in the quicksort profile (`902 -> 901 calls/pass`) and nudged profile kernel/host (`12.7144 -> 12.7105 ms/pass`, `16.4816 -> 16.4393 ms/pass`), but the exact 9-prompt D32 suite regressed wall and verify with identical acceptance (`20.087 -> 20.119 ms/cycle`, verify `16.298 -> 16.329 ms/cycle`). Experiment code removed; do not promote without a new same-suite positive design. |
 | No-hold | C-dispatch keyed cooperative MoE router | 0 ms retained | Exact but profile-negative | Prototype merged verifier MoE router logits+select into one keyed cooperative kernel behind `HIPENGINE_MOE_C1_ROUTER_KEYED=1`. Unit comparison and quicksort exact smoke held identical accepted lengths, and rocprof removed 40 launches/pass (`902 -> 862`), but router kernel time grew `0.502 -> 0.877 ms/pass`, total verifier kernel grew `12.714 -> 13.080 ms/pass`, and host window grew `16.482 -> 16.717 ms/pass`. Experiment code removed; do not retry this single-kernel topology unless selection is parallelized without serializing all tokens in the final block. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-moe-router-keyed-nohold.json`. |
+| No-hold | Force grouped compact MoE at B=3 verifier rows | 0 ms retained | Exact quicksort but profile-negative | `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2` forces the current `rows=4` verifier MoE through grouped compact instead of the selected c1 C-dispatch path. Quicksort D32 stayed exact with identical accepted lengths, but profile regressed calls/pass `872 -> 1232`, kernel `12.680 -> 14.155 ms/pass`, and host marker `16.311 -> 19.210 ms/pass`; grouped metadata/combine overhead outweighed any selected-path benefit. Keep the B=3 selected c1 path and do not retest grouped at this shape without a new grouping kernel. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-grouped-min2-nohold.json`. |
 | No-hold | Proposer shared gate/up dual dense | 0 ms retained; opt-in diagnostic only | Exact but repeated full-suite wall/ratio-negative | `HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1` replaces the proposer's two shared expert BF16 dense gate/up launches with one `dense_dual_gemv_out_bf16_wmma` launch. The direct proposer marker moved in the expected direction (`92.0 -> 88.7` launches/cycle, kernel `3.018 -> 2.913 ms/cycle`, host `3.543 -> 3.464 ms/cycle`) and repeated exact D32 A/B pairs kept identical acceptance while proposal/update improved by about `0.020 ms/cycle`, but total wall regressed in both pairs (`+0.043` and `+0.015 ms/cycle`) and ratio regressed (`-0.0006x`, `-0.0049x`). Keep default-off/lazy opt-in; do not count it as a retained speed row unless a broader proposer fusion removes the end-to-end regression. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-proposer-shared-gate-up-dual-nohold.json`. |
 | Done | Verifier MLP scratch policy alignment | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED=1` makes verifier MLP scratch reservation use the same c1/grouped threshold as the chain/tree t-loop MoE path and keys the cache by expected policy. Exact `9/9`, identical accepted lengths/active budgets, wall `26.309 -> 25.690 ms/cycle`, verify `21.176 -> 20.523 ms/cycle`, ratio `0.7003x -> 0.7172x`; graph-auto profile kept `932` calls/pass and moved host `18.314 -> 18.246 ms/pass`; graph-off host `32.445 -> 32.273 ms/pass`. |
 | Done | Resident state/cache Tensor view caching | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE=1` caches `_slot_linear_state`, `_slot_full_cache`, and `_full_cache_all_slots` non-owning Tensor views with explicit invalidation. Exact `9/9`, identical acceptance, wall `26.642 -> 26.426 ms/cycle`, verify `21.506 -> 21.278 ms/cycle`, ratio `0.6924x -> 0.6986x`; graph-off host control `32.52 -> 31.70 ms/pass`. |
@@ -91,9 +92,12 @@ Current priority order after folding in the external review:
 
 Current profile triage after the `0.919x / 19.50 ms` row:
 
-- The retained `decode_batched + graph_off` verifier profile is down to about
-  `872` launches/pass, `12.70 ms` kernel/pass, and `16.36 ms` host marker/pass
-  on the quicksort D32 B=3 shape.
+- The retained `decode_batched + graph_off` verifier profile refreshed on
+  2026-06-12 is down to `872` launches/pass, `12.680 ms` kernel/pass, and
+  `16.311 ms` host marker/pass on the quicksort D32 B=3 shape. The top buckets
+  are now real compute: selected gate/up W4 `1.891 ms/pass`, shared/dual W4
+  `1.828 ms/pass`, GDN `1.762 ms/pass`, LM-head W8A16 `1.447 ms/pass`,
+  single W4 `1.337 ms/pass`, and selected down W4 `1.201 ms/pass`.
 - Do not spend the next implementation unit on fill/copy cleanup unless a fresh
   profile shows a live bucket again: current `runtime_copy` is only
   `2` launches/pass and `0.0068 ms/pass`, and `fillBufferAligned` is effectively
@@ -108,6 +112,10 @@ Current profile triage after the `0.919x / 19.50 ms` row:
   `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED`) have rejected artifacts and should
   not be re-run as generic "maybe" checks. Reopen only if the callsite and
   shape differ from those artifacts.
+- Forcing grouped compact MoE at the B=3 verifier shape is also no-held:
+  `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2` kept quicksort exact but increased
+  calls/pass `872 -> 1232`, kernel `12.680 -> 14.155 ms/pass`, and host marker
+  `16.311 -> 19.210 ms/pass`.
 - The remaining high-leverage wall path is still real reduced-DAG work:
   remove named projection/router/MoE/attention launches or fuse structural
   composites. A C wrapper around the same launches is not enough.

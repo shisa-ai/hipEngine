@@ -81963,3 +81963,70 @@ shape shifts more wall into proposer update than it saves. Keep the plumbing
 default-off as diagnostic infrastructure only; do not count it toward the
 break-even row. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-verify-commit-proposer-overlap-nohold.json`.
+
+## 2026-06-12 - MTP current profile refresh + grouped MoE B=3 no-hold
+
+Refreshed the current retained verifier profile before picking the next
+reduced-DAG target:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-current-rocprof-20260612-r1 \
+  --out /tmp/hipengine-mtp-current-rocprof-20260612-r1.json
+```
+
+- Exact quicksort D32; accepted lengths
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+- Verifier marker: `872.0` calls/pass, `12.6803 ms` kernel/pass,
+  `16.3114 ms` host/pass.
+- Top current buckets: selected gate/up W4 `1.8910 ms/pass`, shared/dual W4
+  `1.8278 ms/pass`, GDN `1.7623 ms/pass`, LM-head W8A16 `1.4472 ms/pass`,
+  single W4 `1.3375 ms/pass`, selected down W4 `1.2011 ms/pass`.
+
+Checked the existing grouped-MoE knob as a cheap alternative to writing new
+selected-expert kernels at the B=3 verifier shape:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-grouped-min2-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths identical to the control.
+
+Profiled the forced-grouped path:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-grouped-min2-rocprof-20260612-r1 \
+  --out /tmp/hipengine-mtp-grouped-min2-rocprof-20260612-r1.json
+```
+
+- Exact quicksort D32; accepted lengths identical.
+- Regressed calls/pass `872.0 -> 1232.0`.
+- Regressed kernel `12.6803 -> 14.1546 ms/pass`.
+- Regressed host marker `16.3114 -> 19.2098 ms/pass`.
+- Selected gate/up W4 did not improve enough (`1.8910 -> 1.9315 ms/pass`);
+  selected down worsened (`1.2011 -> 1.7272 ms/pass`) and grouped metadata plus
+  grouped combine added `~0.535 ms/pass`.
+
+Decision: no-hold. Keep the current B=3 selected c1 C-dispatch path; do not
+retest grouped compact at rows=4 unless a new grouping kernel materially changes
+the overhead model. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-grouped-min2-nohold.json` and
+updated `docs/MTP.md`.

@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "date": "2026-06-12",
+  "status": "no_hold",
+  "performance_claim": false,
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "prompt": "quicksort",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "experiment": {
+    "name": "HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2",
+    "intent": "Force the verifier B=3 / rows=4 MoE path through grouped compact MoE instead of the selected c1 C-dispatch path, to check whether grouped row compaction beats the current selected GEMV hot buckets.",
+    "decision": "Rejected for the current B=3 exact speed row.",
+    "reason": "The path stayed exact on the quicksort D32 smoke but increased verifier launch count, kernel time, and host window materially."
+  },
+  "correctness": {
+    "grouped_exact_smoke_command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-grouped-min2-smoke.json",
+    "grouped_exact_ar_match": true,
+    "control_exact_ar_match": true,
+    "accepted_lengths_control": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "accepted_lengths_grouped": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "suite_gate": "not run because the verifier profile was already negative with identical quicksort acceptance"
+  },
+  "commands": {
+    "control_profile": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-current-rocprof-20260612-r1 --out /tmp/hipengine-mtp-current-rocprof-20260612-r1.json",
+    "grouped_profile": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-grouped-min2-rocprof-20260612-r1 --out /tmp/hipengine-mtp-grouped-min2-rocprof-20260612-r1.json"
+  },
+  "results": {
+    "control": {
+      "verifier_passes": 11,
+      "kernel_calls_per_pass": 872.0,
+      "kernel_time_ms_per_pass": 12.680336181818182,
+      "host_window_ms_per_pass": 16.311426272727275,
+      "selected_gate_up_ms_per_pass": 1.8910261818181817,
+      "selected_down_ms_per_pass": 1.2011162727272728
+    },
+    "grouped_min2": {
+      "verifier_passes": 11,
+      "kernel_calls_per_pass": 1232.0,
+      "kernel_time_ms_per_pass": 14.154588545454546,
+      "host_window_ms_per_pass": 19.209842545454546,
+      "selected_gate_up_ms_per_pass": 1.9315362727272728,
+      "selected_down_ms_per_pass": 1.7272408181818182,
+      "moe_metadata_ms_per_pass": 0.33024172727272726,
+      "moe_combine_ms_per_pass": 0.20488518181818182
+    },
+    "delta_grouped_minus_control": {
+      "kernel_calls_per_pass": 360.0,
+      "kernel_time_ms_per_pass": 1.474252363636364,
+      "host_window_ms_per_pass": 2.8984162727272716,
+      "selected_gate_up_ms_per_pass": 0.040510090909091074,
+      "selected_down_ms_per_pass": 0.5261245454545453
+    }
+  },
+  "raw_outputs": {
+    "control_profile_json": "/tmp/hipengine-mtp-current-rocprof-20260612-r1.json",
+    "grouped_profile_json": "/tmp/hipengine-mtp-grouped-min2-rocprof-20260612-r1.json",
+    "grouped_smoke_json": "/tmp/hipengine-mtp-grouped-min2-smoke.json"
+  }
+}
