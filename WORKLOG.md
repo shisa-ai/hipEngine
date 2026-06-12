@@ -82634,3 +82634,52 @@ full-attn shared path, likely because the pair-rotate and packed dual-rotate
 helpers do not preserve the same rounding/layout semantics at this callsite.
 Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-full-shared-gate-up-split-output-tiled-nohold.json`.
+
+## 2026-06-12 - MTP proposer shared-down+accumulate epilogue no-held
+
+Tried the next proposer-local reduced-DAG micro-slice: fuse the MTP shared
+expert down WMMA dense store with the shared-gate accumulator epilogue, replacing
+the tail:
+
+```python
+dflash_dense_bf16_to_bf16(shared_intermediate, shared_down_weight, shared_down)
+mtp_accumulate_sigmoid_gate_bf16_to_f32(shared_down, shared_gate, moe_accum)
+```
+
+with one local prototype kernel behind
+`HIPENGINE_MTP_PROPOSER_SHARED_DOWN_ACCUM_FUSED=1`.
+
+Focused checks:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q \
+  tests/test_mtp_input_fusion_kernel.py::test_mtp_proposer_shared_down_accum_fused_optin \
+  tests/test_dflash_dense_wmma.py::test_dflash_dense_bf16_to_bf16_accum_sigmoid_gate_wmma_matches_unfused
+```
+
+passed, and a one-off real-shape probe at `rows=1,in=512,out=2048` showed
+bitwise equality between the fused epilogue and the old
+`dflash_dense_bf16_to_bf16_wmma + mtp_accumulate_sigmoid_gate_bf16_to_f32`
+chain (`array_equal=True`, `max_abs=0`, `neq=0`).
+
+Full exact smoke failed:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_MTP_PROPOSER_SHARED_DOWN_ACCUM_FUSED=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-proposer-shared-down-accum-fused-smoke2.json
+```
+
+Result: `status=exact_ar_mismatch`, `exact_ar_match=false`, first mismatch at
+output index 9 (`156973 -> 149315`), and `accepted_lengths` were all zero over
+31 cycles. Decision: no-hold, no speed row, and prototype code removed. This
+should not be retried as a direct epilogue swap; a future attempt needs a
+full-proposer hidden/logit comparator around the shared expert tail. Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-proposer-shared-down-accum-fused-nohold.json`.

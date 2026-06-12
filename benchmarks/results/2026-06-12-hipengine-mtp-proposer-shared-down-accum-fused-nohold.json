@@ -1,0 +1,83 @@
+{
+  "schema": "hipengine.mtp.nohold.v1",
+  "status": "no_hold",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "candidate": "MTP proposer shared-down WMMA dense plus shared-gate accumulator epilogue",
+  "decision": "no-hold; prototype code removed",
+  "decision_reason": "The isolated WMMA epilogue matched the old shared-down dense plus sigmoid accumulator chain bitwise at the real MTP shared-down shape, but the full B=3 D32 exact smoke failed exact AR and every verify cycle accepted zero draft tokens. Correctness failed before profiling or suite timing could be considered.",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "prototype": {
+    "env_flag": "HIPENGINE_MTP_PROPOSER_SHARED_DOWN_ACCUM_FUSED=1",
+    "kernel_shape_checked": {
+      "rows": 1,
+      "in_features": 512,
+      "out_features": 2048,
+      "standalone_bitwise_match": true
+    },
+    "code_retained": false
+  },
+  "commands": {
+    "focused_unit": "HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py::test_mtp_proposer_shared_down_accum_fused_optin tests/test_dflash_dense_wmma.py::test_dflash_dense_bf16_to_bf16_accum_sigmoid_gate_wmma_matches_unfused",
+    "standalone_real_shape_probe": "HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 - <<'PY' ... compare dflash_dense_bf16_to_bf16_wmma + mtp_accumulate_sigmoid_gate_bf16_to_f32 against fused WMMA epilogue at rows=1,in=512,out=2048 ... PY",
+    "exact_smoke": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SHARED_DOWN_ACCUM_FUSED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-proposer-shared-down-accum-fused-smoke2.json"
+  },
+  "correctness": {
+    "focused_unit_passed": true,
+    "standalone_real_shape_bitwise_equal": true,
+    "exact_ar_match": false,
+    "status": "exact_ar_mismatch",
+    "first_mismatch": {
+      "output_index": 9,
+      "ar_token": 156973,
+      "mtp_token": 149315
+    },
+    "accepted_lengths": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "acceptance_rate": 0.0
+  },
+  "notes": [
+    "Do not promote or leave an opt-in path: the exact smoke failed even though the local epilogue equivalence test passed.",
+    "A future retry would need a full-proposer hidden/logit comparator around the shared expert tail, not another direct epilogue swap."
+  ]
+}
