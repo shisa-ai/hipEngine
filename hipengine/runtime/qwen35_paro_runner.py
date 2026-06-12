@@ -9563,7 +9563,6 @@ class Qwen35ParoResidentSession:
         with absolute physical blocks for ``base_slot``.
         """
 
-        _ = base_slot  # base_slot already encoded in prefill_block_table_buf
         if len(positions) != rows:
             raise ValueError("positions must match verifier rows")
         positions_tensor = Tensor.from_handle(
@@ -9578,6 +9577,142 @@ class Qwen35ParoResidentSession:
         moe_scratch = self._ensure_moe_c1_prefill_scratch(layer_id=layer_id, tokens=rows)
         max_context = max(int(position) for position in positions) + 1
         num_splits = max(1, (max_context + self.decode_chunk_size - 1) // self.decode_chunk_size)
+        force_row_input = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_INPUT", False)
+        force_row_qkv = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_QKV", False)
+        force_row_qkv_temp = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_QKV_TEMP", False)
+        force_exact_suffix = rows > 1 and _env_flag(
+            "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX", False
+        )
+        force_row_layer = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_LAYER", False)
+        force_row_layer_batch = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_LAYER_BATCH", False)
+        force_row_context = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_CONTEXT", False)
+        force_row_context_only = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_CONTEXT_ONLY", False)
+        force_row_dense_context_only = rows > 1 and _env_flag(
+            "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_DENSE_CONTEXT_ONLY", False
+        )
+        force_row_paged_context_only = rows > 1 and _env_flag(
+            "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_PAGED_CONTEXT_ONLY", False
+        )
+        force_row_gate = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_GATE", False)
+        force_row_kv_append = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_KV_APPEND", False)
+        force_row_append_context = rows > 1 and _env_flag(
+            "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_APPEND_CONTEXT", False
+        )
+        force_row_suffix = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_SUFFIX", False)
+        force_row_output = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_OUTPUT", False)
+        force_batch_gemv_output = rows > 1 and _env_flag(
+            "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_BATCH_GEMV_OUTPUT", False
+        )
+        force_row_post = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_POST", False)
+        force_row_moe = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_MOE", False)
+        force_decode_helper = rows > 1 and _env_flag("HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_HELPER", False)
+        if force_exact_suffix:
+            force_row_kv_append = True
+            force_row_context = True
+            force_row_append_context = True
+            force_batch_gemv_output = True
+        force_decode_helper = force_decode_helper or any(
+            (
+                force_row_input,
+                force_row_qkv_temp,
+                force_exact_suffix,
+                force_row_layer,
+                force_row_layer_batch,
+                force_row_context,
+                force_row_context_only,
+                force_row_dense_context_only,
+                force_row_paged_context_only,
+                force_row_gate,
+                force_row_kv_append,
+                force_row_append_context,
+                force_row_suffix,
+                force_row_output,
+                force_batch_gemv_output,
+                force_row_post,
+                force_row_moe,
+            )
+        )
+
+        if force_decode_helper:
+            per_row_contexts = None
+            per_row_append_contexts = None
+            needs_row_contexts = any(
+                (
+                    force_row_layer,
+                    force_row_layer_batch,
+                    force_row_context,
+                    force_row_context_only,
+                    force_row_dense_context_only,
+                    force_row_paged_context_only,
+                    force_row_append_context,
+                    force_row_suffix,
+                )
+            )
+            needs_row_append_contexts = any(
+                (
+                    force_row_layer,
+                    force_row_layer_batch,
+                    force_row_kv_append,
+                    force_row_append_context,
+                    force_row_suffix,
+                )
+            )
+            if needs_row_contexts or needs_row_append_contexts:
+                row_key_cache, row_value_cache = self._slot_full_cache(layer_id, base_slot)
+                per_row_contexts = [] if needs_row_contexts else None
+                per_row_append_contexts = [] if needs_row_append_contexts else None
+                for row in range(rows):
+                    _row_position, row_append_spans, row_decode_spans = self._verify_chain_row_spans(row)
+                    if per_row_contexts is not None:
+                        per_row_contexts.append((row_key_cache, row_value_cache, row_decode_spans))
+                    if per_row_append_contexts is not None:
+                        per_row_append_contexts.append((row_key_cache, row_value_cache, row_append_spans))
+            out = state.run_full_attention_moe_decode_batch_layer_fp16(
+                hidden,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                append_spans=append_spans,
+                decode_spans=decode_spans,
+                cos_table=self.cos,
+                sin_table=self.sin,
+                positions=positions_tensor,
+                max_positions=self.max_sequence_length,
+                attention_scratch=attention_scratch,
+                moe_scratch=moe_scratch,
+                tokens=rows,
+                block_size=self.block_size,
+                force_selected_c1_moe=True,
+                force_per_row_input_rmsnorm=force_row_input,
+                force_per_row_qkv_scratch=force_row_qkv_temp,
+                force_per_row_layer_scratch=force_row_layer,
+                force_per_row_layer_batch_scratch=force_row_layer_batch,
+                force_per_row_context=force_row_context,
+                force_per_row_context_only=force_row_context_only,
+                force_per_row_dense_context_only=force_row_dense_context_only,
+                force_per_row_paged_context_only=force_row_paged_context_only,
+                force_per_row_gate=force_row_gate,
+                per_row_contexts=per_row_contexts,
+                force_per_row_kv_append=force_row_kv_append,
+                per_row_append_contexts=per_row_append_contexts,
+                force_per_row_append_context=force_row_append_context,
+                force_per_row_suffix=force_row_suffix,
+                force_per_row_output=force_row_output,
+                force_batch_gemv_output=force_batch_gemv_output,
+                force_per_row_post_attention=force_row_post,
+                force_per_row_moe=force_row_moe,
+                library=self.libraries,
+                stream=stream,
+            )
+            if out.ptr != next_hidden.ptr:
+                self.runtime.memcpy_async(
+                    next_hidden.ptr,
+                    out.ptr,
+                    rows * self.hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            return
+
         partial_out, partial_m, partial_l = self._ensure_full_decode_batch_partials(rows=rows, num_splits=num_splits)
 
         state.input_rmsnorm_fp16(
@@ -9587,29 +9722,42 @@ class Qwen35ParoResidentSession:
             library=self.libraries,
             stream=stream,
         )
-        state.rotate_full_attention_inputs_fp16(
-            attention_scratch.attn_input,
-            attention_scratch,
-            tokens=rows,
-            library=self.libraries,
-            stream=stream,
-        )
-        state.project_full_attention_qkv_fp16(
-            attention_scratch,
-            tokens=rows,
-            library=self.libraries,
-            stream=stream,
-        )
-        _query, _key, _value, gate = state.prepare_full_attention_qkv_fp16(
-            attention_scratch,
-            cos_table=self.cos,
-            sin_table=self.sin,
-            position=positions_tensor,
-            max_positions=self.max_sequence_length,
-            tokens=rows,
-            library=self.libraries,
-            stream=stream,
-        )
+        if force_row_qkv:
+            _query, _key, _value, gate = state.prepare_full_attention_qkv_fp16_decode_rows(
+                attention_scratch,
+                cos_table=self.cos,
+                sin_table=self.sin,
+                positions=positions_tensor,
+                max_positions=self.max_sequence_length,
+                tokens=rows,
+                force_per_row_scratch=force_row_qkv_temp,
+                library=self.libraries,
+                stream=stream,
+            )
+        else:
+            state.rotate_full_attention_inputs_fp16(
+                attention_scratch.attn_input,
+                attention_scratch,
+                tokens=rows,
+                library=self.libraries,
+                stream=stream,
+            )
+            state.project_full_attention_qkv_fp16(
+                attention_scratch,
+                tokens=rows,
+                library=self.libraries,
+                stream=stream,
+            )
+            _query, _key, _value, gate = state.prepare_full_attention_qkv_fp16(
+                attention_scratch,
+                cos_table=self.cos,
+                sin_table=self.sin,
+                position=positions_tensor,
+                max_positions=self.max_sequence_length,
+                tokens=rows,
+                library=self.libraries,
+                stream=stream,
+            )
         state.append_full_attention_kv_fp16_batch(
             attention_scratch,
             key_cache=key_cache,

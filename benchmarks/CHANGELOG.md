@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-13
+
+- [diagnostic retained] Qwen3.6-35B-A3B-PARO packed MTP-BF16 / W7900 9-prompt D64 B=1 exact fallback: `c1_loop` exact fallback `0.853x -> 0.860x` actual decode speedup (+0.84% relative), wall `15.606 -> 15.514 ms/cycle` (-0.59%), verify `13.855 -> 13.762 ms/cycle` (-0.67%) by keeping `decode_batched` input/QKV batched but replaying the full-attention suffix with per-row K/V append+context interleaving plus batch-GEMV O under `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1`; exact `9/9`, default-off because D32 B=1 remains current best; `benchmarks/results/2026-06-13-hipengine-mtp-d64-decodebatched-exact-suffix-retained.json`.
+
 ## 2026-06-12
 
 - [diagnostic no-hold] Qwen3.6-35B-A3B-PARO packed MTP-BF16 / W7900 9-prompt D64 B=1 AR fallback policy: fixed B=1 and `--ar-fallback-zero-streak 4 --ar-fallback-until-end` both fail exactness on `translation` at generated token index `34` (`AR=220`, `MTP=51`); fallback did trigger (`55` fallback cycles after `7` MTP verify cycles), so longer-horizon promotion is blocked on target commit/state audit rather than a threshold tweak; `benchmarks/results/2026-06-12-hipengine-mtp-b1-d64-ar-fallback-nohold.json`.

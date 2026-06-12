@@ -1,0 +1,69 @@
+{
+  "schema": "hipengine-benchmark-summary/v1",
+  "date": "2026-06-13",
+  "status": "retained",
+  "performance_claim": true,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "model_short": "Qwen3.6-35B-A3B-PARO MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100"
+  },
+  "workload": {
+    "prompt_suite": "scripts/mtp_prompt_suite_economics.py default 9-prompt suite",
+    "decode_tokens": 64,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "runs_per_prompt": 1
+  },
+  "env": {
+    "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+    "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1",
+    "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX": "1",
+    "HIPENGINE_MTP_DRAFT_VOCAB_CAP": "unset, uses retained default 65536",
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "correctness": {
+    "all_exact_ar_match": true,
+    "prompts_exact": "9/9",
+    "state_drift_audit_translation_cycles_1_2": "passed"
+  },
+  "metrics": {
+    "observed_cycle_speedup_vs_ar_mean": 0.8655357934582414,
+    "actual_decode_speedup_vs_ar_mean": 0.860497244520587,
+    "ar_decode_ms_per_token_mean": 9.054902051704833,
+    "ar_tok_s_mean": 110.43741768711045,
+    "spec_tok_s_actual_mean": 95.03109361172768,
+    "spec_tok_s_observed_mean": 95.58753794529237,
+    "cycle_wall_ms_per_cycle_mean": 15.513760935951467,
+    "verify_ms_per_cycle_mean": 13.761952837962278,
+    "proposal_update_ms_per_cycle_mean": 1.734659862282904,
+    "avg_visible_tokens_per_cycle_mean": 1.4821236096777892,
+    "avg_accepted_per_cycle_mean": 0.4821236096777893,
+    "acceptance_rate_mean": 0.4821236096777893
+  },
+  "comparison": {
+    "baseline_artifact": "benchmarks/results/2026-06-13-hipengine-mtp-d64-c1loop-exact-fallback.json",
+    "baseline": "D64 exact c1_loop fallback with HIPENGINE_GDN_TLOOP_C1_EXACT=1 and HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1",
+    "baseline_actual_decode_speedup_vs_ar_mean": 0.8533152461,
+    "baseline_cycle_wall_ms_per_cycle_mean": 15.6062447387,
+    "baseline_verify_ms_per_cycle_mean": 13.8550499822,
+    "relative_actual_speedup_delta_percent": 0.8416582796817007,
+    "cycle_wall_delta_percent": -0.5926076663349544,
+    "verify_delta_percent": -0.6719365455723825,
+    "decision": "Keep the exact-suffix decode_batched path as an opt-in D64 exact fallback. It is a small real improvement over c1_loop exact fallback, but it is slower than the retained D32 current-best decode_batched row and remains default-off."
+  },
+  "commands": {
+    "state_drift_audit": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 1,2 --max-cycles 2 --out /tmp/hipengine-mtp-state-drift-audit-decodebatched-exactsuffix-cycles1-2-20260613.json",
+    "prompt_suite": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_APPEND_CONTEXT=1 HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_KV_APPEND=1 HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_CONTEXT=1 HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_BATCH_GEMV_OUTPUT=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 64 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-decodebatched-exact-suffix-d64-9prompt-20260613 --out /tmp/hipengine-mtp-b1-decodebatched-exact-suffix-d64-9prompt-20260613.json"
+  },
+  "raw_outputs": {
+    "state_drift_audit": "/tmp/hipengine-mtp-state-drift-audit-decodebatched-exactsuffix-cycles1-2-20260613.json",
+    "prompt_suite": "/tmp/hipengine-mtp-b1-decodebatched-exact-suffix-d64-9prompt-20260613.json"
+  }
+}

@@ -85112,3 +85112,97 @@ budget policy and density work.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-c1loop-exact-fallback.json`.
+
+## 2026-06-13 - MTP D64 decode_batched exact suffix fallback
+
+Kept digging on the fast-path D64 `decode_batched` producer drift after the
+strict GDN/out fallback made `c1_loop` exact but left `decode_batched`
+state-mismatched at cycle 1. Added a default-off diagnostic bridge in
+`_run_full_attention_chain_decode_batched` so the MTP verifier can route a
+full-attention layer through the existing decode-batch helper and selectively
+force row-wise sub-stages. The retained shorthand is:
+
+- `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1`: per-row K/V
+  append+context interleaving plus batch-GEMV O projection, while keeping
+  batched input/QKV.
+
+Stage bisection on W7900/gfx1100, D64 `translation`, B=1, `decode_batched`,
+graph off, with `HIPENGINE_GDN_TLOOP_C1_EXACT=1` and
+`HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1`:
+
+| Variant | Result |
+| --- | --- |
+| `HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=0` | still cycle-1 state mismatch |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_QKV=1` | still mismatch |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_HELPER=1` | still mismatch |
+| `ROW_LAYER=1` | passes cycles 1/2 |
+| `BATCH_GEMV_OUTPUT=1` or `ROW_OUTPUT=1` alone | still mismatch |
+| `ROW_CONTEXT=1`, `ROW_KV_APPEND=1`, `ROW_POST=1`, or `ROW_MOE=1` alone | still mismatch |
+| `ROW_SUFFIX=1 + ROW_KV_APPEND=1 + ROW_CONTEXT=1 + ROW_OUTPUT=1 + ROW_POST=1 + ROW_MOE=1` | passes cycles 1/2 |
+| `ROW_APPEND_CONTEXT=1 + ROW_KV_APPEND=1 + ROW_CONTEXT=1 + ROW_OUTPUT=1` | passes cycles 1/2 |
+| `ROW_APPEND_CONTEXT=1 + ROW_KV_APPEND=1 + ROW_CONTEXT=1 + BATCH_GEMV_OUTPUT=1` | passes cycles 1/2 |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1` | passes cycles 1/2 |
+
+Short gate:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-after-cycles 1,2 --max-cycles 2 \
+  --out /tmp/hipengine-mtp-state-drift-audit-decodebatched-exactsuffix-cycles1-2-20260613.json
+```
+
+Result: `status=passed`; resident-vs-AR, selected-state-vs-AR, and
+scratch-to-resident all pass for cycles 1 and 2.
+
+Full D64 suite:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_APPEND_CONTEXT=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_KV_APPEND=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_CONTEXT=1 \
+  HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_BATCH_GEMV_OUTPUT=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 64 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-decodebatched-exact-suffix-d64-9prompt-20260613 \
+  --out /tmp/hipengine-mtp-b1-decodebatched-exact-suffix-d64-9prompt-20260613.json
+```
+
+Result: exact D64 `9/9`. Aggregate: observed speedup `0.8655x`, actual decode
+speedup `0.8605x`, AR `110.44 tok/s`, speculative actual `95.03 tok/s`, wall
+`15.514 ms/cycle`, verify `13.762 ms/cycle`, proposal/update
+`1.735 ms/cycle`, visible `1.482/cycle`.
+
+Default-off regression smoke after adding the bridge:
+`scripts/mtp_chain_e2e_smoke.py --decode-tokens 8 --candidate-budget 1
+--chain-attn-mode decode_batched --graph-mode off` passed exact AR with
+`HIPENGINE_GDN_TLOOP_C1_EXACT`, `HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS`, and
+`HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX` unset.
+
+Decision: keep this as a retained opt-in exact D64 fallback and small real speed
+improvement over the exact `c1_loop` fallback (`0.8533x -> 0.8605x`, +0.84%
+relative; wall `15.606 -> 15.514 ms/cycle`; verify `13.855 -> 13.762 ms`).
+Do not default it on: the retained D32 current-best row remains faster at
+`1.018x`, `14.173 ms/cycle`.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-decodebatched-exact-suffix-retained.json`.
