@@ -82030,3 +82030,64 @@ retest grouped compact at rows=4 unless a new grouping kernel materially changes
 the overhead model. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-grouped-min2-nohold.json` and
 updated `docs/MTP.md`.
+
+## 2026-06-12 - MTP dense GEMV WMMA verifier A/B no-hold
+
+Checked the existing verifier-side FP16 dense GEMV WMMA toggle as a cheap
+projection-path diagnostic before writing new reduced-DAG kernels. This only
+affects the linear-attention A/B FP16 dense projections in
+`project_linear_attention_ab_fp16`; the isolated WMMA dense GEMV tests already
+exist in `tests/test_dense_gemv_wmma.py`.
+
+Quicksort exact smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_DENSE_GEMV_WMMA=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-dense-gemv-wmma-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Same-session 9-prompt D32 suite A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_DENSE_GEMV_WMMA=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-dense-gemv-wmma-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-dense-gemv-wmma-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_VERIFY_DENSE_GEMV_WMMA=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-dense-gemv-wmma-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-dense-gemv-wmma-on-9prompt-d32.json
+```
+
+- Exact `9/9 -> 9/9`; visible/accepted density unchanged at `2.01185` /
+  `1.01185` tokens/cycle.
+- Ratio regressed `0.923637 -> 0.880656`.
+- Wall regressed `19.4599 -> 20.3744 ms/cycle`.
+- Verify regressed `16.1760 -> 17.0857 ms/cycle`.
+- Proposal/update was neutral/slightly worse `1.2433 -> 1.2506 ms/cycle`.
+- Cycle cost regressed `2.15309 -> 2.25643` AR tokens.
+- Every prompt's cycle cost regressed, so a rocprof follow-up was skipped:
+  the same-suite gate is already clearly negative and the dense bucket is
+  low-ceiling.
+
+Decision: no-hold. Keep `HIPENGINE_VERIFY_DENSE_GEMV_WMMA` default-off and do
+not spend sprint time on this projection path unless a new dense kernel changes
+the verifier-shape cost model. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-dense-gemv-wmma-nohold.json` and
+updated `docs/MTP.md`.
