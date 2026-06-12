@@ -84902,3 +84902,69 @@ starting with linear layer 0 recurrent and full-attention layer 3 K/V.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-early-selected-state-vs-ar-audit.json`.
+
+## 2026-06-13 - MTP D64 cycle-1 producer split audit
+
+Ran the cheap cycle-1 producer split after the early selected-state audit. Goal:
+separate `decode_batched` full-attention, linear chain t-loop, and verifier
+self-consistency from the serial c1 decode-state mismatch.
+
+Commands:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --compare-after-cycles 1,2 --max-cycles 2 \
+  --out /tmp/hipengine-mtp-state-drift-audit-c1loop-cycles1-2-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0 \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --compare-after-cycles 1,2 --max-cycles 2 \
+  --out /tmp/hipengine-mtp-state-drift-audit-c1loop-tree-tloop-cycles1-2-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_layer_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --compare-cycle 1 --compare-rows 0,1 \
+  --out /tmp/hipengine-mtp-layer-drift-cycle1-c1loop-20260613.json
+```
+
+Result:
+
+| Check | Result |
+| --- | --- |
+| `c1_loop` full-attention mode | Still state-mismatched at cycle 1 while visible next matches (`248068 == 248068`); selected scratch-to-resident exact `60/60`; selected linear first mismatch layer 0 recurrent, max_abs `9.5367e-7`, `103835` mismatches; selected full K/V fails `20/20`, first layer 3 key position 15. |
+| Forced linear `tree_tloop` (`HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0`) | Still state-mismatched at cycle 1; selected scratch-to-resident exact `60/60`; selected linear first mismatch layer 0 recurrent, max_abs `9.5367e-7`, `147052` mismatches; selected full K/V fails `20/20`, first layer 3 key position 15. |
+| Clean verifier vs MTP verifier at cycle 1 | Bit-clean: pre-verify resident state passes; MTP verifier and clean verifier both top-1 `[248068,3841]` with identical values; hidden captures pass `80/80`; selected linear state passes `60/60`; selected full K/V cells pass `20/20`. |
+
+Interpretation: the verifier producer is internally deterministic and
+session-clean at cycle 1, but its selected state is not bit-equivalent to the
+serial c1 decode producer state. This rules out `decode_batched` as the sole
+culprit and rules out linear chain-tloop topology as the sole culprit. Next
+unit should compare serial c1 layer producers against verifier t-loop/row
+producers directly, starting with layer 0 linear recurrent state; then inspect
+full-attention layer 3 K/V after controlling the preceding hidden/state input.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-cycle1-producer-split-audit.json`.

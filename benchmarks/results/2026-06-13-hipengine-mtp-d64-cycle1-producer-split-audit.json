@@ -1,0 +1,184 @@
+{
+  "date": "2026-06-13",
+  "kind": "mtp_d64_cycle1_producer_split_diagnostic",
+  "performance_claim": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "backend": "hip_gfx1100",
+  "prompt": {
+    "name": "translation",
+    "render": "raw",
+    "text": "Translate to French: 'The quick brown fox jumps over the lazy dog.'",
+    "prompt_tokens": 15,
+    "decode_tokens": 64
+  },
+  "baseline_context": {
+    "retained_speed_row": "B=1, chain_attn_mode=decode_batched, graph_mode=off, cap65536, exact D32 9/9, 1.018x AR, 14.173 ms/cycle",
+    "blocked_gate": "D64 translation forks at generated token index 34",
+    "previous_diagnostic": "cycle 1 post-commit selected verifier state differs from serial AR while visible output still matches and scratch-to-resident copy is exact"
+  },
+  "commands": {
+    "c1_loop_selected_state_vs_ar": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --compare-after-cycles 1,2 --max-cycles 2 --out /tmp/hipengine-mtp-state-drift-audit-c1loop-cycles1-2-20260613.json",
+    "c1_loop_tree_tloop_selected_state_vs_ar": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0 PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --compare-after-cycles 1,2 --max-cycles 2 --out /tmp/hipengine-mtp-state-drift-audit-c1loop-tree-tloop-cycles1-2-20260613.json",
+    "cycle1_clean_verifier_compare": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --compare-cycle 1 --compare-rows 0,1 --out /tmp/hipengine-mtp-layer-drift-cycle1-c1loop-20260613.json"
+  },
+  "source_outputs": {
+    "c1_loop_selected_state_vs_ar": "/tmp/hipengine-mtp-state-drift-audit-c1loop-cycles1-2-20260613.json",
+    "c1_loop_tree_tloop_selected_state_vs_ar": "/tmp/hipengine-mtp-state-drift-audit-c1loop-tree-tloop-cycles1-2-20260613.json",
+    "cycle1_clean_verifier_compare": "/tmp/hipengine-mtp-layer-drift-cycle1-c1loop-20260613.json"
+  },
+  "diagnostics": [
+    {
+      "name": "c1_loop_full_attention_mode",
+      "configuration": {
+        "candidate_budget": 1,
+        "chain_attn_mode": "c1_loop",
+        "graph_mode": "off",
+        "linear_attn_mode": "chain_tloop"
+      },
+      "status": "state_mismatch",
+      "seconds": 46.386487015057355,
+      "generated_prefix": [
+        271,
+        248068,
+        271
+      ],
+      "cycle1": {
+        "visible_next": 248068,
+        "control_next": 248068,
+        "accepted": 0,
+        "commit_row": 0,
+        "commit_position": 15,
+        "scratch_to_resident": {
+          "passed": true,
+          "checked": 60,
+          "failed": 0
+        },
+        "selected_linear_vs_ar": {
+          "passed": false,
+          "first_layer": 0,
+          "first_state": "recurrent",
+          "mismatch_count": 103835,
+          "max_abs": 9.5367431640625e-7
+        },
+        "selected_full_kv_vs_ar": {
+          "passed": false,
+          "checked": 20,
+          "failed": 20,
+          "first_layer": 3,
+          "first_state": "key_cell",
+          "first_position": 15,
+          "mismatch_count": 116
+        }
+      }
+    },
+    {
+      "name": "c1_loop_full_attention_with_tree_tloop_linear",
+      "configuration": {
+        "candidate_budget": 1,
+        "chain_attn_mode": "c1_loop",
+        "graph_mode": "off",
+        "HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP": "0",
+        "linear_attn_mode": "tree_tloop"
+      },
+      "status": "state_mismatch",
+      "seconds": 46.44889392121695,
+      "generated_prefix": [
+        271,
+        248068,
+        271
+      ],
+      "cycle1": {
+        "visible_next": 248068,
+        "control_next": 248068,
+        "accepted": 0,
+        "commit_row": 0,
+        "commit_position": 15,
+        "scratch_to_resident": {
+          "passed": true,
+          "checked": 60,
+          "failed": 0
+        },
+        "selected_linear_vs_ar": {
+          "passed": false,
+          "first_layer": 0,
+          "first_state": "recurrent",
+          "mismatch_count": 147052,
+          "max_abs": 9.5367431640625e-7
+        },
+        "selected_full_kv_vs_ar": {
+          "passed": false,
+          "checked": 20,
+          "failed": 20,
+          "first_layer": 3,
+          "first_state": "key_cell",
+          "first_position": 15,
+          "mismatch_count": 109
+        }
+      }
+    },
+    {
+      "name": "cycle1_clean_verifier_vs_mtp_verifier",
+      "configuration": {
+        "candidate_budget": 1,
+        "chain_attn_mode": "c1_loop",
+        "graph_mode": "off",
+        "compare_cycle": 1,
+        "compare_rows": [
+          0,
+          1
+        ]
+      },
+      "status": "compared",
+      "seconds": 46.25286342785694,
+      "pre_verify_resident_vs_ar_passed": true,
+      "root": 271,
+      "control_root": 271,
+      "draft_candidates": [
+        760
+      ],
+      "mtp_verify": {
+        "accepted": 0,
+        "commit_row": 0,
+        "commit_position": 15,
+        "next_token": 248068,
+        "target_top1": [
+          248068,
+          3841
+        ],
+        "target_top1_values": [
+          21.665700912475586,
+          18.93238639831543
+        ]
+      },
+      "clean_verify": {
+        "accepted": 0,
+        "commit_row": 0,
+        "commit_position": 15,
+        "next_token": 248068,
+        "target_top1": [
+          248068,
+          3841
+        ],
+        "target_top1_values": [
+          21.665700912475586,
+          18.93238639831543
+        ]
+      },
+      "hidden_compare": {
+        "passed": true,
+        "checked": 80,
+        "failed": 0
+      },
+      "selected_state_compare": {
+        "passed": true,
+        "linear_checked": 60,
+        "linear_failed": 0,
+        "full_kv_checked": 20,
+        "full_kv_failed": 0
+      }
+    }
+  ],
+  "interpretation": "Switching full-attention verification from decode_batched to c1_loop does not remove the cycle-1 serial-AR state mismatch. Disabling chain_tloop and forcing tree_tloop for linear attention also does not remove it. However, a cycle-1 verifier-vs-clean-verifier comparison is bit-clean for pre-verify resident state, hidden taps across all 40 layers and both rows, selected linear scratch, selected full-attention K/V cells, target top1, and top1 values. The verifier producer is internally deterministic and session-clean at cycle 1, but its selected state is not bit-equivalent to the serial c1 decode producer state.",
+  "next_action": "Focus the next correctness unit on parity between serial c1 layer producers and verifier t-loop/row producer state. Start with linear layer 0 recurrent: compare run_linear_attention_moe_c1_layer_fp16 / run_linear_attention_out_proj_fp16 against run_linear_attention_moe_chain_tloop_layer_fp16 and run_linear_attention_moe_tree_tloop_layer_fp16 for the same row. Then inspect full-attention layer 3 K/V cell parity after the preceding hidden/state input is controlled."
+}
