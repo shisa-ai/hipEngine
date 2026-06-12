@@ -81852,3 +81852,27 @@ Decision: keep the next implementation push focused on real reduced-DAG
 verifier composites and the bounded proposer graph-capture design. Avoid
 rerunning stale exact-but-negative micro-fusions unless the current profile
 shows a changed callsite or a new design removes actual DAG nodes.
+
+## 2026-06-12 - MTP M12.7 proposer graph-capture audit note
+
+Read-only audit of `NativeMtpChainProposer.advance()` and the persistent-device
+MTP harness before trying M12.7 proposer HIP graph capture:
+
+- Naive direct capture is not a promoted speed candidate. Each `advance()` bakes
+  `key_cache_dst`, `value_cache_dst`, and attention `context_len` from absolute
+  host-side `cache_len`; exact-cache-length graph buckets would mostly miss as
+  generation advances, and replay risks stale cache-slot writes if keyed too
+  broadly.
+- The harness uses both result-producing advances (LM-head + argmax readback)
+  and state-only repair/update advances (`need_result=False`), so one captured
+  body would either do extra LM-head work or replay the wrong readback behavior.
+- Useful M12.7 work should first create a fixed-address graph body: device-updated
+  token/position/cache-slot/live-context metadata, fixed KV write/copy addresses
+  or graph-node parameter updates, and separate result/state-only graph bodies.
+
+Updated `docs/MTP.md` to keep M12.7 on the list but block "capture whatever
+`advance()` does today" as a speed row. Acceptance-density notes from review
+remain endgame work already captured in `docs/MTP.md`: B=4/B=5 with per-depth
+histograms first, vocab-cap rejection census second, adaptive B/AR fallback,
+boundary-sibling tree retest, and relaxed speculative sampling out of the
+exact-default sprint.
