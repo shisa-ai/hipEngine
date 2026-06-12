@@ -82277,3 +82277,30 @@ Policy A/Bs remain sequenced after the wall path stabilizes: B=4 first, then
 vocab-cap sensitivity, adaptive B/AR fallback for zero-accept streaks,
 rejection-boundary sibling/tree retest, and relaxed speculative sampling as a
 separate opt-in quality tier rather than the exact-default sprint.
+
+## 2026-06-12 - MTP reduced-DAG audit: GDN finalize and QKV/Z staged rotate
+
+Reviewed two tempting reduced-DAG verifier launch-removal ideas against the
+current `0.924x / 19.44 ms` stack and the locked profile
+`/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json`
+(`842` calls/pass, `12.636 ms/pass` kernel, `16.220 ms/pass` host marker).
+
+1. GDN finalize fold: not a cheap local epilogue. The retained chain GDN kernel
+   uses `VTILE=4`, so one block owns four `dv` columns. The following
+   `qwen35_gdn_tree_rmsnorm_gate_finalize` launch needs the full
+   `head_v_dim=128` row reduction for RMS/gate. Folding it into the existing
+   tiled recurrent kernel would require a different whole-row/inter-block
+   design and risks undoing the retained VTILE=4 profile win. Reopen only with
+   an exact whole-row GDN design and micro/profile evidence versus the current
+   `VTILE=4 + finalize` stack.
+2. Linear-attn QKV/Z rotate-staged dual W4: the existing
+   `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED`/staged dual kernel is not a safe
+   rows>1 verifier flag flip. It writes the old concatenated `[qkv,z]` row
+   layout and is only wired for token-1 deferred rotation, while the current
+   exact B=3 verifier writes separate contiguous `qkv` and `z` buffers via the
+   split-dual decode kernel. A real retry needs a new keyed-barrier,
+   separate-output rotate-staged dual W4 ABI plus exact kernel tests before MTP
+   smoke/profile.
+
+Updated `docs/MTP.md` so future reduced-DAG work does not burn a session on
+either layout trap. No performance claim and no code change in this unit.

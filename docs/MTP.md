@@ -125,6 +125,21 @@ Current profile triage after the `0.924x / 19.44 ms` row:
 - The remaining high-leverage wall path is still real reduced-DAG work:
   remove named projection/router/MoE/attention launches or fuse structural
   composites. A C wrapper around the same launches is not enough.
+- Fresh reduced-DAG audit from the `842` calls/pass profile:
+  - Do **not** treat the separate GDN finalize launch as an easy local epilogue
+    fuse. The retained chain GDN kernel gets its speed from `VTILE=4`, where
+    each block owns only four `dv` columns, while
+    `qwen35_gdn_tree_rmsnorm_gate_finalize` needs the full `head_v_dim=128`
+    row reduction for RMS/gate. A one-kernel version would need a different
+    whole-row/inter-block design and must beat the current `VTILE=4 + finalize`
+    profile, not just remove 30 launches/pass on paper.
+  - Do **not** route the current B=3 linear-attn QKV/Z site through the legacy
+    `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED` staged kernel. That kernel writes
+    the old concatenated `[qkv,z]` row layout and is only wired for token-1
+    deferred rotation; the exact rows>1 verifier path writes separate
+    contiguous `qkv` and `z` buffers through the split-dual decode kernel. A
+    real retry requires a new keyed-barrier, separate-output rotate-staged dual
+    W4 ABI plus exact kernel tests before any MTP smoke/profile.
 
 Acceptance-density backlog for the endgame:
 
