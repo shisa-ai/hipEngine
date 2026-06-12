@@ -82929,3 +82929,17 @@ linear-out reduced-DAG only with a scheduling-safe multi-kernel/subgraph design
 or a true single kernel with no wait on unscheduled blocks. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-linear-out-rotate-gemv-staged-nohold.json`
 and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP acceptance-density endgame notes tightened
+
+Docs-only planning update after another reviewer pass on acceptance density. Kept
+acceptance-policy work parked behind the current wall-cut/reduced-DAG queue, but
+tightened `docs/MTP.md` so the later diagnostic pass is explicit about:
+
+- keeping extra acceptance counters/logging behind diagnostics;
+- defining vocab-cap rejections by the target top-1 token at the rejected depth,
+  not by the proposed id alone;
+- treating chain-plus-one-sibling/tree recovery as a measured hypothesis, not a
+  promoted path.
+
+No benchmark or speed claim in this entry.
