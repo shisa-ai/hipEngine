@@ -3,6 +3,7 @@
 // variants track @ b95eaa5. Wrappers are hipEngine raw-pointer C ABI.
 
 #include <hip/hip_runtime.h>
+#include <cstdlib>
 #include <stdint.h>
 
 using half_t = _Float16;
@@ -1662,7 +1663,14 @@ int launch_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop(
   // dv-tiling: collapse the grid by VTILE (4096 -> 1024 blocks at 32x128) when
   // head_v_dim is divisible; VTILE=1 is the bit-identical unfused fallback.
   constexpr int kChainVTile = 4;
-  const bool use_tile = (head_v_dim % kChainVTile) == 0;
+  int requested_vtile = kChainVTile;
+  if (const char* raw_vtile = std::getenv("HIPENGINE_GDN_CHAIN_TLOOP_VTILE")) {
+    const int parsed = std::atoi(raw_vtile);
+    if (parsed == 1 || parsed == kChainVTile) {
+      requested_vtile = parsed;
+    }
+  }
+  const bool use_tile = requested_vtile == kChainVTile && (head_v_dim % kChainVTile) == 0;
 #define HIPENGINE_LAUNCH_GDN_CHAIN_TLOOP(VT, GRID_Y)                              \
   hipLaunchKernelGGL(                                                            \
       (qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<scalar_t, VT>), \
@@ -2278,4 +2286,3 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_o
       head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
-

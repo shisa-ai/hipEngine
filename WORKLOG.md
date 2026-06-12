@@ -84209,3 +84209,73 @@ threshold sweep.
 
 Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-b1-d64-ar-fallback-nohold.json`.
+
+## 2026-06-12 - MTP D64 target-state drift bracketed
+
+Continued the D64 `translation` audit after the fallback-until-end no-hold.
+This is diagnostic evidence only (`performance_claim=false`), not a speed row.
+Added two default-off diagnostic hooks:
+
+- `scripts/mtp_chain_e2e_smoke.py --ar-fallback-after-mtp-cycles N`, which
+  forces target AR after a fixed number of MTP verifier cycles for state-drift
+  bracketing.
+- `HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1`, a temporary selector for the strict
+  chain GDN t-loop VTILE=1 path versus the retained default VTILE=4.
+
+Validation for the hook:
+
+```bash
+python3 -m py_compile scripts/mtp_chain_e2e_smoke.py
+python3 scripts/mtp_chain_e2e_smoke.py --help | rg -n "ar-fallback-after-mtp-cycles|ar-fallback"
+```
+
+Focused clean-prefix probe: replayed the failing token-34 context from a fresh
+AR target state and ran one `verify_chain_bulk_and_commit` with candidate `26`.
+Result from `/tmp/hipengine-mtp-teacher-bulk-cycle27-20260613.json`:
+`context=48`, `root=19`, `target_top1=[220,220]`, `accepted_count=0`,
+`next_token=220`, `expected_ar_next=220`, and `gpu_accept_match_cpu=true`.
+Conclusion: the local verifier math at the fork is correct from a clean AR
+prefix; the D64 mismatch is resident target-state drift caused by earlier MTP
+verify/commit cycles.
+
+Forced-cycle bracket results on W7900/gfx1100, B=1, D64 `translation`, graph
+off, default cap65536:
+
+| Config | Forced AR after | Result |
+| --- | ---: | --- |
+| `decode_batched + chain_tloop` | 2 MTP cycles | fails at token 34 (`AR=220`, `MTP=51`) |
+| `decode_batched + chain_tloop + HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1` | 2 | exact |
+| `decode_batched + chain_tloop + HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1` | 3 | exact |
+| `decode_batched + chain_tloop + HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1` | 4 | fails at token 34 (`AR=220`, `MTP=51`) |
+| `decode_batched + tree_tloop` (`HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0`) | 4 | fails early at token 6 (`AR=5494`, `MTP=72931`) |
+| `c1_loop + tree_tloop` | 4 | exact |
+| `c1_loop + chain_tloop + HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1` | 4 | fails at token 34 (`AR=220`, `MTP=51`) |
+| `c1_loop + tree_tloop`, no forced fallback | n/a | full D64 still fails at token 34 (`AR=220`, `MTP=51`) |
+
+Interpretation:
+
+- GDN chain t-loop VTILE=4 is a real contributor to the first accepted-row
+  handoff; VTILE=1 fixes the forced-after-2/3 cases.
+- VTILE=1 is not a complete repair; forced-after-4 still fails, so another
+  chain-tloop/materialized-state path remains suspect.
+- `decode_batched + tree_tloop` is not a safe D64 fallback on this trace; the
+  same `[0,1,1,0]` forced handoff passes under `c1_loop + tree_tloop`, which
+  separates a full-attention-mode issue from the linear chain-tloop issue.
+- There is no simple slow exact full-D64 mode yet: continuing `c1_loop +
+  tree_tloop` MTP cycles still drifts by token 34.
+
+Next: add a per-layer committed-state comparator around prefixes `[0,1,1]` and
+`[0,1,1,0]`, comparing selected scratch rows and resident slot state against
+serial AR / `c1_loop + tree_tloop` controls. Do not run more AR fallback
+threshold sweeps until this target-state drift is fixed or isolated.
+
+Compact artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-d64-state-drift-diagnostic.json`.
+
+Also folded reviewer feedback into `docs/MTP.md`: because the retained row moved
+from B=3 (`rows=4`) to B=1 (`rows=2`), run a cheap B=1 retune pass before
+assuming B=3 no-holds transfer: `c1_loop` vs `decode_batched`, W4 site mask,
+small-batch threshold, and LM-head threads. The adaptive-budget retry should
+use max-shape verifier scratch/capture allocation and vary only active rows,
+preferably starting with per-prompt budget selection from an online confidence
+proxy, rather than another sparse fixed-budget replay.

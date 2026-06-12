@@ -1,0 +1,222 @@
+{
+  "date": "2026-06-12",
+  "status": "diagnostic_in_progress",
+  "performance_claim": false,
+  "retained_ready": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100, HIP_VISIBLE_DEVICES=0",
+  "workload": {
+    "prompt": "translation",
+    "decode_tokens": 64,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "graph_mode": "off",
+    "draft_vocab_cap": "default 65536"
+  },
+  "baseline_context": {
+    "current_retained_speed_row": "D32 9-prompt B=1 decode_batched graph_off, 1.018x AR, 14.173 ms/cycle",
+    "d64_nohold_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-b1-d64-ar-fallback-nohold.json",
+    "d64_failure": "fixed B=1 and fallback-until-end both fail translation at generated token index 34, AR=220, MTP=51"
+  },
+  "diagnostic_hooks": {
+    "script_flag": "--ar-fallback-after-mtp-cycles N",
+    "kernel_env": "HIPENGINE_GDN_CHAIN_TLOOP_VTILE=1",
+    "notes": "Both are default-off diagnostics used only for state-drift bisection."
+  },
+  "one_shot_clean_prefix_probe": {
+    "raw_json": "/tmp/hipengine-mtp-teacher-bulk-cycle27-20260613.json",
+    "mode": "c1_loop",
+    "context": 48,
+    "root_token": 19,
+    "candidate": 26,
+    "target_top1": [
+      220,
+      220
+    ],
+    "accepted_count": 0,
+    "next_token": 220,
+    "expected_ar_next": 220,
+    "gpu_accept_match_cpu": true,
+    "interpretation": "From a clean AR resident prefix, the one-shot verifier predicts the AR token. The D64 fork is resident target state drift from earlier MTP verify/commit cycles, not the local verifier math at position 48."
+  },
+  "runs": [
+    {
+      "name": "decode_batched_chain_tloop_force_after_2",
+      "raw_json": "/tmp/hipengine-mtp-b1-forcear-after2-translation-d64-20260613.json",
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "env": {},
+      "ar_fallback_after_mtp_cycles": 2,
+      "status": "exact_ar_mismatch",
+      "accepted_prefix": [
+        0,
+        1
+      ],
+      "mismatch_index": 34,
+      "mismatch_pair": {
+        "ar": 220,
+        "mtp": 51
+      }
+    },
+    {
+      "name": "decode_batched_chain_tloop_gdn_vtile1_force_after_2",
+      "raw_json": "/tmp/hipengine-mtp-b1-gdn-vtile1-forcear-after2-translation-d64-20260613.json",
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "env": {
+        "HIPENGINE_GDN_CHAIN_TLOOP_VTILE": "1"
+      },
+      "ar_fallback_after_mtp_cycles": 2,
+      "status": "passed",
+      "accepted_prefix": [
+        0,
+        1
+      ],
+      "mismatch_index": null
+    },
+    {
+      "name": "decode_batched_chain_tloop_gdn_vtile1_force_after_3",
+      "raw_json": "/tmp/hipengine-mtp-b1-gdn-vtile1-forcear-after3-translation-d64-20260613.json",
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "env": {
+        "HIPENGINE_GDN_CHAIN_TLOOP_VTILE": "1"
+      },
+      "ar_fallback_after_mtp_cycles": 3,
+      "status": "passed",
+      "accepted_prefix": [
+        0,
+        1,
+        1
+      ],
+      "mismatch_index": null
+    },
+    {
+      "name": "decode_batched_chain_tloop_gdn_vtile1_force_after_4",
+      "raw_json": "/tmp/hipengine-mtp-b1-gdn-vtile1-forcear-after4-translation-d64-20260613.json",
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "env": {
+        "HIPENGINE_GDN_CHAIN_TLOOP_VTILE": "1"
+      },
+      "ar_fallback_after_mtp_cycles": 4,
+      "status": "exact_ar_mismatch",
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "mismatch_index": 34,
+      "mismatch_pair": {
+        "ar": 220,
+        "mtp": 51
+      }
+    },
+    {
+      "name": "decode_batched_tree_tloop_force_after_4",
+      "raw_json": "/tmp/hipengine-mtp-b1-tree-tloop-forcear-after4-translation-d64-20260613.json",
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "tree_tloop",
+      "env": {
+        "HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP": "0"
+      },
+      "ar_fallback_after_mtp_cycles": 4,
+      "status": "exact_ar_mismatch",
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "mismatch_index": 6,
+      "mismatch_pair": {
+        "ar": 5494,
+        "mtp": 72931
+      }
+    },
+    {
+      "name": "c1_loop_tree_tloop_force_after_4",
+      "raw_json": "/tmp/hipengine-mtp-b1-c1loop-tree-tloop-forcear-after4-translation-d64-20260613.json",
+      "chain_attn_mode": "c1_loop",
+      "linear_attn_mode": "tree_tloop",
+      "env": {
+        "HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP": "0"
+      },
+      "ar_fallback_after_mtp_cycles": 4,
+      "status": "passed",
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "mismatch_index": null
+    },
+    {
+      "name": "c1_loop_chain_tloop_gdn_vtile1_force_after_4",
+      "raw_json": "/tmp/hipengine-mtp-b1-c1loop-gdn-vtile1-forcear-after4-translation-d64-20260613.json",
+      "chain_attn_mode": "c1_loop",
+      "linear_attn_mode": "chain_tloop",
+      "env": {
+        "HIPENGINE_GDN_CHAIN_TLOOP_VTILE": "1"
+      },
+      "ar_fallback_after_mtp_cycles": 4,
+      "status": "exact_ar_mismatch",
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "mismatch_index": 34,
+      "mismatch_pair": {
+        "ar": 220,
+        "mtp": 51
+      }
+    },
+    {
+      "name": "c1_loop_tree_tloop_full_d64",
+      "raw_json": "/tmp/hipengine-mtp-b1-c1loop-tree-tloop-translation-d64-20260613.json",
+      "chain_attn_mode": "c1_loop",
+      "linear_attn_mode": "tree_tloop",
+      "env": {
+        "HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP": "0"
+      },
+      "ar_fallback_after_mtp_cycles": 0,
+      "status": "exact_ar_mismatch",
+      "accepted_prefix": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "mismatch_index": 34,
+      "mismatch_pair": {
+        "ar": 220,
+        "mtp": 51
+      }
+    }
+  ],
+  "conclusions": [
+    "The token-34 fork is stateful across verifier commits: a clean AR-prefix one-shot verifier is correct.",
+    "GDN chain-tloop VTILE=4 is a real contributor for the first accepted-row handoff: VTILE=1 fixes forced-after-2 and forced-after-3.",
+    "VTILE=1 is not a complete repair: forced-after-4 still fails at token 34 under both decode_batched and c1_loop when linear chain_tloop remains active.",
+    "decode_batched and tree_tloop are not a safe D64 fallback together: forced-after-4 fails early at token 6, while c1_loop plus tree_tloop passes the same forced handoff.",
+    "c1_loop plus tree_tloop is not sufficient for a full D64 MTP run; continuing MTP cycles still fails at token 34."
+  ],
+  "next_actions": [
+    "Add a per-layer committed-state comparator around the translation trace after prefixes [0,1,1] and [0,1,1,0], comparing scratch selected rows and resident slot state against serial AR/c1_loop tree controls.",
+    "Do not run more AR fallback threshold sweeps until the D64 target resident state drift is fixed or isolated.",
+    "Keep the D32 1.018x speed row, but do not promote longer-horizon D64 acceptance-policy defaults from the current evidence."
+  ]
+}
