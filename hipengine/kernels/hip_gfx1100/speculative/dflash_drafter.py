@@ -28,7 +28,9 @@ _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
 _SYMBOL_DENSE_BF16_TO_BF16_WMMA = "hipengine_dflash_dense_bf16_to_bf16_wmma"
 _SYMBOL_DENSE_BF16_TO_F32_WMMA = "hipengine_dflash_dense_bf16_to_f32_wmma"
 _SYMBOL_QKV_PROJ_BF16_MIXED = "hipengine_dflash_qkv_proj_bf16_mixed"
+_SYMBOL_QKV_PROJ_BF16_MIXED_INDEXED_V = "hipengine_dflash_qkv_proj_bf16_mixed_indexed_v"
 _SYMBOL_HEAD_RMS_ROTARY = "hipengine_dflash_head_rmsnorm_rotary_f32"
+_SYMBOL_HEAD_RMS_ROTARY_INDEXED_KEY = "hipengine_dflash_head_rmsnorm_rotary_indexed_key_f32"
 _SYMBOL_KEY_RMS_ROTARY = "hipengine_dflash_key_rmsnorm_rotary_f32"
 _SYMBOL_UPDATE_KV_METADATA = "hipengine_dflash_update_kv_metadata_i32"
 _SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
@@ -727,6 +729,50 @@ def dflash_qkv_proj_bf16_mixed(
     )
 
 
+def dflash_qkv_proj_bf16_mixed_indexed_v(
+    x_bf16_ptr: int,
+    q_weight_bf16_ptr: int,
+    k_weight_bf16_ptr: int,
+    v_weight_bf16_ptr: int,
+    q_out_f32_ptr: int,
+    k_out_f32_ptr: int,
+    value_cache_bf16_base_ptr: int,
+    cache_slot_i32_ptr: int,
+    cache_rows: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    kv_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fused Q/K/V projection with V written to a device-selected cache slot."""
+
+    _launch_qkv_proj_indexed_v(
+        _SYMBOL_QKV_PROJ_BF16_MIXED_INDEXED_V,
+        x_bf16_ptr,
+        q_weight_bf16_ptr,
+        k_weight_bf16_ptr,
+        v_weight_bf16_ptr,
+        q_out_f32_ptr,
+        k_out_f32_ptr,
+        value_cache_bf16_base_ptr,
+        cache_slot_i32_ptr,
+        cache_rows,
+        rows,
+        in_features,
+        q_features,
+        kv_features,
+        threads,
+        stream,
+        library,
+        runtime,
+    )
+
+
 def dflash_head_rmsnorm_rotary_f32(
     query_f32_ptr: int,
     key_f32_ptr: int,
@@ -794,6 +840,99 @@ def dflash_head_rmsnorm_rotary_f32(
         ctypes.c_void_p(key_positions_i32_ptr),
         ctypes.c_void_p(query_out_f32_ptr),
         ctypes.c_void_p(key_out_f32_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(kv_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(rotary_dim),
+        ctypes.c_int64(max_positions),
+        ctypes.c_float(float(eps)),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash_head_rmsnorm_rotary_indexed_key_f32(
+    query_f32_ptr: int,
+    key_f32_ptr: int,
+    q_weight_bf16_ptr: int,
+    k_weight_bf16_ptr: int,
+    cos_table_f32_ptr: int,
+    sin_table_f32_ptr: int,
+    query_positions_i32_ptr: int,
+    key_positions_i32_ptr: int,
+    query_out_f32_ptr: int,
+    key_cache_f32_base_ptr: int,
+    cache_slot_i32_ptr: int,
+    cache_rows: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    eps: float = 1.0e-6,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply head RMSNorm/RoPE with K written to a device-selected cache slot."""
+
+    _check_head_rotary_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, rotary_dim, max_positions, threads)
+    if batch_size != 1:
+        raise ValueError("indexed-key head rotary currently requires batch_size=1")
+    if cache_rows <= 0:
+        raise ValueError("cache_rows must be positive")
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_HEAD_RMS_ROTARY_INDEXED_KEY)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_f32_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(q_weight_bf16_ptr),
+        ctypes.c_void_p(k_weight_bf16_ptr),
+        ctypes.c_void_p(cos_table_f32_ptr),
+        ctypes.c_void_p(sin_table_f32_ptr),
+        ctypes.c_void_p(query_positions_i32_ptr),
+        ctypes.c_void_p(key_positions_i32_ptr),
+        ctypes.c_void_p(query_out_f32_ptr),
+        ctypes.c_void_p(key_cache_f32_base_ptr),
+        ctypes.c_void_p(cache_slot_i32_ptr),
+        ctypes.c_int64(cache_rows),
         ctypes.c_int64(batch_size),
         ctypes.c_int64(query_len),
         ctypes.c_int64(kv_len),
@@ -1144,8 +1283,18 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "dflash_qkv_proj", "w4_paro", "bf16_mixed_indexed_v"),
+        dflash_qkv_proj_bf16_mixed_indexed_v,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "dflash_head_rmsnorm_rotary", "w4_paro", "f32_bf16"),
         dflash_head_rmsnorm_rotary_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_head_rmsnorm_rotary", "w4_paro", "f32_bf16_indexed_key"),
+        dflash_head_rmsnorm_rotary_indexed_key_f32,
         replace=replace,
     )
     register(
@@ -1368,6 +1517,71 @@ def _launch_qkv_proj(
         ctypes.c_void_p(q_out_ptr),
         ctypes.c_void_p(k_out_ptr),
         ctypes.c_void_p(v_out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(q_features),
+        ctypes.c_int64(kv_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _launch_qkv_proj_indexed_v(
+    symbol: str,
+    x_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    v_weight_ptr: int,
+    q_out_ptr: int,
+    k_out_ptr: int,
+    value_cache_base_ptr: int,
+    cache_slot_i32_ptr: int,
+    cache_rows: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    kv_features: int,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_qkv_projection_shape(rows, in_features, q_features, kv_features, threads)
+    if cache_rows <= 0:
+        raise ValueError("cache_rows must be positive")
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(q_weight_ptr),
+        ctypes.c_void_p(k_weight_ptr),
+        ctypes.c_void_p(v_weight_ptr),
+        ctypes.c_void_p(q_out_ptr),
+        ctypes.c_void_p(k_out_ptr),
+        ctypes.c_void_p(value_cache_base_ptr),
+        ctypes.c_void_p(cache_slot_i32_ptr),
+        ctypes.c_int64(cache_rows),
         ctypes.c_int64(rows),
         ctypes.c_int64(in_features),
         ctypes.c_int64(q_features),

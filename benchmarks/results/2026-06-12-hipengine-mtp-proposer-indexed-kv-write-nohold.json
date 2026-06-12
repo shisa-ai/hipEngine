@@ -1,0 +1,73 @@
+{
+  "schema": "hipengine-benchmark-artifact-v1",
+  "date": "2026-06-12",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "stable 9-prompt D32",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "change": {
+    "flag": "HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE",
+    "default": false,
+    "summary": "Add graph-safe fixed-base proposer K/V producer variants that consume a device cache-slot scalar.",
+    "decision": "no-hold as standalone speed row; retain opt-in graph-capture infrastructure"
+  },
+  "correctness": {
+    "primitive_smoke": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/dflash_drafter_root_query_smoke.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "result": "passed; indexed QKV V-cache and rotary K-cache slots match direct outputs"
+    },
+    "quicksort_smoke": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-indexed-kv-write-smoke.json",
+      "exact_ar_match": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+    },
+    "suite": {
+      "control_all_exact_ar_match": true,
+      "candidate_all_exact_ar_match": true
+    }
+  },
+  "commands": {
+    "control": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-indexed-kv-write-off-9prompt-d32 --out /tmp/hipengine-mtp-indexed-kv-write-off-9prompt-d32.json",
+    "candidate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-indexed-kv-write-on-9prompt-d32 --out /tmp/hipengine-mtp-indexed-kv-write-on-9prompt-d32.json"
+  },
+  "metrics": {
+    "control": {
+      "actual_decode_speedup_vs_ar": 0.9236971879998469,
+      "cycle_wall_ms_per_cycle": 19.375844398641973,
+      "verify_ms_per_cycle": 16.092497959415383,
+      "proposal_update_ms_per_cycle": 1.247321998766612,
+      "avg_visible_tokens_per_cycle": 2.011851851851852
+    },
+    "candidate": {
+      "actual_decode_speedup_vs_ar": 0.9214564050127966,
+      "cycle_wall_ms_per_cycle": 19.411685407006175,
+      "verify_ms_per_cycle": 16.125129781013793,
+      "proposal_update_ms_per_cycle": 1.2491741413926063,
+      "avg_visible_tokens_per_cycle": 2.011851851851852
+    },
+    "delta_candidate_minus_control": {
+      "actual_decode_speedup_vs_ar": -0.002240782987050327,
+      "cycle_wall_ms_per_cycle": 0.03584100836420134,
+      "verify_ms_per_cycle": 0.03263182159841094,
+      "proposal_update_ms_per_cycle": 0.001852142625994313,
+      "avg_visible_tokens_per_cycle": 0.0
+    }
+  },
+  "source_files": [
+    "hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip",
+    "hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py",
+    "hipengine/speculative/mtp_native.py",
+    "scripts/dflash_drafter_root_query_smoke.py",
+    "tests/test_dflash_accept_kernels.py"
+  ]
+}

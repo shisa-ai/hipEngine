@@ -28,7 +28,9 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
+    dflash_head_rmsnorm_rotary_indexed_key_f32,
     dflash_qkv_proj_bf16_mixed,
+    dflash_qkv_proj_bf16_mixed_indexed_v,
     dflash_silu_mul_gate_up_routes_bf16,
     dflash_silu_mul_bf16,
 )
@@ -105,6 +107,10 @@ def _route0_accum_init_enabled() -> bool:
 
 def _direct_kv_write_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", True)
+
+
+def _indexed_kv_write_enabled() -> bool:
+    return _env_flag("HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE", False)
 
 
 def _router_topk_fused_enabled() -> bool:
@@ -221,10 +227,15 @@ class NativeMtpChainProposer:
         self.token_position_host = np.zeros((2,), dtype=np.int64)
         self.token_host = self.token_position_host[:1]
         self.position_host = self.token_position_host[1:].view(np.int32)[:1]
+        self.cache_slot_host = self.token_position_host[1:].view(np.int32)[1:2]
         self.token_position_buf = _device_array(self.token_position_host, self.buffers, runtime=self.runtime)
         self.token_buf = DeviceBuffer(self.token_position_buf.ptr, np.dtype(np.int64).itemsize)
         self.position_buf = DeviceBuffer(
             self.token_position_buf.ptr + np.dtype(np.int64).itemsize,
+            np.dtype(np.int32).itemsize,
+        )
+        self.cache_slot_buf = DeviceBuffer(
+            self.token_position_buf.ptr + np.dtype(np.int64).itemsize + np.dtype(np.int32).itemsize,
             np.dtype(np.int32).itemsize,
         )
         self.cos_buf = _device_array(cos, self.buffers, runtime=self.runtime)
@@ -487,6 +498,8 @@ class NativeMtpChainProposer:
             raise ValueError("position outside MTP RoPE table")
         self.token_host[0] = int(input_token)
         self.position_host[0] = int(position)
+        self.cache_slot_host[0] = int(self.cache_len)
+        indexed_kv_write = _indexed_kv_write_enabled()
         if _pack_token_position_enabled():
             self.runtime.memcpy_async(
                 self.token_position_buf.ptr,
@@ -510,9 +523,17 @@ class NativeMtpChainProposer:
                 HipMemcpyKind.HOST_TO_DEVICE,
                 int(stream),
             )
+            if indexed_kv_write:
+                self.runtime.memcpy_async(
+                    self.cache_slot_buf.ptr,
+                    host_array_ptr(self.cache_slot_host),
+                    self.cache_slot_host.nbytes,
+                    HipMemcpyKind.HOST_TO_DEVICE,
+                    int(stream),
+                )
         key_cache_dst = self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize
         value_cache_dst = self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize
-        direct_kv_write = _direct_kv_write_enabled()
+        direct_kv_write = _direct_kv_write_enabled() or indexed_kv_write
         v_out_ptr = value_cache_dst if direct_kv_write else self.v_proj_buf.ptr
         key_out_ptr = key_cache_dst if direct_kv_write else self.key_rot_buf.ptr
         mtp_fuse_inputs_f16_bf16(
@@ -532,47 +553,95 @@ class NativeMtpChainProposer:
         )
         dflash_dense_bf16_to_bf16(self.fused_buf.ptr, self.weights["mtp.fc.weight"].ptr, self.fc_buf.ptr, 1, 2 * self.hidden, self.hidden, threads=128, stream=stream, library=self.dflash_lib)
         mtp_rmsnorm_bf16_oneplus(self.fc_buf.ptr, self.weights["mtp.layers.0.input_layernorm.weight"].ptr, self.attn_in_buf.ptr, 1, self.hidden, eps=self.eps, threads=256, stream=stream, library=self.mtp_lib)
-        dflash_qkv_proj_bf16_mixed(
-            self.attn_in_buf.ptr,
-            self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
-            self.weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
-            self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
-            self.q_proj_buf.ptr,
-            self.k_proj_buf.ptr,
-            v_out_ptr,
-            1,
-            self.hidden,
-            self.q_proj_features,
-            self.kv_features,
-            threads=128,
-            stream=stream,
-            library=self.dflash_lib,
-        )
+        if indexed_kv_write:
+            dflash_qkv_proj_bf16_mixed_indexed_v(
+                self.attn_in_buf.ptr,
+                self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
+                self.q_proj_buf.ptr,
+                self.k_proj_buf.ptr,
+                self.value_cache_buf.ptr,
+                self.cache_slot_buf.ptr,
+                self.max_mtp_tokens,
+                1,
+                self.hidden,
+                self.q_proj_features,
+                self.kv_features,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
+        else:
+            dflash_qkv_proj_bf16_mixed(
+                self.attn_in_buf.ptr,
+                self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
+                self.q_proj_buf.ptr,
+                self.k_proj_buf.ptr,
+                v_out_ptr,
+                1,
+                self.hidden,
+                self.q_proj_features,
+                self.kv_features,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
         mtp_split_q_gate_f32_bf16(self.q_proj_buf.ptr, self.query_buf.ptr, self.gate_buf.ptr, 1, self.q_heads, self.head_dim, threads=256, stream=stream, library=self.mtp_lib)
-        dflash_head_rmsnorm_rotary_f32(
-            self.query_buf.ptr,
-            self.k_proj_buf.ptr,
-            self.q_norm_oneplus.ptr,
-            self.k_norm_oneplus.ptr,
-            self.cos_buf.ptr,
-            self.sin_buf.ptr,
-            self.position_buf.ptr,
-            self.position_buf.ptr,
-            self.query_rot_buf.ptr,
-            key_out_ptr,
-            1,
-            1,
-            1,
-            self.q_heads,
-            self.kv_heads,
-            self.head_dim,
-            self.rotary_dim,
-            self.max_positions,
-            eps=self.eps,
-            threads=128,
-            stream=stream,
-            library=self.dflash_lib,
-        )
+        if indexed_kv_write:
+            dflash_head_rmsnorm_rotary_indexed_key_f32(
+                self.query_buf.ptr,
+                self.k_proj_buf.ptr,
+                self.q_norm_oneplus.ptr,
+                self.k_norm_oneplus.ptr,
+                self.cos_buf.ptr,
+                self.sin_buf.ptr,
+                self.position_buf.ptr,
+                self.position_buf.ptr,
+                self.query_rot_buf.ptr,
+                self.key_cache_buf.ptr,
+                self.cache_slot_buf.ptr,
+                self.max_mtp_tokens,
+                1,
+                1,
+                1,
+                self.q_heads,
+                self.kv_heads,
+                self.head_dim,
+                self.rotary_dim,
+                self.max_positions,
+                eps=self.eps,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
+        else:
+            dflash_head_rmsnorm_rotary_f32(
+                self.query_buf.ptr,
+                self.k_proj_buf.ptr,
+                self.q_norm_oneplus.ptr,
+                self.k_norm_oneplus.ptr,
+                self.cos_buf.ptr,
+                self.sin_buf.ptr,
+                self.position_buf.ptr,
+                self.position_buf.ptr,
+                self.query_rot_buf.ptr,
+                key_out_ptr,
+                1,
+                1,
+                1,
+                self.q_heads,
+                self.kv_heads,
+                self.head_dim,
+                self.rotary_dim,
+                self.max_positions,
+                eps=self.eps,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
         if not direct_kv_write:
             self.runtime.memcpy_async(key_cache_dst, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))
             self.runtime.memcpy_async(value_cache_dst, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))

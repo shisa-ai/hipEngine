@@ -82486,3 +82486,62 @@ first real prerequisite explicit: fixed base pointers plus device-read metadata,
 with graph-safe proposer KV writes either in the QKV/rotary producers or in an
 indexed K/V copy kernel consuming a device cache-slot scalar, paired with the
 bucketed attention live-context scalar. No benchmark claim and no code change.
+
+## 2026-06-12 - MTP M12.7 indexed proposer K/V writes no-held as standalone speed row
+
+Implemented the next graph-capture prerequisite slice behind
+`HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=1`: DFlash drafter producer variants
+that write proposer V and K directly into fixed cache base pointers using a
+device `cache_slot` scalar. The scalar is packed into the existing 16-byte
+token/position upload when `HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION=1`, so
+the graph-ready address is fixed while the slot stays device-read.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_dflash_accept_kernels.py tests/test_dflash_drafter.py -q
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py hipengine/speculative/mtp_native.py scripts/dflash_drafter_root_query_smoke.py
+HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/dflash_drafter_root_query_smoke.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results: `15 passed`; py_compile clean; primitive smoke passed and printed
+`indexed_kv_write: QKV V-cache and rotary K-cache slots match direct outputs`.
+Quicksort D32 B=3 exact smoke with the flag on stayed exact with accepted
+lengths `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Same-stack D32 9-prompt A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=0 PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-indexed-kv-write-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-indexed-kv-write-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=1 PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-indexed-kv-write-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-indexed-kv-write-on-9prompt-d32.json
+```
+
+Both rows exact `9/9`. Off/on moved actual ratio `0.923697 -> 0.921456`,
+wall `19.375844 -> 19.411685 ms/cycle`, verify
+`16.092498 -> 16.125130 ms/cycle`, proposal/update
+`1.247322 -> 1.249174 ms/cycle`, and visible density stayed
+`2.011852/cycle`. Decision: keep the code and flag as fixed-address M12.7 graph
+infrastructure, but default-off and no speed promotion. Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-proposer-indexed-kv-write-nohold.json`.

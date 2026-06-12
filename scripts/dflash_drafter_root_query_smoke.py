@@ -33,8 +33,11 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
+    dflash_head_rmsnorm_rotary_indexed_key_f32,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
+    dflash_qkv_proj_bf16_mixed,
+    dflash_qkv_proj_bf16_mixed_indexed_v,
     dflash_rmsnorm_bf16,
     dflash_silu_mul_bf16,
 )
@@ -62,6 +65,7 @@ def main() -> int:
     _smoke_add_and_concat(runtime, library)
     _smoke_dense_projection(runtime, library)
     _smoke_silu_and_dense_bf16(runtime, library)
+    _smoke_indexed_kv_write(runtime, library)
     _smoke_head_rotary(runtime, library)
     _smoke_gqa_attention(runtime, library)
     _smoke_tiny_decoder_topk(runtime, library, lm_head_library)
@@ -267,6 +271,189 @@ def _smoke_silu_and_dense_bf16(runtime, library) -> None:
     np.testing.assert_array_equal(dense_out, expected_dense)
     np.testing.assert_array_equal(silu_out, expected_silu)
     print("dense_bf16_to_bf16+silu_mul: BF16 oracle checks passed")
+
+
+def _smoke_indexed_kv_write(runtime, library) -> None:
+    rng = np.random.default_rng(7)
+    rows = 2
+    hidden = 8
+    q_features = 6
+    kv_features = 4
+    cache_rows = 5
+    slot = np.array([1], dtype=np.int32)
+    hidden_bf16 = _f32_to_bf16_bits(rng.normal(size=(rows, hidden)).astype(np.float32) * 0.35)
+    q_weight = _f32_to_bf16_bits(rng.normal(size=(q_features, hidden)).astype(np.float32) * 0.2)
+    k_weight = _f32_to_bf16_bits(rng.normal(size=(kv_features, hidden)).astype(np.float32) * 0.2)
+    v_weight = _f32_to_bf16_bits(rng.normal(size=(kv_features, hidden)).astype(np.float32) * 0.2)
+    q_direct = np.empty((rows, q_features), dtype=np.float32)
+    k_direct = np.empty((rows, kv_features), dtype=np.float32)
+    v_direct = np.empty((rows, kv_features), dtype=np.uint16)
+    q_indexed = np.empty_like(q_direct)
+    k_indexed = np.empty_like(k_direct)
+    sentinel = np.full((cache_rows, kv_features), np.uint16(0xA55A), dtype=np.uint16)
+    v_cache = sentinel.copy()
+    buffers = []
+    try:
+        hidden_d = _dev(runtime, buffers, hidden_bf16)
+        qw_d = _dev(runtime, buffers, q_weight)
+        kw_d = _dev(runtime, buffers, k_weight)
+        vw_d = _dev(runtime, buffers, v_weight)
+        q_direct_d = _empty(runtime, buffers, q_direct)
+        k_direct_d = _empty(runtime, buffers, k_direct)
+        v_direct_d = _empty(runtime, buffers, v_direct)
+        q_indexed_d = _empty(runtime, buffers, q_indexed)
+        k_indexed_d = _empty(runtime, buffers, k_indexed)
+        v_cache_d = _dev(runtime, buffers, v_cache)
+        slot_d = _dev(runtime, buffers, slot)
+        dflash_qkv_proj_bf16_mixed(
+            hidden_d.ptr,
+            qw_d.ptr,
+            kw_d.ptr,
+            vw_d.ptr,
+            q_direct_d.ptr,
+            k_direct_d.ptr,
+            v_direct_d.ptr,
+            rows,
+            hidden,
+            q_features,
+            kv_features,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        dflash_qkv_proj_bf16_mixed_indexed_v(
+            hidden_d.ptr,
+            qw_d.ptr,
+            kw_d.ptr,
+            vw_d.ptr,
+            q_indexed_d.ptr,
+            k_indexed_d.ptr,
+            v_cache_d.ptr,
+            slot_d.ptr,
+            cache_rows,
+            rows,
+            hidden,
+            q_features,
+            kv_features,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(q_direct), q_direct_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(k_direct), k_direct_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(v_direct), v_direct_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(q_indexed), q_indexed_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(k_indexed), k_indexed_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(v_cache), v_cache_d, runtime=runtime)
+    finally:
+        _free_all(runtime, buffers)
+    np.testing.assert_array_equal(q_indexed, q_direct)
+    np.testing.assert_array_equal(k_indexed, k_direct)
+    np.testing.assert_array_equal(v_cache[slot[0] : slot[0] + rows], v_direct)
+    np.testing.assert_array_equal(v_cache[: slot[0]], sentinel[: slot[0]])
+    np.testing.assert_array_equal(v_cache[slot[0] + rows :], sentinel[slot[0] + rows :])
+
+    query = rng.normal(size=(1, rows, 2, 4)).astype(np.float32) * 0.25
+    key = rng.normal(size=(1, rows, 1, 4)).astype(np.float32) * 0.25
+    q_weight_h = _f32_to_bf16_bits(0.75 + rng.random(size=(4,)).astype(np.float32) * 0.5)
+    k_weight_h = _f32_to_bf16_bits(0.70 + rng.random(size=(4,)).astype(np.float32) * 0.5)
+    max_positions = 8
+    rotary_dim = 4
+    positions = np.arange(max_positions, dtype=np.float32)[:, None]
+    dims = np.arange(rotary_dim // 2, dtype=np.float32)[None, :]
+    inv_freq = np.power(np.float32(10000.0), -2.0 * dims / np.float32(rotary_dim))
+    angles = positions * inv_freq
+    cos_table = np.concatenate([np.cos(angles), np.cos(angles)], axis=1).astype(np.float32)
+    sin_table = np.concatenate([np.sin(angles), np.sin(angles)], axis=1).astype(np.float32)
+    q_positions = np.array([[2, 3]], dtype=np.int32)
+    k_positions = np.array([[2, 3]], dtype=np.int32)
+    q_rot_direct = np.empty_like(query)
+    k_rot_direct = np.empty_like(key)
+    q_rot_indexed = np.empty_like(query)
+    k_cache = np.full((cache_rows, 1, 4), np.float32(-123.0), dtype=np.float32)
+    k_sentinel = k_cache.copy()
+    expected_q = _head_rotary_oracle(query, q_weight_h, cos_table, sin_table, q_positions)
+    expected_k = _head_rotary_oracle(key, k_weight_h, cos_table, sin_table, k_positions)
+    buffers = []
+    try:
+        q_d = _dev(runtime, buffers, query)
+        k_d = _dev(runtime, buffers, key)
+        qw_d = _dev(runtime, buffers, q_weight_h)
+        kw_d = _dev(runtime, buffers, k_weight_h)
+        cos_d = _dev(runtime, buffers, cos_table)
+        sin_d = _dev(runtime, buffers, sin_table)
+        qp_d = _dev(runtime, buffers, q_positions)
+        kp_d = _dev(runtime, buffers, k_positions)
+        qo_direct_d = _empty(runtime, buffers, q_rot_direct)
+        ko_direct_d = _empty(runtime, buffers, k_rot_direct)
+        qo_indexed_d = _empty(runtime, buffers, q_rot_indexed)
+        k_cache_d = _dev(runtime, buffers, k_cache)
+        slot_d = _dev(runtime, buffers, slot)
+        dflash_head_rmsnorm_rotary_f32(
+            q_d.ptr,
+            k_d.ptr,
+            qw_d.ptr,
+            kw_d.ptr,
+            cos_d.ptr,
+            sin_d.ptr,
+            qp_d.ptr,
+            kp_d.ptr,
+            qo_direct_d.ptr,
+            ko_direct_d.ptr,
+            1,
+            rows,
+            rows,
+            2,
+            1,
+            4,
+            rotary_dim,
+            max_positions,
+            eps=1.0e-6,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        dflash_head_rmsnorm_rotary_indexed_key_f32(
+            q_d.ptr,
+            k_d.ptr,
+            qw_d.ptr,
+            kw_d.ptr,
+            cos_d.ptr,
+            sin_d.ptr,
+            qp_d.ptr,
+            kp_d.ptr,
+            qo_indexed_d.ptr,
+            k_cache_d.ptr,
+            slot_d.ptr,
+            cache_rows,
+            1,
+            rows,
+            rows,
+            2,
+            1,
+            4,
+            rotary_dim,
+            max_positions,
+            eps=1.0e-6,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(q_rot_direct), qo_direct_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(k_rot_direct), ko_direct_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(q_rot_indexed), qo_indexed_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(k_cache), k_cache_d, runtime=runtime)
+    finally:
+        _free_all(runtime, buffers)
+    max_abs = max(float(np.max(np.abs(q_rot_direct - expected_q))), float(np.max(np.abs(k_rot_direct - expected_k))))
+    assert max_abs <= 1.0e-6, max_abs
+    np.testing.assert_array_equal(q_rot_indexed, q_rot_direct)
+    np.testing.assert_array_equal(k_cache[slot[0] : slot[0] + rows], k_rot_direct.reshape(rows, 1, 4))
+    np.testing.assert_array_equal(k_cache[: slot[0]], k_sentinel[: slot[0]])
+    np.testing.assert_array_equal(k_cache[slot[0] + rows :], k_sentinel[slot[0] + rows :])
+    print("indexed_kv_write: QKV V-cache and rotary K-cache slots match direct outputs")
 
 
 def _smoke_head_rotary(runtime, library) -> None:

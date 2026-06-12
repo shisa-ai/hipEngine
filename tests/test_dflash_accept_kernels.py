@@ -24,9 +24,11 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
+    dflash_head_rmsnorm_rotary_indexed_key_f32,
     dflash_key_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
+    dflash_qkv_proj_bf16_mixed_indexed_v,
     dflash_rmsnorm_bf16,
     dflash_silu_mul_bf16,
     dflash_update_kv_metadata_i32,
@@ -126,6 +128,19 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         is dflash_head_rmsnorm_rotary_f32
     )
     assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="dflash_head_rmsnorm_rotary",
+            quant="w4_paro",
+            variant="f32_bf16_indexed_key",
+        )
+        is dflash_head_rmsnorm_rotary_indexed_key_f32
+    )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_qkv_proj", quant="w4_paro", variant="bf16_mixed_indexed_v")
+        is dflash_qkv_proj_bf16_mixed_indexed_v
+    )
+    assert (
         resolve(backend="hip_gfx1151", layer="dflash_key_rmsnorm_rotary", quant="w4_paro", variant="f32_bf16")
         is dflash_key_rmsnorm_rotary_f32
     )
@@ -195,6 +210,45 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
             head_dim=8,
             rotary_dim=9,
             max_positions=16,
+        )
+    with pytest.raises(ValueError, match="batch_size=1"):
+        dflash_head_rmsnorm_rotary_indexed_key_f32(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            batch_size=2,
+            query_len=1,
+            kv_len=1,
+            num_q_heads=4,
+            num_kv_heads=2,
+            head_dim=8,
+            rotary_dim=8,
+            max_positions=16,
+        )
+    with pytest.raises(ValueError, match="cache_rows"):
+        dflash_qkv_proj_bf16_mixed_indexed_v(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            rows=1,
+            in_features=4,
+            q_features=8,
+            kv_features=2,
         )
     with pytest.raises(ValueError, match="rotary_dim"):
         dflash_key_rmsnorm_rotary_f32(
