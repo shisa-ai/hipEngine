@@ -83790,3 +83790,39 @@ is an offline policy replay over the fixed-budget D32 artifacts, followed by a
 specific verifier/proposer state-transition and scratch/canonicalization audit
 before any new runtime flag is exposed. Do not run a prompt-suite adaptive gate
 until B1->B2/B3 promotion is proven safe on the quicksort smoke.
+
+## 2026-06-12 - MTP adaptive budget offline replay audit no-held
+
+Built a conservative offline replay checker for the retained fixed B=1/B=2/B=3
+prompt-suite artifact. The script replays simple online ladder policies only
+when the fixed-budget trace has accepted-length evidence for the chosen active
+budget at the same generated-token offset. If a policy lands on an unseen
+offset/budget pair, the replay is marked invalid instead of guessing
+acceptance.
+
+```bash
+python3 -m py_compile scripts/mtp_adaptive_budget_replay.py
+python3 scripts/mtp_adaptive_budget_replay.py \
+  --input /tmp/hipengine-mtp-b123-cap65536-current-9prompt-d32.json \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-adaptive-budget-offline-replay-nohold.json
+```
+
+Result:
+
+```json
+{"invalid_policy_count": 54, "policy_count": 54, "status": "diagnostic_no_hold", "valid_policy_count": 0}
+```
+
+The fixed-budget prompt-mean controls in the artifact are B=1 `1.0183575942`,
+B=2 `0.9630998279`, and B=3 `0.9675140060`. All 54 simple ladder policies
+(`start_budget in {1,2,3}`, `promote_after_full in {1,2,3}`,
+`demote_after_zero in {1,2}`, partial action in `{keep,demote_one,min}`) landed
+on at least one generated-token offset where the existing fixed-budget traces do
+not provide evidence for the chosen budget. The most common first invalid
+prompt was `code_python` (`45/54` policies).
+
+Decision: no-hold sparse-trace offline replay as a promotion gate. It is useful
+only to prove that the retained fixed-budget artifact is insufficient for exact
+adaptive-policy selection. Next adaptive evidence must come from either a dense
+per-offset budget probe or from fixing/auditing the live B1->B2/B3 transition
+path; until then, keep implementation priority on verifier reduced-DAG work.

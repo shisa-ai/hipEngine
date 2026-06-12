@@ -1,0 +1,1165 @@
+{
+  "budgets": [
+    1,
+    2,
+    3
+  ],
+  "date": "2026-06-12",
+  "decision": "no_hold",
+  "decision_reason": "All tested simple ladder policies land on at least one generated-token offset where the existing fixed-budget traces do not provide evidence for the chosen budget. The fixed-budget artifact is insufficient for an exact offline adaptive-policy promotion gate.",
+  "decode_tokens": 32,
+  "fixed_budget_prompt_mean_speedup": {
+    "1": 1.0183575942141887,
+    "2": 0.9630998279436908,
+    "3": 0.9675140060103394
+  },
+  "invalid_first_prompt_counts": {
+    "code_cpp": 8,
+    "code_python": 45,
+    "explain_concept": 1
+  },
+  "invalid_policy_count": 54,
+  "performance_claim": false,
+  "policies": [
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 1,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 1,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 1,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 1,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 1,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 1,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 13,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 2,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 13,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 2,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 13,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 2,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 6,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 2,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 2,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 2,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 3,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 3,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 3,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 2,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 3,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 2,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 3,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 2,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 3,
+        "start_budget": 1
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 1,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 1,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 3,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 1,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 4,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 1,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 4,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 1,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 4,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 1,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 13,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 2,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 13,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 2,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 13,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 2,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 6,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 2,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 2,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 2,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 3,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 3,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 7,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 3,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 8,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 18,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 2,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 3,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 8,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 18,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 3,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 8,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 18,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 3,
+        "start_budget": 2
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 4,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 1,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 4,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 1,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 2,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 4,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 1,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 3,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 5,
+          "policy_budget": 3
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 6,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 1,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 3,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 5,
+          "policy_budget": 3
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 7,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 1,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 3,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 5,
+          "policy_budget": 3
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 7,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 1,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 2,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 2,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 7,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 15,
+          "policy_budget": 3
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 8,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 2,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 4,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 8,
+          "policy_budget": 3
+        },
+        "prompt": "explain_concept",
+        "valid": false
+      },
+      "invalid_prompt_count": 2,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 2,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 14,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 28,
+          "policy_budget": 2
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 5,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 2,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 15,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 28,
+          "policy_budget": 2
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 5,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 2,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 6,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 11,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 3,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "keep",
+        "promote_after_full": 3,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 6,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 11,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 4,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "demote_one",
+        "promote_after_full": 3,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 6,
+        "missing": {
+          "active_budget": 2,
+          "lookup_budget": 2,
+          "offset": 11,
+          "policy_budget": 2
+        },
+        "prompt": "code_python",
+        "valid": false
+      },
+      "invalid_prompt_count": 4,
+      "policy": {
+        "demote_after_zero": 1,
+        "partial_action": "min",
+        "promote_after_full": 3,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 5,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 11,
+          "policy_budget": 3
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 4,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "keep",
+        "promote_after_full": 3,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 5,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 11,
+          "policy_budget": 3
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 4,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "demote_one",
+        "promote_after_full": 3,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    },
+    {
+      "first_invalid": {
+        "cycles_before_missing": 5,
+        "missing": {
+          "active_budget": 3,
+          "lookup_budget": 3,
+          "offset": 11,
+          "policy_budget": 3
+        },
+        "prompt": "code_cpp",
+        "valid": false
+      },
+      "invalid_prompt_count": 6,
+      "policy": {
+        "demote_after_zero": 2,
+        "partial_action": "min",
+        "promote_after_full": 3,
+        "start_budget": 3
+      },
+      "valid_all_prompts": false
+    }
+  ],
+  "policy_count": 54,
+  "purpose": "Check whether simple online MTP adaptive-budget policies can be exactly replayed from fixed-budget prompt-suite traces.",
+  "schema": 1,
+  "source_artifact": "/tmp/hipengine-mtp-b123-cap65536-current-9prompt-d32.json",
+  "status": "diagnostic_no_hold",
+  "valid_policy_count": 0
+}
