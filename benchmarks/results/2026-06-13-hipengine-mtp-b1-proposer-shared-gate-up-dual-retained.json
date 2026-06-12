@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-13",
+  "status": "accepted_positive",
+  "performance_claim": true,
+  "candidate": "35B-A3B MTP B=1 proposer shared gate/up dual dense default",
+  "decision": "promote_default_on_for_current_b1_stack",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budgets": [1],
+    "runs": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "draft_vocab_cap_source": "no-env default",
+    "feature_env": "HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1"
+  },
+  "correctness": {
+    "suite_exact_ar_match": "9/9",
+    "quicksort_exact_ar_match": true,
+    "quicksort_accepted_lengths": [
+      1, 1, 1, 1, 1, 0, 0, 1, 0, 0,
+      0, 1, 1, 1, 0, 1, 0, 0, 1, 0
+    ],
+    "accepted_lengths_match_retained_b1_control": true
+  },
+  "commands": {
+    "quicksort": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 timeout 1800 python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-proposer-shared-dual-on-quicksort-20260613 --out /tmp/hipengine-mtp-b1-proposer-shared-dual-on-quicksort-20260613.json",
+    "suite": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-proposer-shared-dual-on-9prompt-d32-20260613 --out /tmp/hipengine-mtp-b1-proposer-shared-dual-on-9prompt-d32-20260613.json"
+  },
+  "baseline_retained_b1": {
+    "artifact": "benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json",
+    "actual_decode_speedup_vs_ar_prompt_mean": 1.0183575942141887,
+    "actual_decode_speedup_vs_ar_total_time": 1.009088,
+    "ar_decode_tok_s_prompt_mean_approx": 111.10051385858226,
+    "mtp_decode_tok_s_prompt_mean_approx": 113.14005200898596,
+    "cycle_wall_ms_per_cycle": 14.17252825863089,
+    "verify_ms_per_cycle": 12.426223521388197,
+    "proposal_update_ms_per_cycle": 1.7328161988721338,
+    "cycle_cost_ar_tokens": 1.5738586101080283,
+    "visible_tokens_per_cycle": 1.6167079463364293,
+    "accepted_tokens_per_cycle": 0.6167079463364293
+  },
+  "candidate_suite_aggregate": {
+    "actual_decode_speedup_vs_ar_prompt_mean": 1.0243017182106113,
+    "actual_decode_speedup_vs_ar_total_time": 1.0151888570864944,
+    "ar_decode_tok_s_prompt_mean_approx": 111.17649601637345,
+    "mtp_decode_tok_s_prompt_mean_approx": 113.94443055279677,
+    "cycle_wall_ms_per_cycle": 14.092674045232197,
+    "verify_ms_per_cycle": 12.373194551862818,
+    "proposal_update_ms_per_cycle": 1.6998789019107057,
+    "cycle_cost_ar_tokens": 1.5645820525389271,
+    "visible_tokens_per_cycle": 1.6167079463364291,
+    "accepted_tokens_per_cycle": 0.6167079463364292
+  },
+  "delta_vs_retained_b1": {
+    "actual_decode_speedup_vs_ar_prompt_mean": 0.0059441239964226,
+    "actual_decode_speedup_vs_ar_total_time": 0.0061008570864944,
+    "mtp_decode_tok_s_prompt_mean_approx": 0.80437854381081,
+    "cycle_wall_ms_per_cycle": -0.079854213398693,
+    "verify_ms_per_cycle": -0.053028969525379,
+    "proposal_update_ms_per_cycle": -0.032937296961428,
+    "cycle_cost_ar_tokens": -0.009276557569101,
+    "visible_tokens_per_cycle": -0.0000000000000002,
+    "accepted_tokens_per_cycle": -0.0000000000000001
+  },
+  "quicksort_b1": {
+    "actual_decode_speedup_vs_ar": 0.9594605579308925,
+    "cycle_cost_ar_tokens": 1.5802961686572157,
+    "cycle_wall_ms_per_cycle": 14.10740865,
+    "verify_ms_per_cycle": 12.395615282002836,
+    "proposal_update_ms_per_cycle": 1.694435381796211,
+    "visible_tokens_per_cycle": 1.55,
+    "accepted_tokens_per_cycle": 0.55
+  },
+  "per_prompt_candidate": [
+    {"prompt": "code_python", "ratio": 1.1173753435040128, "cycle_cost_ar_tokens": 1.5818454645322035, "wall_ms": 14.07659088235294, "verify_ms": 12.36274350872811, "proposal_update_ms": 1.695934751564089, "visible_tokens_per_cycle": 1.8235294117647058},
+    {"prompt": "code_cpp", "ratio": 1.074877972985745, "cycle_cost_ar_tokens": 1.5665512197693459, "wall_ms": 13.967505263157896, "verify_ms": 12.417522185531102, "proposal_update_ms": 1.53172915605338, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "explain_concept", "ratio": 0.9796223342690363, "cycle_cost_ar_tokens": 1.5415306244749256, "wall_ms": 13.704457949999998, "verify_ms": 12.184937752317637, "proposal_update_ms": 1.5004840795882046, "visible_tokens_per_cycle": 1.55},
+    {"prompt": "summarize", "ratio": 1.0247763085081525, "cycle_cost_ar_tokens": 1.560993374653692, "wall_ms": 13.900664449999999, "verify_ms": 12.348065723199397, "proposal_update_ms": 1.5349670895375311, "visible_tokens_per_cycle": 1.6},
+    {"prompt": "qa_factual", "ratio": 1.0800738294438152, "cycle_cost_ar_tokens": 1.5589611813641429, "wall_ms": 13.799958631578948, "verify_ms": 12.28154983714615, "proposal_update_ms": 1.4973795163984362, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "translation", "ratio": 0.8143890666212058, "cycle_cost_ar_tokens": 1.5008652289132765, "wall_ms": 13.40624668, "verify_ms": 12.079582288861275, "proposal_update_ms": 1.3054842595010996, "visible_tokens_per_cycle": 1.24},
+    {"prompt": "creative_short", "ratio": 1.0836301673945898, "cycle_cost_ar_tokens": 1.553822087362904, "wall_ms": 13.855142842105264, "verify_ms": 12.343151752199782, "proposal_update_ms": 1.490077592040363, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "stepwise_math", "ratio": 1.072612425587535, "cycle_cost_ar_tokens": 1.5698631394166898, "wall_ms": 14.037687157894736, "verify_ms": 12.429245294218784, "proposal_update_ms": 1.5900747997588234, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"prompt": "long_code_review", "ratio": 0.9713580155814081, "cycle_cost_ar_tokens": 1.6468061523631627, "wall_ms": 16.085812550000004, "verify_ms": 12.911952624563128, "proposal_update_ms": 3.152778872754425, "visible_tokens_per_cycle": 1.6}
+  ],
+  "notes": [
+    "The same dual shared gate/up kernel was no-held on the prior B=3 stack because full-suite wall regressed despite proposer-local improvement.",
+    "At the retained B=1 operating point, the same feature is exact and positive on the full D32 suite, so it is promoted default-on with HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=0 as the opt-out."
+  ]
+}

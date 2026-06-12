@@ -85632,3 +85632,84 @@ metadata/combine overhead changed.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-grouped-min2-nohold.json`.
+
+## 2026-06-13 - MTP B=1 proposer shared gate/up dual dense promoted
+
+Rechecked the proposer shared expert gate/up dual dense path at the current
+retained B=1 operating point.  This feature was previously no-held on the older
+B=3 stack because proposer-local marker savings did not survive the full-suite
+economics gate.  After the operating point moved to B=1, it became live again.
+
+Code change: `HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL` now defaults on, with
+`=0` as the opt-out.
+
+Quicksort command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 timeout 1800 \
+  python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-proposer-shared-dual-on-quicksort-20260613 \
+  --out /tmp/hipengine-mtp-b1-proposer-shared-dual-on-quicksort-20260613.json
+```
+
+Quicksort result versus the default B=1 quicksort control from the reduced-DAG
+recheck:
+
+| Config | Exact | Speedup | Cycle cost | Wall | Verify | Proposal/update | Visible/cycle |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Control | yes | `0.954x` | `1.587` | `14.176 ms` | `12.431 ms` | `1.726 ms` | `1.550` |
+| Shared gate/up dual on | yes | `0.959x` | `1.580` | `14.107 ms` | `12.396 ms` | `1.694 ms` | `1.550` |
+
+Accepted trace was identical:
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.
+
+Full-suite command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-proposer-shared-dual-on-9prompt-d32-20260613 \
+  --out /tmp/hipengine-mtp-b1-proposer-shared-dual-on-9prompt-d32-20260613.json
+```
+
+Full-suite result versus retained B=1 artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json`:
+
+| Metric | Retained B=1 | Shared gate/up dual on |
+| --- | ---: | ---: |
+| Exact D32 prompts | `9/9` | `9/9` |
+| Prompt-mean actual speedup | `1.0183575942x` | `1.0243017182x` |
+| Total-time speedup | `1.009088x` | `1.0151888571x` |
+| Prompt-mean AR tok/s | `111.1005` | `111.1765` |
+| Prompt-mean MTP tok/s | `113.1401` | `113.9444` |
+| Wall | `14.172528 ms/cycle` | `14.092674 ms/cycle` |
+| Verify | `12.426224 ms/cycle` | `12.373195 ms/cycle` |
+| Proposal/update | `1.732816 ms/cycle` | `1.699879 ms/cycle` |
+| Cycle cost | `1.573859` AR tokens | `1.564582` AR tokens |
+| Visible/cycle | `1.616708` | `1.616708` |
+
+Decision: promote default-on.  This is a small retained win, but it clears the
+exact same-suite gate, moves both prompt-mean and total-time speedup, reduces
+cycle wall by `0.080 ms`, and directly reduces proposal/update by `0.033 ms`
+without changing acceptance density.  The older B=3 no-hold remains historical
+evidence for that operating point, not a reason to discard the B=1 win.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-proposer-shared-gate-up-dual-retained.json`.

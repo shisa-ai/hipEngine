@@ -125,7 +125,7 @@ def _route_batched_expert_enabled() -> bool:
 
 
 def _shared_gate_up_dual_enabled() -> bool:
-    return _env_flag("HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL", False)
+    return _env_flag("HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL", True)
 
 
 def _draft_vocab_from_env(vocab: int) -> int:
