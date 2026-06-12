@@ -84508,3 +84508,64 @@ the rows=2 boundary, and LM-head thread count.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-c1loop-retune-nohold.json`.
+
+## 2026-06-13 - MTP B=1 W4 all-sites retune no-held
+
+Continued the cheap B=1 operating-point retune pass with the W4 multi-row site
+mask, because rows changed from B=3's four verifier rows to B=1's two rows.
+
+Suite run:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-b1-w4-all-sites-retune-d32-20260613 \
+  --out /tmp/hipengine-mtp-b1-w4-all-sites-retune-d32-20260613.json
+```
+
+Result: exact `9/9` with identical visible density (`1.617/cycle`). The suite
+aggregate was slightly positive versus the retained default-mask B=1 row:
+ratio `1.018x -> 1.022x`, wall `14.173 -> 14.137 ms/cycle`, verify
+`12.426 -> 12.391 ms/cycle`, and cycle cost `1.574 -> 1.569` AR tokens.
+
+Focused verifier profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-b1-w4-all-sites-verify-rocprof-20260613
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region verify_pass \
+  --raw-root /tmp/hipengine-mtp-b1-w4-all-sites-verify-rocprof-20260613 \
+  --out /tmp/hipengine-mtp-b1-w4-all-sites-verify-rocprof-20260613.json \
+  --top 80
+```
+
+Profile result: exact, but no corroborating speed/path movement. Calls/pass
+stayed `833.0`, kernel regressed `9.407 -> 9.431 ms/pass`, host marker
+regressed `12.877 -> 12.915 ms/pass`, `w4_dual_gemv` regressed
+`1.438 -> 1.439 ms/pass`, and `w4_single_gemv` regressed
+`1.085 -> 1.089 ms/pass`.
+
+Decision: no-hold as a default. The suite-level `~35 us/cycle` improvement is
+not backed by the focused verifier profile, so treat it as run variance until a
+future profile shows real path movement. Keep the default safe W4 site mask;
+`HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all` remains diagnostic.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-w4-all-sites-nohold.json`.

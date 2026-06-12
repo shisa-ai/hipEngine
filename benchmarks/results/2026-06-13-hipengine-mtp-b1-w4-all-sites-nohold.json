@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-13",
+  "status": "rejected_no_hold",
+  "performance_claim": false,
+  "candidate": "35B-A3B MTP B=1 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all retune",
+  "decision": "keep default prompt-suite-safe W4 multi-row site mask",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budget": 1,
+    "runs": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "w4_multi_row_pack8_sites": "all"
+  },
+  "correctness": {
+    "suite_exact_ar_match": "9/9",
+    "profile_smoke_exact_ar_match": true
+  },
+  "commands": {
+    "suite": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-b1-w4-all-sites-retune-d32-20260613 --out /tmp/hipengine-mtp-b1-w4-all-sites-retune-d32-20260613.json",
+    "profile": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); rm -rf /tmp/hipengine-mtp-b1-w4-all-sites-verify-rocprof-20260613; env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --region verify_pass --raw-root /tmp/hipengine-mtp-b1-w4-all-sites-verify-rocprof-20260613 --out /tmp/hipengine-mtp-b1-w4-all-sites-verify-rocprof-20260613.json --top 80"
+  },
+  "raw_artifacts": {
+    "suite": "/tmp/hipengine-mtp-b1-w4-all-sites-retune-d32-20260613.json",
+    "profile": "/tmp/hipengine-mtp-b1-w4-all-sites-verify-rocprof-20260613.json",
+    "retained_suite_baseline": "benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json",
+    "retained_profile_baseline": "benchmarks/results/2026-06-12-hipengine-mtp-b1-current-verify-rocprof.json"
+  },
+  "suite_metrics": {
+    "candidate_all_sites": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 1.0216639451285359,
+      "cycle_wall_ms_per_cycle": 14.137339012008944,
+      "verify_ms_per_cycle": 12.391258259397578,
+      "cycle_cost_ar_tokens": 1.5687503155126539,
+      "visible_tokens_per_cycle": 1.6167079463364293
+    },
+    "retained_default_mask": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 1.0183575942141887,
+      "cycle_wall_ms_per_cycle": 14.17252825863089,
+      "verify_ms_per_cycle": 12.426223521388197,
+      "cycle_cost_ar_tokens": 1.5738586101080283,
+      "visible_tokens_per_cycle": 1.6167079463364293
+    },
+    "delta_all_minus_default": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 0.003306350914347167,
+      "cycle_wall_ms_per_cycle": -0.03518924662194678,
+      "verify_ms_per_cycle": -0.03496526199061911,
+      "cycle_cost_ar_tokens": -0.00510829459537443,
+      "visible_tokens_per_cycle": 0.0
+    }
+  },
+  "profile_metrics": {
+    "candidate_all_sites": {
+      "kernel_calls_per_pass": 833.0,
+      "kernel_time_ms_per_pass": 9.431129333333333,
+      "host_marker_ms_per_pass": 12.915140277777779,
+      "w4_dual_gemv_ms_per_pass": 1.439455,
+      "w4_single_gemv_ms_per_pass": 1.0886754444444444
+    },
+    "retained_default_mask": {
+      "kernel_calls_per_pass": 833.0,
+      "kernel_time_ms_per_pass": 9.406980833333334,
+      "host_marker_ms_per_pass": 12.877328222222221,
+      "w4_dual_gemv_ms_per_pass": 1.4382096111111111,
+      "w4_single_gemv_ms_per_pass": 1.0848907222222222
+    },
+    "delta_all_minus_default": {
+      "kernel_calls_per_pass": 0.0,
+      "kernel_time_ms_per_pass": 0.024148499999999018,
+      "host_marker_ms_per_pass": 0.03781205555555722,
+      "w4_dual_gemv_ms_per_pass": 0.0012453888888888098,
+      "w4_single_gemv_ms_per_pass": 0.0037847222222222587
+    }
+  },
+  "decision_reason": "The full D32 suite was exact and slightly positive, but the focused quicksort verifier profile showed no launch-count/path movement and regressed both kernel and host marker time. Treat the suite delta as run variance and keep the default safe W4 site mask."
+}
