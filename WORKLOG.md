@@ -86029,3 +86029,18 @@ HBM round trip.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-exact-stack-rerun.json`.
+
+## 2026-06-13 - MTP D64 exact fallback rollup refresh
+
+Followed up the current-HEAD D64 exact-stack rerun by correcting the benchmark
+rollup.  `benchmarks/README.md` still advertised the earlier retained
+`decode_batched` exact-suffix sample (`0.860x`, `15.514 ms/cycle`,
+`13.762 ms` verify).  The current conservative headline now matches the rerun:
+exact D64 `9/9`, observed `0.848x`, actual `0.843x`, wall
+`15.817 ms/cycle`, verify `14.095 ms/cycle`, proposal/update
+`1.704 ms/cycle`, visible density `1.482/cycle`.  Added a matching
+`benchmarks/CHANGELOG.md` diagnostic-refresh entry and linked
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-exact-stack-rerun.json`.
+
+Decision unchanged: keep this as an opt-in correctness fallback below the D32
+current-best row, not as a promoted speed row.
