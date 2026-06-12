@@ -82372,3 +82372,14 @@ Decision: no-hold. Removed the prototype code and tests. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-linear-qkvz-rotate-staged-split-nohold.json`
 plus `docs/MTP.md` / `benchmarks/CHANGELOG.md` notes. Reopen only with a
 scheduling-safe topology, not another keyed in-kernel global spin barrier.
+
+## 2026-06-12 - MEGAKERNEL current-baseline pointer cleanup
+
+Docs-only cleanup while continuing the break-even sprint triage. `docs/MTP.md`
+is already the live economics source with the retained exact 9-prompt D32 row:
+`0.924x` AR, `19.44 ms/cycle`, `2.012` visible tokens/cycle, and true
+break-even at about `18.2 ms/cycle` or `2.15` visible tokens/cycle. Updated the
+top of `docs/MEGAKERNEL.md`, which still pointed agents at the older
+`0.758x / 27.8 ms` sprint baseline, and relabeled the old 45 ms / `C_B=4.67`
+table as historical M16.3 kickoff context rather than the current scoreboard.
+No benchmark claim and no code change in this unit.

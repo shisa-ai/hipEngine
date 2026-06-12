@@ -1,13 +1,17 @@
 # MEGAKERNEL.md — the M16.3 fused-kernel program (lower `C_B` to ≤ 2)
 
-Status: **design + measured groundwork** (2026-06-09). This doc is the working
-spec for the M16.3 megakernel campaign. It supersedes the scattered M16.3 notes
-in `docs/MTP.md` for *implementation* purposes; `docs/MTP.md` remains the
-economics/`C_B` source of truth. Update both when the plan moves.
+Status: **design + measured groundwork** (2026-06-09; sprint pointer refreshed
+2026-06-12). This doc is the working spec for the M16.3 megakernel campaign. It
+supersedes the scattered M16.3 notes in `docs/MTP.md` for *implementation*
+purposes; `docs/MTP.md` remains the economics/`C_B` source of truth. Update both
+when the plan moves.
 
-Current baseline note (2026-06-11): the active break-even sprint is now locked
-in `docs/MTP.md` at the post-graph/post-proposer best row, **0.758x AR** with
-**27.8 ms/cycle** (`22.0 ms` verify + `5.8 ms` proposer/draft). The older
+Current baseline note (2026-06-12): the active break-even sprint is now locked
+in `docs/MTP.md` at the retained exact 9-prompt D32 row, **0.924x AR** with
+**19.44 ms/cycle** (`16.16 ms` verify + `1.25 ms` proposal/update in the current
+rollup). The wall milestone is crossed, but true `>1.0x` still needs about
+`18.2 ms/cycle` at the current `2.012` visible tokens/cycle, or acceptance
+density of at least `2.15` visible tokens/cycle at the current wall. The older
 45 ms / `C_B=4.67` tables below are retained as M16.3 groundwork, not the
 current sprint scoreboard.
 
@@ -64,8 +68,11 @@ the 32-row shape better, not by collapsing launches (see §9, grid-reduction).
 ## 1. Why this exists — the `C_B` wall
 
 MTP/DFlash speculative decode only beats AR when a verify cycle costs fewer
-AR-token-equivalents (`C_B`) than the tokens it emits. Current measured state
-(W7900/gfx1100, 35B-A3B PARO MTP, B=3, batched, exact):
+AR-token-equivalents (`C_B`) than the tokens it emits. Current sprint state is
+tracked in `docs/MTP.md`; the retained 2026-06-12 row is `0.924x AR`,
+`19.44 ms/cycle`, and `2.012` visible tokens/cycle. The table below is the
+historical M16.3 kickoff state (W7900/gfx1100, 35B-A3B PARO MTP, B=3, batched,
+exact), retained to explain why this document exists:
 
 | metric | value |
 |---|---|
