@@ -82787,3 +82787,97 @@ Decision: no-hold; keep `HIPENGINE_QWEN35_LM_HEAD_THREADS=128` default and do
 not run the full D32 suite for this knob unless a new LM-head kernel changes the
 threading tradeoff. Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-lmhead-thread-sweep-nohold.json`.
+
+## 2026-06-12 - MTP one-split full-attn direct gate promoted
+
+Promoted a default-on direct-gate full-attention decode path for the current
+`decode_batched + graph_off` MTP verifier shape. The retained full-attn verifier
+rows have `num_splits=1`, so the old path still launched
+`qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel` followed by
+`qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel` for each of the
+10 full-attention layers/pass. The new
+`qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_kernel`
+normalizes the one split and applies the FP16 gate in the context launch.
+
+Validation:
+
+```bash
+PYTHONPATH=. pytest -q tests/test_qwen35_paged_attn_decode_plan.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. pytest -q tests/test_qwen35_paged_attn_decode_direct_gate.py -vv
+```
+
+The focused GPU test compares direct output bit-for-bit against the retained
+split+reduce path at the verifier-shaped `rows=4`, `heads=16/2`,
+`head_dim=256`, `num_splits=1` shape. Both tests passed.
+
+Quicksort D32 exact smoke with the opt-in flag and then default-on both matched
+AR and kept the locked accepted trace:
+`[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-direct-gate-smoke-20260612.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-direct-gate-default-smoke-20260612.json
+```
+
+Quicksort verifier profile against the retained current-best profile
+`/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json`:
+
+- Current best: `842` calls/pass, verifier kernel `12.636 ms/pass`,
+  host marker `16.220 ms/pass`, decode-attention `20` calls/pass and
+  `0.429 ms/pass`.
+- Direct gate: `832` calls/pass, verifier kernel `12.609 ms/pass`,
+  host marker `16.085 ms/pass`, decode-attention `10` calls/pass and
+  `0.416 ms/pass`.
+
+Exact 9-prompt D32 suite:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-direct-gate-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-direct-gate-on-9prompt-d32.json
+```
+
+Result versus the prior current-best retained row
+`benchmarks/results/2026-06-12-hipengine-mtp-linear-ab-dual-separate-retained.json`:
+
+- Exactness: `9/9`, identical accepted lengths/active budgets and unchanged
+  visible density (`2.012/cycle`).
+- Actual ratio: `0.923971x -> 0.927254x`.
+- Wall: `19.4403 -> 19.3340 ms/cycle`.
+- Verify: `16.1553 -> 16.0526 ms/cycle`.
+- Proposal/update: `1.2475 -> 1.2484 ms/cycle` (flat/noisy).
+- Cycle cost: `2.1483 -> 2.1397` AR tokens.
+
+Decision: retained default-on with opt-out
+`HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=0`. Updated `docs/MTP.md`,
+`benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-direct-gate-retained.json`.

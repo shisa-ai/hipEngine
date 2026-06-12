@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-06-12",
+  "candidate": "Default-on one-split direct-gate GQA decode path for MTP decode_batched full-attention verifier rows",
+  "decision": "retained default-on",
+  "decision_reason": "The current B=3 decode_batched verifier uses num_splits=1 for full-attention rows. Fusing the split context and FP16 gated reduce into a direct one-split kernel removes one reduce launch per full-attention layer, stays bit-identical to the retained split+reduce path, and improves the exact 9-prompt D32 suite with unchanged acceptance density.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "llama.cpp mtp-bench prompt suite, raw prompt render",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "correctness": {
+    "gpu_direct_matches_split_reduce_bitwise": true,
+    "quicksort_smoke_opt_in_exact": true,
+    "quicksort_smoke_default_exact": true,
+    "suite_exact_candidate": "9/9",
+    "accepted_density_changed": false,
+    "quicksort_accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+  },
+  "commands": {
+    "unit_tests": "PYTHONPATH=. pytest -q tests/test_qwen35_paged_attn_decode_plan.py && HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_qwen35_paged_attn_decode_direct_gate.py -vv",
+    "quicksort_smoke_opt_in": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-direct-gate-smoke-20260612.json",
+    "rocprof_opt_in": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --out /tmp/hipengine-mtp-direct-gate-rocprof-20260612.json --raw-root /tmp/hipengine-mtp-direct-gate-rocprof-raw-20260612 --top 30",
+    "suite_candidate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-direct-gate-on-9prompt-d32 --out /tmp/hipengine-mtp-direct-gate-on-9prompt-d32.json",
+    "default_smoke": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-direct-gate-default-smoke-20260612.json"
+  },
+  "suite_control_current_best": {
+    "source_artifact": "benchmarks/results/2026-06-12-hipengine-mtp-linear-ab-dual-separate-retained.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.9239709726201484,
+    "cycle_wall_ms_per_cycle": 19.44032781030864,
+    "verify_ms_per_cycle": 16.155297368718884,
+    "proposal_update_ms_per_cycle": 1.2474748979819892,
+    "cycle_cost_ar_tokens": 2.1482761438123803,
+    "visible_tokens_per_cycle": 2.011851851851852,
+    "accepted_per_cycle": 1.011851851851852,
+    "ar_decode_ms_per_token": 9.043996893322198
+  },
+  "suite_candidate": {
+    "source_artifact": "/tmp/hipengine-mtp-direct-gate-on-9prompt-d32.json",
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.9272543906284348,
+    "cycle_wall_ms_per_cycle": 19.33397961700617,
+    "verify_ms_per_cycle": 16.052631591187996,
+    "proposal_update_ms_per_cycle": 1.24843372255535,
+    "cycle_cost_ar_tokens": 2.1397313126793787,
+    "visible_tokens_per_cycle": 2.011851851851852,
+    "accepted_per_cycle": 1.011851851851852,
+    "ar_decode_ms_per_token": 9.029524140512674
+  },
+  "delta_candidate_minus_current_best": {
+    "actual_decode_speedup_vs_ar": 0.003283418008286465,
+    "cycle_wall_ms_per_cycle": -0.1063481933024697,
+    "verify_ms_per_cycle": -0.10266577753088768,
+    "proposal_update_ms_per_cycle": 0.000958824573360717,
+    "cycle_cost_ar_tokens": -0.00854483113300164,
+    "visible_tokens_per_cycle": 0.0,
+    "accepted_per_cycle": 0.0
+  },
+  "rocprof_control_current_best": {
+    "source_artifact": "/tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json",
+    "kernel_calls_per_pass": 842.0,
+    "kernel_ms_per_pass": 12.63632818181818,
+    "host_ms_per_pass": 16.219855090909093,
+    "decode_attention_calls_per_pass": 20.0,
+    "decode_attention_ms_per_pass": 0.4288640909090909
+  },
+  "rocprof_candidate": {
+    "source_artifact": "/tmp/hipengine-mtp-direct-gate-rocprof-20260612.json",
+    "kernel_calls_per_pass": 832.0,
+    "kernel_ms_per_pass": 12.608929818181819,
+    "host_ms_per_pass": 16.084699545454547,
+    "decode_attention_calls_per_pass": 10.0,
+    "decode_attention_ms_per_pass": 0.4160767272727273
+  },
+  "delta_rocprof_candidate_minus_current_best": {
+    "kernel_calls_per_pass": -10.0,
+    "kernel_ms_per_pass": -0.027398363636361722,
+    "host_ms_per_pass": -0.1351555454545469,
+    "decode_attention_calls_per_pass": -10.0,
+    "decode_attention_ms_per_pass": -0.012787363636363569
+  },
+  "opt_out": "HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=0",
+  "scope": "Only used for Qwen3.5 fixed-shape GQA decode_batched rows when num_splits == 1; all other split-K paths keep the existing split context plus reduce kernels."
+}

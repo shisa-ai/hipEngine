@@ -27,6 +27,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_fp16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
@@ -4239,6 +4240,29 @@ class Qwen35ParoDecodeState:
         """Run small-B row-batched Qwen3.5 decode attention with FP16 gate."""
 
         gate_tensor = scratch.gate if gate is None else gate
+        if num_splits == 1 and _env_flag("HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE", True):
+            qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans(
+                scratch.query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                gate_tensor.ptr,
+                scratch.gated_attn.ptr,
+                spans,
+                rows,
+                chunk_size,
+                num_splits,
+                block_size,
+                self.config.num_attention_heads,
+                self.config.num_key_value_heads,
+                self.config.head_dim,
+                gate_tensor.shape[-1],
+                1,
+                (self.config.head_dim ** -0.5) if scale is None else scale,
+                stream=stream,
+                library=_library_for(library, "attention"),
+                runtime=self.runtime,
+            )
+            return scratch.gated_attn
         qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
             scratch.query.ptr,
             key_cache.ptr,

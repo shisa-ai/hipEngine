@@ -20,6 +20,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gate_fp16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
@@ -200,6 +201,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             variant="bf16_split_k_gqa_gate_fp16_batch_spans",
         )
         is qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="w4_paro",
+            variant="bf16_split_k_gqa_gate_fp16_batch_direct_spans",
+        )
+        is qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans
     )
     assert (
         resolve(
@@ -415,6 +425,10 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="Qwen3.5 GQA"):
         qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
             0, 0, 0, 0, 0, 0, 0, 0, _spans(), 1, 2, 2, 256, 8, 1, 256, 256, 1, 1.0
+        )
+    with pytest.raises(ValueError, match="num_splits=1"):
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans(
+            0, 0, 0, 0, 0, _spans(), 1, 2, 2, 256, 16, 2, 256, 256, 1, 1.0
         )
     int8_spans = _int8_spans()
     with pytest.raises(ValueError, match="int8_per_token_head storage"):

@@ -30,6 +30,9 @@ _SYMBOL_PREFILL_VARLEN_GQA_GATE_FP16 = "hipengine_qwen35_paged_full_attn_prefill
 _SYMBOL_SPLIT_REDUCE_GATE_BF16 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16"
 _SYMBOL_SPLIT_REDUCE_GATE_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16"
 _SYMBOL_SPLIT_REDUCE_GATE_FP16_BATCH = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16_batch"
+_SYMBOL_SPLIT_GQA_GATE_FP16_BATCH_DIRECT = (
+    "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans"
+)
 _SYMBOL_GATE_MUL_BF16_TO_BF16 = "hipengine_qwen35_full_attn_gate_mul_bf16_to_bf16"
 _SYMBOL_SPLIT_GQA_INT8_CONTEXT_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_f32_spans"
 _SYMBOL_SPLIT_GQA_INT8_CONTEXT_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_fp16_spans"
@@ -786,6 +789,93 @@ def qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
     )
 
 
+def qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the Qwen3.5 row-batched GQA decode directly gated for one split."""
+
+    block_table_len = _check_qwen35_gqa_batch_shape(
+        spans,
+        rows,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    if num_splits != 1:
+        raise ValueError("direct Qwen3.5 GQA batch gate requires num_splits=1")
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SPLIT_GQA_GATE_FP16_BATCH_DIRECT)
+    fn.argtypes = [
+        ctypes.c_void_p,  # query
+        ctypes.c_void_p,  # key_cache
+        ctypes.c_void_p,  # value_cache
+        ctypes.c_void_p,  # gate
+        ctypes.c_void_p,  # out
+        ctypes.c_void_p,  # base_offsets
+        ctypes.c_void_p,  # live_counts
+        ctypes.c_int64,   # rows
+        ctypes.c_int64,   # chunk_size
+        ctypes.c_int64,   # num_splits
+        ctypes.c_int64,   # block_size
+        ctypes.c_int64,   # block_table_len
+        ctypes.c_int64,   # num_q_heads
+        ctypes.c_int64,   # num_kv_heads
+        ctypes.c_int64,   # head_dim
+        ctypes.c_int64,   # gate_stride1
+        ctypes.c_int64,   # gate_stride2
+        ctypes.c_float,   # scale
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(chunk_size),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(gate_stride1),
+        ctypes.c_int64(gate_stride2),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -915,10 +1005,10 @@ def qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
     )
     _check_positive(gate_stride1, "gate_stride1")
     _check_positive(gate_stride2, "gate_stride2")
-    if tree_committed_count_ptr == 0:
-        raise ValueError("tree_committed_count_ptr must reference an int64 device scalar (graph-capture-safe)")
-    if ancestor_mask_ptr == 0:
+    if ancestor_mask_ptr <= 0:
         raise ValueError("ancestor_mask_ptr must reference a [rows, rows] uint8 device buffer")
+    if tree_committed_count_ptr <= 0:
+        raise ValueError("tree_committed_count_ptr must reference an int64 device scalar (graph-capture-safe)")
     library = library or build_qwen35_paged_attn_decode(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_PREFILL_GQA_GATE_TREE_FP16)
@@ -1940,6 +2030,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_gqa_gate_fp16_batch_direct_spans"),
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "qwen35_causal_gqa_gate_fp16"),
         qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
         replace=replace,
@@ -2438,4 +2533,3 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
 
 
 register_qwen35_paged_attn_decode_kernels()
-
