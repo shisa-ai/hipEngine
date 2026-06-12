@@ -82408,3 +82408,15 @@ bucket left. Also tightened the acceptance-density backlog language: B=4/B=5,
 vocab-cap rejection census, adaptive fallback, tree/sibling retest, and relaxed
 sampling remain documented, but policy changes stay endgame work after the next
 reduced-DAG/proposer wall-cut units.
+
+## 2026-06-12 - MTP reduced-DAG audit: closed shared/GDN lookalikes
+
+Docs-only note after scanning the current `842 calls/pass` profile for another
+small launch-removing verifier unit. The apparent "full-attn shared
+SiLU+down-rotate" follow-up is already covered: full-attention shared expert
+uses the small-batch `silu_mul_dual_rotate_out_fp16` path, while the retained
+linear slice fixed the separate `silu_mul_separate_out_fp16 + paro_rotate1_fp16`
+path in the 30 linear-attention layers. Also recorded that
+`HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED` is a rejected prefill diagnostic from
+`docs/OPTIMIZE.md`, not the current decode verifier tail; the chain verifier
+already uses the retained `paro_rotate1_f32_to_fp16` decode-tail slice.

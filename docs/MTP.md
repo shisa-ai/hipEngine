@@ -148,6 +148,15 @@ Current profile triage after the `0.924x / 19.44 ms` row:
     grid because consumer GEMV blocks can occupy scheduler slots while producer
     rotate blocks still need to run. Reopen only with a scheduling-safe design,
     not another global in-kernel producer/consumer wait.
+  - Do **not** chase a "full-attn version" of the retained linear shared
+    SiLU+down-rotate fusion. The 10 full-attention verifier layers already use
+    the small-batch `silu_mul_dual_rotate_out_fp16` shared path; the promoted
+    linear slice only fixed the 30 linear-attention C-dispatch path that still
+    had `silu_mul_separate_out_fp16 + paro_rotate1_fp16`.
+  - Do **not** spend MTP sprint time on
+    `HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED`. That diagnostic is a prefill
+    tail fusion rejected in `docs/OPTIMIZE.md`; the current chain verifier uses
+    the retained decode-tail `paro_rotate1_f32_to_fp16` slice already.
 
 Acceptance-density backlog for the endgame:
 
