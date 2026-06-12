@@ -85775,3 +85775,107 @@ reduced-DAG verifier/proposer work.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-current-default-3run-retained.json`.
+
+## 2026-06-13 - MTP B=1 post-dual current profile refresh
+
+Refreshed the current B=1 quicksort profile after promoting proposer shared
+gate/up dual dense and confirming the 3-run D32 row.  This is a diagnostic
+profile refresh only; the retained speed row remains the 3-run prompt suite.
+
+Warmup command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b1-current-postdual-profile-warmup-smoke-20260613.json
+```
+
+Warmup exact AR passed with retained B=1 accepted trace:
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.
+
+Verifier profile command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-b1-current-postdual-verify-rocprof-20260613
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region verify_pass \
+  --raw-root /tmp/hipengine-mtp-b1-current-postdual-verify-rocprof-20260613 \
+  --out benchmarks/results/2026-06-13-hipengine-mtp-b1-current-postdual-verify-rocprof.json \
+  --top 80
+```
+
+Verifier result versus prior B=1 current profile:
+
+| Metric | 2026-06-12 profile | Post-dual profile |
+| --- | ---: | ---: |
+| Exact AR | yes | yes |
+| Calls/pass | `833.0` | `832.8` |
+| Kernel/pass | `9.406981 ms` | `9.379900 ms` |
+| Host marker/pass | `12.877328 ms` | `12.885855 ms` |
+| `w4_dual_gemv` | `1.438210 ms/pass` | `1.438781 ms/pass` |
+| `moe_gate_up_dual_gemv` | `1.211004 ms/pass` | `1.213312 ms/pass` |
+| `w4_single_gemv` | `1.084891 ms/pass` | `1.083925 ms/pass` |
+| `linear_attention_gdn_decode` | `1.070959 ms/pass` | `1.040772 ms/pass` |
+| `w8a16_linear` | `0.807732 ms/pass` | `0.808316 ms/pass` |
+| `runtime_copy` | `3.0 calls / 0.008671 ms/pass` | `2.94 calls / 0.008876 ms/pass` |
+
+Proposer-all profile command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-b1-current-postdual-proposer-all-rocprof-20260613
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region proposer_all \
+  --raw-root /tmp/hipengine-mtp-b1-current-postdual-proposer-all-rocprof-20260613 \
+  --out benchmarks/results/2026-06-13-hipengine-mtp-b1-current-postdual-proposer-all-rocprof.json \
+  --top 80
+```
+
+Proposer result versus prior B=1 current profile:
+
+| Metric | 2026-06-12 profile | Post-dual profile |
+| --- | ---: | ---: |
+| Exact AR | yes | yes |
+| Calls/cycle | `41.5` | `40.0` |
+| Kernel/cycle | `1.532538 ms` | `1.509050 ms` |
+| Host marker/cycle | `1.790452 ms` | `1.759043 ms` |
+| Host-kernel gap | `0.257914 ms` | `0.249993 ms` |
+| `proposer_dense_bf16` | `7.5 calls / 0.267647 ms/cycle` | `4.5 calls / 0.201418 ms/cycle` |
+| `proposer_attention` | `0.257118 ms/cycle` | `0.257365 ms/cycle` |
+| `proposer_expert_dense` | `0.185273 ms/cycle` | `0.186882 ms/cycle` |
+| `proposer_topk_router` | `0.172082 ms/cycle` | `0.173124 ms/cycle` |
+| `runtime_copy` | `2.5 calls / 0.011927 ms/cycle` | `2.5 calls / 0.012991 ms/cycle` |
+
+Decision: keep the 3-run B=1 prompt suite as the speed row.  The post-dual
+profile confirms the proposer dual path removed the intended dense-BF16 launches
+and shaved proposer kernel/host time, but the remaining proposer host-only gap is
+only about `0.25 ms/cycle`.  Do not spend the next unit on whole-proposer graph
+capture.  The current margin path remains verifier reduced-DAG batching plus
+online budget policy.
+
+Compact artifacts:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-current-postdual-verify-rocprof.json`,
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-current-postdual-proposer-all-rocprof.json`.
