@@ -20,6 +20,11 @@ _ARGTYPES_DENSE_GEMV_DUAL = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_a, out_b, threads
     ctypes.c_void_p,
 )
+_ARGTYPES_DENSE_GEMV_DUAL_SEPARATE = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # x, w_a, w_b, out_a, out_b
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_a, out_b, threads
+    ctypes.c_void_p,
+)
 _ARGTYPES_DENSE_GEMV_SINGLE_WMMA = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,        # x, weight, out
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,            # rows, in_features, out_features
@@ -38,6 +43,8 @@ _SYMBOL_FP16_OUT = "hipengine_dense_gemv_out_fp16"
 _SYMBOL_DENSE_PREFILL_BF16_OUT = "hipengine_dense_prefill_gemm_out_bf16"
 _SYMBOL_DUAL_BF16_OUT = "hipengine_dense_dual_gemv_out_bf16"
 _SYMBOL_DUAL_FP16_OUT = "hipengine_dense_dual_gemv_out_fp16"
+_SYMBOL_DUAL_SEPARATE_BF16_OUT = "hipengine_dense_dual_gemv_separate_out_bf16"
+_SYMBOL_DUAL_SEPARATE_FP16_OUT = "hipengine_dense_dual_gemv_separate_out_fp16"
 _SYMBOL_BF16_OUT_WMMA = "hipengine_dense_gemv_out_bf16_wmma"
 _SYMBOL_FP16_OUT_WMMA = "hipengine_dense_gemv_out_fp16_wmma"
 _SYMBOL_DUAL_BF16_OUT_WMMA = "hipengine_dense_dual_gemv_out_bf16_wmma"
@@ -264,6 +271,60 @@ def dense_dual_gemv_out_fp16(
         runtime.check(int(err))
 
 
+def dense_dual_gemv_separate_out_bf16(
+    x_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_shape(rows, in_features, out_features_a, threads)
+    _check_shape(rows, in_features, out_features_b, threads)
+    library = library or build_dense_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_DUAL_SEPARATE_BF16_OUT, _ARGTYPES_DENSE_GEMV_DUAL_SEPARATE, ctypes.c_int)
+    err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_a_ptr, out_b_ptr,
+             rows, in_features, out_features_a, out_features_b, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_dual_gemv_separate_out_fp16(
+    x_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_shape(rows, in_features, out_features_a, threads)
+    _check_shape(rows, in_features, out_features_b, threads)
+    library = library or build_dense_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_DUAL_SEPARATE_FP16_OUT, _ARGTYPES_DENSE_GEMV_DUAL_SEPARATE, ctypes.c_int)
+    err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_a_ptr, out_b_ptr,
+             rows, in_features, out_features_a, out_features_b, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def dense_dual_gemv_out_bf16_wmma(
     x_ptr: int,
     weight_a_ptr: int,
@@ -342,6 +403,16 @@ def register_dense_gemv_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "dense_dual_gemv", quant, "separate_out"),
+            dense_dual_gemv_separate_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "dense_dual_gemv", quant, "separate_out_fp16"),
+            dense_dual_gemv_separate_out_fp16,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "dense_gemv", quant, "out_wmma"),
             dense_gemv_out_bf16_wmma,
             replace=replace,
@@ -369,6 +440,11 @@ def register_dense_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dense_dual_gemv", "fp16", "out"),
         dense_dual_gemv_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dense_dual_gemv", "fp16", "separate_out"),
+        dense_dual_gemv_separate_out_fp16,
         replace=replace,
     )
     register(

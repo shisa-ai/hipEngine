@@ -1342,6 +1342,42 @@ def test_qwen35_decode_state_uses_rocblas_for_linear_ab_fp16_prefill(monkeypatch
         assert kwargs == {"rows": 4, "in_features": 4096, "out_features": 32, "stream": 0x55}
 
 
+def test_qwen35_decode_state_uses_separate_dual_for_linear_ab_fp16_prefill(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    hidden = _tensor(0xC000, (4, 4096), "fp16")
+    scratch = state.reserve_linear_attention_scratch(tokens=4, activation_dtype="fp16")
+    calls = []
+
+    def fake_dual(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setenv("HIPENGINE_LINEAR_AB_DUAL_SEPARATE", "1")
+    monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_separate_out_fp16", fake_dual)
+    monkeypatch.setattr(qwen_runtime, "dense_gemv_out_fp16", lambda *a, **k: pytest.fail("unexpected single GEMV fallback"))
+    monkeypatch.setattr(qwen_runtime, "dense_gemv_out_fp16_wmma", lambda *a, **k: pytest.fail("unexpected WMMA fallback"))
+
+    out = state.project_linear_attention_ab_fp16(hidden, scratch, tokens=4, stream=0x55)
+
+    assert out == (scratch.a, scratch.b)
+    assert calls == [
+        (
+            (
+                hidden.ptr,
+                0x9D00,
+                0x9E00,
+                scratch.a.ptr,
+                scratch.b.ptr,
+                4,
+                4096,
+                32,
+                32,
+            ),
+            {"threads": 64, "stream": 0x55, "library": None, "runtime": runtime},
+        )
+    ]
+
+
 def test_qwen35_decode_state_projects_linear_attention_prefill_out(monkeypatch) -> None:
     # Pin the byte/bit-exact weight-amortized W4 variants off so rows in {2,4,8}
     # route to the baseline strided pack8 GEMV (output-tiled handles them by

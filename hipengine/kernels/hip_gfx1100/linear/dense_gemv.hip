@@ -270,6 +270,61 @@ __global__ void dense_dual_gemv_out_kernel(
   }
 }
 
+template <typename scalar_t>
+__global__ void dense_dual_gemv_separate_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ weight_a,
+    const scalar_t* __restrict__ weight_b,
+    scalar_t* __restrict__ out_a,
+    scalar_t* __restrict__ out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b) {
+  const int64_t global_col = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const bool use_b = global_col >= out_features_a;
+  const int64_t local_col = use_b ? (global_col - out_features_a) : global_col;
+  const int64_t out_features = use_b ? out_features_b : out_features_a;
+  const scalar_t* __restrict__ weight = use_b ? weight_b : weight_a;
+  scalar_t* __restrict__ out = use_b ? out_b : out_a;
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = local_col * in_features;
+
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const scalar_t* x_ptr = x + x_base + k_base;
+    const scalar_t* w_ptr = weight + w_base + k_base;
+    acc = fmaf(scalar_to_float(x_ptr[0]), scalar_to_float(w_ptr[0]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[1]), scalar_to_float(w_ptr[1]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[2]), scalar_to_float(w_ptr[2]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[3]), scalar_to_float(w_ptr[3]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[4]), scalar_to_float(w_ptr[4]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[5]), scalar_to_float(w_ptr[5]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[6]), scalar_to_float(w_ptr[6]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[7]), scalar_to_float(w_ptr[7]), acc);
+  }
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    acc = fmaf(scalar_to_float(x[x_base + in_col]), scalar_to_float(weight[w_base + in_col]), acc);
+  }
+
+  __shared__ float sdata[256];
+  sdata[tid] = acc;
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    out[row * out_features + local_col] = float_to_scalar<scalar_t>(sdata[0]);
+  }
+}
+
 __launch_bounds__(kDenseWmmaWave, 4)
 __global__ void dense_gemv_out_fp16_wmma_kernel(
     const half_t* __restrict__ x,
@@ -594,6 +649,72 @@ extern "C" int hipengine_dense_dual_gemv_out_fp16(
       weight_a,
       weight_b,
       out,
+      rows,
+      in_features,
+      out_features_a,
+      out_features_b);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_dual_gemv_separate_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight_a,
+    const uint16_t* weight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_dual_gemv_separate_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(out_features_a + out_features_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out_a,
+      out_b,
+      rows,
+      in_features,
+      out_features_a,
+      out_features_b);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_dual_gemv_separate_out_fp16(
+    const half_t* x,
+    const half_t* weight_a,
+    const half_t* weight_b,
+    half_t* out_a,
+    half_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_dual_gemv_separate_out_kernel<half_t>),
+      dim3(static_cast<unsigned int>(out_features_a + out_features_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out_a,
+      out_b,
       rows,
       in_features,
       out_features_a,

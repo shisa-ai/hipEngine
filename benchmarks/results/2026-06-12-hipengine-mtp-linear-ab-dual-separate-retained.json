@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-06-12",
+  "candidate": "HIPENGINE_LINEAR_AB_DUAL_SEPARATE=1 for small-batch verifier linear-attention A/B FP16 dense projections",
+  "decision": "retained default-on",
+  "decision_reason": "The separate-output dual dense GEMV preserves the old two-call FP16 accumulation/output layout, removes one A/B dense launch per linear-attention layer, stays exact on the 9-prompt D32 suite, and improves suite wall and verifier time with unchanged acceptance density.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "llama.cpp mtp-bench prompt suite, raw prompt render",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "correctness": {
+    "gpu_kernel_equal_to_two_single_gemvs": true,
+    "quicksort_smoke_exact": true,
+    "default_quicksort_smoke_exact": true,
+    "suite_exact_control": "9/9",
+    "suite_exact_candidate": "9/9",
+    "accepted_density_changed": false
+  },
+  "commands": {
+    "unit_tests": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_dense_gemv_plan.py tests/test_qwen35_decode_state.py -k 'dense_gemv or separate_dual' && HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_dense_gemv_wmma.py -k 'separate_out_fp16'",
+    "quicksort_smoke_opt_in": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-linear-ab-dual-separate-smoke.json",
+    "rocprof_opt_in": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=1 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1 --out /tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json",
+    "suite_control": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-linear-ab-dual-separate-off-9prompt-d32 --out /tmp/hipengine-mtp-linear-ab-dual-separate-off-9prompt-d32.json",
+    "suite_candidate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-linear-ab-dual-separate-on-9prompt-d32 --out /tmp/hipengine-mtp-linear-ab-dual-separate-on-9prompt-d32.json",
+    "default_smoke": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-linear-ab-dual-separate-default-smoke.json"
+  },
+  "suite_control": {
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.9200980153561412,
+    "cycle_wall_ms_per_cycle": 19.480041474444445,
+    "verify_ms_per_cycle": 16.196766792578092,
+    "proposal_update_ms_per_cycle": 1.2463253383153912,
+    "cycle_cost_ar_tokens": 2.1561843784801606,
+    "visible_tokens_per_cycle": 2.011851851851852,
+    "accepted_per_cycle": 1.011851851851852,
+    "ar_decode_ms_per_token": 9.027651148143276
+  },
+  "suite_candidate": {
+    "all_exact_ar_match": true,
+    "actual_decode_speedup_vs_ar": 0.9239709726201484,
+    "cycle_wall_ms_per_cycle": 19.44032781030864,
+    "verify_ms_per_cycle": 16.155297368718884,
+    "proposal_update_ms_per_cycle": 1.2474748979819892,
+    "cycle_cost_ar_tokens": 2.1482761438123803,
+    "visible_tokens_per_cycle": 2.011851851851852,
+    "accepted_per_cycle": 1.011851851851852,
+    "ar_decode_ms_per_token": 9.043996893322198
+  },
+  "delta_candidate_minus_control": {
+    "actual_decode_speedup_vs_ar": 0.0038729572640071597,
+    "cycle_wall_ms_per_cycle": -0.03971366413580313,
+    "verify_ms_per_cycle": -0.041469423859208376,
+    "proposal_update_ms_per_cycle": 0.0011495596665980212,
+    "cycle_cost_ar_tokens": -0.007908234667780345,
+    "visible_tokens_per_cycle": 0.0,
+    "accepted_per_cycle": 0.0
+  },
+  "rocprof_control": {
+    "kernel_calls_per_pass": 872.0,
+    "kernel_ms_per_pass": 12.680336181818182,
+    "host_ms_per_pass": 16.31142627272727,
+    "dense_gemv_calls_per_pass": 60.0,
+    "dense_gemv_ms_per_pass": 0.208741
+  },
+  "rocprof_candidate": {
+    "kernel_calls_per_pass": 842.0,
+    "kernel_ms_per_pass": 12.63632818181818,
+    "host_ms_per_pass": 16.219855090909093,
+    "dense_gemv_calls_per_pass": 30.0,
+    "dense_gemv_ms_per_pass": 0.12481881818181818
+  },
+  "delta_rocprof_candidate_minus_control": {
+    "kernel_calls_per_pass": -30.0,
+    "kernel_ms_per_pass": -0.044008000000001824,
+    "host_ms_per_pass": -0.0915711818181785,
+    "dense_gemv_calls_per_pass": -30.0,
+    "dense_gemv_ms_per_pass": -0.08392218181818184
+  },
+  "opt_out": "HIPENGINE_LINEAR_AB_DUAL_SEPARATE=0",
+  "scope": "Default-on only for 1 < tokens <= HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD so large prefill behavior is not changed."
+}

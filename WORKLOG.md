@@ -82091,3 +82091,112 @@ not spend sprint time on this projection path unless a new dense kernel changes
 the verifier-shape cost model. Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-dense-gemv-wmma-nohold.json` and
 updated `docs/MTP.md`.
+
+## 2026-06-12 - MTP linear A/B separate-output dual dense GEMV retained
+
+Implemented a small reduced-DAG verifier slice for the linear-attention A/B FP16
+dense projections. The previous `tokens > 1` verifier path launched two
+`dense_gemv_out_fp16` calls because the existing dual dense kernel writes a
+packed/interleaved `[a,b]` row layout, while GDN consumes separate contiguous
+`scratch.a` and `scratch.b` buffers. Added
+`dense_dual_gemv_separate_out_{bf16,fp16}` and routed
+`project_linear_attention_ab_fp16` through the FP16 variant for small-batch rows
+behind `HIPENGINE_LINEAR_AB_DUAL_SEPARATE` (default-on, opt out `0`; scoped to
+`1 < tokens <= HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD` so large prefill behavior
+is unchanged).
+
+Focused tests:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_dense_gemv_plan.py tests/test_qwen35_decode_state.py -k 'dense_gemv or separate_dual'
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_dense_gemv_wmma.py -k 'separate_out_fp16'
+```
+
+- Passed `4/4` CPU/dispatch tests and `1/1` HIP equality test.
+- The HIP test compares the separate-output dual FP16 kernel byte-for-byte
+  against the old two single-GEMV outputs.
+
+Quicksort exact smoke with the opt-in flag:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-linear-ab-dual-separate-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Verifier profile:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=1 PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1 \
+  --out /tmp/hipengine-mtp-linear-ab-dual-separate-rocprof-20260612-r1.json
+```
+
+- Calls/pass `872.0 -> 842.0`.
+- Dense GEMV calls/pass `60.0 -> 30.0`.
+- Dense GEMV `0.2087 -> 0.1248 ms/pass`.
+- Total kernel `12.6803 -> 12.6363 ms/pass`.
+- Host marker `16.3114 -> 16.2199 ms/pass`.
+
+Same-binary 9-prompt D32 suite A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-linear-ab-dual-separate-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-linear-ab-dual-separate-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_AB_DUAL_SEPARATE=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-linear-ab-dual-separate-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-linear-ab-dual-separate-on-9prompt-d32.json
+```
+
+- Exact `9/9 -> 9/9`; visible/accepted density unchanged at `2.01185` /
+  `1.01185` tokens/cycle.
+- Ratio improved `0.920098 -> 0.923971`.
+- Wall improved `19.4800 -> 19.4403 ms/cycle`.
+- Verify improved `16.1968 -> 16.1553 ms/cycle`.
+- Proposal/update was neutral/noisy `1.2463 -> 1.2475 ms/cycle`.
+- Cycle cost improved `2.15618 -> 2.14828` AR tokens.
+
+Default-on no-env quicksort smoke after flipping the helper default:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-linear-ab-dual-separate-default-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged.
+
+Decision: promote default-on. This is a small but real reduced-DAG win:
+30 verifier launches/pass removed, exact suite positive, no acceptance-policy
+change. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-linear-ab-dual-separate-retained.json`
+and updated `docs/MTP.md`, `benchmarks/README.md`, and
+`benchmarks/CHANGELOG.md`.

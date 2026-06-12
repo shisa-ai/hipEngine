@@ -60,6 +60,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_dual_gemv_out_bf16,
     dense_dual_gemv_out_fp16,
+    dense_dual_gemv_separate_out_fp16,
     dense_gemv_out_bf16,
     dense_gemv_out_fp16,
     dense_gemv_out_fp16_wmma,
@@ -6319,7 +6320,23 @@ class Qwen35ParoDecodeState:
                     stream=stream,
                 )
             else:
-                if _use_verify_dense_gemv_wmma(tokens, self.config.hidden_size):
+                if _use_linear_ab_dual_separate(tokens):
+                    dense_dual_gemv_separate_out_fp16(
+                        hidden.ptr,
+                        a_weight.ptr,
+                        b_weight.ptr,
+                        scratch.a.ptr,
+                        scratch.b.ptr,
+                        tokens,
+                        self.config.hidden_size,
+                        self.config.linear_num_value_heads,
+                        self.config.linear_num_value_heads,
+                        threads=threads,
+                        stream=stream,
+                        library=dense_library,
+                        runtime=self.runtime,
+                    )
+                elif _use_verify_dense_gemv_wmma(tokens, self.config.hidden_size):
                     dense_gemv_out_fp16_wmma(
                         hidden.ptr,
                         a_weight.ptr,
@@ -11153,6 +11170,13 @@ def _use_verify_dense_gemv_wmma(tokens: int, in_features: int) -> bool:
         _env_enabled("HIPENGINE_VERIFY_DENSE_GEMV_WMMA", default=False)
         and 1 < int(tokens) <= 16
         and (int(in_features) % 16) == 0
+    )
+
+
+def _use_linear_ab_dual_separate(tokens: int) -> bool:
+    return (
+        _env_enabled("HIPENGINE_LINEAR_AB_DUAL_SEPARATE", default=True)
+        and 1 < int(tokens) <= _small_batch_decode_threshold()
     )
 
 

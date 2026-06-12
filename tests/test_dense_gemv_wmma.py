@@ -165,6 +165,67 @@ def test_dense_dual_gemv_out_fp16_wmma_matches_naive(_dense_lib, _runtime):
         _free_all(_runtime, bufs)
 
 
+def test_dense_dual_gemv_separate_out_fp16_matches_two_singles(_dense_lib, _runtime):
+    from hipengine.kernels.hip_gfx1100.linear import dense_dual_gemv_separate_out_fp16, dense_gemv_out_fp16
+
+    rng = np.random.default_rng(0xD3A61)
+    rows, in_features, out_a, out_b = 5, 512, 48, 32
+    x = (rng.standard_normal((rows, in_features)).astype(np.float32) * 0.02).astype(np.float16)
+    w_a = (rng.standard_normal((out_a, in_features)).astype(np.float32) * 0.02).astype(np.float16)
+    w_b = (rng.standard_normal((out_b, in_features)).astype(np.float32) * 0.02).astype(np.float16)
+    bufs = []
+    try:
+        x_dev = _upload(_runtime, bufs, x)
+        wa_dev = _upload(_runtime, bufs, w_a)
+        wb_dev = _upload(_runtime, bufs, w_b)
+        out_a_single = _upload(_runtime, bufs, np.zeros((rows, out_a), np.float16))
+        out_b_single = _upload(_runtime, bufs, np.zeros((rows, out_b), np.float16))
+        out_a_dual = _upload(_runtime, bufs, np.zeros((rows, out_a), np.float16))
+        out_b_dual = _upload(_runtime, bufs, np.zeros((rows, out_b), np.float16))
+        dense_gemv_out_fp16(
+            x_dev.ptr,
+            wa_dev.ptr,
+            out_a_single.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=_dense_lib,
+            runtime=_runtime,
+        )
+        dense_gemv_out_fp16(
+            x_dev.ptr,
+            wb_dev.ptr,
+            out_b_single.ptr,
+            rows,
+            in_features,
+            out_b,
+            library=_dense_lib,
+            runtime=_runtime,
+        )
+        dense_dual_gemv_separate_out_fp16(
+            x_dev.ptr,
+            wa_dev.ptr,
+            wb_dev.ptr,
+            out_a_dual.ptr,
+            out_b_dual.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            library=_dense_lib,
+            runtime=_runtime,
+        )
+        _runtime.device_synchronize()
+        a_single = _download(_runtime, out_a_single, (rows, out_a), np.float16)
+        b_single = _download(_runtime, out_b_single, (rows, out_b), np.float16)
+        a_dual = _download(_runtime, out_a_dual, (rows, out_a), np.float16)
+        b_dual = _download(_runtime, out_b_dual, (rows, out_b), np.float16)
+        np.testing.assert_array_equal(a_dual, a_single)
+        np.testing.assert_array_equal(b_dual, b_single)
+    finally:
+        _free_all(_runtime, bufs)
+
+
 def test_dense_gemv_out_bf16_wmma_matches_naive(_dense_lib, _runtime):
     from hipengine.kernels.hip_gfx1100.linear import dense_gemv_out_bf16, dense_gemv_out_bf16_wmma
 
