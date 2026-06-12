@@ -82383,3 +82383,15 @@ top of `docs/MEGAKERNEL.md`, which still pointed agents at the older
 `0.758x / 27.8 ms` sprint baseline, and relabeled the old 45 ms / `C_B=4.67`
 table as historical M16.3 kickoff context rather than the current scoreboard.
 No benchmark claim and no code change in this unit.
+
+## 2026-06-12 - MTP stale GDN tracker cleanup
+
+Docs-only spike hygiene while walking the remaining MTP table. The legacy M7.B
+GDN tracker in `docs/MTP.md` still marked chain-tloop launch/tiling work as
+pending, but that lane is already resolved by the retained 2026-06-09
+warp-shuffle reduction and `VTILE=4` dv-tiling artifacts, with `VTILE=8`
+rechecked/no-held on the current sprint stack. Updated the tracker to point at
+those artifacts and to block the tempting standalone "GDN scalar pre-pass"
+idea: `VTILE=4` already computes shared q/k scales plus `beta`/`decay` once per
+four `dv` columns, and a separate pre-pass would add another launch to the
+dispatch-floored verifier. No code change and no new performance claim.

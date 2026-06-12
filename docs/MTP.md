@@ -2443,18 +2443,22 @@ at ~57 ms verifier wall before any kernel work.
 | M7.6| Verify: rocprofv3 shows MoE chain runs ≤11 ms total at B=3/30 layers, KL≤0.05 vs CPU-ref    | both               |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
 | **M7 total** |                                                                                |                    |              **4–6**   |          |             **_TBD_**|                  |
 
-#### M7.B tracker — GDN chain t-loop tuning (NEW, surfaced by M7.0)
+#### M7.B tracker — GDN chain t-loop tuning (resolved by M16.5/M16)
 
-Projected savings target: **~2–3 ms** of the 13.1 ms GDN chain t-loop budget.
-GDN decode runs 30 calls/pass at 436 μs avg — the per-launch cost is high
-and the kernel is already chain_tloop. Possible wins: chain length tile,
-shared-LDS K-tile, or wave-group sizing.
+Historical target: **~2–3 ms** of the old 13.1 ms GDN chain t-loop budget.
+This lane is no longer pending. Warp-shuffle reductions and `VTILE=4`
+dv-tiling are retained; the current best `842`-launch verifier profile has GDN
+at about **1.77 ms/pass** (`30` calls/pass). Do not add a separate GDN scalar
+pre-pass as the next reduced-DAG unit: `VTILE=4` already computes the shared
+q/k scales and `beta`/`decay` once per four `dv` columns, while adding a new
+pre-pass would add another launch to a dispatch-floored verifier. `VTILE=8`
+was rechecked and no-held because higher VGPR pressure offset the smaller grid.
 
 | #   | Sub-task                                                                                | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|-----------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
-| M7.B.1| Confirm GDN chain_tloop launch parameters match the 4-row B=3 case (not stuck on 8-row defaults) |                  ~1   | _Pending_|                _TBD_| _TBD_            |
-| M7.B.2| Tile-size sweep on the 32-context decode shape; promote per CPU-ref correctness gate     |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
-| **M7.B total** |                                                                               |              **~2–3** |          |             **_TBD_**|                  |
+| M7.B.1| Confirm GDN chain_tloop launch parameters match the 4-row B=3 case (not stuck on 8-row defaults) |                  ~1   | **Closed** | `-0.196 ms/pass` from shuffle reductions | `benchmarks/results/2026-06-09-hipengine-mtp-m16.5-gdn-chain-shuffle-reductions.json` |
+| M7.B.2| Tile-size sweep on the 32-context decode shape; promote per CPU-ref correctness gate     |                  ~1–2  | **Closed / VTILE=4 retained** | `-0.56 ms/pass` kernel time in the M16 profile; current exact stack keeps the retained GDN kernel | `benchmarks/results/2026-06-09-hipengine-m16-gdn-chain-dvtiling.json`; `VTILE=8` no-held in `benchmarks/results/2026-06-11-hipengine-mtp-gdn-vtile8-rocprof.json` |
+| **M7.B total** |                                                                               |              **~2–3** | **Closed** | Kernel-time headroom banked; not a current wall lever | Broader wall work stays on reduced-DAG/proposer/acceptance-density, not more local GDN tiling. |
 
 #### M7.C tracker — small-batch prefill→GEMV switch (RECHARTERED 2026-05-21)
 
