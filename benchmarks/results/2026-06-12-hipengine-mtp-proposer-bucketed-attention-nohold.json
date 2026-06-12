@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "status": "rejected",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": "single quicksort prompt, D32, B=3, persistent_device, chain_attn_mode=decode_batched, graph_mode=off",
+  "runtime_config": {
+    "draft_vocab_cap": 32768,
+    "baseline_env": "HIPENGINE_MTP_PROPOSER_BUCKETED_ATTENTION=0",
+    "candidate_env": "HIPENGINE_MTP_PROPOSER_BUCKETED_ATTENTION=1"
+  },
+  "change": "M12.7 prerequisite probe: route native MTP proposer attention through the existing DFlash bucketed attention kernel with a device-resident live context-length scalar. This makes attention context length graph-replayable but does not solve dynamic KV write destinations.",
+  "commands": {
+    "baseline": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_BUCKETED_ATTENTION=0 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-proposer-bucketed-attn-off-smoke.json",
+    "candidate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_BUCKETED_ATTENTION=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-proposer-bucketed-attn-smoke.json"
+  },
+  "correctness": {
+    "baseline_exact_ar_match": true,
+    "candidate_exact_ar_match": true,
+    "accepted_lengths_identical": true,
+    "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+  },
+  "results": {
+    "baseline": {
+      "ar_decode_tok_s": 111.34201868234952,
+      "mtp_decode_tok_s": 118.51242478019958,
+      "proposal_update_ms_per_cycle": 1.3081729232978363,
+      "verify_ms_per_cycle": 16.12008114058811
+    },
+    "candidate": {
+      "ar_decode_tok_s": 111.89730742464756,
+      "mtp_decode_tok_s": 118.42292796735798,
+      "proposal_update_ms_per_cycle": 1.3194052466692834,
+      "verify_ms_per_cycle": 16.121572241760216
+    },
+    "delta": {
+      "mtp_decode_tok_s": -0.08949681284160249,
+      "proposal_update_ms_per_cycle": 0.01123232337144715,
+      "verify_ms_per_cycle": 0.0014911011721081835
+    }
+  },
+  "decision": "No-hold as a standalone M12.7 slice. The bucketed attention route is exact, but it adds a live-context H2D update, is slightly negative on the quick smoke, and graph capture would still miss/freeze because KV write destinations remain by-value cache-slot pointers. Experiment code was removed; revisit only together with fixed-address/device-indexed KV writes."
+}

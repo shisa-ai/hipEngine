@@ -82457,3 +82457,17 @@ structural primitive; M9 LM-head is superseded by M12.2 and later fused LM-head
 no-held; M10 proposer work is mostly retained through measured narrower slices
 with only M12.7 remaining; M11 B sweeps are deferred to the acceptance-density
 endgame. No benchmark claim and no code change in this unit.
+
+## 2026-06-12 - MTP M12.7 bucketed proposer attention probe no-held
+
+Tried the smallest graph-capture prerequisite slice for M12.7: route the native
+MTP proposer attention through the existing DFlash bucketed attention kernel and
+write a device-resident live context-length scalar before each advance. This
+would make the attention context length replay-safe, but it does not solve the
+other dynamic graph arguments (`key_cache_dst` / `value_cache_dst` are still
+by-value cache-slot pointers). Quicksort D32 B=3 exact smoke stayed exact with
+identical accepted lengths `[3,3,2,0,2,0,0,1,3,0,2,0,2]`, but the off/on control
+moved proposal/update `1.308 -> 1.319 ms/cycle` and MTP decode tok/s
+`118.512 -> 118.423`. No speed row and experiment code removed. Revisit only as
+part of a fixed-address/device-indexed KV-write graph body. Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-proposer-bucketed-attention-nohold.json`.
