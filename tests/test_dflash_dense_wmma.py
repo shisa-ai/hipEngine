@@ -295,6 +295,54 @@ def test_dflash_dense_bf16_to_bf16_expert_routes_matches_scalar(_drafter_lib, _r
     assert np.array_equal(batch_routed, scalar_routed)
 
 
+def test_mtp_shared_gate_up_dual_wmma_matches_two_dflash_dense_calls(_drafter_lib, _runtime):
+    from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv, dense_dual_gemv_out_bf16_wmma
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_dense_bf16_to_bf16
+
+    rng = np.random.default_rng(0xD41A9)
+    rows = 1
+    in_features = 2048
+    out_a = 4096
+    out_b = 4096
+    x = _to_bf16_bits(rng.standard_normal((rows, in_features), dtype=np.float32) * 0.05)
+    weight_a = _to_bf16_bits(rng.standard_normal((out_a, in_features), dtype=np.float32) * 0.02)
+    weight_b = _to_bf16_bits(rng.standard_normal((out_b, in_features), dtype=np.float32) * 0.02)
+    out_a_ref = np.zeros((rows, out_a), dtype=np.uint16)
+    out_b_ref = np.zeros((rows, out_b), dtype=np.uint16)
+    out_dual = np.zeros((rows, out_a + out_b), dtype=np.uint16)
+    bufs = []
+    try:
+        x_dev = _upload(_runtime, bufs, x)
+        weight_a_dev = _upload(_runtime, bufs, weight_a)
+        weight_b_dev = _upload(_runtime, bufs, weight_b)
+        out_a_dev = _upload(_runtime, bufs, out_a_ref)
+        out_b_dev = _upload(_runtime, bufs, out_b_ref)
+        out_dual_dev = _upload(_runtime, bufs, out_dual)
+        dense_lib = build_dense_gemv(load=True)
+        dflash_dense_bf16_to_bf16(x_dev.ptr, weight_a_dev.ptr, out_a_dev.ptr, rows, in_features, out_a, library=_drafter_lib, runtime=_runtime)
+        dflash_dense_bf16_to_bf16(x_dev.ptr, weight_b_dev.ptr, out_b_dev.ptr, rows, in_features, out_b, library=_drafter_lib, runtime=_runtime)
+        dense_dual_gemv_out_bf16_wmma(
+            x_dev.ptr,
+            weight_a_dev.ptr,
+            weight_b_dev.ptr,
+            out_dual_dev.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            library=dense_lib,
+            runtime=_runtime,
+        )
+        _runtime.device_synchronize()
+        out_a_ref = _download(_runtime, out_a_dev, (rows, out_a), np.uint16)
+        out_b_ref = _download(_runtime, out_b_dev, (rows, out_b), np.uint16)
+        out_dual = _download(_runtime, out_dual_dev, (rows, out_a + out_b), np.uint16)
+    finally:
+        _free_all(_runtime, bufs)
+
+    assert np.array_equal(out_dual, np.concatenate([out_a_ref, out_b_ref], axis=1))
+
+
 def test_dflash_silu_mul_gate_up_routes_matches_scalar(_drafter_lib, _runtime):
     from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
         dflash_silu_mul_bf16,

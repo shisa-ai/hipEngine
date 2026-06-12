@@ -81681,3 +81681,136 @@ env -u HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED HIP_VISIBLE_DEVICES=0 HIPENGINE
 - Exact AR: true.
 - Accepted lengths unchanged:
   `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+## 2026-06-12 - MTP proposer shared gate/up dual dense no-hold
+
+Context:
+
+- Follow-up on the post-route-batched proposer profile. The shared expert
+  gate/up path still used two BF16 dense launches per proposer advance.
+- Tried replacing those two launches with the existing exact
+  `dense_dual_gemv_out_bf16_wmma` path writing concatenated gate/up output.
+- Because the change is proposer-local and small, required both a proposer
+  marker profile and repeated full 9-prompt D32 A/B before retaining.
+
+Implementation:
+
+- Added opt-in `HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1`.
+- Default is **off** after validation. The opt-in path lazily allocates the
+  concat buffer and lazily builds `dense_gemv`, so the retained default path
+  does not pay for the no-hold experiment.
+- Added GPU bit-exact test comparing the dual dense WMMA output to two
+  `dflash_dense_bf16_to_bf16` calls at the MTP shared-expert shape.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_native.py tests/test_dflash_dense_wmma.py tests/test_mtp_input_fusion_kernel.py
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q \
+  tests/test_mtp_input_fusion_kernel.py::test_mtp_proposer_shared_gate_up_dual_optin \
+  tests/test_dflash_dense_wmma.py::test_mtp_shared_gate_up_dual_wmma_matches_two_dflash_dense_calls
+```
+
+- Result: `2 passed`.
+
+Opt-in quicksort exact smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-proposer-shared-gate-up-dual-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Profile:
+
+- First `rocprofv3` attempt was discarded: the profiled process spawned `hipcc`
+  and hit the known LLVM option-registration crash. Ran a non-profiled cache
+  warmup before the valid profile.
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py \
+  --region proposer_all \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --raw-root /tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-rocprof \
+  --out /tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-rocprof.json
+```
+
+Compared to the retained route-batched proposer profile:
+
+- Proposer launches: `92.0 -> 88.7/cycle`.
+- Proposer kernel: `3.018 -> 2.913 ms/cycle`.
+- Proposer host marker: `3.543 -> 3.464 ms/cycle`.
+- Direct proposer slice was real, but this is not enough to retain as default
+  without full-suite economics.
+
+Repeated same-session 9-prompt D32 A/B:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=0 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-proposer-shared-gate-up-dual-off-9prompt-d32 \
+  --out /tmp/hipengine-mtp-proposer-shared-gate-up-dual-off-9prompt-d32.json
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-9prompt-d32 \
+  --out /tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-9prompt-d32.json
+```
+
+- Pair 1 exact `9/9 -> 9/9`, accepted lengths and active budgets identical.
+- Pair 1: ratio `0.917241 -> 0.916652`, wall `19.496981 -> 19.540004
+  ms/cycle`, verify `16.215010 -> 16.316696`, proposal/update
+  `1.244494 -> 1.225477`.
+
+Repeat pair used the same command with `off2/on2` raw roots and outputs.
+
+- Pair 2 exact `9/9 -> 9/9`, accepted lengths and active budgets identical.
+- Pair 2: ratio `0.919812 -> 0.914915`, wall `19.505513 -> 19.520233
+  ms/cycle`, verify `16.226898 -> 16.293029`, proposal/update
+  `1.245318 -> 1.225156`.
+
+Default-path guard after setting the experiment default off:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-proposer-shared-gate-up-dual-default-off-smoke.json
+```
+
+- Exact AR: true.
+- Accepted lengths unchanged:
+  `[3,3,2,0,2,0,0,1,3,0,2,0,2]`.
+
+Decision:
+
+- No-hold for default speed row. The proposer-local marker and proposal/update
+  slice improved, but repeated end-to-end suite wall and ratio regressed with
+  identical acceptance.
+- Keep the code default-off/lazy opt-in for future broader proposer fusion
+  experiments; do not enable it by default or count it as a retained speed row.
+- Added artifact
+  `benchmarks/results/2026-06-12-hipengine-mtp-proposer-shared-gate-up-dual-nohold.json`.
+- Updated `docs/MTP.md` and refreshed the acceptance-density endgame table to
+  the current `19.496 ms/cycle`, `2.012` visible/cycle baseline.

@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "date": "2026-06-12",
+  "status": "no_hold",
+  "performance_claim": false,
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": "9-prompt D32",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 32768
+  },
+  "experiment": {
+    "name": "HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL",
+    "intent": "Replace the proposer's two shared expert BF16 dense gate/up launches with one dense_dual_gemv_out_bf16_wmma launch writing concatenated gate/up output.",
+    "decision": "Keep as opt-in diagnostic only. The direct proposer slice improved, but repeated full-suite end-to-end wall and AR-normalized ratio regressed with identical acceptance.",
+    "default": false
+  },
+  "correctness": {
+    "targeted_unit": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_mtp_input_fusion_kernel.py::test_mtp_proposer_shared_gate_up_dual_optin tests/test_dflash_dense_wmma.py::test_mtp_shared_gate_up_dual_wmma_matches_two_dflash_dense_calls",
+    "targeted_unit_result": "2 passed",
+    "exact_smoke_command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-proposer-shared-gate-up-dual-smoke.json",
+    "exact_ar_match": true,
+    "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2],
+    "default_path_smoke": {
+      "command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); env -u HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-proposer-shared-gate-up-dual-default-off-smoke.json",
+      "exact_ar_match": true,
+      "accepted_lengths": [3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]
+    }
+  },
+  "profile": {
+    "valid_profile_artifact": "/tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-rocprof.json",
+    "command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_rocprof.py --region proposer_all --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-rocprof --out /tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-rocprof.json",
+    "notes": "A first profiler attempt was discarded because rocprofv3 inherited into a hipcc subprocess. A non-profiled cache warmup was run before the valid profile.",
+    "baseline": {
+      "source": "retained route-batched proposer expert profile",
+      "kernel_calls_per_cycle": 92.0,
+      "kernel_ms_per_cycle": 3.018,
+      "host_ms_per_cycle": 3.543
+    },
+    "experiment": {
+      "kernel_calls_per_cycle": 88.72727272727273,
+      "kernel_ms_per_cycle": 2.912899909090909,
+      "host_ms_per_cycle": 3.4638726363636364,
+      "dense_gemv_calls_per_cycle": 3.090909090909091,
+      "dense_gemv_ms_per_cycle": 0.07806990909090909
+    },
+    "delta": {
+      "kernel_calls_per_cycle": -3.2727272727272663,
+      "kernel_ms_per_cycle": -0.10510009090909079,
+      "host_ms_per_cycle": -0.07912736363636367
+    }
+  },
+  "suite_pairs": [
+    {
+      "name": "pair1",
+      "off_artifact": "/tmp/hipengine-mtp-proposer-shared-gate-up-dual-off-9prompt-d32.json",
+      "on_artifact": "/tmp/hipengine-mtp-proposer-shared-gate-up-dual-on-9prompt-d32.json",
+      "all_exact_ar_match": true,
+      "accepted_lengths_identical": true,
+      "active_budgets_identical": true,
+      "off": {
+        "actual_decode_speedup_vs_ar": 0.9172414355251559,
+        "cycle_wall_ms": 19.496980809228393,
+        "verify_ms": 16.215009827836543,
+        "proposal_update_ms": 1.2444935533660753,
+        "visible_tokens_per_cycle": 2.011851851851852,
+        "accepted_tokens_per_cycle": 1.011851851851852
+      },
+      "on": {
+        "actual_decode_speedup_vs_ar": 0.9166517418593639,
+        "cycle_wall_ms": 19.54000390527778,
+        "verify_ms": 16.31669578850298,
+        "proposal_update_ms": 1.2254766658750467,
+        "visible_tokens_per_cycle": 2.011851851851852,
+        "accepted_tokens_per_cycle": 1.011851851851852
+      },
+      "delta": {
+        "actual_decode_speedup_vs_ar": -0.0005896936657919793,
+        "cycle_wall_ms": 0.043023096049385146,
+        "verify_ms": 0.10168596066643687,
+        "proposal_update_ms": -0.01901688749102859
+      }
+    },
+    {
+      "name": "pair2",
+      "off_artifact": "/tmp/hipengine-mtp-proposer-shared-gate-up-dual-off2-9prompt-d32.json",
+      "on_artifact": "/tmp/hipengine-mtp-proposer-shared-gate-up-dual-on2-9prompt-d32.json",
+      "all_exact_ar_match": true,
+      "accepted_lengths_identical": true,
+      "active_budgets_identical": true,
+      "off": {
+        "actual_decode_speedup_vs_ar": 0.9198120832632202,
+        "cycle_wall_ms": 19.505512668332747,
+        "verify_ms": 16.22689763486964,
+        "proposal_update_ms": 1.2453182173449527,
+        "visible_tokens_per_cycle": 2.011851851851852,
+        "accepted_tokens_per_cycle": 1.011851851851852
+      },
+      "on": {
+        "actual_decode_speedup_vs_ar": 0.9149154441300464,
+        "cycle_wall_ms": 19.520233392758155,
+        "verify_ms": 16.293029499651704,
+        "proposal_update_ms": 1.225156160289525,
+        "visible_tokens_per_cycle": 2.011851851851852,
+        "accepted_tokens_per_cycle": 1.011851851851852
+      },
+      "delta": {
+        "actual_decode_speedup_vs_ar": -0.004896639133173739,
+        "cycle_wall_ms": 0.014720724425408005,
+        "verify_ms": 0.06613186478206318,
+        "proposal_update_ms": -0.02016205705542768
+      }
+    }
+  ]
+}

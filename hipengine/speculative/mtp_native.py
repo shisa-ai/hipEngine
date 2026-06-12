@@ -18,6 +18,7 @@ import numpy as np
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv, dense_dual_gemv_out_bf16_wmma
 from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, lm_head_argmax_stage1_blocks, lm_head_fp16_argmax_bf16, topk_f32_rows_i32
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     build_dflash_drafter,
@@ -112,6 +113,10 @@ def _router_topk_fused_enabled() -> bool:
 
 def _route_batched_expert_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT", True)
+
+
+def _shared_gate_up_dual_enabled() -> bool:
+    return _env_flag("HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL", False)
 
 
 def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic], buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> tuple[np.ndarray, DeviceBuffer]:
@@ -227,6 +232,7 @@ class NativeMtpChainProposer:
         self._allocate_scratch()
         self.mtp_lib = build_mtp_speculative(load=True)
         self.dflash_lib = build_dflash_drafter(load=True)
+        self.dense_lib = None
         self.lm_lib = build_lm_head(load=True)
         self.gate_up_base = self.weights["mtp.layers.0.mlp.experts.gate_up_proj"].ptr
         self.down_base = self.weights["mtp.layers.0.mlp.experts.down_proj"].ptr
@@ -278,6 +284,7 @@ class NativeMtpChainProposer:
         _, self.shared_gate_buf = _empty_device((1, 1), np.float32, self.buffers, runtime=self.runtime)
         _, self.shared_gate_proj_buf = _empty_device((1, self.shared_intermediate), np.uint16, self.buffers, runtime=self.runtime)
         _, self.shared_up_proj_buf = _empty_device((1, self.shared_intermediate), np.uint16, self.buffers, runtime=self.runtime)
+        self.shared_gate_up_proj_buf = None
         _, self.shared_intermediate_buf = _empty_device((1, self.shared_intermediate), np.uint16, self.buffers, runtime=self.runtime)
         _, self.shared_down_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, self.moe_out_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
@@ -290,6 +297,13 @@ class NativeMtpChainProposer:
         _, self.block_indices_buf = _empty_device((block_count,), np.int64, self.buffers, runtime=self.runtime)
         self.out_index_host, self.out_index_buf = _empty_device((1,), np.int64, self.buffers, runtime=self.runtime)
         self.out_value_host, self.out_value_buf = _empty_device((1,), np.float32, self.buffers, runtime=self.runtime)
+
+    def _ensure_shared_gate_up_dual(self) -> DeviceBuffer:
+        if self.shared_gate_up_proj_buf is None:
+            _, self.shared_gate_up_proj_buf = _empty_device((1, 2 * self.shared_intermediate), np.uint16, self.buffers, runtime=self.runtime)
+        if self.dense_lib is None:
+            self.dense_lib = build_dense_gemv(load=True)
+        return self.shared_gate_up_proj_buf
 
     def close(self) -> None:
         if self.closed:
@@ -655,9 +669,28 @@ class NativeMtpChainProposer:
                     library=self.mtp_lib,
                 )
         dflash_dense_bf16_to_f32(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert_gate.weight"].ptr, self.shared_gate_buf.ptr, 1, self.hidden, 1, threads=128, library=self.dflash_lib)
-        dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, self.shared_gate_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
-        dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, self.shared_up_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
-        dflash_silu_mul_bf16(self.shared_gate_proj_buf.ptr, self.shared_up_proj_buf.ptr, self.shared_intermediate_buf.ptr, self.shared_intermediate, threads=256, library=self.dflash_lib)
+        if _shared_gate_up_dual_enabled():
+            shared_gate_up_proj_buf = self._ensure_shared_gate_up_dual()
+            dense_dual_gemv_out_bf16_wmma(
+                self.moe_in_buf.ptr,
+                self.weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr,
+                self.weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr,
+                shared_gate_up_proj_buf.ptr,
+                1,
+                self.hidden,
+                self.shared_intermediate,
+                self.shared_intermediate,
+                library=self.dense_lib,
+                runtime=self.runtime,
+            )
+            shared_gate_proj_ptr = shared_gate_up_proj_buf.ptr
+            shared_up_proj_ptr = shared_gate_up_proj_buf.ptr + self.shared_intermediate * DType.BF16.itemsize
+        else:
+            dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, self.shared_gate_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
+            dflash_dense_bf16_to_bf16(self.moe_in_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, self.shared_up_proj_buf.ptr, 1, self.hidden, self.shared_intermediate, threads=128, library=self.dflash_lib)
+            shared_gate_proj_ptr = self.shared_gate_proj_buf.ptr
+            shared_up_proj_ptr = self.shared_up_proj_buf.ptr
+        dflash_silu_mul_bf16(shared_gate_proj_ptr, shared_up_proj_ptr, self.shared_intermediate_buf.ptr, self.shared_intermediate, threads=256, library=self.dflash_lib)
         dflash_dense_bf16_to_bf16(self.shared_intermediate_buf.ptr, self.weights["mtp.layers.0.mlp.shared_expert.down_proj.weight"].ptr, self.shared_down_buf.ptr, 1, self.shared_intermediate, self.hidden, threads=128, library=self.dflash_lib)
         mtp_accumulate_sigmoid_gate_bf16_to_f32(self.shared_down_buf.ptr, self.shared_gate_buf.ptr, self.moe_accum_buf.ptr, self.hidden, threads=256, library=self.mtp_lib)
         mtp_finalize_f32_to_bf16(self.moe_accum_buf.ptr, self.moe_out_buf.ptr, self.hidden, threads=256, library=self.mtp_lib)

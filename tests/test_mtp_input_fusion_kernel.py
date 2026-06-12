@@ -23,6 +23,18 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp import (
 )
 
 
+def test_mtp_proposer_shared_gate_up_dual_optin(monkeypatch) -> None:
+    from hipengine.speculative import mtp_native
+
+    monkeypatch.delenv("HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL", raising=False)
+
+    assert not mtp_native._shared_gate_up_dual_enabled()
+
+    monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL", "1")
+
+    assert mtp_native._shared_gate_up_dual_enabled()
+
+
 def _hip_available() -> bool:
     try:
         ctypes.CDLL("libamdhip64.so")
