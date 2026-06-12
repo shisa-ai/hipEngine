@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-06-12",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "workload": {
+    "suite": {
+      "gist": "https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090",
+      "raw": "https://gist.githubusercontent.com/am17an/228edfb84ed082aa88e3865d6fa27090/raw/0bee1e2b88904e62670d0df1cf0991883b0815d7/mtp-bench.py",
+      "llama_cpp_evidence": "https://github.com/ggml-org/llama.cpp/pull/22673#issuecomment-4380579942",
+      "llama_cpp_pr_23287": "https://github.com/ggml-org/llama.cpp/pull/23287",
+      "note": "The original script sends these prompts as single user chat messages to an OpenAI-compatible llama.cpp server. hipEngine encodes the raw prompt text unless a future tokenizer/template option is added."
+    },
+    "decode_tokens": 32,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "prompts": [
+      "code_python",
+      "code_cpp",
+      "explain_concept",
+      "summarize",
+      "qa_factual",
+      "translation",
+      "creative_short",
+      "stepwise_math",
+      "long_code_review"
+    ],
+    "runs_per_prompt": 1,
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "proposal_impl": "persistent_device"
+  },
+  "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 7200 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1,2,3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-acceptance-diagnostics-b123-d32-20260612 --out benchmarks/results/2026-06-12-hipengine-mtp-acceptance-diagnostics-b123-d32.json",
+  "source_full_artifact": "/tmp/hipengine-mtp-acceptance-diagnostics-b123-d32-full-20260612.json",
+  "raw_root": "/tmp/hipengine-mtp-acceptance-diagnostics-b123-d32-20260612",
+  "aggregate_by_budget": {
+    "1": {
+      "prompts": 9,
+      "all_exact_ar_match": true,
+      "cycle_cost_ar_tokens_mean_across_prompts_mean": 1.5689059046236253,
+      "cycle_cost_ar_tokens_mean_across_prompts_std": 0.04396291417476991,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_mean": 1.0299003533674755,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_std": 0.09388590861577734,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_mean": 1.0213268637303976,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_std": 0.09501606568391163,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_mean": 1.6167079463364293,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_std": 0.16121361979388382,
+      "avg_accepted_per_cycle_mean_across_prompts_mean": 0.6167079463364293,
+      "avg_accepted_per_cycle_mean_across_prompts_std": 0.16121361979388385,
+      "acceptance_rate_mean_across_prompts_mean": 0.6167079463364293,
+      "acceptance_rate_mean_across_prompts_std": 0.16121361979388385,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_mean": 14.210484686735466,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_std": 0.7796459284679101,
+      "verify_ms_per_cycle_mean_across_prompts_mean": 12.457008463480982,
+      "verify_ms_per_cycle_mean_across_prompts_std": 0.2389816511115275,
+      "proposal_update_ms_per_cycle_mean_across_prompts_mean": 1.7342110495055802,
+      "proposal_update_ms_per_cycle_mean_across_prompts_std": 0.5526260347909632,
+      "proposal_snapshot_saves_mean_across_prompts_mean": 19.77777777777778,
+      "proposal_snapshot_saves_mean_across_prompts_std": 2.1666666666666665,
+      "proposal_snapshot_skips_mean_across_prompts_mean": 0.0,
+      "proposal_snapshot_skips_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_mean": 1.0,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_mean": 0.0,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_std": 0.0,
+      "ar_decode_ms_per_token_mean_across_prompts_mean": 9.052964013891243,
+      "ar_decode_ms_per_token_mean_across_prompts_std": 0.2772641766983592,
+      "proposal_snapshot_saves_mean_across_prompts_sum": 178.0,
+      "proposal_snapshot_skips_mean_across_prompts_sum": 0.0
+    },
+    "2": {
+      "prompts": 9,
+      "all_exact_ar_match": true,
+      "cycle_cost_ar_tokens_mean_across_prompts_mean": 1.967021496268144,
+      "cycle_cost_ar_tokens_mean_across_prompts_std": 0.0711048119566531,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_mean": 0.9876469513072423,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_std": 0.1596124935361208,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_mean": 0.9801651474022965,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_std": 0.15445322264844175,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_mean": 1.9422971781305114,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_std": 0.3097044195058205,
+      "avg_accepted_per_cycle_mean_across_prompts_mean": 0.9422971781305114,
+      "avg_accepted_per_cycle_mean_across_prompts_std": 0.3097044195058205,
+      "acceptance_rate_mean_across_prompts_mean": 0.4804032436729481,
+      "acceptance_rate_mean_across_prompts_std": 0.15743409855586668,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_mean": 17.909486054343034,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_std": 0.9817090519857823,
+      "verify_ms_per_cycle_mean_across_prompts_mean": 15.152374677030728,
+      "verify_ms_per_cycle_mean_across_prompts_std": 0.29332847572717036,
+      "proposal_update_ms_per_cycle_mean_across_prompts_mean": 1.542833916845196,
+      "proposal_update_ms_per_cycle_mean_across_prompts_std": 0.44733647323806996,
+      "proposal_snapshot_saves_mean_across_prompts_mean": 16.77777777777778,
+      "proposal_snapshot_saves_mean_across_prompts_std": 3.3829638550307397,
+      "proposal_snapshot_skips_mean_across_prompts_mean": 16.11111111111111,
+      "proposal_snapshot_skips_mean_across_prompts_std": 3.2188679859713276,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_mean": 1.0,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_std": 0.0,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_mean": 0.9609876543209876,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_std": 0.030431284891328104,
+      "ar_decode_ms_per_token_mean_across_prompts_mean": 9.104683270884884,
+      "ar_decode_ms_per_token_mean_across_prompts_std": 0.354549745982532,
+      "proposal_snapshot_saves_mean_across_prompts_sum": 151.0,
+      "proposal_snapshot_skips_mean_across_prompts_sum": 145.0
+    },
+    "3": {
+      "prompts": 9,
+      "all_exact_ar_match": true,
+      "cycle_cost_ar_tokens_mean_across_prompts_mean": 2.211298092006749,
+      "cycle_cost_ar_tokens_mean_across_prompts_std": 0.07965504042910428,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_mean": 0.9811145577272214,
+      "observed_cycle_speedup_vs_ar_mean_across_prompts_std": 0.2064104605537752,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_mean": 0.9716657982035749,
+      "actual_decode_speedup_vs_ar_mean_across_prompts_std": 0.19396579802250674,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_mean": 2.174774114774115,
+      "avg_visible_tokens_per_cycle_mean_across_prompts_std": 0.4887728714684718,
+      "avg_accepted_per_cycle_mean_across_prompts_mean": 1.1747741147741149,
+      "avg_accepted_per_cycle_mean_across_prompts_std": 0.4887728714684718,
+      "acceptance_rate_mean_across_prompts_mean": 0.4068413011476364,
+      "acceptance_rate_mean_across_prompts_std": 0.16847520181861536,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_mean": 19.99010096249186,
+      "cycle_wall_ms_per_cycle_mean_across_prompts_std": 1.2968390911429966,
+      "verify_ms_per_cycle_mean_across_prompts_mean": 16.17154894303251,
+      "verify_ms_per_cycle_mean_across_prompts_std": 0.3901472747269135,
+      "proposal_update_ms_per_cycle_mean_across_prompts_mean": 1.4403241994244145,
+      "proposal_update_ms_per_cycle_mean_across_prompts_std": 0.432211996434594,
+      "proposal_snapshot_saves_mean_across_prompts_mean": 29.555555555555557,
+      "proposal_snapshot_saves_mean_across_prompts_std": 7.763876465901411,
+      "proposal_snapshot_skips_mean_across_prompts_mean": 14.666666666666666,
+      "proposal_snapshot_skips_mean_across_prompts_std": 3.872983346207417,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_mean": 1.9283312983312983,
+      "proposal_snapshot_saves_per_cycle_mean_across_prompts_std": 0.045942926324664415,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_mean": 0.9577757427757427,
+      "proposal_snapshot_skips_per_cycle_mean_across_prompts_std": 0.0332230227794342,
+      "ar_decode_ms_per_token_mean_across_prompts_mean": 9.03317592100292,
+      "ar_decode_ms_per_token_mean_across_prompts_std": 0.2855441704264802,
+      "proposal_snapshot_saves_mean_across_prompts_sum": 266.0,
+      "proposal_snapshot_skips_mean_across_prompts_sum": 132.0
+    }
+  },
+  "acceptance_diagnostics_by_budget": {
+    "1": {
+      "prompts": 9,
+      "cycles": 178,
+      "max_zero_accept_streak": 8,
+      "zero_accept_streak_count": 43,
+      "zero_accept_streak_sum": 71,
+      "zero_accept_streak_ge2": 15,
+      "zero_accept_streak_ge3": 6,
+      "accept_depth_hist": {
+        "0": 71,
+        "1": 107
+      },
+      "first_reject_depth_hist": {
+        "0": 71
+      },
+      "reason_counts": {
+        "draft_top1_miss": 54,
+        "full_accept": 107,
+        "target_outside_draft_vocab_cap": 17
+      }
+    },
+    "2": {
+      "prompts": 9,
+      "cycles": 151,
+      "max_zero_accept_streak": 8,
+      "zero_accept_streak_count": 39,
+      "zero_accept_streak_sum": 67,
+      "zero_accept_streak_ge2": 14,
+      "zero_accept_streak_ge3": 6,
+      "accept_depth_hist": {
+        "0": 67,
+        "1": 34,
+        "2": 50
+      },
+      "first_reject_depth_hist": {
+        "0": 67,
+        "1": 29
+      },
+      "reason_counts": {
+        "draft_top1_miss": 73,
+        "full_accept": 55,
+        "target_outside_draft_vocab_cap": 23
+      }
+    },
+    "3": {
+      "prompts": 9,
+      "cycles": 138,
+      "max_zero_accept_streak": 8,
+      "zero_accept_streak_count": 32,
+      "zero_accept_streak_sum": 57,
+      "zero_accept_streak_ge2": 12,
+      "zero_accept_streak_ge3": 6,
+      "accept_depth_hist": {
+        "0": 57,
+        "1": 41,
+        "2": 14,
+        "3": 26
+      },
+      "first_reject_depth_hist": {
+        "0": 57,
+        "1": 36,
+        "2": 14
+      },
+      "reason_counts": {
+        "draft_top1_miss": 85,
+        "full_accept": 31,
+        "target_outside_draft_vocab_cap": 22
+      }
+    }
+  },
+  "per_prompt": [
+    {
+      "prompt": "code_python",
+      "b1_ratio": 1.0943640397191712,
+      "b2_ratio": 1.163072985667063,
+      "b3_ratio": 1.281070058675981,
+      "b1_visible": 1.8235294117647058,
+      "b2_visible": 2.2142857142857144,
+      "b3_visible": 3.1,
+      "max_zero_accept_streak_b1": 1,
+      "best_budget": 3,
+      "best_ratio": 1.281070058675981,
+      "b1_or_ar_ratio": 1.0943640397191712
+    },
+    {
+      "prompt": "code_cpp",
+      "b1_ratio": 1.0970440814551699,
+      "b2_ratio": 1.0677564069704941,
+      "b3_ratio": 1.0380104727890542,
+      "b1_visible": 1.6842105263157894,
+      "b2_visible": 2.1333333333333333,
+      "b3_visible": 2.2857142857142856,
+      "max_zero_accept_streak_b1": 2,
+      "best_budget": 1,
+      "best_ratio": 1.0970440814551699,
+      "b1_or_ar_ratio": 1.0970440814551699
+    },
+    {
+      "prompt": "explain_concept",
+      "b1_ratio": 0.9715970516368747,
+      "b2_ratio": 0.9658952781451808,
+      "b3_ratio": 0.9236643080102203,
+      "b1_visible": 1.55,
+      "b2_visible": 1.9375,
+      "b3_visible": 2.066666666666667,
+      "max_zero_accept_streak_b1": 3,
+      "best_budget": 1,
+      "best_ratio": 0.9715970516368747,
+      "b1_or_ar_ratio": 1.0
+    },
+    {
+      "prompt": "summarize",
+      "b1_ratio": 1.0233895180419654,
+      "b2_ratio": 0.914428087739899,
+      "b3_ratio": 0.9178296700255131,
+      "b1_visible": 1.6,
+      "b2_visible": 1.7777777777777777,
+      "b3_visible": 2.0,
+      "max_zero_accept_streak_b1": 3,
+      "best_budget": 1,
+      "best_ratio": 1.0233895180419654,
+      "b1_or_ar_ratio": 1.0233895180419654
+    },
+    {
+      "prompt": "qa_factual",
+      "b1_ratio": 1.0866714156226678,
+      "b2_ratio": 1.0765618431874298,
+      "b3_ratio": 1.0643312858902592,
+      "b1_visible": 1.6842105263157894,
+      "b2_visible": 2.1333333333333333,
+      "b3_visible": 2.2857142857142856,
+      "max_zero_accept_streak_b1": 1,
+      "best_budget": 1,
+      "best_ratio": 1.0866714156226678,
+      "b1_or_ar_ratio": 1.0866714156226678
+    },
+    {
+      "prompt": "translation",
+      "b1_ratio": 0.8074239469239769,
+      "b2_ratio": 0.6542285008699866,
+      "b3_ratio": 0.5856546024146937,
+      "b1_visible": 1.24,
+      "b2_visible": 1.24,
+      "b3_visible": 1.24,
+      "max_zero_accept_streak_b1": 8,
+      "best_budget": 1,
+      "best_ratio": 0.8074239469239769,
+      "b1_or_ar_ratio": 1.0
+    },
+    {
+      "prompt": "creative_short",
+      "b1_ratio": 1.0832061809294289,
+      "b2_ratio": 1.0675109348822271,
+      "b3_ratio": 1.118390413294546,
+      "b1_visible": 1.6842105263157894,
+      "b2_visible": 2.1333333333333333,
+      "b3_visible": 2.4615384615384617,
+      "max_zero_accept_streak_b1": 3,
+      "best_budget": 3,
+      "best_ratio": 1.118390413294546,
+      "b1_or_ar_ratio": 1.0832061809294289
+    },
+    {
+      "prompt": "stepwise_math",
+      "b1_ratio": 1.0627148003122782,
+      "b2_ratio": 1.0581710071227792,
+      "b3_ratio": 0.9729272089192873,
+      "b1_visible": 1.6842105263157894,
+      "b2_visible": 2.1333333333333333,
+      "b3_visible": 2.1333333333333333,
+      "max_zero_accept_streak_b1": 2,
+      "best_budget": 1,
+      "best_ratio": 1.0627148003122782,
+      "b1_or_ar_ratio": 1.0627148003122782
+    },
+    {
+      "prompt": "long_code_review",
+      "b1_ratio": 0.9655307389320454,
+      "b2_ratio": 0.8538612820356081,
+      "b3_ratio": 0.8431141638126202,
+      "b1_visible": 1.6,
+      "b2_visible": 1.7777777777777777,
+      "b3_visible": 2.0,
+      "max_zero_accept_streak_b1": 2,
+      "best_budget": 1,
+      "best_ratio": 0.9655307389320454,
+      "b1_or_ar_ratio": 1.0
+    }
+  ],
+  "policy_oracles": {
+    "fixed_b1_prompt_mean": 1.0213268637303976,
+    "fixed_b2_prompt_mean": 0.9801651474022965,
+    "fixed_b3_prompt_mean": 0.9716657982035751,
+    "b123_oracle_prompt_mean": 1.0459813360995005,
+    "b1_or_ar_fallback_oracle_prompt_mean": 1.0497100040089646
+  },
+  "decision": "Use this as A1 policy-design evidence, not a speed row. The diagnostics favor a B=1 plus AR-fallback/skip path before another live B1->B2/B3 adaptive-budget attempt, because translation keeps visible density at 1.24 for all budgets and shows max zero-accept streak 8."
+}

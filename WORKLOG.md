@@ -83972,3 +83972,56 @@ rejection at depth 0. That one rejection was classified
 cap misses from genuine draft top-1 misses. Next adaptive-policy evidence should
 run the full D32 B=1/B=2/B=3 prompt suite with `--acceptance-diagnostics`
 before another live policy attempt.
+
+## 2026-06-12 - MTP full D32 acceptance diagnostics point to AR fallback first
+
+Ran the full 9-prompt D32 B=1/B=2/B=3 prompt-suite diagnostics on the current
+retained stack (`persistent_device`, `decode_batched`, graph off, no-env draft
+vocab cap default `65536`). This is policy-design evidence, not a retained speed
+row: the harness ran with `--acceptance-diagnostics` and the compact artifact
+sets `performance_claim=false`.
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1,2,3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-acceptance-diagnostics-b123-d32-20260612 \
+  --out benchmarks/results/2026-06-12-hipengine-mtp-acceptance-diagnostics-b123-d32.json
+```
+
+Result: exact `9/9` prompts for all budgets (`27/27` prompt-budget runs). The
+full raw JSON was moved to
+`/tmp/hipengine-mtp-acceptance-diagnostics-b123-d32-full-20260612.json`; the
+committed compact summary is
+`benchmarks/results/2026-06-12-hipengine-mtp-acceptance-diagnostics-b123-d32-summary.json`.
+
+Budget aggregates from the diagnostic run:
+
+- B=1: prompt-mean `1.021x`, wall `14.210 ms/cycle`, visible `1.617/cycle`.
+- B=2: prompt-mean `0.980x`, wall `17.909 ms/cycle`, visible `1.942/cycle`.
+- B=3: prompt-mean `0.972x`, wall `19.990 ms/cycle`, visible `2.175/cycle`.
+
+Acceptance diagnostics:
+
+- B=1 over all prompts: `178` cycles, `107` full accepts, `71` zero-accept
+  cycles, max zero-accept streak `8`, first-reject reasons `54`
+  `draft_top1_miss` and `17` `target_outside_draft_vocab_cap`.
+- Translation is the clearest bad-tail case: B=1/B=2/B=3 all have
+  `1.240` visible tokens/cycle, while ratios are `0.807x`, `0.654x`,
+  `0.586x`; B=1 max zero streak is `8`.
+- Prompt-mean oracle over fixed B=1/B=2/B=3 in this diagnostic is `1.046x`.
+  The simpler prompt-mean oracle for B=1-or-AR fallback is `1.050x`.
+
+Decision: keep live variable-B policy as a design item, but do not retry a
+B1->B2/B3 runtime policy until dense per-offset evidence or a state-transition
+audit exists. The next acceptance-density implementation candidate should be a
+fixed online B=1/AR fallback or skip-MTP window driven by zero-accept streaks,
+because it avoids changing verifier row shape and directly targets the bad
+tail.
