@@ -196,15 +196,16 @@ correctness status, source-lineage targets, and external comparison baselines.
 
 ## Speculative decode (DFlash / MTP)
 
-Speculative decode is active but split by model class. Dense 27B DFlash now has
-a retained exact speedup; 35B-A3B MTP is still an optimization sprint because
-the MoE target AR path is much cheaper.
+Speculative decode is active but split by model class. Dense 27B DFlash has a
+retained exact speedup; 35B-A3B MTP now has its first exact break-even row, with
+more policy/kernel margin work still active because the MoE target AR path is
+cheap.
 
 | Path | Model / workload | W7900 result | Status |
 | --- | --- | ---: | --- |
 | DFlash B=4 online-gated | Qwen3.6-27B-PARO dense target + z-lab Qwen3.6-27B-DFlash drafter, 9-prompt D64 | **1.231x AR** (`40.10` vs `32.57 tok/s`) | Exact `9/9`, deployable retained row; artifact: [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json). |
 | MTP B=3 persistent chain, locked sprint baseline | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, graph-auto verifier, draft vocab cap 32768 | **0.758x AR** (`83.4` vs `~110 tok/s`), `27.8 ms/cycle` | Exact but below AR; retained as the sprint baseline. Artifacts: [`baseline`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json) / [`rocprof`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json). |
-| MTP B=3 persistent chain, current best | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, `decode_batched`, graph off, draft vocab cap 65536 default | **0.967x AR** (`107.35` vs `111.00 tok/s`), `20.021 ms/cycle` | Exact `9/9`, WIP just short of break-even. Full vocab was exact but no-held (`0.880x`). Needs about `19.6 ms/cycle` at current density or `2.22` visible tokens/cycle at current wall. See [`docs/MTP.md`](docs/MTP.md) and [`cap65536 artifact`](benchmarks/results/2026-06-12-hipengine-mtp-vocab65536-retained.json). |
+| MTP B=1 persistent chain, current best | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, `decode_batched`, graph off, draft vocab cap 65536 default | **1.018x AR** (`113.14` vs `111.10 tok/s` prompt-mean), `14.173 ms/cycle` | Exact `9/9`, first retained break-even row. B=3 remains higher-density but just short (`0.968x` same-session); full vocab was exact but no-held (`0.880x`). See [`docs/MTP.md`](docs/MTP.md) and [`B=1 artifact`](benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json). |
 
 ## Concurrency (batched decode)
 

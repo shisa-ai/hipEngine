@@ -4,22 +4,23 @@
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab
 > cap, and device expert dispatch are landed. The current W7900/gfx1100 35B-A3B
 > MTP sprint baseline remains **0.758x AR** at **27.8 ms/cycle**. The current
-> exact 9-prompt D32 best is now **0.967x AR** with `chain_attn_mode=decode_batched`,
+> exact 9-prompt D32 best is now **1.018x AR** with B=1,
+> `chain_attn_mode=decode_batched`,
 > `graph_mode=off`, MTP verify canonicalize skip default-on, and fused
 > 256-expert/top-8 proposer router top-k+softmax plus linear/full-attn
 > shared-down combine, route-batched proposer expert, and linear shared
 > SiLU+down-rotate plus linear A/B separate-output dual dense and one-split
 > direct-gate full-attention decode default-on, with draft vocab cap `65536`:
-> **20.02 ms/cycle** wall, **16.21 ms/cycle** verifier time, and
-> **1.44 ms/cycle** proposal/update time.
+> **14.17 ms/cycle** wall, **12.43 ms/cycle** verifier time, and
+> **1.73 ms/cycle** proposal/update time.
 > This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 
 > **Top priority for the next push:** MTP break-even sprint. Hold every exact
 > same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,
-> and push the active `0.967x / 20.02 ms` row below true break-even and ultimately
-> above `1.0x`. See ["Next Push: 35B MTP Break-Even Sprint"](#next-push-35b-mtp-break-even-sprint-2026-06-11).
+> and preserve the first retained break-even row while building margin with
+> adaptive budget policy and remaining reduced-DAG work. See ["Next Push: 35B MTP Break-Even Sprint"](#next-push-35b-mtp-break-even-sprint-2026-06-11).
 
 ## Next Push: 35B MTP Break-Even Sprint (2026-06-11)
 
@@ -35,10 +36,10 @@ Locked baseline:
 - Wall milestone from the original sprint: **`<21.5 ms/cycle`**, requiring
   about **6.3 ms/cycle** off the locked row.
 
-Current best retained stack after the 2026-06-12 host/cache/proposer-router/reduced-DAG cleanup:
+Current best retained stack after the 2026-06-12 host/cache/proposer-router/reduced-DAG cleanup and budget sweep:
 
 - Runtime config: `proposal_impl=persistent_device`,
-  `chain_attn_mode=decode_batched`, verifier graph `off`, MTP
+  B=1, `chain_attn_mode=decode_batched`, verifier graph `off`, MTP
   canonicalize-after-verify skip default-on, fused 256-expert/top-8 proposer
   router top-k+softmax default-on, route-batched proposer expert loop
   default-on, linear shared SiLU+down-rotate fused default-on, linear-attn and
@@ -46,19 +47,22 @@ Current best retained stack after the 2026-06-12 host/cache/proposer-router/redu
   dual dense GEMV default-on for small-batch rows, one-split direct-gate
   full-attention decode default-on, draft vocab cap `65536` default-on, device
   expert dispatch, exact chain verifier; branching tree default-off.
-- Current speed: **`0.967x` AR** on the 9-prompt D32 suite, exact `9/9`.
-- Current wall: **`20.021 ms/cycle = 16.212 ms verify + 1.440 ms proposal/update`**.
-- Current density: **`2.175` visible tokens/cycle** (`1.175` accepted draft
-  tokens/cycle). Raising the draft cap from `32768` to `65536` is retained
-  because the same-session exact D32 row moved ratio `0.926x -> 0.967x`:
-  visible density rose `2.012 -> 2.175/cycle`, outweighing wall
-  `19.425 -> 20.021 ms/cycle`.
-- Wall milestone status: crossed (`20.021 ms < 21.5 ms`). True `>1.0x`
-  break-even at the current visible-token density is stricter: with
-  `2.175` visible tokens/cycle and `9.009 ms/token` AR, wall would need to be
-  about **`19.6 ms/cycle`**, or visible density must rise to at least
-  **`2.22` visible tokens/cycle** at the current wall. The next work needs
-  roughly **`0.43 ms/cycle`** more wall cut, a small density lift, or both.
+- Current speed: **`1.018x` AR** on the 9-prompt D32 suite, exact `9/9`
+  (total-time cross-check `1.009x`).
+- Current wall: **`14.173 ms/cycle = 12.426 ms verify + 1.733 ms proposal/update`**.
+- Current density: **`1.617` visible tokens/cycle** (`0.617` accepted draft
+  tokens/cycle). Fixed B=1 wins because it cuts cycle wall and AR-token cycle
+  cost far more than it loses visible density: same-session B=1/B=3 exact
+  D32 moved ratio `1.018x` vs `0.968x`, wall `14.173` vs
+  `19.976 ms/cycle`, cycle cost `1.574` vs `2.217` AR tokens, and visible
+  density `1.617` vs `2.175/cycle`.
+- Wall milestone status: crossed with margin (`14.173 ms < 21.5 ms`), and the
+  sprint's first retained `>1.0x` row is now in-tree. The next work is margin:
+  an online adaptive budget policy should recover B=2/B=3 density on the
+  prompts where it pays while falling back to B=1 on low-density stretches.
+  The per-prompt fixed-budget oracle over B=1/B=2/B=3 is `1.042x`
+  prompt-mean (`1.027x` total-time), so there is still a policy target above
+  the retained fixed-B=1 row.
 
 Tree status is explicit: the B=3 gated tree path is exact and graph-replayed, but
 negative (`0.61x` vs chain `0.76x`) because it spends budget on a depth-1 sibling
@@ -80,10 +84,12 @@ Current priority order after folding in the external review:
 | Done | Full-attn decode_batched one-split direct gate | -0.106 ms/cycle wall retained | Exact D32 suite positive | `HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=1` detects the current `decode_batched` `num_splits=1` full-attention rows and replaces `split_k_ctx_tensor_gqa_batch + reduce_gate_batch` with one direct gated GQA decode kernel. Focused GPU test is bit-identical to the retained split+reduce path. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.9240x -> 0.9273x`, wall `19.440 -> 19.334 ms/cycle`, verify `16.155 -> 16.053 ms/cycle`; quicksort profile removed 10 reduce launches/pass (`842 -> 832`), moved decode-attention `0.429 -> 0.416 ms/pass`, total kernel `12.636 -> 12.609 ms/pass`, and host `16.220 -> 16.085 ms/pass`. Default-on for `num_splits == 1`; opt out with `HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=0`. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-direct-gate-retained.json`. |
 | Done | Draft vocab cap `32768 -> 65536` | +0.041x ratio retained via acceptance density | Exact D32 suite positive | Conservative first-rejection census found `36/119` B=3 first rejected tokens were outside cap `32768`. Raising `HIPENGINE_MTP_DRAFT_VOCAB_CAP` to `65536` kept quicksort exact and kept D32 exact `9/9`, improving same-session ratio `0.926x -> 0.967x`. Visible density moved `2.012 -> 2.175/cycle`, accepted draft tokens `1.012 -> 1.175/cycle`, while wall moved `19.425 -> 20.021 ms/cycle` and proposal/update `1.253 -> 1.440 ms/cycle`. Retain cap `65536` as the no-env default; explicit full vocab is a diagnostic. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-vocab65536-retained.json`. |
 | No-hold | Full-vocab draft LM-head (`HIPENGINE_MTP_DRAFT_VOCAB_CAP=0`) | 0 retained | Exact but suite economics-negative | Full vocab stayed exact on quicksort and D32 `9/9`, and recovered some acceptance versus cap65536 (`2.175 -> 2.274` visible tokens/cycle), but proposal/update grew nearly `+1.0 ms/cycle` and total wall grew nearly `+3.0 ms/cycle`; exact D32 ratio regressed `0.967x -> 0.880x`. Keep cap65536 as default; use full vocab only as an explicit diagnostic. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-full-vocab-nohold.json`. |
-| 1 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This is the useful version of "extend the C dispatcher." A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. The shared-down+combine epilogues are retained reduced-DAG micro-slices, but they are not enough; continue with broader layer-surround batching/composites rather than stopping at pairwise fusions. |
-| 2 | M12.7 proposer graph subgraph design | 0 ms retained from whole-body capture; subgraph TBD | Medium/high; whole-body shape no-held | Post-route-batching proposer marker profile shows `proposer_all` is `~3.54 ms/cycle` host for `~3.02 ms/cycle` kernel over `92` launches/cycle. Capture can still recover some launch/ctypes overhead, but it cannot remove the expert dense, LM-head, attention, or dense BF16 GPU work. **2026-06-12 audit:** naive direct capture is not a speed row: `NativeMtpChainProposer.advance()` bakes `key_cache_dst`, `value_cache_dst`, and attention `context_len` from absolute `cache_len`, while the harness alternates result-producing advances with LM-head/readbacks and state-only repair advances. The current HIP wrapper only exposes capture/instantiate/launch, not graph-node parameter updates, so a useful M12.7 must use fixed base pointers plus device-read live metadata. First prerequisite: add graph-safe proposer KV writes, either by teaching the QKV/rotary producers to write `key_cache_base + device_cache_slot * kv_features` and `value_cache_base + device_cache_slot * kv_features` directly or by adding one indexed K/V copy kernel that consumes a device slot scalar; pair that with bucketed attention's device live-context scalar. Otherwise exact-cache-length graphs will mostly miss and may freeze stale cache slots. A focused live-context probe using the existing DFlash bucketed attention kernel stayed exact on quicksort but no-held as a standalone slice (`proposal/update +0.011 ms/cycle`) because it adds a live-context H2D and still leaves dynamic KV write destinations unsolved; see `benchmarks/results/2026-06-12-hipengine-mtp-proposer-bucketed-attention-nohold.json`. The fixed-base indexed K/V producer slice now exists behind `HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=1` and is exact, but it is not a standalone speed row: exact D32 off/on moved ratio `0.9237x -> 0.9215x`, wall `19.376 -> 19.412 ms/cycle`, verify `16.092 -> 16.125 ms/cycle`, and visible density stayed `2.012/cycle`. A direct current-stack bucketed-attention smoke also matched the locked accepted trace, but private-stream HIP graph capture of the same body changed proposer accepted lengths even when recapturing every advance (`[3,3,2,0,2,0,0,1,3,0,2,0,2] -> [1,0,0,0,0,0,1,0,...]`), and default-stream capture is rejected by HIP. Experiment code was removed; do not retry M12.7 as a whole-body HIP graph until the proposer body is split into a capture-safe stream-honoring subgraph or we add graph node parameter updates. Artifacts: `benchmarks/results/2026-06-12-hipengine-mtp-proposer-indexed-kv-write-nohold.json`, `benchmarks/results/2026-06-12-hipengine-mtp-proposer-graph-capture-nohold.json`. A narrower route-batched selected-expert-only graph replay also stayed exact (`9/9`) but no-held: same-session graph-on/off kept identical density, wall moved `19.376 -> 19.346 ms/cycle` from verifier noise, while the directly relevant proposal/update metric regressed `1.2492 -> 1.2550 ms/cycle`; prototype code removed. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-proposer-route-expert-graph-nohold.json`. |
+| Done | Fixed B=1 budget sweep current best | +0.051x ratio retained vs same-session B=3 | Exact D32 suite positive | Fixed B=1 on the current cap65536 stack is the first retained >1.0x row. Same-session B=1/B=2/B=3 exact D32 all stayed `9/9`; B=1 moved prompt-mean ratio `0.968x -> 1.018x` vs B=3 and total-time cross-check `0.926x -> 1.009x`. Wall/cost moved `19.976 -> 14.173 ms/cycle` and `2.217 -> 1.574` AR tokens, while visible density fell `2.175 -> 1.617/cycle`. B=2 is exact but no-held as a fixed operating point (`0.963x`). Quicksort B=1 smoke stayed exact with accepted lengths `[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json`. |
+| 1 | Online adaptive budget policy over B=1/B=2/B=3 | +0.02x to +0.03x possible from oracle bound | Low/medium; exactness should hold if policy only changes verifier budget | Fixed B=1 is retained, but the same sweep shows B=3 still wins `code_python` and `creative_short`, B=2 wins `code_cpp` and `qa_factual`, and B=1 wins the low-density prompts. A per-prompt oracle over fixed budgets is `1.042x` prompt-mean (`1.027x` total-time). Next policy unit should implement a fixed online rule using only past accepted lengths or zero-accept streaks, not prompt names, and promote only if exact D32 improves over fixed B=1. |
+| 2 | Full-layer reduced-DAG batching for the non-MoE layer surround | -1.5 to -3.0 ms if real DAG nodes disappear | Medium; M13.C/M14 patterns prove the dispatch mechanics | This remains the kernel margin lane after the B=1 break-even row. A C-only loop around the same launches is already measured parity; the next unit must remove launches, fills, copies, Python/ctypes round trips, or per-pass object/pointer rebuilds outright. The shared-down+combine epilogues are retained reduced-DAG micro-slices, but they are not enough; continue with broader layer-surround batching/composites rather than stopping at pairwise fusions. |
+| 3 | M12.7 proposer graph subgraph design | 0 ms retained from whole-body capture; subgraph TBD | Medium/high; whole-body shape no-held | Post-route-batching proposer marker profile shows `proposer_all` is `~3.54 ms/cycle` host for `~3.02 ms/cycle` kernel over `92` launches/cycle. Capture can still recover some launch/ctypes overhead, but it cannot remove the expert dense, LM-head, attention, or dense BF16 GPU work. **2026-06-12 audit:** naive direct capture is not a speed row: `NativeMtpChainProposer.advance()` bakes `key_cache_dst`, `value_cache_dst`, and attention `context_len` from absolute `cache_len`, while the harness alternates result-producing advances with LM-head/readbacks and state-only repair advances. The current HIP wrapper only exposes capture/instantiate/launch, not graph-node parameter updates, so a useful M12.7 must use fixed base pointers plus device-read live metadata. First prerequisite: add graph-safe proposer KV writes, either by teaching the QKV/rotary producers to write `key_cache_base + device_cache_slot * kv_features` and `value_cache_base + device_cache_slot * kv_features` directly or by adding one indexed K/V copy kernel that consumes a device slot scalar; pair that with bucketed attention's device live-context scalar. Otherwise exact-cache-length graphs will mostly miss and may freeze stale cache slots. A focused live-context probe using the existing DFlash bucketed attention kernel stayed exact on quicksort but no-held as a standalone slice (`proposal/update +0.011 ms/cycle`) because it adds a live-context H2D and still leaves dynamic KV write destinations unsolved; see `benchmarks/results/2026-06-12-hipengine-mtp-proposer-bucketed-attention-nohold.json`. The fixed-base indexed K/V producer slice now exists behind `HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE=1` and is exact, but it is not a standalone speed row: exact D32 off/on moved ratio `0.9237x -> 0.9215x`, wall `19.376 -> 19.412 ms/cycle`, verify `16.092 -> 16.125 ms/cycle`, and visible density stayed `2.012/cycle`. A direct current-stack bucketed-attention smoke also matched the locked accepted trace, but private-stream HIP graph capture of the same body changed proposer accepted lengths even when recapturing every advance (`[3,3,2,0,2,0,0,1,3,0,2,0,2] -> [1,0,0,0,0,0,1,0,...]`), and default-stream capture is rejected by HIP. Experiment code was removed; do not retry M12.7 as a whole-body HIP graph until the proposer body is split into a capture-safe stream-honoring subgraph or we add graph node parameter updates. Artifacts: `benchmarks/results/2026-06-12-hipengine-mtp-proposer-indexed-kv-write-nohold.json`, `benchmarks/results/2026-06-12-hipengine-mtp-proposer-graph-capture-nohold.json`. A narrower route-batched selected-expert-only graph replay also stayed exact (`9/9`) but no-held: same-session graph-on/off kept identical density, wall moved `19.376 -> 19.346 ms/cycle` from verifier noise, while the directly relevant proposal/update metric regressed `1.2492 -> 1.2550 ms/cycle`; prototype code removed. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-proposer-route-expert-graph-nohold.json`. |
 | Done | Route-batched proposer expert loop | -0.44 ms/cycle wall retained | Exact D32 suite positive | `HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=1` batches all top-8 routed expert gate/up GEMVs, route-major SiLU, down GEMVs, and ordered route accumulation while preserving scalar route accumulation order. Exact D32 `9/9`, identical accepted lengths/active budgets, ratio `0.8939x -> 0.9135x`, wall `20.045 -> 19.604 ms/cycle`, proposal/update `1.455 -> 1.244 ms/cycle`; proposer profile calls `178.4 -> 92.0/cycle`, kernel `3.379 -> 3.018 ms/cycle`, host `4.248 -> 3.543 ms/cycle`. |
-| 4 | Acceptance-density diagnostics and policy | Ratio lever, not pure wall | Low/medium; save policy changes until fast path stabilizes | Add per-position acceptance histograms, vocab-cap rejection diagnostics, and adaptive B/AR fallback gates after the wall path stabilizes. At the current cap65536 wall, break-even needs only about `+0.045` visible tokens/cycle, so this is co-equal with the final wall cuts but should not distract from reduced-DAG/proposer work in the next implementation unit. **2026-06-12 diagnostic:** B=4 is not a supported current chain compiler budget (`allowed_budgets=(1,2,3,5)`). B=5 is exact but no-hold as a global default: same-session D32 B=3/B=5 exact `9/9`, visible `2.012 -> 2.220/cycle`, but wall `19.425 -> 25.689 ms/cycle` and ratio `0.926x -> 0.773x`. Higher-B work must be adaptive/per-prompt or improve proposer quality first. |
+| 4 | Acceptance-density diagnostics beyond budget policy | Ratio lever, not pure wall | Low/medium; now margin work | Fixed B=1 crossed break-even, so acceptance-density work should now be targeted at margin rather than rescuing the row. Keep per-position histograms, cap-representability, and zero-accept streak counters behind diagnostics flags. B=5 remains exact but no-hold globally; full vocab remains exact but no-hold. Revisit higher B, cap changes, or tree/sibling only through an online policy that beats fixed B=1 on exact D32. |
 | 5 | Verifier/proposer inter-cycle overlap design | 0 ms retained for naive side-stream shape; still possible only with broader update redesign | Medium/high; dependencies are clean enough to test, but update-side sync cost dominates today | **No-hold 2026-06-12 for naive side stream.** `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER=1` stayed exact `9/9` with identical acceptance and did hide part of verify/commit (`16.166 -> 16.028 ms/cycle`), but proposal/update grew more (`1.243 -> 1.438 ms/cycle`) and aggregate wall/ratio regressed (`19.441 -> 19.506 ms/cycle`, `0.9216x -> 0.9184x`). Keep default off; revisit only after proposer update removes its final sync/readback cost or after a broader graph/update design changes the stream balance. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-verify-commit-proposer-overlap-nohold.json`. |
 | Closed | Per-layer memset/fill/copy enumeration | 0 ms retained on current stack | Low if a future profile reintroduces a live bucket | Current retained profiles show no verifier fill family and only `2` `runtime_copy` launches/pass at about `0.0067-0.0069 ms/pass`, so this is not an active speed lever. Reopen only from a fresh profile with a material live fill/copy bucket plus local write-before-read proof. |
 | 7 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-6 shrink synchronization and graph-capture overhead. |
@@ -192,34 +198,32 @@ Last retained verifier profile triage before the cap65536 acceptance-density row
 
 ### Acceptance-Density Endgame
 
-This is the place to bank policy ideas while keeping the current implementation
-push focused on wall-clock reductions. At the current B=3 density, wall cuts
-alone need about `19.6 ms/cycle` (`2.175` visible tokens/cycle at the current
-AR denominator); if the next reduced-DAG/proposer units leave the row near
-`20 ms/cycle`, acceptance density remains the co-equal lever. Policy changes
-come after the wall-cut list, but the diagnostic counters should be designed now
-so B sweeps, vocab-cap tests, fallback, and tree/sibling retests all use the
-same evidence.
+This is now the margin lane after fixed B=1 crossed break-even. B=1 wins the
+current suite because its verifier cycle is cheap, not because it has the best
+draft density. B=3 still wins high-density prompts, B=2 wins a couple of medium
+prompts, and B=1 wins the low-density tail. Policy changes must use only online
+signals such as prior accepted lengths or zero-accept streaks; prompt-name
+oracles are diagnostic bounds only.
 
 | Rank | Diagnostic / policy | Why it matters | First gate |
 | --- | --- | --- | --- |
 | A0 | Acceptance-density instrumentation pass | Do this before changing policy so B sweeps, vocab-cap tests, adaptive fallback, and tree/sibling retests all use the same evidence. | Add per-depth accept histograms, rejection reason counters, target top-1 ids for rejected rows, cap-representability flags, per-prompt zero-accept streak counters, and the first-rejected-depth reason to the exact 9-prompt D32 output. Keep any extra D2H/logging behind a diagnostics flag. This is diagnostics only: no policy change, no speed row, and no promotion until a later same-suite A/B improves `actual_ratio`. |
-| A1 | B=5/adaptive higher-budget economics with per-position acceptance histograms | At the cap65536 row, the current `2.175` visible tokens/cycle still needs about `2.22` visible tokens/cycle for AR break-even at the current wall. Higher B is still a possible *adaptive* lever if deeper positions accept often enough on some prompts, but a global budget increase has now been checked. | **Global B=5 no-held 2026-06-12:** B=4 is unsupported by the chain compiler, and B=5 exact D32 `9/9` regressed same-session ratio `0.926x -> 0.773x` despite visible `2.012 -> 2.220/cycle`. Revisit only as adaptive/per-prompt policy or after proposer-quality improvements; promote only if exact AR holds and suite `actual_ratio` improves after added verifier-row cost. |
+| A1 | Adaptive B=1/B=2/B=3 policy | Fixed B=1 is now retained at `1.018x`, but the same exact D32 sweep shows an oracle over fixed budgets could reach `1.042x` prompt-mean (`1.027x` total-time): B=3 wins `code_python`/`creative_short`, B=2 wins `code_cpp`/`qa_factual`, and B=1 wins the rest. | Implement one fixed online rule using only past accepted lengths / zero-accept streaks / recent cycle economics. Gate against fixed B=1, not old B=3. Exact D32 must remain `9/9`, and both prompt-mean and total-time ratio should improve before promotion. |
 | A2 | Draft vocab-cap diagnostics | A correct target token outside the draft cap is a guaranteed rejection, but larger caps must pay for the proposer LM-head cost. | **Cap65536 retained and full vocab no-held 2026-06-12:** conservative B=3 first-reject census found `36/119` first rejections outside cap32768; cap65536 improved exact D32 ratio `0.926x -> 0.967x`. Full vocab stayed exact and raised density further (`2.175 -> 2.274` visible/cycle) but regressed ratio `0.967x -> 0.880x` because proposal/update grew `1.440 -> 2.437 ms/cycle`. Keep cap65536; revisit only with a cheaper proposer LM-head/top-k design. |
-| A3 | Adaptive B / AR fallback for zero-accept streaks | Some prompts or phases pay the full verify wall to accept no draft tokens. Dropping to B=1 or AR after repeated zero-accept cycles can raise suite average without changing kernel math. | Exact output must remain identical. Gate on a fixed online policy, 9-prompt D32 suite, and per-prompt reporting; do not use future prompt knowledge or hide prompt-level regressions behind the average. |
+| A3 | AR fallback for zero-accept streaks | Some prompts or phases still lose even at B=1, especially `translation` (`0.799x` fixed B=1, with `1.240` visible/cycle at B=1/B=2/B=3). A short AR fallback window after repeated zero-accept cycles may improve the tail without changing kernel math. | Exact output must remain identical. Gate on a fixed online policy, 9-prompt D32 suite, and per-prompt reporting; do not use future prompt knowledge or hide prompt-level regressions behind the average. |
 | A4 | Tree or rejection-boundary sibling retest | Full B=3 tree is exact but negative on the current stack. Lower wall does not by itself make tree overhead cheaper, so only revisit if histograms show first-rejection cases a sibling can recover. | Revisit only after the reduced-DAG/proposer wall path stabilizes. Prefer a chain-plus-one-sibling-at-first-rejection diagnostic before reopening full tree search; treat the possible `+0.3-0.5` visible tokens/cycle as a hypothesis, not a claim. Compare against chain at the same B and report added rows, acceptance lift, wall, and ratio. |
 | A5 | Relaxed speculative sampling | This is the known theoretical acceptance ceiling, but it changes the exact top-1 accept contract and needs distribution access from both models. | Out of scope for the exact-default sprint. Treat as explicit opt-in quality tier, never as a default speed row; it needs a separate accept/reject kernel and distribution-read cost model. |
 
-For B sweeps, use the ratio gate rather than intuition: the current row is
-`2.175 / 20.021 = 0.1086` visible tokens/ms, while AR is about
-`1 / 9.009 = 0.1110` tokens/ms. A larger B row must either beat the current
-suite ratio immediately or show enough per-depth acceptance to justify the extra
-verify row after the next wall-cut unit lands. As a concrete marginal rule,
-B=5 added `6.26 ms/cycle` and only `0.209` additional visible tokens/cycle,
-far below the roughly `0.69` visible tokens/cycle needed to cover that marginal
-wall at the AR denominator. The stable quicksort trace is a useful wiring smoke
-only, not a policy oracle. The A1 decision must come from D32 suite histograms
-and same-suite wall/ratio, not the quicksort trace.
+For B sweeps, use the ratio gate rather than intuition. The retained fixed B=1
+row is `1.617 / 14.173 = 0.1141` visible tokens/ms, just above AR at about
+`1 / 9.001 = 0.1111` tokens/ms. Fixed B=3 has much higher density
+(`2.175` visible/cycle) but lower throughput (`2.175 / 19.976 = 0.1089`
+visible tokens/ms). B=5 added `6.26 ms/cycle` and only `0.209` additional
+visible tokens/cycle versus the same-day B=3 control, far below the roughly
+`0.69` visible tokens/cycle needed to cover that marginal wall at the AR
+denominator. The stable quicksort trace is a useful wiring smoke only, not a
+policy oracle. The A1 decision must come from D32 suite histograms and
+same-suite wall/ratio.
 
 For vocab-cap work, cap `65536` is now the retained operating point and no-env
 default. Full vocab has been measured against cap65536 and no-held; only reopen
@@ -369,14 +373,13 @@ External review ranking, folded into the live plan:
 | Final RMSNorm+cast fusion | Checked/no-hold 2026-06-12. Exact `9/9` with identical acceptance and one fewer profile launch, but same-suite wall/verify regressed (`20.087 -> 20.119 ms/cycle`, verify `16.298 -> 16.329 ms/cycle`); experiment code removed. |
 | C-dispatch keyed cooperative MoE router | Checked/no-hold 2026-06-12. Exact quicksort smoke and unit comparison held, but the single-kernel keyed topology removed 40 launches/pass while regressing router kernel time (`0.502 -> 0.877 ms/pass`), total verifier kernel (`12.714 -> 13.080 ms/pass`), and host window (`16.482 -> 16.717 ms/pass`); experiment code removed. |
 
-Break-even accounting: the retained stack has already moved the exact 9-prompt
-D32 row from the locked sprint baseline `27.8 ms/cycle` to the current
-`20.021 ms/cycle`, crossing the original `<21.5 ms` wall milestone. The row is
-now `0.967x` AR with visible-token density about `2.175/cycle`. At the current
-AR denominator (`9.009 ms/token`), true break-even at unchanged acceptance would
-require about `19.6 ms/cycle`; at the current wall, it needs at least `2.22`
-visible tokens/cycle. The next push must keep every retained wall and
-acceptance-density win while continuing reduced-DAG/proposer work. The D32
+Break-even accounting: the retained stack has moved the exact 9-prompt D32 row
+from the locked sprint baseline `27.8 ms/cycle` to fixed B=1 at
+`14.173 ms/cycle`, crossing both the original `<21.5 ms` wall milestone and the
+true `>1.0x` target. The row is now `1.018x` AR with visible-token density about
+`1.617/cycle`; fixed B=3 remains the higher-density but below-break-even row.
+The next push must keep every retained wall and acceptance-density win while
+building margin with online budget policy and reduced-DAG/proposer work. The D32
 9-prompt off/on A/B confirms the stacked P1
 gates are exact and worth keeping by default,
 and the first P2
@@ -578,9 +581,9 @@ After the fused proposer router, route-batched proposer expert loop, linear
 shared SiLU+down-rotate fusion, linear A/B dual-separate dense projection, and
 linear/full parallel shared-down+combine epilogues land on top, the direct-gate
 cap32768 row reached `0.927x` at `19.334 ms/cycle`. The later cap65536
-acceptance-density row is now the retained current best at `0.967x` and
-`20.021 ms/cycle`; the original `<21.5 ms` wall milestone is crossed, but the
-true `>1.0x` target still needs a small wall cut, a small density lift, or both.
+acceptance-density row became the best fixed B=3 row at `0.967x` and
+`20.021 ms/cycle`; the newer B=1 budget sweep supersedes it as the current best
+at `1.018x` and `14.173 ms/cycle`.
 
 ### M16.4 Split-Output Follow-Up (2026-06-11)
 
@@ -2551,7 +2554,7 @@ value”. M7.C extends the same logic to the FP16 path for small batches.
 | M7.C.1| **Identify culprit** — LANDED. Six dispatch sites listed above use prefill kernels for `tokens > 1`. The 11 ms “memset” was a `_family` classifier substring match against “fill” in “prefill”. | 0 (diagnostic) | ✅ **Landed** | 0 | this section + corrected M7.0 artifact |
 | M7.C.2| Add a `_small_batch_decode_threshold` constant + env override; change the six dispatch sites from `if tokens == 1` to `if tokens <= _small_batch_decode_threshold()`. | ~6–8 | ⚠️ **Partial / reverted** | 0 (kept helper only) | Investigation report: see below + commit log |
 | M7.C.3| Cross-check: prefill batches (16+ tokens) still take the prefill kernel; verify with a `--rocprof-warmup-cycles 0 --prefill-only` smoke run | 0 | **Superseded** | n/a | Historical prefill guard. Not part of the current B=3 verifier hot path; rerun only if prefill dispatch changes. |
-| M7.C.4| Correctness: full B=3 chain still exact-AR-match on the quicksort fixture; KL/top-1 unchanged | 0 | **Closed** | n/a | Covered by later exact quicksort and 9-prompt D32 rows for M7.C.6, M12.6 `single_linear_out`/`single_full_v`, M16.4, and current best `0.967x` stack. |
+| M7.C.4| Correctness: full B=3 chain still exact-AR-match on the quicksort fixture; KL/top-1 unchanged | 0 | **Closed** | n/a | Covered by later exact quicksort and 9-prompt D32 rows for M7.C.6, M12.6 `single_linear_out`/`single_full_v`, M16.4, and the current best `1.018x` stack. |
 | M7.C.5| Re-run M7.0 rocprof; new per-pass kernel ms drops by ~7–8 ms (the prefill kernels fall out, replaced by ~85 μs / 4 μs/row GEMVs at < 3 ms total). | 0 | **Superseded** | n/a | The current profile is the authority: `842 calls/pass`, `12.636 ms` kernel/pass, `16.220 ms` host/pass, and no `w4_single_prefill_smallbatch` bucket. |
 | M7.C.6| **Split dual GEMV into two single GEMVs at `tokens > 1`** for `project_full_attention_qkv_fp16` (site #1) and `project_linear_attention_qkv_z_fp16` (site #2), mirroring the bf16 sibling pattern at `project_linear_attention_qkv_z_bf16` line ~1075. Adds an `elif tokens <= _small_batch_decode_threshold():` branch that issues two `gemv_awq_pack8_transposed_fp16` calls writing each view's backing pointer directly. | ~6–8 (revised: **~1 ms kernel + ~4 ms wall**) | ✅ **Landed** | **+15.8%** MTP tok/s (23.96 → 27.74) | benchmarks/results/2026-05-21-hipengine-mtp-m7c6-small-batch-dispatch-split.json |
 | **M7.C total** |                                                                               |              **~6–8** | **Closed** |  **+15.8% MTP tok/s** from M7.C.6; later paths supersede the old tracker | Use the live reduced-DAG profile for further work. |

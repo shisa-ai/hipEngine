@@ -83564,3 +83564,81 @@ Added artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-full-vocab-nohold.json` and updated
 `docs/MTP.md`, `README.md`, `benchmarks/README.md`, and
 `benchmarks/CHANGELOG.md`.
+
+## 2026-06-12 - MTP fixed B=1 budget crosses break-even
+
+After the cap65536 default landed, ran a same-session fixed-budget sweep over
+B=1/B=2/B=3 on the current retained stack (`decode_batched`, graph off,
+canonicalize skip, fused proposer/router/reduced-DAG stack, no-env draft vocab
+cap `65536`) to check whether a lower verifier budget is better than the
+higher-density B=3 row.
+
+Exact 9-prompt D32 suite:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1,2,3 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-b123-cap65536-current-9prompt-d32 \
+  --out /tmp/hipengine-mtp-b123-cap65536-current-9prompt-d32.json
+```
+
+Aggregate:
+
+- Exactness: B=1 `9/9`, B=2 `9/9`, B=3 `9/9`.
+- Actual speedup vs AR, prompt mean: B=1 `1.0183575942`, B=2
+  `0.9630998279`, B=3 `0.9675140060`.
+- Actual speedup vs AR, total-time cross-check: B=1 `1.009088`, B=2
+  `0.937015`, B=3 `0.926256`.
+- Wall: B=1 `14.172528 ms/cycle`, B=2 `18.059969 ms/cycle`, B=3
+  `19.976340 ms/cycle`.
+- Verify: B=1 `12.426224 ms/cycle`, B=2 `15.309062 ms/cycle`, B=3
+  `16.168307 ms/cycle`.
+- Proposal/update: B=1 `1.732816 ms/cycle`, B=2 `1.543078 ms/cycle`, B=3
+  `1.439735 ms/cycle`.
+- Cycle cost: B=1 `1.573859` AR tokens, B=2 `2.000969`, B=3 `2.217353`.
+- Visible tokens/cycle: B=1 `1.616708`, B=2 `1.942297`, B=3 `2.174774`.
+
+Quicksort B=1 wiring smoke:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-b1-cap65536-current-quicksort-smoke-20260612.json
+```
+
+Result: exact AR match, accepted lengths
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.
+
+Decision: retain fixed B=1 as the current best and first exact MTP break-even
+row. Same-session B=1 vs B=3 trades lower density (`1.617` vs `2.175`
+visible/cycle) for a much cheaper cycle (`14.173` vs `19.976 ms`) and lower
+cycle cost (`1.574` vs `2.217` AR tokens), moving prompt-mean ratio
+`0.968x -> 1.018x`. B=2 is exact but no-held as a fixed operating point.
+
+Per-prompt budget oracle over B=1/B=2/B=3 is still higher than fixed B=1:
+`1.0416x` prompt-mean and `1.0266x` total-time. The oracle choices are B=3 for
+`code_python` and `creative_short`, B=2 for `code_cpp` and `qa_factual`, and
+B=1 for the remaining prompts. This is not a retained policy because it uses
+prompt identity, but it makes the next margin target clear: implement a fixed
+online budget policy using prior accepted lengths / zero-accept streaks and gate
+it against fixed B=1.
+
+Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json` and
+updated `docs/MTP.md`, `README.md`, `benchmarks/README.md`, and
+`benchmarks/CHANGELOG.md`.

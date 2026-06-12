@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "accepted_positive",
+  "performance_claim": true,
+  "candidate": "35B-A3B MTP fixed B=1 on current cap65536 stack",
+  "decision": "retain_as_current_best",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 32,
+    "candidate_budgets": [1, 2, 3],
+    "runs": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "draft_vocab_cap_source": "no-env default"
+  },
+  "correctness": {
+    "suite_exact_ar_match": {
+      "B1": "9/9",
+      "B2": "9/9",
+      "B3": "9/9"
+    },
+    "quicksort_b1_exact_ar_match": true,
+    "quicksort_b1_accepted_lengths": [1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0]
+  },
+  "commands": {
+    "suite_b123": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 32 --candidate-budgets 1,2,3 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --raw-root /tmp/hipengine-mtp-b123-cap65536-current-9prompt-d32 --out /tmp/hipengine-mtp-b123-cap65536-current-9prompt-d32.json",
+    "quicksort_b1_smoke": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 1 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-b1-cap65536-current-quicksort-smoke-20260612.json"
+  },
+  "suite_aggregate_by_budget": {
+    "B1": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 1.0183575942141887,
+      "actual_decode_speedup_vs_ar_total_time": 1.009088,
+      "ar_decode_tok_s_prompt_mean_approx": 111.10051385858226,
+      "mtp_decode_tok_s_prompt_mean_approx": 113.14005200898596,
+      "cycle_wall_ms_per_cycle": 14.17252825863089,
+      "verify_ms_per_cycle": 12.426223521388197,
+      "proposal_update_ms_per_cycle": 1.7328161988721338,
+      "cycle_cost_ar_tokens": 1.5738586101080283,
+      "visible_tokens_per_cycle": 1.6167079463364293,
+      "accepted_tokens_per_cycle": 0.6167079463364293,
+      "acceptance_rate": 0.6167079463364293
+    },
+    "B2": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 0.9630998279436908,
+      "actual_decode_speedup_vs_ar_total_time": 0.937015,
+      "cycle_wall_ms_per_cycle": 18.05996883686508,
+      "verify_ms_per_cycle": 15.309062288641663,
+      "proposal_update_ms_per_cycle": 1.5430775776411434,
+      "cycle_cost_ar_tokens": 2.0009694910701223,
+      "visible_tokens_per_cycle": 1.9422971781305114,
+      "accepted_tokens_per_cycle": 0.9422971781305114,
+      "acceptance_rate": 0.4804032436729481
+    },
+    "B3": {
+      "actual_decode_speedup_vs_ar_prompt_mean": 0.9675140060103394,
+      "actual_decode_speedup_vs_ar_total_time": 0.926256,
+      "cycle_wall_ms_per_cycle": 19.976339901951565,
+      "verify_ms_per_cycle": 16.168307227094253,
+      "proposal_update_ms_per_cycle": 1.439735391741309,
+      "cycle_cost_ar_tokens": 2.2173531047441943,
+      "visible_tokens_per_cycle": 2.174774114774115,
+      "accepted_tokens_per_cycle": 1.1747741147741149,
+      "acceptance_rate": 0.4068413011476364
+    }
+  },
+  "delta_b1_minus_b3_same_session": {
+    "actual_decode_speedup_vs_ar_prompt_mean": 0.05084358820384935,
+    "cycle_wall_ms_per_cycle": -5.8038116433206745,
+    "verify_ms_per_cycle": -3.742083705706056,
+    "proposal_update_ms_per_cycle": 0.2930808071308248,
+    "cycle_cost_ar_tokens": -0.643494494636166,
+    "visible_tokens_per_cycle": -0.5580661684376857,
+    "accepted_tokens_per_cycle": -0.5580661684376856,
+    "acceptance_rate": 0.2098666451887929
+  },
+  "per_prompt": [
+    {"prompt": "code_python", "best_budget": 3, "b1_ratio": 1.102109, "b2_ratio": 1.058293, "b3_ratio": 1.274422, "b1_visible": 1.823529, "b2_visible": 2.214286, "b3_visible": 3.1, "b1_cycle_cost": 1.600053, "b2_cycle_cost": 2.03052, "b3_cycle_cost": 2.297811},
+    {"prompt": "code_cpp", "best_budget": 2, "b1_ratio": 1.068093, "b2_ratio": 1.068689, "b3_ratio": 1.043587, "b1_visible": 1.684211, "b2_visible": 2.133333, "b3_visible": 2.285714, "b1_cycle_cost": 1.576525, "b2_cycle_cost": 1.995842, "b3_cycle_cost": 2.189922},
+    {"prompt": "explain_concept", "best_budget": 1, "b1_ratio": 0.972626, "b2_ratio": 0.963644, "b3_ratio": 0.915444, "b1_visible": 1.55, "b2_visible": 1.9375, "b3_visible": 2.066667, "b1_cycle_cost": 1.555002, "b2_cycle_cost": 1.962086, "b3_cycle_cost": 2.2044},
+    {"prompt": "summarize", "best_budget": 1, "b1_ratio": 1.019425, "b2_ratio": 0.908341, "b3_ratio": 0.916077, "b1_visible": 1.6, "b2_visible": 1.777778, "b3_visible": 2.0, "b1_cycle_cost": 1.569186, "b2_cycle_cost": 1.956842, "b3_cycle_cost": 2.182869},
+    {"prompt": "qa_factual", "best_budget": 2, "b1_ratio": 1.082111, "b2_ratio": 1.089584, "b3_ratio": 1.052509, "b1_visible": 1.684211, "b2_visible": 2.133333, "b3_visible": 2.285714, "b1_cycle_cost": 1.556099, "b2_cycle_cost": 1.957619, "b3_cycle_cost": 2.171357},
+    {"prompt": "translation", "best_budget": 1, "b1_ratio": 0.799035, "b2_ratio": 0.650322, "b3_ratio": 0.584839, "b1_visible": 1.24, "b2_visible": 1.24, "b3_visible": 1.24, "b1_cycle_cost": 1.529922, "b2_cycle_cost": 1.889124, "b3_cycle_cost": 2.116618},
+    {"prompt": "creative_short", "best_budget": 3, "b1_ratio": 1.078883, "b2_ratio": 1.080849, "b3_ratio": 1.107777, "b1_visible": 1.684211, "b2_visible": 2.133333, "b3_visible": 2.461538, "b1_cycle_cost": 1.560723, "b2_cycle_cost": 1.973438, "b3_cycle_cost": 2.221696},
+    {"prompt": "stepwise_math", "best_budget": 1, "b1_ratio": 1.066559, "b2_ratio": 1.029819, "b3_ratio": 0.970548, "b1_visible": 1.684211, "b2_visible": 2.133333, "b3_visible": 2.133333, "b1_cycle_cost": 1.578797, "b2_cycle_cost": 2.071193, "b3_cycle_cost": 2.197738},
+    {"prompt": "long_code_review", "best_budget": 1, "b1_ratio": 0.976378, "b2_ratio": 0.818358, "b3_ratio": 0.842423, "b1_visible": 1.6, "b2_visible": 1.777778, "b3_visible": 2.0, "b1_cycle_cost": 1.63842, "b2_cycle_cost": 2.172061, "b3_cycle_cost": 2.373767}
+  ],
+  "oracle_bound": {
+    "description": "Per-prompt oracle over fixed B=1/B=2/B=3, not a retained policy.",
+    "actual_decode_speedup_vs_ar_prompt_mean": 1.0416105843326262,
+    "actual_decode_speedup_vs_ar_total_time": 1.0265931045431633,
+    "choices": {
+      "code_python": 3,
+      "code_cpp": 2,
+      "explain_concept": 1,
+      "summarize": 1,
+      "qa_factual": 2,
+      "translation": 1,
+      "creative_short": 3,
+      "stepwise_math": 1,
+      "long_code_review": 1
+    }
+  },
+  "decision_reason": "Fixed B=1 is the first retained 35B-A3B MTP row above AR on the exact 9-prompt D32 suite. It trades away B=3's higher visible density for a much cheaper verifier cycle: same-session B=1 vs B=3 moves wall 19.976 -> 14.173 ms/cycle and cycle cost 2.217 -> 1.574 AR tokens, enough to improve prompt-mean ratio 0.968x -> 1.018x. B=2 is exact but no-held as a fixed operating point. B=3 remains useful for high-density prompts and should be revisited through an online adaptive budget policy, not as the global default."
+}
