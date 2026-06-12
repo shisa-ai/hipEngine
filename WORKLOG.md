@@ -82881,3 +82881,51 @@ Decision: retained default-on with opt-out
 `HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE=0`. Updated `docs/MTP.md`,
 `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and artifact
 `benchmarks/results/2026-06-12-hipengine-mtp-direct-gate-retained.json`.
+
+## 2026-06-12 - MTP linear out rotate+GEMV staged no-held
+
+Tested a narrower reduced-DAG retry for the linear-attention `out_proj` path:
+combine `paro_rotate1_f32_to_fp16` staging with the following transposed pack8
+W4 GEMV in one keyed-barrier kernel while preserving the FP16 rotated staging
+point. This was only opt-in under `HIPENGINE_LINEAR_OUT_ROTATE_GEMV_STAGED=1`.
+
+Focused correctness passed:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. pytest -q tests/test_paro_awq_f32_rotate_staged_gemv.py -vv
+```
+
+The synthetic GPU test matched both the rotated FP16 buffer and output FP16
+bitwise against `paro_rotate1_f32_to_fp16 +
+gemv_awq_pack8_multi_row_transposed_fp16` at rows=4.
+
+Real B=3 quicksort MTP smoke hung before producing JSON:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 \
+  HIPENGINE_LINEAR_OUT_ROTATE_GEMV_STAGED=1 PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-linear-out-rotate-gemv-staged-smoke-20260612.json
+```
+
+After about two minutes the process was still running (`R<l`), `rocm-smi`
+showed GPU0 at 100% busy, 48% VRAM, and 0% memory activity, and no JSON file
+existed. Killed the process and GPU state returned to idle.
+
+Decision: no-hold, prototype code removed. This has the same scheduling hazard
+as the earlier QKV/Z staged split: a same-kernel producer/consumer spin barrier
+can deadlock when consumer GEMV blocks occupy scheduler slots while producer
+rotate blocks still need to run. Do not retry the same topology. Reopen
+linear-out reduced-DAG only with a scheduling-safe multi-kernel/subgraph design
+or a true single kernel with no wait on unscheduled blocks. Added artifact
+`benchmarks/results/2026-06-12-hipengine-mtp-linear-out-rotate-gemv-staged-nohold.json`
+and updated `docs/MTP.md` / `benchmarks/CHANGELOG.md`.

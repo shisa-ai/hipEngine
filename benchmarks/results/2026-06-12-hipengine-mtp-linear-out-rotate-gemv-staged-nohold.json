@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "no-hold",
+  "performance_claim": false,
+  "decision": "Prototype removed. Do not retry the same-kernel producer/consumer spin-barrier topology for linear_attn.out_proj.",
+  "candidate": {
+    "name": "linear_attn.out_proj f32 rotate + transposed W4 GEMV staged keyed",
+    "env_flag": "HIPENGINE_LINEAR_OUT_ROTATE_GEMV_STAGED=1",
+    "description": "Combine paro_rotate1_f32_to_fp16 staging with the following transposed pack8 W4 GEMV while preserving the FP16 rotated staging point."
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-PARO packed MTP-BF16",
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "quant": "w4_paro",
+    "draft_vocab_cap": 32768
+  },
+  "workload": {
+    "suite": "quicksort D32 smoke",
+    "decode_tokens": 32,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off"
+  },
+  "focused_correctness": {
+    "result": "passed",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_f32_rotate_staged_gemv.py -vv",
+    "evidence": "Synthetic GPU comparison matched rotated FP16 staging and output FP16 bitwise against paro_rotate1_f32_to_fp16 + gemv_awq_pack8_multi_row_transposed_fp16 at rows=4."
+  },
+  "real_mtp_smoke": {
+    "result": "hung",
+    "command": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768 HIPENGINE_LINEAR_OUT_ROTATE_GEMV_STAGED=1 PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-linear-out-rotate-gemv-staged-smoke-20260612.json",
+    "elapsed_before_kill_seconds": 118,
+    "output_json": "/tmp/hipengine-mtp-linear-out-rotate-gemv-staged-smoke-20260612.json",
+    "json_written": false,
+    "observations": [
+      "Process remained running in state R<l.",
+      "rocm-smi showed GPU0 at 100% busy, 48% VRAM, and 0% memory activity.",
+      "Killing the process returned GPU busy and VRAM usage to idle."
+    ]
+  },
+  "analysis": "The focused synthetic shape does not cover the real verifier scheduling hazard. At real B=3 out-proj grid size, consumer GEMV blocks can occupy scheduler slots while producer rotate blocks still need to run, so a global in-kernel spin barrier can deadlock.",
+  "next_action": "Keep reduced-DAG work focused on scheduling-safe multi-kernel/subgraph designs or true single-kernel designs that do not wait on unscheduled blocks."
+}
