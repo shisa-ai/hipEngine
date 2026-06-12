@@ -84569,3 +84569,37 @@ future profile shows real path movement. Keep the default safe W4 site mask;
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-w4-all-sites-nohold.json`.
+
+## 2026-06-13 - MTP B=1 small-batch threshold retune no-held
+
+Checked the B=1 rows=2 boundary for `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD`.
+For B=1, any threshold `>=2` takes the retained small-batch path, so the
+meaningful control is threshold `1`.
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 7200 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --small-batch-decode-threshold 1 \
+  --raw-root /tmp/hipengine-mtp-b1-threshold1-retune-d32-20260613 \
+  --out /tmp/hipengine-mtp-b1-threshold1-retune-d32-20260613.json
+```
+
+Result: no-hold, non-exact. Threshold `1` passed the first five prompts, then
+failed on `translation` during the child smoke. The generated sequence forks at
+token index `6`: AR token `5494`, MTP token `72931`. The accepted-length prefix
+was `[0,1,1,0,0,1,0,1,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0]`.
+
+Decision: keep default threshold `7`. For the current B=1 rows=2 operating
+point, thresholds `>=2` are equivalent for the relevant small-batch branch and
+do not need separate retunes. The remaining cheap B=1 retune is LM-head thread
+count.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-threshold1-nohold.json`.
