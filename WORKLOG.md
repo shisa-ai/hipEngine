@@ -85568,3 +85568,67 @@ revert these retained slices for B=1.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-reduceddag-optout-nohold.json`.
+
+## 2026-06-13 - MTP B=1 grouped compact MoE threshold no-hold
+
+Rechecked the earlier grouped compact MoE no-hold at the current retained B=1
+operating point (`rows=2`).  The previous artifact covered B=3 rows=4; since
+the row count moved, this verifies whether
+`HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2` has become useful.
+
+Baseline used the same-tree default B=1 quicksort run from the reduced-DAG
+opt-out check:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613 \
+  --out /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613.json
+```
+
+Grouped compact command:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2 timeout 1800 \
+  python3 scripts/mtp_verifier_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-grouped-min2-quicksort-20260613 \
+  --out /tmp/hipengine-mtp-b1-grouped-min2-quicksort-20260613.json
+```
+
+Results:
+
+| Config | Exact | Speedup | Cycle cost | Wall | Verify | Proposal/update | Visible/cycle |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Default selected c1 | yes | `0.954x` | `1.587` | `14.176 ms` | `12.431 ms` | `1.726 ms` | `1.550` |
+| Grouped compact min2 | yes | `0.832x` | `1.837` | `16.390 ms` | `14.645 ms` | `1.725 ms` | `1.550` |
+
+Accepted trace was identical:
+`[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`.
+
+Decision: no-hold.  The B=1 grouped compact path is exact but much slower:
+wall regressed by `+2.214 ms/cycle` and verify by `+2.214 ms/cycle`, with
+proposal/update flat and no acceptance-density change.  Keep selected c1
+C-dispatch for both B=1 and B=3.  Do not retest grouped compact at verifier
+rows <=4 without a new grouping kernel or profile evidence that the
+metadata/combine overhead changed.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-grouped-min2-nohold.json`.

@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "date": "2026-06-13",
+  "status": "diagnostic_no_hold",
+  "performance_claim": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "workload": {
+    "prompt": "quicksort",
+    "decode_tokens": 32,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": "default cap65536 (HIPENGINE_MTP_DRAFT_VOCAB_CAP unset)"
+  },
+  "purpose": "Recheck the grouped compact MoE threshold no-hold at the current B=1 rows=2 operating point.",
+  "commands": {
+    "default": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613 --out /tmp/hipengine-mtp-b1-default-reduceddag-recheck-quicksort-20260613.json",
+    "grouped_min2": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=2 timeout 1800 python3 scripts/mtp_verifier_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt --decode-tokens 32 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-grouped-min2-quicksort-20260613 --out /tmp/hipengine-mtp-b1-grouped-min2-quicksort-20260613.json"
+  },
+  "env": {
+    "HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS": "2"
+  },
+  "results": {
+    "default": {
+      "exact_ar_match": true,
+      "actual_speedup_vs_ar": 0.9544146863714007,
+      "cycle_cost_ar_tokens": 1.5872946274688262,
+      "visible_tokens_per_cycle": 1.55,
+      "cycle_wall_ms_per_cycle": 14.1764866,
+      "verify_ms_per_cycle": 12.431005388498306,
+      "proposal_update_ms_per_cycle": 1.7255410784855485,
+      "ar_decode_tok_s": 111.96671447979404,
+      "mtp_decode_tok_s": 106.86267668426879,
+      "accepted_lengths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    "grouped_min2": {
+      "exact_ar_match": true,
+      "actual_speedup_vs_ar": 0.8322771929762157,
+      "cycle_cost_ar_tokens": 1.8373054571110459,
+      "visible_tokens_per_cycle": 1.55,
+      "cycle_wall_ms_per_cycle": 16.39004385,
+      "verify_ms_per_cycle": 14.645351655781269,
+      "proposal_update_ms_per_cycle": 1.7245575436390936,
+      "ar_decode_tok_s": 112.09887379959913,
+      "mtp_decode_tok_s": 93.29733602172541,
+      "accepted_lengths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    "delta_grouped_minus_default": {
+      "actual_speedup_vs_ar": -0.122137493395185,
+      "cycle_cost_ar_tokens": 0.2500108296422197,
+      "visible_tokens_per_cycle": 0.0,
+      "cycle_wall_ms_per_cycle": 2.213557249999999,
+      "verify_ms_per_cycle": 2.214346267282963,
+      "proposal_update_ms_per_cycle": -0.0009835348464548557,
+      "mtp_decode_tok_s": -13.56534066254338
+    }
+  },
+  "decision": "No-hold. Forcing grouped compact MoE at B=1 rows=2 is exact but much slower than the selected c1 C-dispatch path.",
+  "next_action": "Keep selected c1 dispatch for B=1 and B=3. Do not retest grouped compact at verifier rows <=4 without a new grouping kernel or profile evidence that its metadata/combine overhead has changed."
+}
