@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-13",
+  "status": "rejected_no_hold",
+  "performance_claim": false,
+  "candidate": "35B-A3B MTP B=1 LM-head thread-count retune",
+  "decision": "keep HIPENGINE_QWEN35_LM_HEAD_THREADS=128",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "prompt": "quicksort",
+    "decode_tokens": 32,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "region": "verify_pass"
+  },
+  "correctness": {
+    "threads_256_exact_ar_match": true,
+    "threads_512_exact_ar_match": true,
+    "threads_64": "invalid: runtime requires one of 128, 256, 512"
+  },
+  "commands": {
+    "profile_256_512": "PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt); for THREADS in 64 256 512; do RAW_ROOT=\"/tmp/hipengine-mtp-b1-lmhead-threads${THREADS}-rocprof-20260613\"; rm -rf \"$RAW_ROOT\"; env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_QWEN35_LM_HEAD_THREADS=\"$THREADS\" HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --prompt-tokens \"$PROMPT_TOKENS\" --decode-tokens 32 --candidate-budget 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --region verify_pass --raw-root \"$RAW_ROOT\" --out \"/tmp/hipengine-mtp-b1-lmhead-threads${THREADS}-rocprof-20260613.json\" --top 80; done"
+  },
+  "raw_artifacts": {
+    "threads_256": "/tmp/hipengine-mtp-b1-lmhead-threads256-rocprof-20260613.json",
+    "threads_512": "/tmp/hipengine-mtp-b1-lmhead-threads512-rocprof-20260613.json",
+    "retained_128_baseline": "benchmarks/results/2026-06-12-hipengine-mtp-b1-current-verify-rocprof.json",
+    "threads_64_raw_root": "/tmp/hipengine-mtp-b1-lmhead-threads64-rocprof-20260613"
+  },
+  "profile_metrics": {
+    "retained_128": {
+      "exact_ar_match": true,
+      "kernel_calls_per_pass": 833.0,
+      "kernel_time_ms_per_pass": 9.406980833333334,
+      "host_marker_ms_per_pass": 12.877328222222221,
+      "w8a16_linear_ms_per_pass": 0.8077322777777778,
+      "w8a16_linear_avg_us": 807.7322777777778
+    },
+    "candidates": {
+      "256": {
+        "exact_ar_match": true,
+        "kernel_calls_per_pass": 833.0,
+        "kernel_time_ms_per_pass": 9.813403055555556,
+        "host_marker_ms_per_pass": 13.331775833333333,
+        "w8a16_linear_ms_per_pass": 1.2084955,
+        "w8a16_linear_avg_us": 1208.4955
+      },
+      "512": {
+        "exact_ar_match": true,
+        "kernel_calls_per_pass": 833.0,
+        "kernel_time_ms_per_pass": 11.153310166666666,
+        "host_marker_ms_per_pass": 14.637924944444446,
+        "w8a16_linear_ms_per_pass": 2.538968777777778,
+        "w8a16_linear_avg_us": 2538.968777777778
+      }
+    },
+    "delta_vs_128": {
+      "256": {
+        "kernel_calls_per_pass": 0.0,
+        "kernel_time_ms_per_pass": 0.406422222222222,
+        "host_marker_ms_per_pass": 0.454447611111112,
+        "w8a16_linear_ms_per_pass": 0.40076322222222216,
+        "w8a16_linear_avg_us": 400.7632222222222
+      },
+      "512": {
+        "kernel_calls_per_pass": 0.0,
+        "kernel_time_ms_per_pass": 1.7463293333333318,
+        "host_marker_ms_per_pass": 1.7605967222222247,
+        "w8a16_linear_ms_per_pass": 1.7312365,
+        "w8a16_linear_avg_us": 1731.2365000000004
+      }
+    }
+  },
+  "decision_reason": "At B=1 rows=2, larger LM-head thread counts are exact but make the one-launch W8A16 LM-head body and total verifier profile substantially slower. 64 threads is not a legal runtime value. Keep 128 threads."
+}

@@ -84603,3 +84603,47 @@ count.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-threshold1-nohold.json`.
+
+## 2026-06-13 - MTP B=1 LM-head thread retune no-held
+
+Closed the last cheap B=1 operating-point retune: verifier LM-head thread
+count. The runtime only allows `128`, `256`, and `512`; `64` is rejected during
+resident session build.
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+for THREADS in 64 256 512; do
+  RAW_ROOT="/tmp/hipengine-mtp-b1-lmhead-threads${THREADS}-rocprof-20260613"
+  rm -rf "$RAW_ROOT"
+  env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+    HIPENGINE_QWEN35_LM_HEAD_THREADS="$THREADS" \
+    HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+    PYTHONPATH=. timeout 2400 \
+    python3 scripts/mtp_verifier_rocprof.py \
+    --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+    --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --region verify_pass \
+    --raw-root "$RAW_ROOT" \
+    --out "/tmp/hipengine-mtp-b1-lmhead-threads${THREADS}-rocprof-20260613.json" \
+    --top 80
+done
+```
+
+Results versus retained B=1/default `128` profile
+(`benchmarks/results/2026-06-12-hipengine-mtp-b1-current-verify-rocprof.json`):
+
+| threads | exact | calls/pass | kernel ms/pass | host ms/pass | W8A16 ms/pass |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 128 | true | 833.0 | 9.407 | 12.877 | 0.808 |
+| 256 | true | 833.0 | 9.813 | 13.332 | 1.208 |
+| 512 | true | 833.0 | 11.153 | 14.638 | 2.539 |
+
+Decision: no-hold. Keep `HIPENGINE_QWEN35_LM_HEAD_THREADS=128`; larger thread
+counts make the one-launch W8A16 LM-head body slower at B=1 rows=2, and 64 is
+not a legal runtime value. This closes the cheap B=1 config retune pass:
+`c1_loop`, W4 all-sites, threshold=1, and LM-head threads all no-hold.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-lmhead-threads-nohold.json`.
