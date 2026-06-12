@@ -84131,3 +84131,81 @@ kept, but it is not yet a promoted current-best row. Require repeat or longer
 decode evidence before considering `--ar-fallback-until-end` as a default.
 Artifact:
 `benchmarks/results/2026-06-12-hipengine-mtp-ar-fallback-policy-diagnostic.json`.
+
+## 2026-06-12 - MTP D64 AR fallback repeat no-hold
+
+Ran the longer-horizon A3 check suggested after the D32 fallback diagnostic:
+same current stack, B=1, D64, 9-prompt suite, W7900/gfx1100,
+`decode_batched`, graph off, no draft-vocab env override (cap65536 default).
+This is a diagnostic/no-hold attempt, not a speed row.
+
+Fixed B=1 D64 control:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 64 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-control-samesession-9prompt-d64-20260612 \
+  --out /tmp/hipengine-mtp-b1-control-samesession-9prompt-d64-20260612.json
+```
+
+Result: exact through the first five prompts (`code_python`, `code_cpp`,
+`explain_concept`, `summarize`, `qa_factual`) but failed on `translation`.
+First mismatch is generated token index `34`: AR token `220`, MTP token `51`.
+The failing translation accepted trace starts
+`[0,1,1,0,0,0,0,0,0,0,0,1,...]`; the longest zero-accept streak is `8`.
+
+D64 fallback-until-end policy:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 64 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics --ar-fallback-zero-streak 4 --ar-fallback-tokens 1 --ar-fallback-until-end \
+  --raw-root /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d64-20260612 \
+  --out /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d64-20260612.json
+```
+
+Result: also exact through the first five prompts and also failed on
+`translation` at the same generated token index `34` (`AR=220`, `MTP=51`).
+The policy did trigger: `translation` ran `7` MTP verify cycles and then `55`
+`ar_fallback` cycles (`active_budgets` becomes `0` after the handoff), so this
+is not a threshold miss.
+
+I tested a transient local patch that canonicalized decode scratch immediately
+before fallback AR handoff:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-names translation --decode-tokens 64 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --acceptance-diagnostics --ar-fallback-zero-streak 4 --ar-fallback-tokens 1 --ar-fallback-until-end \
+  --raw-root /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-translation-d64-fix-20260612 \
+  --out /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-translation-d64-fix-20260612.json
+```
+
+Result: no change; it still failed at index `34` with `AR=220`, `MTP=51`
+after `55` fallback cycles. The patch was removed.
+
+Decision: no-hold for D64 AR fallback promotion. The D32 opt-in fallback
+diagnostic remains retained, but longer-horizon promotion is blocked on auditing
+the target state after repeated zero-accept B=1 verify commits on this
+translation trace. Next A3 work should compare target hidden/logits or committed
+linear/full-attention state around the D64 token-34 fork before another policy
+threshold sweep.
+
+Artifact:
+`benchmarks/results/2026-06-12-hipengine-mtp-b1-d64-ar-fallback-nohold.json`.

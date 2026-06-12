@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-12",
+  "status": "diagnostic_no_hold",
+  "performance_claim": false,
+  "candidate": "D64 exactness repeat for B=1 AR fallback-until-end after 4 consecutive zero-accept cycles",
+  "decision": "do not promote AR fallback beyond opt-in D32 diagnostics",
+  "decision_reason": "The D64 gate is not exact: fixed B=1 and fallback-until-end both fail on the translation prompt at generated token index 34 (AR token 220, MTP token 51). The fallback policy did trigger and emitted 55 fallback cycles, so this is not a simple threshold miss.",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "hip_arch": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "workload": {
+    "suite": "llama.cpp MTP 9-prompt suite",
+    "decode_tokens": 64,
+    "candidate_budgets": [
+      1
+    ],
+    "runs_per_prompt": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "draft_vocab_cap": 65536,
+    "policy": {
+      "ar_fallback_zero_streak": 4,
+      "ar_fallback_tokens": 1,
+      "ar_fallback_until_end": true
+    }
+  },
+  "commands": {
+    "control": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 64 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-control-samesession-9prompt-d64-20260612 --out /tmp/hipengine-mtp-b1-control-samesession-9prompt-d64-20260612.json",
+    "policy": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 64 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --ar-fallback-zero-streak 4 --ar-fallback-tokens 1 --ar-fallback-until-end --raw-root /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d64-20260612 --out /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d64-20260612.json",
+    "canonicalization_probe": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-names translation --decode-tokens 64 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --ar-fallback-zero-streak 4 --ar-fallback-tokens 1 --ar-fallback-until-end --raw-root /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-translation-d64-fix-20260612 --out /tmp/hipengine-mtp-b1-ar-fallback-z4untilend-translation-d64-fix-20260612.json"
+  },
+  "source_artifacts": {
+    "control_raw_root": "/tmp/hipengine-mtp-b1-control-samesession-9prompt-d64-20260612",
+    "policy_raw_root": "/tmp/hipengine-mtp-b1-ar-fallback-z4untilend-9prompt-d64-20260612",
+    "canonicalization_probe_raw_root": "/tmp/hipengine-mtp-b1-ar-fallback-z4untilend-translation-d64-fix-20260612"
+  },
+  "partial_completed_prompts": {
+    "control_exact_before_translation": [
+      "code_python",
+      "code_cpp",
+      "explain_concept",
+      "summarize",
+      "qa_factual"
+    ],
+    "policy_exact_before_translation": [
+      "code_python",
+      "code_cpp",
+      "explain_concept",
+      "summarize",
+      "qa_factual"
+    ],
+    "control_observed_speedup_mean_completed": 1.013346690266,
+    "policy_observed_speedup_mean_completed": 1.048245738038,
+    "notes": "The suite aborted on translation for both rows, so completed-prompt means are diagnostic only and not a speed claim."
+  },
+  "translation_failure": {
+    "control": {
+      "exact_ar_match": false,
+      "mismatch_index": 34,
+      "ar_token": 220,
+      "mtp_token": 51,
+      "accepted_lengths_prefix": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "policy_counts": {
+        "mtp_verify": 51
+      }
+    },
+    "policy": {
+      "exact_ar_match": false,
+      "mismatch_index": 34,
+      "ar_token": 220,
+      "mtp_token": 51,
+      "ar_fallback_cycles": 55,
+      "ar_fallback_tokens": 55,
+      "accepted_lengths_prefix": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "active_budgets_prefix": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "policy_counts": {
+        "mtp_verify": 7,
+        "ar_fallback": 55
+      }
+    },
+    "canonicalization_probe": {
+      "exact_ar_match": false,
+      "mismatch_index": 34,
+      "ar_token": 220,
+      "mtp_token": 51,
+      "ar_fallback_cycles": 55,
+      "ar_fallback_tokens": 55,
+      "canonicalize_before_fallback_tested": true,
+      "result": "No change; transient patch removed."
+    }
+  },
+  "follow_up": "Audit target session state after B=1 zero-accept verify commits on the translation D64 trace before using AR fallback as a longer-horizon default."
+}
