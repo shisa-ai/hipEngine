@@ -32,12 +32,15 @@ from hipengine.speculative import MTP_CHAIN_CANDIDATE_BUDGETS
 from hipengine.speculative.mtp_native import NativeMtpChainProposer
 from scripts.mtp_prompt_suite_economics import DEFAULT_MODEL, DEFAULT_PROMPTS, PROMPT_RENDER_MODES
 from scripts.mtp_state_drift_audit import (
+    _compare_arrays,
     _compare_resident_state,
+    _copy_kv_cell,
     _copy_tensor_slice_host,
     _env_truthy,
     _parse_csv_ints,
     _prefill_serial,
     _resolve_prompt_tokens,
+    _state_compare_summary,
     _target_batch,
 )
 
@@ -154,6 +157,142 @@ def _compare_hidden_captures(
         "first_bit_mismatch": first_bit_mismatch,
         "top_max_abs": top_max_abs,
         "records": records,
+    }
+
+
+def _copy_scratch_row(
+    session: Qwen35ParoResidentSession,
+    tensor: Tensor,
+    *,
+    row: int,
+) -> np.ndarray:
+    if int(tensor.shape[0]) <= int(row):
+        raise ValueError(f"scratch row {row} outside tensor shape {tensor.shape}")
+    row_shape = tuple(int(dim) for dim in tensor.shape[1:])
+    row_nbytes = int(np.prod(row_shape)) * tensor.dtype.itemsize
+    return _copy_tensor_slice_host(
+        session,
+        ptr=int(tensor.ptr) + int(row) * row_nbytes,
+        dtype=tensor.dtype,
+        shape=row_shape,
+    )
+
+
+def _compare_selected_linear_scratch(
+    left: Qwen35ParoResidentSession,
+    right: Qwen35ParoResidentSession,
+    *,
+    left_row: int,
+    right_row: int,
+) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    for layer_id in left.linear_layer_ids:
+        left_scratch = left.linear_scratch.get(int(layer_id))
+        right_scratch = right.linear_scratch.get(int(layer_id))
+        if left_scratch is None or right_scratch is None:
+            records.append(
+                {
+                    "passed": False,
+                    "layer_index": int(layer_id),
+                    "state": "scratch",
+                    "mismatch": {
+                        "kind": "missing_scratch",
+                        "left_missing": left_scratch is None,
+                        "right_missing": right_scratch is None,
+                    },
+                }
+            )
+            continue
+        for state_name, left_tensor, right_tensor in (
+            ("conv", left_scratch.tree_conv_state, right_scratch.tree_conv_state),
+            ("recurrent", left_scratch.tree_recurrent_state, right_scratch.tree_recurrent_state),
+        ):
+            left_host = _copy_scratch_row(left, left_tensor, row=int(left_row))
+            right_host = _copy_scratch_row(right, right_tensor, row=int(right_row))
+            record = _compare_arrays(left_host, right_host)
+            record.update(
+                {
+                    "layer_index": int(layer_id),
+                    "state": state_name,
+                    "left": f"drifted_scratch_row_{int(left_row)}",
+                    "right": f"clean_scratch_row_{int(right_row)}",
+                }
+            )
+            records.append(record)
+    return _state_compare_summary(records)
+
+
+def _compare_selected_full_kv_cells(
+    left: Qwen35ParoResidentSession,
+    right: Qwen35ParoResidentSession,
+    *,
+    left_position: int,
+    right_position: int,
+) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    for layer_id in left.full_caches:
+        for which in ("key", "value"):
+            left_host = _copy_kv_cell(
+                left,
+                layer_id=int(layer_id),
+                slot=0,
+                position=int(left_position),
+                which=which,
+            )
+            right_host = _copy_kv_cell(
+                right,
+                layer_id=int(layer_id),
+                slot=0,
+                position=int(right_position),
+                which=which,
+            )
+            record = _compare_arrays(left_host, right_host)
+            record.update(
+                {
+                    "layer_index": int(layer_id),
+                    "state": f"{which}_cell",
+                    "left_position": int(left_position),
+                    "right_position": int(right_position),
+                    "left": "drifted_verify_kv_cell",
+                    "right": "clean_verify_kv_cell",
+                }
+            )
+            records.append(record)
+    return _state_compare_summary(records)
+
+
+def _compare_selected_verify_state(
+    left: Qwen35ParoResidentSession,
+    right: Qwen35ParoResidentSession,
+    *,
+    left_row: int,
+    right_row: int,
+    left_position: int,
+    right_position: int,
+) -> dict[str, Any]:
+    linear = _compare_selected_linear_scratch(
+        left,
+        right,
+        left_row=int(left_row),
+        right_row=int(right_row),
+    )
+    kv = _compare_selected_full_kv_cells(
+        left,
+        right,
+        left_position=int(left_position),
+        right_position=int(right_position),
+    )
+    first = None
+    for label, summary in (("linear_scratch", linear), ("full_kv_cell", kv)):
+        mismatch = summary.get("first_mismatch")
+        if isinstance(mismatch, dict):
+            first = {"category": label, **mismatch}
+            break
+    return {
+        "passed": first is None,
+        "linear_scratch": linear,
+        "full_kv_cell": kv,
+        "first_mismatch": first,
     }
 
 
@@ -340,6 +479,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             capture_layer_ids=capture_layer_ids,
                             rows=rows_to_compare,
                         )
+                        selected_state_compare = _compare_selected_verify_state(
+                            mtp_session,
+                            control_session,
+                            left_row=int(verify.commit_row),
+                            right_row=int(clean_verify.commit_row),
+                            left_position=int(verify.commit_position),
+                            right_position=int(clean_verify.commit_position),
+                        )
                         compare_payload = {
                             "cycle": int(cycle),
                             "context": int(context),
@@ -365,6 +512,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 "target_top1_values": [float(value) for value in clean_top1_values],
                             },
                             "hidden_compare": hidden_compare,
+                            "selected_state_compare": selected_state_compare,
                         }
                         break
 

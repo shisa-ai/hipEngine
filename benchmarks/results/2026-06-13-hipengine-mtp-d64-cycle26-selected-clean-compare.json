@@ -1,0 +1,267 @@
+{
+  "commands": {
+    "cycle26_layer_selected_state_audit": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-cycle 26 --compare-rows 0,1 --out /tmp/hipengine-mtp-layer-drift-selected-state-cycle26-20260613.json",
+    "py_compile": "python3 -m py_compile scripts/mtp_layer_drift_audit.py"
+  },
+  "cycles_before_compare_tail": [
+    {
+      "accepted": 0,
+      "committed_tokens": [
+        17
+      ],
+      "context_after": 42,
+      "context_before": 41,
+      "control_next_token": 20,
+      "control_next_token_match": true,
+      "control_token_mismatches": [],
+      "cycle": 21,
+      "draft_candidates": [
+        18
+      ],
+      "next_token": 20
+    },
+    {
+      "accepted": 0,
+      "committed_tokens": [
+        20
+      ],
+      "context_after": 43,
+      "context_before": 42,
+      "control_next_token": 12,
+      "control_next_token_match": true,
+      "control_token_mismatches": [],
+      "cycle": 22,
+      "draft_candidates": [
+        26
+      ],
+      "next_token": 12
+    },
+    {
+      "accepted": 0,
+      "committed_tokens": [
+        12
+      ],
+      "context_after": 44,
+      "context_before": 43,
+      "control_next_token": 15,
+      "control_next_token_match": true,
+      "control_token_mismatches": [],
+      "cycle": 23,
+      "draft_candidates": [
+        17
+      ],
+      "next_token": 15
+    },
+    {
+      "accepted": 0,
+      "committed_tokens": [
+        15
+      ],
+      "context_after": 45,
+      "context_before": 44,
+      "control_next_token": 24,
+      "control_next_token_match": true,
+      "control_token_mismatches": [],
+      "cycle": 24,
+      "draft_candidates": [
+        26
+      ],
+      "next_token": 24
+    },
+    {
+      "accepted": 0,
+      "committed_tokens": [
+        24
+      ],
+      "context_after": 46,
+      "context_before": 45,
+      "control_next_token": 12,
+      "control_next_token_match": true,
+      "control_token_mismatches": [],
+      "cycle": 25,
+      "draft_candidates": [
+        26
+      ],
+      "next_token": 12
+    }
+  ],
+  "date": "2026-06-13",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "retained_ready": false,
+  "status": "diagnostic",
+  "summary": {
+    "clean_verify": {
+      "accepted": 1,
+      "commit_position": 47,
+      "commit_row": 1,
+      "next_token": 19,
+      "target_top1": [
+        15,
+        19
+      ],
+      "target_top1_values": [
+        19.751676559448242,
+        23.98134994506836
+      ]
+    },
+    "context": 46,
+    "cycle": 26,
+    "draft_candidates": [
+      15
+    ],
+    "hidden_first_bit_mismatch": {
+      "layer_index": 0,
+      "layer_type": "linear_attention",
+      "max_abs": 3.0517578125e-05,
+      "mismatch_count": 75,
+      "row": 1
+    },
+    "hidden_largest_drift": {
+      "layer_index": 39,
+      "layer_type": "full_attention",
+      "max_abs": 0.375,
+      "mismatch_count": 2021,
+      "row": 1
+    },
+    "interpretation": "Cycle 26 runs the same verifier batch on drifted MTP and clean AR resident states and still matches visible top1/next token, but pre-verify resident state is already mismatched at linear layer 0 recurrent. The selected verifier output also first mismatches at layer 0 recurrent, and full-attention K/V cells mismatch across all checked full-attention layers. This points to inherited resident recurrent/KV drift feeding the verifier update, not a selected-row commit/copy fault.",
+    "mtp_verify": {
+      "accepted": 1,
+      "commit_position": 47,
+      "commit_row": 1,
+      "next_token": 19,
+      "target_top1": [
+        15,
+        19
+      ],
+      "target_top1_values": [
+        19.939926147460938,
+        23.93671226501465
+      ]
+    },
+    "next_action": "Localize the earliest resident recurrent/KV producer drift before cycle 26, starting from cycle 2 and the first affected linear/full-attention layer, before returning to D64 promotion or adaptive policy.",
+    "pre_verify_first_mismatch": {
+      "category": "linear",
+      "dtype": "float32",
+      "first_index": [
+        0,
+        0,
+        0
+      ],
+      "kind": "value",
+      "layer_index": 0,
+      "left_position": null,
+      "left_value": -4.2834135456359945e-06,
+      "max_abs": 3.814697265625e-06,
+      "mismatch_count": 320631,
+      "position": null,
+      "right_position": null,
+      "right_value": -4.283502221369417e-06,
+      "shape": [
+        32,
+        128,
+        128
+      ],
+      "state": "recurrent"
+    },
+    "pre_verify_resident_passed": false,
+    "raw_path": "/tmp/hipengine-mtp-layer-drift-selected-state-cycle26-20260613.json",
+    "root": 12,
+    "script_change": "scripts/mtp_layer_drift_audit.py now emits selected_state_compare, comparing selected linear scratch rows and selected full-attention K/V cells between drifted and clean verifier runs for the same compare-cycle batch.",
+    "selected_full_kv_summary": {
+      "checked": 20,
+      "failed": 20,
+      "first_mismatch": {
+        "category": null,
+        "dtype": "uint16",
+        "first_index": [
+          0,
+          8
+        ],
+        "kind": "value",
+        "layer_index": 3,
+        "left_position": 47,
+        "left_value": 48417,
+        "max_abs": null,
+        "mismatch_count": 108,
+        "position": null,
+        "right_position": 47,
+        "right_value": 48420,
+        "shape": [
+          2,
+          256
+        ],
+        "state": "key_cell"
+      },
+      "passed": false
+    },
+    "selected_linear_summary": {
+      "checked": 60,
+      "failed": 59,
+      "first_mismatch": {
+        "category": null,
+        "dtype": "float32",
+        "first_index": [
+          0,
+          0,
+          0
+        ],
+        "kind": "value",
+        "layer_index": 0,
+        "left_position": null,
+        "left_value": 0.00017054427007678896,
+        "max_abs": 3.814697265625e-06,
+        "mismatch_count": 304137,
+        "position": null,
+        "right_position": null,
+        "right_value": 0.00017054416821338236,
+        "shape": [
+          32,
+          128,
+          128
+        ],
+        "state": "recurrent"
+      },
+      "passed": false
+    },
+    "selected_state_first_mismatch": {
+      "category": "linear_scratch",
+      "dtype": "float32",
+      "first_index": [
+        0,
+        0,
+        0
+      ],
+      "kind": "value",
+      "layer_index": 0,
+      "left_position": null,
+      "left_value": 0.00017054427007678896,
+      "max_abs": 3.814697265625e-06,
+      "mismatch_count": 304137,
+      "position": null,
+      "right_position": null,
+      "right_value": 0.00017054416821338236,
+      "shape": [
+        32,
+        128,
+        128
+      ],
+      "state": "recurrent"
+    },
+    "selected_state_passed": false
+  },
+  "workload": {
+    "candidate_budget": 1,
+    "chain_attn_mode": "decode_batched",
+    "compare_cycle": 26,
+    "compare_rows": [
+      0,
+      1
+    ],
+    "decode_tokens": 64,
+    "graph_mode": "off",
+    "prompt_name": "translation",
+    "prompt_tokens": 15
+  }
+}

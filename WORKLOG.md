@@ -84817,3 +84817,49 @@ layer/state.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-selected-state-vs-ar-audit.json`.
+
+## 2026-06-13 - MTP D64 cycle 26 selected-clean verifier state compare
+
+Extended `scripts/mtp_layer_drift_audit.py` so the compare-cycle payload also
+includes `selected_state_compare`: selected linear scratch rows and selected
+full-attention K/V cells from the drifted verifier run versus the clean verifier
+run for the same root/candidate batch. This separates inherited resident drift
+from a fresh selected-row update/copy fault.
+
+Validation / run:
+
+```bash
+python3 -m py_compile scripts/mtp_layer_drift_audit.py
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_layer_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-cycle 26 --compare-rows 0,1 \
+  --out /tmp/hipengine-mtp-layer-drift-selected-state-cycle26-20260613.json
+```
+
+Result for cycle 26 / context 46 / root `12` / draft `[15]`:
+
+| Check | Result |
+| --- | --- |
+| Visible verifier output | MTP and clean both accept row 1 and return next token `19` |
+| Pre-verify resident-vs-AR | mismatch at linear layer 0 recurrent, max_abs `3.814697e-6`, `320631` mismatches |
+| Hidden capture | first mismatch row 1, layer 0 linear attention, max_abs `3.051758e-5`; largest hidden drift row 1, layer 39 full attention, max_abs `0.375` |
+| Selected linear scratch, drifted vs clean verifier | first mismatch layer 0 recurrent, max_abs `3.814697e-6`, `304137` mismatches; `59/60` linear records failed |
+| Selected full K/V cell, drifted vs clean verifier | `20/20` K/V cells bit-mismatched; first is layer 3 key at position `47`, `108` mismatches |
+
+Interpretation: the selected row update divergence is inherited from already
+drifted resident recurrent/K/V state, not introduced by the selected-row
+commit/copy path. The pre-verify resident mismatch and selected verifier output
+first fail in the same layer/state family (linear layer 0 recurrent). Next audit
+should localize the earliest resident recurrent/K/V producer drift before cycle
+26, starting from cycle 2 and the first affected layer/state.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-cycle26-selected-clean-compare.json`.
