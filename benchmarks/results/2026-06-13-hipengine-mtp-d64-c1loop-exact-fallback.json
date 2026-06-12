@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "date": "2026-06-13",
+  "status": "diagnostic_exact_fallback_nohold_speed",
+  "performance_claim": false,
+  "retained_speed_row": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900, gfx1100",
+  "workload": {
+    "suite": "llama.cpp mtp-bench 9 prompts",
+    "prompt_render_mode": "raw",
+    "decode_tokens": 64,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "c1_loop",
+    "graph_mode": "off",
+    "draft_vocab_cap": "default 65536"
+  },
+  "flags": {
+    "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+    "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1"
+  },
+  "purpose": "Keep a serial-c1-equivalent verifier fallback for the D64 MTP state-drift lane while leaving the retained fast decode_batched path unchanged by default.",
+  "results": {
+    "d64_c1loop_9prompt": {
+      "exact_prompts": "9/9",
+      "prompt_mean_observed_speedup_vs_ar": 0.8578778438027506,
+      "prompt_mean_actual_decode_speedup_vs_ar": 0.8533152461280731,
+      "prompt_mean_cycle_cost_ar_tokens": 1.7254713762790237,
+      "prompt_mean_cycle_wall_ms": 15.606244738653212,
+      "prompt_mean_verify_ms": 13.855049982234755,
+      "prompt_mean_proposal_update_ms": 1.7339727403704843,
+      "prompt_mean_visible_tokens_per_cycle": 1.482123609677789,
+      "prompt_mean_accepted_per_cycle": 0.4821236096777893,
+      "cycles": 390,
+      "accepted_draft_tokens": 180,
+      "zero_accept_cycles": 210
+    },
+    "known_translation_repro": {
+      "exact_ar_match": true,
+      "accepted_lengths": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "observed_speedup_vs_ar": 0.7687509511817986,
+      "cycle_wall_ms": 14.817006784313724,
+      "verify_ms": 13.46607889760943,
+      "visible_tokens_per_cycle": 1.2549019607843137
+    },
+    "layer0_parity_with_exact_flags": {
+      "status": "matched",
+      "first_mismatch": null,
+      "intermediate_first": null,
+      "state_first": null
+    },
+    "early_state_audit_c1loop_with_exact_flags": {
+      "status": "passed",
+      "compared_cycles": [
+        1,
+        2
+      ],
+      "resident_vs_ar": "passed",
+      "selected_scratch_vs_ar": "passed",
+      "scratch_to_resident": "passed",
+      "full_kv_prefix": "passed"
+    },
+    "decode_batched_with_exact_flags": {
+      "status": "state_mismatch",
+      "first_mismatch": "cycle 1 post_commit linear layer 4 conv",
+      "max_abs": 0.0078125,
+      "interpretation": "The exact GDN/output fallback fixes the linear-attention producer drift for c1_loop but does not fix the separate full-attention/decode_batched D64 drift."
+    },
+    "default_off_fast_path_smoke": {
+      "chain_attn_mode": "decode_batched",
+      "decode_tokens": 8,
+      "exact_ar_match": true,
+      "status": "passed"
+    }
+  },
+  "prompt_rows": [
+    {"name": "code_python", "exact": true, "observed_speedup_vs_ar": 1.0264659946252221, "cycle_wall_ms": 15.625769885714284, "verify_ms": 13.843812886625528, "visible_tokens_per_cycle": 1.8},
+    {"name": "code_cpp", "exact": true, "observed_speedup_vs_ar": 0.9432500135728844, "cycle_wall_ms": 15.915177473684212, "verify_ms": 14.234878128933671, "visible_tokens_per_cycle": 1.6842105263157894},
+    {"name": "explain_concept", "exact": true, "observed_speedup_vs_ar": 0.7764499280160738, "cycle_wall_ms": 15.069004333333332, "verify_ms": 13.64585022868899, "visible_tokens_per_cycle": 1.3125},
+    {"name": "summarize", "exact": true, "observed_speedup_vs_ar": 0.8258961367728899, "cycle_wall_ms": 15.161972844444444, "verify_ms": 13.593707057750887, "visible_tokens_per_cycle": 1.4},
+    {"name": "qa_factual", "exact": true, "observed_speedup_vs_ar": 0.8329115071064932, "cycle_wall_ms": 14.983382422222222, "verify_ms": 13.499166997563508, "visible_tokens_per_cycle": 1.4},
+    {"name": "translation", "exact": true, "observed_speedup_vs_ar": 0.7687509511817986, "cycle_wall_ms": 14.817006784313724, "verify_ms": 13.46607889760943, "visible_tokens_per_cycle": 1.2549019607843137},
+    {"name": "creative_short", "exact": true, "observed_speedup_vs_ar": 0.7748390235543741, "cycle_wall_ms": 15.112605354166668, "verify_ms": 13.696483603174178, "visible_tokens_per_cycle": 1.3125},
+    {"name": "stepwise_math", "exact": true, "observed_speedup_vs_ar": 0.9462366213955605, "cycle_wall_ms": 15.103702550000001, "verify_ms": 13.435118476627395, "visible_tokens_per_cycle": 1.6},
+    {"name": "long_code_review", "exact": true, "observed_speedup_vs_ar": 0.8261004179994583, "cycle_wall_ms": 18.667581, "verify_ms": 15.280353563139215, "visible_tokens_per_cycle": 1.575}
+  ],
+  "commands": {
+    "d64_c1loop_9prompt": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 10800 python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 64 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode c1_loop --graph-mode off --acceptance-diagnostics --raw-root /tmp/hipengine-mtp-b1-exact-gdn-out-c1loop-9prompt-d64-20260613 --out /tmp/hipengine-mtp-b1-exact-gdn-out-c1loop-9prompt-d64-20260613.json",
+    "layer0_parity": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_cycle1_layer0_parity.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --candidate-token 760 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --out /tmp/hipengine-mtp-cycle1-layer0-parity-exact-gdn-out-chain-20260613.json",
+    "c1loop_state_audit": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode off --compare-after-cycles 1,2 --max-cycles 2 --out /tmp/hipengine-mtp-state-drift-audit-exact-gdn-out-c1loop-cycles1-2-20260613.json",
+    "decode_batched_state_audit": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-after-cycles 1,2,3,4,5,6 --max-cycles 6 --out /tmp/hipengine-mtp-state-drift-audit-exact-gdn-out-decodebatched-cycles1-6-20260613.json",
+    "default_off_smoke": "env -u HIPENGINE_GDN_TLOOP_C1_EXACT -u HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --decode-tokens 8 --candidate-budget 1 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --json /tmp/hipengine-mtp-defaultoff-decodebatched-d8-smoke-20260613.json"
+  },
+  "raw_outputs": {
+    "d64_c1loop_9prompt": "/tmp/hipengine-mtp-b1-exact-gdn-out-c1loop-9prompt-d64-20260613.json",
+    "raw_root": "/tmp/hipengine-mtp-b1-exact-gdn-out-c1loop-9prompt-d64-20260613",
+    "layer0_parity": "/tmp/hipengine-mtp-cycle1-layer0-parity-exact-gdn-out-chain-20260613.json",
+    "c1loop_state_audit": "/tmp/hipengine-mtp-state-drift-audit-exact-gdn-out-c1loop-cycles1-2-20260613.json",
+    "decode_batched_state_audit": "/tmp/hipengine-mtp-state-drift-audit-exact-gdn-out-decodebatched-cycles1-6-20260613.json",
+    "default_off_smoke": "/tmp/hipengine-mtp-defaultoff-decodebatched-d8-smoke-20260613.json"
+  }
+}

@@ -2995,6 +2995,9 @@ class Qwen35ParoDecodeState:
             recurrent_bf16=self._row_tensor_view(scratch.recurrent_bf16, row),
             out_rot=self._row_tensor_view(scratch.out_rot, row),
             out_proj=self._row_tensor_view(scratch.out_proj, row),
+            tree_conv_state=self._row_tensor_view(scratch.tree_conv_state, row),
+            tree_recurrent_state=self._row_tensor_view(scratch.tree_recurrent_state, row),
+            tree_gdn_acc=self._row_tensor_view(scratch.tree_gdn_acc, row),
         )
 
     def _decode_row_linear_attention_planar_scratch(
@@ -3026,6 +3029,9 @@ class Qwen35ParoDecodeState:
             recurrent_bf16=self._row_tensor_view(scratch.recurrent_bf16, row),
             out_rot=self._row_tensor_view(scratch.out_rot, row),
             out_proj=self._row_tensor_view(scratch.out_proj, row),
+            tree_conv_state=self._row_tensor_view(scratch.tree_conv_state, row),
+            tree_recurrent_state=self._row_tensor_view(scratch.tree_recurrent_state, row),
+            tree_gdn_acc=self._row_tensor_view(scratch.tree_gdn_acc, row),
         )
 
     def project_linear_attention_decode_rows_fp16(
@@ -6696,6 +6702,14 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        if _linear_out_c1_exact_rows_enabled(tokens):
+            return self.project_linear_attention_decode_rows_out_fp16(
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn.out_proj"
         width = scratch.recurrent_out.shape[-1]
         pairs = self.tensor(f"{prefix}.pairs")
@@ -11043,6 +11057,19 @@ def _linear_out_cast_rotate_fused_enabled(tokens: int) -> bool:
     """
 
     return int(tokens) > 1 and _env_flag("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", True)
+
+
+def _linear_out_c1_exact_rows_enabled(tokens: int) -> bool:
+    """Replay verifier linear-attention out projection through token-1 rows.
+
+    Diagnostic exactness gate for the MTP D64 drift lane.  The retained
+    verifier path uses faster multi-row W4 projection for
+    ``linear_attn.out_proj``; this opt-in keeps the same public row-shaped
+    verifier buffers but replays each row through the serial c1 projection
+    order.
+    """
+
+    return int(tokens) > 1 and _env_flag("HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS", False)
 
 
 def _full_qkv_split_key_fused_enabled(tokens: int) -> bool:

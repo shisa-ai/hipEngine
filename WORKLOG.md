@@ -85025,3 +85025,90 @@ cap changes, AR fallback, or tree/sibling policies.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-cycle1-layer0-parity.json`.
+
+## 2026-06-13 - MTP D64 strict c1-equivalent fallback
+
+Kept the exactness repair as opt-in/default-off rather than replacing the
+retained fast path.  The unit adds:
+
+- `HIPENGINE_GDN_TLOOP_C1_EXACT=1`: chain/tree verifier GDN t-loop can run a
+  serial-c1-equivalent recurrence/order kernel.
+- `HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1`: verifier
+  `linear_attn.out_proj` can replay rows through the token-1 projection path.
+- Row scratch views now include `tree_conv_state`, `tree_recurrent_state`, and
+  `tree_gdn_acc` so row-wise replay can construct the scratch dataclass.
+
+Validation / commands:
+
+```bash
+python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py
+python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/mtp_cycle1_layer0_parity.py scripts/mtp_state_drift_audit.py scripts/mtp_prompt_suite_economics.py
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_cycle1_layer0_parity.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --candidate-token 760 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --out /tmp/hipengine-mtp-cycle1-layer0-parity-exact-gdn-out-chain-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_state_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off \
+  --compare-after-cycles 1,2 --max-cycles 2 \
+  --out /tmp/hipengine-mtp-state-drift-audit-exact-gdn-out-c1loop-cycles1-2-20260613.json
+
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 10800 \
+  python3 scripts/mtp_prompt_suite_economics.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 64 --candidate-budgets 1 --runs 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode off --acceptance-diagnostics \
+  --raw-root /tmp/hipengine-mtp-b1-exact-gdn-out-c1loop-9prompt-d64-20260613 \
+  --out /tmp/hipengine-mtp-b1-exact-gdn-out-c1loop-9prompt-d64-20260613.json
+
+env -u HIPENGINE_GDN_TLOOP_C1_EXACT -u HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. timeout 1800 \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --decode-tokens 8 --candidate-budget 1 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --json /tmp/hipengine-mtp-defaultoff-decodebatched-d8-smoke-20260613.json
+```
+
+Result:
+
+| Check | Result |
+| --- | --- |
+| Layer-0 serial c1 vs verifier row0 parity | `status=matched`; no intermediate or state mismatch after enabling both exact flags. |
+| Early state audit, `c1_loop`, cycles 1/2 | `status=passed`; resident-vs-AR, selected scratch-vs-AR, full K/V prefix, and scratch-to-resident all pass. |
+| D64 9-prompt suite, B=1 `c1_loop`, graph off | Exact `9/9`, including the previous `translation` token-34 fork. Prompt mean observed speedup `0.858x`; wall `15.606 ms/cycle`, verify `13.855 ms/cycle`, proposal/update `1.734 ms/cycle`, visible `1.482/cycle`. |
+| Default-off fast-path smoke | `decode_batched` D8 exact-AR passed with both exact env flags unset. |
+| `decode_batched` with exact flags | Still state-mismatched at cycle 1, first mismatch linear layer 4 conv, max_abs `0.0078125`; full-attention/decode_batched producer drift remains separate. |
+
+Interpretation: this is a real correctness fallback and should be kept, but it
+is not a promoted speed row.  The retained fast row remains the D32 B=1
+`decode_batched` stack at `1.018x`.  Next fast-path work is to isolate/fix the
+`decode_batched` full-attention producer drift on D64, then return to adaptive
+budget policy and density work.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-c1loop-exact-fallback.json`.
