@@ -2437,13 +2437,13 @@ at ~57 ms verifier wall before any kernel work.
 | #   | Sub-task                                                                                   | Variant            | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|--------------------------------------------------------------------------------------------|--------------------|-----------------------:|----------|--------------------:|------------------|
 | M7.0| **rocprofv3 re-baseline** — LANDED. 7 steady-state B=3 verifier passes traced via roctxRangePush markers; per-pass: 56 ms kernel + ~9 ms host = ~65 ms wall. Top families: GDN 13.1, memset 11.0, lm_head 9.9, MoE down 6.0, MoE gate_up 5.9. | n/a | 0 (diagnostic) | ✅ **Landed** | 0 | `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json` |
-| M7.1| CPU-reference fixture: 4-tok / 30-layer + 8-tok routed MoE, KL≤0.05 / top-1≥0.90 oracle    | n/a                |                     0  | _Pending_|                _TBD_| _TBD_            |
-| M7.2| Tune existing `gemv_awq_selected_dual_pack8_transposed_bf16` for 32-row batch (per M7.0: already llama.cpp-style, just needs small-batch micro-tuning). Variant `dense_bf16` for the MTP proposer side. | `dense_bf16` | 1–2 | _Pending_ | _TBD_ | _TBD_ |
-| M7.3| Land `dense_bf16` for MTP proposer (down_proj + gate_up_proj fused), route via registry    |`dense_bf16`        |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
-| M7.4| AWQ pack8 small-batch tile retune: 70 calls/pass at 86 μs avg; target 60 μs avg via LDS / wave-tile sizing for the 32-row case. | `awq_q4_pack8` | ~3–4 | _Pending_ | _TBD_ | _TBD_ |
+| M7.1| CPU-reference fixture: 4-tok / 30-layer + 8-tok routed MoE, KL≤0.05 / top-1≥0.90 oracle    | n/a                |                     0  | **Superseded** | n/a | The current sprint uses exact 9-prompt D32 gates plus targeted kernel/unit fixtures. New structural kernels still need RED fixtures, but this broad legacy M7 oracle is not the active gate. |
+| M7.2| Tune existing `gemv_awq_selected_dual_pack8_transposed_bf16` for 32-row batch (per M7.0: already llama.cpp-style, just needs small-batch micro-tuning). Variant `dense_bf16` for the MTP proposer side. | `dense_bf16` | 1–2 | **Superseded / no-hold as phrased** | n/a | Selected gate/up remains a real compute bucket (`1.893 ms/pass`) but simple launch-width/tile retunes were measured as noise/regression; the proposer BF16 expert loop was addressed by route-batched expert kernels instead. |
+| M7.3| Land `dense_bf16` for MTP proposer (down_proj + gate_up_proj fused), route via registry    |`dense_bf16`        |                  ~1–2  | **Superseded / retained differently** | `-0.44 ms/cycle` wall from route batching | `HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT=1` batches top-8 gate/up, SiLU, down, and ordered accumulation while preserving route order; see top table and `benchmarks/results/2026-06-12-hipengine-mtp-proposer-route-batched-expert-retained.json`. |
+| M7.4| AWQ pack8 small-batch tile retune: 70 calls/pass at 86 μs avg; target 60 μs avg via LDS / wave-tile sizing for the 32-row case. | `awq_q4_pack8` | ~3–4 | **Superseded by M12.6/M16.4/reduced-DAG work** | n/a | Current selected gate/up/down kernels are already the production selected-GEMV shape; further wins need structural reduced-DAG kernels, not another local tile retune. |
 | M7.5| Skip: existing `dual_pack8_transposed` already fuses gate+up (one launch / layer / 2×n_ff_exp output). Reclassify as no-op. | n/a | 0 | ✅ **Landed (n/a)** | 0 | M7.0 confirmed |
-| M7.6| Verify: rocprofv3 shows MoE chain runs ≤11 ms total at B=3/30 layers, KL≤0.05 vs CPU-ref    | both               |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
-| **M7 total** |                                                                                |                    |              **4–6**   |          |             **_TBD_**|                  |
+| M7.6| Verify: rocprofv3 shows MoE chain runs ≤11 ms total at B=3/30 layers, KL≤0.05 vs CPU-ref    | both               |                     0  | **Superseded** | n/a | Use the current `842 calls/pass` profile and exact D32 prompt suite instead. The active top buckets are selected gate/up `1.893 ms/pass`, selected down `1.204 ms/pass`, shared/dual W4 `1.834 ms/pass`, and router `0.504 ms/pass`; the old `≤11 ms` phase gate is no longer the scoreboard. |
+| **M7 total** |                                                                                |                    |              **4–6**   | **Closed / historical** | n/a | Useful work is absorbed by M7.C, M12.6, M16.4, proposer route batching, and current reduced-DAG rows. |
 
 #### M7.B tracker — GDN chain t-loop tuning (resolved by M16.5/M16)
 
@@ -2605,14 +2605,21 @@ Unfused fallback: RMSNorm → QKV GEMV → split → rotate → q_norm/k_norm. S
 
 Projected savings target: **~3 ms** out of the ~5 ms pre-attn chain at B=3 / 30 layers. The composite is correct-by-construction iff each step matches the unfused fallback on the same fixture; promote per-step.
 
+2026-06-12 status: this tracker is historical. The current exact stack already
+keeps the useful small-B projection work through M7.C.6/M12.6/M16.4. The broad
+producer-side RMSNorm+rotate class was refreshed and no-held on the current P1
+stack, and the full-attn split+key-cast micro-fusion was also no-held despite
+removing launches. Reopen only as a new structural full-attention primitive with
+fresh exact-suite evidence, not from these old pending rows.
+
 | #   | Sub-task                                                                              | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|---------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
-| M8.1| CPU-reference fixture: 4-tok / 30-layer pre-attn input → (Q, K, V) post-RoPE oracle    |                     0  | _Pending_|                _TBD_| _TBD_            |
-| M8.2| Fused RMSNorm + QKV GEMV (skip RoPE) — collapse ~60 launches → ~30                    |                  ~1–1.5| _Pending_|                _TBD_| _TBD_            |
-| M8.3| Add RoPE inside the kernel (cos/sin from constant buffer)                              |                  ~1   | _Pending_|                _TBD_| _TBD_            |
-| M8.4| Add q_norm / k_norm inside the kernel (collapse final ~30 launches)                    |                  ~0.5–1| _Pending_|                _TBD_| _TBD_            |
-| M8.5| Verify: rocprofv3 shows 1 launch per layer pre-attn at B=3, KL≤0.05 vs unfused        |                     0  | _Pending_|                _TBD_| _TBD_ (gate only)|
-| **M8 total** |                                                                          |               **~3**   |          |             **_TBD_**|                  |
+| M8.1| CPU-reference fixture: 4-tok / 30-layer pre-attn input → (Q, K, V) post-RoPE oracle    |                     0  | **Superseded** | n/a | New full-attn/linear-attn composite kernels still need targeted RED fixtures; this old broad fixture is not the active gate. |
+| M8.2| Fused RMSNorm + QKV GEMV (skip RoPE) — collapse ~60 launches → ~30                    |                  ~1–1.5| **No-hold as current design** | 0 retained | Refreshed `HIPENGINE_FUSED_RMSNORM_ROTATE=1` stayed exact but worsened kernel/host on the current stack. |
+| M8.3| Add RoPE inside the kernel (cos/sin from constant buffer)                              |                  ~1   | **No-hold as current design** | 0 retained | Covered by the same producer-side RMSNorm/rotate and rotate-staging evidence; reopen only with a new scheduling-safe structural primitive. |
+| M8.4| Add q_norm / k_norm inside the kernel (collapse final ~30 launches)                    |                  ~0.5–1| **No-hold as micro-fusion** | 0 retained | Full-QKV split+key-cast and final RMSNorm+cast launch-only fusions were exact but same-suite negative. |
+| M8.5| Verify: rocprofv3 shows 1 launch per layer pre-attn at B=3, KL≤0.05 vs unfused        |                     0  | **Superseded** | n/a | Current profile/table above is authoritative; no retained one-launch pre-attn primitive exists. |
+| **M8 total** |                                                                          |               **~3**   | **Closed / historical** | 0 retained from this tracker | Continue with current reduced-DAG structural work, not the old M8 micro-fusion ladder. |
 
 ### Phase M9 — parallelized LM head over verifier rows (THIRD PRIORITY)
 
@@ -2626,11 +2633,17 @@ Same ABI as today’s lm_head; new variant under `("hip_gfx1151", "lm_head", "w8
 
 Projected savings target: **~2.5 ms** of the ~7.5 ms LM head at B=3, 4 verifier rows. Bandwidth-bound — the win comes from streaming the weight matrix once, not from arithmetic.
 
+2026-06-12 status: superseded by M12.2. The verifier LM head is already
+multi-row/weight-shared and now appears as one `w8a16_linear` launch/pass at
+about `1.45 ms/pass` in the current profile. The later fused verifier LM-head
+diagnostic removed one argmax launch but made the W8A16 body slower, so it is
+no-held for MTP.
+
 | #   | Sub-task                                                                          | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|-----------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
-| M9.1| Row-parallel split-k kernel: grid `(n_out_tiles, n_tokens)`, single weight stream  |                  ~2–2.5| _Pending_|                _TBD_| _TBD_            |
-| M9.2| Promote per `B ∈ {2, 3, 4, 8}` sweep; gate via existing lm_head correctness test  |                  ~0   | _Pending_|                _TBD_| _TBD_ (gate only)|
-| **M9 total** |                                                                      |              **~2.5** |          |             **_TBD_**|                  |
+| M9.1| Row-parallel split-k kernel: grid `(n_out_tiles, n_tokens)`, single weight stream  |                  ~2–2.5| **Done via M12.2 / further fusion no-held** | `66.33 -> 68.77 tok/s` at M12.2; current `~1.45 ms/pass` | M12.2 streams W8A16 weights once for verifier rows. Do not reopen the fused LM-head path without a new W8A16 body that beats the current one-launch multi-row kernel. |
+| M9.2| Promote per `B ∈ {2, 3, 4, 8}` sweep; gate via existing lm_head correctness test  |                  ~0   | **Superseded** | n/a | B sweeps are now acceptance-density endgame work after diagnostics; not an LM-head promotion gate. |
+| **M9 total** |                                                                      |              **~2.5** | **Closed / historical** | retained by M12.2 | Current LM-head work is not the next wall-cut lever. |
 
 ### Phase M10 — align proposer with target dispatch
 
@@ -2642,13 +2655,19 @@ No new model quant required — BF16 MTP weights stay. If we later quantize MTP,
 
 Projected savings target: **~5 ms** of host-side overhead (the ~7 ms baseline minus an irreducible ~2 ms for batch prep + sampling read).
 
+2026-06-12 status: the useful proposer work landed through narrower measured
+slices: skip unused reads/results/snapshots, stream-order and pack scalar H2D,
+direct KV writes, fused router top-k+softmax, and route-batched expert kernels.
+The remaining graph-capture item is tracked as M12.7 and is profile-bound to the
+remaining proposer host gap.
+
 | #    | Sub-task                                                                                                   | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |------|------------------------------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
-| M10.1| Route `mtp.layers.0.mlp.experts.gate_up_proj` through `moe_selected_expert` / `dense_bf16` (removes Task #50 blocker) |              ~2     | _Pending_|                _TBD_| _TBD_            |
-| M10.2| Keep selected-expert ids on-device throughout the proposer chain (only D2H sync per draft step = sampled tok) |              ~1.5–2 | _Pending_|                _TBD_| _TBD_            |
-| M10.3| GPU top-1 + write kernel for the next draft seed (proposer never reads top1 to host)                       |                  ~1–1.5| _Pending_|                _TBD_| _TBD_            |
-| M10.4| Re-capture HIP graph for the post-M7/M10 proposer chain (one captured graph per draft depth)               |                  ~0.5–1| _Pending_|                _TBD_| _TBD_            |
-| **M10 total** |                                                                                              |              **~5**   |          |             **_TBD_**|                  |
+| M10.1| Route `mtp.layers.0.mlp.experts.gate_up_proj` through `moe_selected_expert` / `dense_bf16` (removes Task #50 blocker) |              ~2     | **Superseded / retained differently** | part of `-0.44 ms/cycle` route-batched expert win | The retained sidecar design uses route-batched BF16 expert GEMVs rather than the old registry path. |
+| M10.2| Keep selected-expert ids on-device throughout the proposer chain (only D2H sync per draft step = sampled tok) |              ~1.5–2 | **Done / partial retained** | see proposer skip + route-batched rows | Router top-k ids stay on device for expert GEMVs; diagnostic host reads are skipped unless requested. Device-chain candidate buffering was tried and no-held. |
+| M10.3| GPU top-1 + write kernel for the next draft seed (proposer never reads top1 to host)                       |                  ~1–1.5| **No-hold as attempted** | 0 retained | Device-chain candidate buffering kept candidates on device but regressed D32 wall/ratio. The proposer still needs the sampled token id at cycle boundaries. |
+| M10.4| Re-capture HIP graph for the post-M7/M10 proposer chain (one captured graph per draft depth)               |                  ~0.5–1| **Open as M12.7, profile-bound** | _TBD_ | Direct capture must solve by-value cache destination/context-length dynamics in `NativeMtpChainProposer.advance()`. |
+| **M10 total** |                                                                                              |              **~5**   | **Mostly closed; M12.7 remains** | retained proposer wall moved to `~1.25 ms/cycle` | Use the top priority table for current proposer work. |
 
 ### Phase M11 — fixed-depth chain bucket sweep on the fast verifier
 
@@ -2660,13 +2679,18 @@ Keep the existing exact-equality gate. The benchmark rollup (`benchmarks/README.
 
 This phase doesn’t add per-kernel savings; it picks the chain depth and acceptance policy that maximize end-to-end MTP/AR on the fast verifier. Projected MTP/AR is the perfect-accept ceiling at the listed B given the post-M10 verifier wall; “measured target” assumes 60–80% acceptance.
 
+2026-06-12 status: current retained operating point is B=3 at `0.924x`,
+`19.44 ms/cycle`, and `2.012` visible tokens/cycle. Do not run policy sweeps
+from this stale table yet; the top-level acceptance-density backlog now owns
+B=4/B=5 diagnostics after the next wall-cut units land.
+
 | #    | Operating point                                                  | Projected ceiling MTP/AR | Projected measured MTP/AR | Status   | Actual measured MTP/AR | Artifact / source |
 |------|------------------------------------------------------------------|-------------------------:|--------------------------:|----------|-----------------------:|-------------------|
-| M11.1| Chain B=2 (drafts/verify=2, target rows=3)                       |                  ~1.5×  |              ~1.2–1.4×    | _Pending_|                  _TBD_ | _TBD_             |
-| M11.2| Chain B=3 (drafts/verify=3, target rows=4) — default candidate   |                  ~2.0×  |              ~1.3–1.7×    | _Pending_|                  _TBD_ | _TBD_             |
-| M11.3| Chain B=4 (drafts/verify=4, target rows=5)                       |                  ~2.0×  |              ~1.2–1.6×    | _Pending_|                  _TBD_ | _TBD_ (only run if M11.2 < 1.3×) |
-| M11.4| DDTree B=4/8 (tree drafts)                                       |                _≥2.0×_  |                    _TBD_  | _Pending_|                  _TBD_ | _TBD_ (only run if any chain row ≥ 1.3×) |
-| **M11 retained row** |                                                          |               **≥1.5×** |                  **≥1.3×** |          |             **_TBD_**  | benchmarks/README.md row + benchmarks/CHANGELOG.md entry |
+| M11.1| Chain B=2 (drafts/verify=2, target rows=3)                       |                  ~1.5×  |              ~1.2–1.4×    | **Deferred** | _TBD_ | Run only as part of the acceptance-density diagnostic sweep. |
+| M11.2| Chain B=3 (drafts/verify=3, target rows=4) — default candidate   |                  ~2.0×  |              ~1.3–1.7×    | **Current retained operating point** | `0.924x` | Current exact 9-prompt D32 best: `19.44 ms/cycle`, `2.012` visible tokens/cycle. |
+| M11.3| Chain B=4 (drafts/verify=4, target rows=5)                       |                  ~2.0×  |              ~1.2–1.6×    | **Deferred to acceptance endgame** | _TBD_ | First higher-B diagnostic after per-depth counters; promote only if suite ratio improves. |
+| M11.4| DDTree B=4/8 (tree drafts)                                       |                _≥2.0×_  |                    _TBD_  | **No-hold for current B=3 tree; defer hybrid retest** | B=3 tree `0.61x` vs chain `0.76x` old row | Revisit only if histograms show recoverable first-rejection cases. |
+| **M11 retained row** |                                                          |               **≥1.5×** |                  **≥1.3×** | **Superseded by current top table** | `0.924x` current best | Use benchmarks rollup/top table for retained rows; use acceptance backlog for future B sweeps. |
 
 ### Out-of-scope (don’t pre-build)
 

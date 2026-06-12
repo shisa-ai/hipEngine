@@ -82445,3 +82445,15 @@ zero-accept streaks; then try B=4 before B=5 using the same-suite ratio gate;
 then run a vocab-cap rejection census before any `32768 -> 65536/full` cap
 change; then consider adaptive B/AR fallback and only later tree/sibling or
 relaxed-sampling work. No benchmark claim and no code change in this unit.
+
+## 2026-06-12 - MTP legacy tracker cleanup: M7-M11
+
+Docs-only tracker cleanup while walking the old MTP phase tables against the
+current `0.924x / 19.44 ms` stack. Updated M7.1-M7.6, M8, M9, M10, and M11
+rows so stale `_Pending_` entries no longer look like fresh sprint work: M7
+selected/proposer work is absorbed by M7.C/M12.6/M16.4/proposer route batching;
+M8 pre-attn micro-fusion ladder is historical/no-held unless reopened as a new
+structural primitive; M9 LM-head is superseded by M12.2 and later fused LM-head
+no-held; M10 proposer work is mostly retained through measured narrower slices
+with only M12.7 remaining; M11 B sweeps are deferred to the acceptance-density
+endgame. No benchmark claim and no code change in this unit.
