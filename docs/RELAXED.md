@@ -110,6 +110,28 @@ acceptance cost**, validated on a real prompt — the template for future verify
 relaxations — not a standalone economics win. Artifact:
 `benchmarks/results/2026-06-09-hipengine-m16-gdn-dvtiling-economics-cb.json`.
 
+### 0.2 MTP-specific relaxed follow-ups from the break-even sprint
+
+The exact MTP sprint moved the 35B-A3B row from `0.758x / 27.8 ms` to the
+current exact D32 best `1.023x / 14.134 ms` by keeping only exact AR-preserving
+improvements in `docs/MTP.md`. The items below are **not** retained exact-speed
+work. They are worth parking here because they change either numerical parity,
+the greedy-token contract, or the verifier/AR self-consistency gate.
+
+| Candidate | Relaxed tier | Why it belongs here | Current evidence | Next gate |
+| --- | --- | --- | --- | --- |
+| D64 fast verifier under KL/top-1 gates | T2 | The fast D32 current-best verifier uses batched/t-loop paths that can accumulate resident-state drift by D64; strict fallbacks now restore exact AR but cost speed. A relaxed profile could keep the fast path if model-level KL/top-1 is acceptable even when exact greedy diverges late. | D64 strict fallback passes exact `9/9` with `HIPENGINE_GDN_TLOOP_C1_EXACT=1` + `HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1`; `decode_batched` exact suffix also passes but remains slower than D32 current-best. Drift audits localize the strict fork to GDN recurrence/order and full-attention suffix state. | Build a D64 KL/top-1 prompt suite comparing fast verifier vs serial AR/cpu reference; do not promote from exact-token match alone. |
+| Speculative sampling / probability-ratio acceptance | T4 | This abandons exact greedy acceptance and instead preserves the target distribution statistically; it can accept more draft tokens than top-1 equality. | Not implemented in MTP. Current accept summary reads top-1/IDs, not target/draft probability ratios. | Design a GPU accept kernel that consumes target and draft log-probs, plus an evaluation harness for distributional equivalence and throughput cost. |
+| Near-tie/top-k greedy relaxation | T4 | Accepting a draft token that is within a small target-logit margin or in target top-k could raise acceptance density, but it intentionally changes greedy output. | Current exact D32 B=1 has only `1.617` visible tokens/cycle; cap65536 recovered real exact hits, but no relaxed near-tie acceptor exists. | Measure rejected-draft target rank/logit-margin distributions first; only prototype if many rejects are near-ties and deterministic fixed-seed behavior remains stable. |
+| Relaxed LM-head/top-k materialization | T2/T4 | Avoiding full `[rows, vocab]` logits or relaxing tie order may reduce W8A16/argmax cost, but strict MTP requires exact verifier top-1 IDs. | Exact fused verifier LM-head no-held on B=3 and B=1 because the replacement W8A16 body was slower despite removing a launch. | Reframe as a relaxed top-k/argmax layout with KL/top-k agreement gates, not another strict fused LM-head attempt. |
+| Further GDN/order-relaxed verifier kernels | T2 | The landed dv-tiling shows tiny recurrence-order drift can be bounded; MTP's D64 audits show GDN recurrence order is also exactly where strict long-horizon drift appears. | `VTILE=4` dv-tiling is the first relaxed profile; `VTILE=8` no-held as an exact speed attempt; strict c1-equivalent fallback fixes D64 but is slower. | Keep strict fallback; compare recurrence drift, sequence-logit KL, and long-horizon top-1 on D64/D128 before any new default. |
+
+Do **not** move ordinary exact no-holds into this file just because they were
+negative. B=1 `c1_loop`, W4 all-sites, small-batch threshold, LM-head thread
+count, staged selected rotate, decode graph capture, selected-down staged, and
+the pairwise reduced-DAG opt-outs are exact-mode evidence in `docs/MTP.md`, not
+relaxed-mode candidates.
+
 ## Purpose
 
 `docs/KERNELS.md` catalogs the kernels we have landed and the gates that made

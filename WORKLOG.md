@@ -85879,3 +85879,68 @@ online budget policy.
 Compact artifacts:
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-current-postdual-verify-rocprof.json`,
 `benchmarks/results/2026-06-13-hipengine-mtp-b1-current-postdual-proposer-all-rocprof.json`.
+
+## 2026-06-13 - MTP B=1 selected-MoE staged rotate recheck no-held
+
+Rechecked one B=3-era rotate-fusion no-hold at the current retained B=1
+operating point after the reviewer warning that rows moved from 4 to 2.  This
+is a focused quicksort verifier profile gate only; because it is profile-negative,
+no full 9-prompt suite was justified.
+
+Command:
+
+```bash
+PROMPT_TOKENS=$(cat /tmp/quicksort-prompt-tokens.txt)
+rm -rf /tmp/hipengine-mtp-b1-selected-moe-staged-rotate-rocprof-20260613
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1 \
+  PYTHONPATH=. timeout 2400 \
+  python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off \
+  --prompt-tokens "$PROMPT_TOKENS" --decode-tokens 32 --candidate-budget 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --region verify_pass \
+  --raw-root /tmp/hipengine-mtp-b1-selected-moe-staged-rotate-rocprof-20260613 \
+  --out benchmarks/results/2026-06-13-hipengine-mtp-b1-selected-moe-staged-rotate-nohold.json \
+  --top 80
+```
+
+Result versus the current B=1 post-dual verifier profile:
+
+| Metric | Current B=1 | `HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1` |
+| --- | ---: | ---: |
+| Exact AR | yes | yes |
+| Accepted trace | `[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]` | same |
+| Calls/pass | `832.8` | `793.0` |
+| Kernel/pass | `9.379900 ms` | `9.623220 ms` |
+| Host marker/pass | `12.885855 ms` | `12.955262 ms` |
+| `moe_paro_rotate_in` | `160.0 calls / 0.799792 ms` | `120.0 calls / 0.608810 ms` |
+| `moe_gate_up_dual_gemv` | `40.0 calls / 1.213312 ms` | `40.0 calls / 1.647069 ms` |
+
+Decision: no-hold at B=1 too.  The staged selected rotate removes the intended
+~40 rotate launches/pass, but the selected gate/up GEMV grows more than the
+rotate saving.  This confirms the exact-mode rotate-fusion path needs a
+materially different parallel design; do not reopen the M13.B staged selected
+shape as a cheap B=1 retune.
+
+Artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-b1-selected-moe-staged-rotate-nohold.json`.
+
+## 2026-06-13 - MTP retained-win and relaxed-follow-up docs
+
+Updated `docs/MTP.md` with a concise "Retained Wins That Actually Panned Out"
+section so the exact-speed ledger is visible without reading every no-hold row.
+The list calls out the large moves: fixed B=1 operating point, graph-off
+canonicalize skip, `decode_batched`, proposer router top-k specialization,
+verifier host caches, small-B W4 sites, route-batched proposer experts,
+cap65536 acceptance density, reduced-DAG verifier micro-slices, B=1 proposer
+shared gate/up dual, metadata/readback trims, and D64 exact fallbacks.
+
+Updated `docs/RELAXED.md` with MTP-specific non-exact follow-ups that should not
+be mixed into the exact-speed table: D64 fast verifier under KL/top-1 gates,
+speculative sampling / probability-ratio acceptance, near-tie/top-k greedy
+relaxation, relaxed LM-head/top-k materialization, and further GDN/order-relaxed
+verifier kernels.  Also explicitly called out exact no-holds that should remain
+in `docs/MTP.md` rather than being reframed as relaxed work.
