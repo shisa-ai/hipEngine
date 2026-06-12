@@ -158,17 +158,21 @@ Current profile triage after the `0.924x / 19.44 ms` row:
     tail fusion rejected in `docs/OPTIMIZE.md`; the current chain verifier uses
     the retained decode-tail `paro_rotate1_f32_to_fp16` slice already.
 
-Acceptance-density backlog for the endgame:
+### Acceptance-Density Endgame
 
 This is the place to bank policy ideas while keeping the current implementation
 push focused on wall-clock reductions. At the current B=3 density, wall cuts
-alone need about `18.2 ms/cycle`; if the next reduced-DAG/proposer units leave
-the row near `19-20 ms/cycle`, acceptance density becomes the co-equal lever.
+alone need about `18.2 ms/cycle` (`2.012` visible tokens/cycle at the current
+AR denominator); if the next reduced-DAG/proposer units leave the row near
+`19-20 ms/cycle`, acceptance density becomes the co-equal lever. Policy changes
+come after the wall-cut list, but the diagnostic counters should be designed now
+so B sweeps, vocab-cap tests, fallback, and tree/sibling retests all use the
+same evidence.
 
 | Rank | Diagnostic / policy | Why it matters | First gate |
 | --- | --- | --- | --- |
 | A0 | Acceptance-density instrumentation pass | Do this before changing policy so B sweeps, vocab-cap tests, adaptive fallback, and tree/sibling retests all use the same evidence. | Add per-depth accept histograms, rejection reason counters, target top-1 ids for rejected rows, cap-representability flags, and zero-accept streak counters to the exact 9-prompt D32 output. This is diagnostics only: no policy change, no speed row, and no promotion until a later same-suite A/B improves `actual_ratio`. |
-| A1 | B=4/B=5 economics with per-position acceptance histograms | At `19.440 ms/cycle`, the current `2.012` visible tokens/cycle still needs `2.15` visible tokens/cycle for AR break-even. Higher B is the simplest way to buy visible tokens if deeper positions still accept often enough. | Add per-depth accept counters across the exact 9-prompt D32 suite, then run B=4 first and B=5 only if the depth-3/depth-4 histogram justifies it. Promote only if exact AR holds and suite `actual_ratio` improves after the added verifier row cost; the marginal row must add visible tokens faster than AR's `~0.111 tokens/ms`. A useful precondition is depth-3 acceptance around the `25-30%` range or better, but the same-suite ratio is the final gate. |
+| A1 | B=4/B=5 economics with per-position acceptance histograms | At `19.440 ms/cycle`, the current `2.012` visible tokens/cycle still needs `2.15` visible tokens/cycle for AR break-even. Higher B is the simplest way to buy visible tokens if deeper positions still accept often enough, and each added draft row shares fixed per-cycle overhead. | Add per-depth accept counters across the exact 9-prompt D32 suite, then run B=4 first and B=5 only if the depth-3/depth-4 histogram justifies it. Promote only if exact AR holds and suite `actual_ratio` improves after the added verifier row cost; the marginal row must add visible tokens faster than AR's `~0.111 tokens/ms`. A useful precondition is depth-3 acceptance around the `25-30%` range or better, but the same-suite ratio is the final gate. |
 | A2 | Draft vocab-cap rejection census (`32768 -> 65536/full`) | A correct target token outside the draft cap is a guaranteed rejection. If cap-caused misses are nontrivial, raising the cap may buy density for proposer-only LM-head cost. | Instrument rejected depths with target top-1 token id, proposed id, cap status, and whether the target token would have been representable at `65536` or full vocab. If cap-caused misses are around `5-10%` of rejections or more, A/B cap `32768`, `65536`, and full vocab for exactness, acceptance, proposer wall, and total ratio; promote only if recovered acceptance pays the larger proposer LM-head cost. |
 | A3 | Adaptive B / AR fallback for zero-accept streaks | Some prompts or phases pay the full verify wall to accept no draft tokens. Dropping to B=1 or AR after repeated zero-accept cycles can raise suite average without changing kernel math. | Exact output must remain identical. Gate on a fixed online policy, 9-prompt D32 suite, and per-prompt reporting; do not use future prompt knowledge or hide prompt-level regressions behind the average. |
 | A4 | Tree or rejection-boundary sibling retest | Full B=3 tree is exact but negative on the current stack. Lower wall does not by itself make tree overhead cheaper, so only revisit if histograms show first-rejection cases a sibling can recover. | Revisit only after the reduced-DAG/proposer wall path stabilizes. Prefer a chain-plus-one-sibling-at-first-rejection diagnostic before reopening full tree search. Compare against chain at the same B and report added rows, acceptance lift, wall, and ratio. |
@@ -426,22 +430,6 @@ draft argmax ids on device and read candidate ids once per cycle, but the
 `27.201 -> 27.244 ms/cycle`, and proposal/update `1.973 -> 1.978 ms/cycle`.
 Do not re-add that flag without a broader batched proposer design that removes
 more work than the extra D2D stores and final candidate-id read add back.
-
-### Acceptance-Density Endgame
-
-Do not start by changing acceptance policy while the fast path is still moving;
-first keep grinding reduced-DAG verifier work and the post-fusion proposer
-profile. Once wall is closer to the true break-even range, run these diagnostics
-in order:
-
-| Item | First measurement | Promotion gate |
-| --- | --- | --- |
-| One diagnostic counter pass | Before any acceptance-policy change, extend the exact 9-prompt D32 output with per-depth accept histograms, rejected-row target top-1 ids, draft-cap representability, and zero-accept streaks. | Diagnostics only. The first acceptance-density work should tell us whether B, vocab cap, fallback, or sibling search is worth a real A/B; it should not change generation behavior or claim speed. |
-| B=4/B=5 chain economics | Add per-position acceptance histograms to the exact 9-prompt D32 suite, then run the current default stack at `B=4` first. Only spend on `B=5` if the depth-3/depth-4 counters show meaningful acceptance. | Promote only if exact AR holds and the added visible tokens beat the marginal verifier/proposer wall: `delta_visible / delta_wall` must exceed AR's current `~0.1106` tokens/ms, or the full suite `actual_ratio` must improve directly. At `19.440 ms/cycle`, unchanged B=3 density is `2.012` visible/cycle and break-even needs about `2.15` visible/cycle; wall-only break-even at current density would require about `18.2 ms/cycle`. Depth-3 acceptance around `25-30%` is a useful go/no-go signal, but same-suite ratio wins. |
-| Draft vocab cap rejection census | Instrument rejected rows to count target top-1 id, proposed id, whether the target id exceeded `HIPENGINE_MTP_DRAFT_VOCAB_CAP=32768`, and whether it would be representable at `65536` or full vocab. | Try `65536` or full vocab only if cap-caused rejections are material, roughly `5-10%` of rejections or more, and likely to pay the proposer LM-head cost. Report acceptance lift, proposer wall, total wall, and ratio separately; do not promote a cap increase that raises accepted-token count but lowers suite ratio. |
-| Adaptive B / AR fallback | Track prompt/cycle streaks with zero accepted drafts plus confidence signals available before verify. | Drop to lower B or pure AR only when a fixed online rule improves same-suite exact economics without prompt-history oracle leakage or prompt-level regressions hidden by the average. This is a floor-raising policy, not a substitute for wall cuts. |
-| Revisit tree / rejection-boundary sibling | Re-run only after the faster verifier/proposer path is stable and per-position histograms show a recoverable first-rejection pattern. Lower wall does not automatically rescue tree because the old extra verification/graph overhead is still paid. | Prefer a chain-plus-one-sibling-at-first-rejection diagnostic before full tree search. Tree or hybrid sibling verification must beat chain on the same exact suite, not just improve accepted-token count; the old B=3 full tree remains default-off negative. |
-| Relaxed speculative sampling | Keep out of the exact-default sprint. | Requires target/draft distribution access, distribution-preserving accept/reject math, and a different accept kernel. Treat it as a separate opt-in quality tier with its own distribution-read cost model, not as a default speed row. |
 
 ### P0 Refresh Artifacts (2026-06-11)
 

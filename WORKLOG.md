@@ -82434,3 +82434,14 @@ keeps it at `2.0` calls/pass and `0.00688 ms/pass`. No verifier fill family is
 present in those summaries. Updated `docs/MTP.md` to mark the fill/copy lane
 closed on the current stack and to reopen it only from fresh material live-bucket
 evidence plus local write-before-read proof.
+
+## 2026-06-12 - MTP acceptance-density endgame cleanup
+
+Docs-only cleanup while folding the latest acceptance-density review into
+`docs/MTP.md`. Kept policy changes explicitly after the wall-cut list, but made
+the endgame backlog canonical and non-duplicated: first add diagnostic counters
+for per-depth acceptance, rejection reasons, cap representability, and
+zero-accept streaks; then try B=4 before B=5 using the same-suite ratio gate;
+then run a vocab-cap rejection census before any `32768 -> 65536/full` cap
+change; then consider adaptive B/AR fallback and only later tree/sibling or
+relaxed-sampling work. No benchmark claim and no code change in this unit.
