@@ -84397,3 +84397,76 @@ drift is fixed or explicitly bounded.
 
 Compact artifact:
 `benchmarks/results/2026-06-13-hipengine-mtp-d64-state-commit-audit.json`.
+
+## 2026-06-13 - MTP D64 layer/logit drift audit: clean batch vs drifted state
+
+Added `scripts/mtp_layer_drift_audit.py`, a correctness-only diagnostic that
+replays persistent-device MTP up to a selected cycle while keeping a serial AR
+control session at the same committed prefix. At the selected cycle it runs the
+same root+candidate verifier batch on both sessions, captures BF16 hidden rows
+after each layer, reads final verifier top-1 rows, and compares drifted MTP
+state against clean AR state.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_layer_drift_audit.py
+python3 scripts/mtp_layer_drift_audit.py --help
+```
+
+Cycle-1 all-layer capture smoke:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_layer_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 8 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-cycle 1 --compare-rows 0,1 \
+  --out /tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle1-smoke-20260613.json
+```
+
+Result: `status=compared`; both sessions at context `15`, root `271`; verifier
+top-1 matched (`[248068,3841]` both ways), and all `80` captured layer/row
+vectors matched bit-for-bit.
+
+Cycle-27 fork comparator:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 \
+  python3 scripts/mtp_layer_drift_audit.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-name translation --prompt-render raw --decode-tokens 64 \
+  --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode decode_batched --graph-mode off \
+  --compare-cycle 27 --compare-rows 0,1 \
+  --out /tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle27-20260613.json
+```
+
+Result: reproduced the known fork with a clean same-batch control:
+
+- cycle/context: `27` / `48`;
+- root/control root: `19` / `19`;
+- draft candidates: `[26]`;
+- drifted MTP verifier top-1: `[51, 220]`, next token `51`;
+- clean AR-state verifier top-1: `[220, 220]`, next token `220`;
+- pre-verify resident state already differs at layer-0 recurrent state
+  (`max_abs=3.8147e-6`);
+- hidden capture first bit mismatch is row 0 after layer 0
+  (`max_abs=0.000244`);
+- hidden row-0 drift grows through the trunk to layer 39 with
+  `max_abs=0.328125`.
+
+Decision: this confirms the local cycle-27 verifier batch is correct from clean
+AR resident state and that the visible fork is accumulated resident-state drift,
+not final commit copy or local clean-prefix verifier math. The next diagnostic
+should bisect earlier accepted commits/layers to find where the initially tiny
+linear/full-KV state drift starts growing into the final-layer row-0 logit flip.
+Do not spend more time on AR fallback/adaptive promotion until this D64 drift is
+fixed or explicitly bounded.
+
+Compact artifact:
+`benchmarks/results/2026-06-13-hipengine-mtp-d64-layer-drift-audit.json`.

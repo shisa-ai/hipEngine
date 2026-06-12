@@ -1,0 +1,634 @@
+{
+  "date": "2026-06-13",
+  "status": "diagnostic_in_progress",
+  "performance_claim": false,
+  "retained_ready": false,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "workload": {
+    "prompt_name": "translation",
+    "prompt_tokens": 15,
+    "decode_tokens": 64,
+    "candidate_budget": 1,
+    "chain_attn_mode": "decode_batched",
+    "graph_mode": "off",
+    "compare_cycle": 27,
+    "compare_rows": [
+      0,
+      1
+    ]
+  },
+  "commands": {
+    "cycle1_smoke": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 8 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-cycle 1 --compare-rows 0,1 --out /tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle1-smoke-20260613.json",
+    "cycle27": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/mtp_layer_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-name translation --prompt-render raw --decode-tokens 64 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode decode_batched --graph-mode off --compare-cycle 27 --compare-rows 0,1 --out /tmp/hipengine-mtp-layer-drift-audit-translation-b1-cycle27-20260613.json"
+  },
+  "cycle1_smoke": {
+    "status": "compared",
+    "result": "all 80 captured layer/row vectors matched; verifier top1 matched for rows 0 and 1"
+  },
+  "cycle27": {
+    "status": "compared",
+    "seconds": 46.69848508294672,
+    "context": 48,
+    "control_context": 48,
+    "root": 19,
+    "control_root": 19,
+    "draft_candidates": [
+      26
+    ],
+    "generated_prefix_before_compare": [
+      271,
+      248068,
+      271,
+      248069,
+      271,
+      2229,
+      5494,
+      552,
+      40232,
+      72931,
+      796,
+      1035,
+      1298,
+      85287,
+      350,
+      501,
+      195342,
+      222843,
+      323,
+      2131,
+      13,
+      248044,
+      248045,
+      248045,
+      17,
+      15,
+      17,
+      20,
+      12,
+      15,
+      24,
+      12,
+      15
+    ],
+    "mtp_verify": {
+      "accepted": 0,
+      "commit_row": 0,
+      "commit_position": 48,
+      "next_token": 51,
+      "target_top1": [
+        51,
+        220
+      ],
+      "target_top1_values": [
+        18.77215576171875,
+        15.496694564819336
+      ]
+    },
+    "clean_verify": {
+      "accepted": 0,
+      "commit_row": 0,
+      "commit_position": 48,
+      "next_token": 220,
+      "target_top1": [
+        220,
+        220
+      ],
+      "target_top1_values": [
+        18.79779624938965,
+        15.380106925964355
+      ]
+    },
+    "pre_verify_resident_first_mismatch": {
+      "category": "linear",
+      "passed": false,
+      "shape": [
+        32,
+        128,
+        128
+      ],
+      "dtype": "float32",
+      "mismatch": {
+        "kind": "value",
+        "mismatch_count": 319503,
+        "first_flat_index": 0,
+        "first_index": [
+          0,
+          0,
+          0
+        ],
+        "left_value": 0.00017054427007678896,
+        "right_value": 0.0001705441827652976,
+        "max_abs": 3.814697265625e-06,
+        "max_abs_index": [
+          14,
+          9,
+          79
+        ]
+      },
+      "layer_index": 0,
+      "state": "recurrent",
+      "left": "mtp_resident",
+      "right": "ar_resident"
+    },
+    "hidden_compare": {
+      "checked": 80,
+      "failed": 79,
+      "first_bit_mismatch": {
+        "passed": false,
+        "mismatch_count": 131,
+        "max_abs": 0.000244140625,
+        "max_abs_index": 1847,
+        "left_at_max_abs": -0.03369140625,
+        "right_at_max_abs": -0.033447265625,
+        "left_bits_at_max_abs": 48394,
+        "right_bits_at_max_abs": 48393,
+        "first_mismatch_index": 1,
+        "left_first_bits": 47159,
+        "right_first_bits": 47145,
+        "left_first_value": -4.363059997558594e-05,
+        "right_first_value": -4.029273986816406e-05,
+        "row": 0,
+        "layer_index": 0,
+        "layer_type": "linear_attention",
+        "capture_index": 0
+      },
+      "top_max_abs": [
+        {
+          "passed": false,
+          "mismatch_count": 2020,
+          "max_abs": 0.328125,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 0.78515625,
+          "right_at_max_abs": 0.45703125,
+          "left_bits_at_max_abs": 16201,
+          "right_bits_at_max_abs": 16106,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15964,
+          "right_first_bits": 15939,
+          "left_first_value": 0.21484375,
+          "right_first_value": 0.1904296875,
+          "row": 0,
+          "layer_index": 39,
+          "layer_type": "full_attention",
+          "capture_index": 39
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2021,
+          "max_abs": 0.1875,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 3.875,
+          "right_at_max_abs": 3.6875,
+          "left_bits_at_max_abs": 16504,
+          "right_bits_at_max_abs": 16492,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15768,
+          "right_first_bits": 15821,
+          "left_first_value": 0.07421875,
+          "right_first_value": 0.10009765625,
+          "row": 1,
+          "layer_index": 34,
+          "layer_type": "linear_attention",
+          "capture_index": 34
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2010,
+          "max_abs": 0.1875,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 4.9375,
+          "right_at_max_abs": 4.75,
+          "left_bits_at_max_abs": 16542,
+          "right_bits_at_max_abs": 16536,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15784,
+          "right_first_bits": 15684,
+          "left_first_value": 0.08203125,
+          "right_first_value": 0.0478515625,
+          "row": 0,
+          "layer_index": 38,
+          "layer_type": "linear_attention",
+          "capture_index": 38
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2023,
+          "max_abs": 0.171875,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 3.125,
+          "right_at_max_abs": 2.953125,
+          "left_bits_at_max_abs": 16456,
+          "right_bits_at_max_abs": 16445,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15821,
+          "right_first_bits": 15838,
+          "left_first_value": 0.10009765625,
+          "right_first_value": 0.1083984375,
+          "row": 1,
+          "layer_index": 36,
+          "layer_type": "linear_attention",
+          "capture_index": 36
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2025,
+          "max_abs": 0.171875,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 2.96875,
+          "right_at_max_abs": 2.796875,
+          "left_bits_at_max_abs": 16446,
+          "right_bits_at_max_abs": 16435,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15876,
+          "right_first_bits": 15838,
+          "left_first_value": 0.12890625,
+          "right_first_value": 0.1083984375,
+          "row": 0,
+          "layer_index": 37,
+          "layer_type": "linear_attention",
+          "capture_index": 37
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2030,
+          "max_abs": 0.15625,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 2.484375,
+          "right_at_max_abs": 2.328125,
+          "left_bits_at_max_abs": 16415,
+          "right_bits_at_max_abs": 16405,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15746,
+          "right_first_bits": 15770,
+          "left_first_value": 0.0634765625,
+          "right_first_value": 0.0751953125,
+          "row": 1,
+          "layer_index": 35,
+          "layer_type": "full_attention",
+          "capture_index": 35
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2027,
+          "max_abs": 0.140625,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 2.59375,
+          "right_at_max_abs": 2.453125,
+          "left_bits_at_max_abs": 16422,
+          "right_bits_at_max_abs": 16413,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15703,
+          "right_first_bits": 15694,
+          "left_first_value": 0.052490234375,
+          "right_first_value": 0.05029296875,
+          "row": 1,
+          "layer_index": 33,
+          "layer_type": "linear_attention",
+          "capture_index": 33
+        },
+        {
+          "passed": false,
+          "mismatch_count": 1997,
+          "max_abs": 0.140625,
+          "max_abs_index": 1307,
+          "left_at_max_abs": 1.75,
+          "right_at_max_abs": 1.609375,
+          "left_bits_at_max_abs": 16352,
+          "right_bits_at_max_abs": 16334,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15913,
+          "right_first_bits": 15900,
+          "left_first_value": 0.1650390625,
+          "right_first_value": 0.15234375,
+          "row": 1,
+          "layer_index": 39,
+          "layer_type": "full_attention",
+          "capture_index": 39
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2007,
+          "max_abs": 0.125,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 4.15625,
+          "right_at_max_abs": 4.03125,
+          "left_bits_at_max_abs": 16517,
+          "right_bits_at_max_abs": 16513,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15498,
+          "right_first_bits": 15566,
+          "left_first_value": 0.016845703125,
+          "right_first_value": 0.025146484375,
+          "row": 1,
+          "layer_index": 37,
+          "layer_type": "linear_attention",
+          "capture_index": 37
+        },
+        {
+          "passed": false,
+          "mismatch_count": 2018,
+          "max_abs": 0.125,
+          "max_abs_index": 1269,
+          "left_at_max_abs": 7.75,
+          "right_at_max_abs": 7.625,
+          "left_bits_at_max_abs": 16632,
+          "right_bits_at_max_abs": 16628,
+          "first_mismatch_index": 0,
+          "left_first_bits": 15771,
+          "right_first_bits": 15749,
+          "left_first_value": 0.07568359375,
+          "right_first_value": 0.06494140625,
+          "row": 1,
+          "layer_index": 38,
+          "layer_type": "linear_attention",
+          "capture_index": 38
+        }
+      ],
+      "row0_max_abs_by_layer": [
+        {
+          "layer_index": 0,
+          "layer_type": "linear_attention",
+          "mismatch_count": 131,
+          "max_abs": 0.000244140625,
+          "max_abs_index": 1847
+        },
+        {
+          "layer_index": 1,
+          "layer_type": "linear_attention",
+          "mismatch_count": 475,
+          "max_abs": 0.00048828125,
+          "max_abs_index": 1197
+        },
+        {
+          "layer_index": 2,
+          "layer_type": "linear_attention",
+          "mismatch_count": 533,
+          "max_abs": 0.0009765625,
+          "max_abs_index": 1197
+        },
+        {
+          "layer_index": 3,
+          "layer_type": "full_attention",
+          "mismatch_count": 688,
+          "max_abs": 0.0009765625,
+          "max_abs_index": 859
+        },
+        {
+          "layer_index": 4,
+          "layer_type": "linear_attention",
+          "mismatch_count": 648,
+          "max_abs": 0.00048828125,
+          "max_abs_index": 712
+        },
+        {
+          "layer_index": 5,
+          "layer_type": "linear_attention",
+          "mismatch_count": 666,
+          "max_abs": 0.00048828125,
+          "max_abs_index": 909
+        },
+        {
+          "layer_index": 6,
+          "layer_type": "linear_attention",
+          "mismatch_count": 1548,
+          "max_abs": 0.0009765625,
+          "max_abs_index": 680
+        },
+        {
+          "layer_index": 7,
+          "layer_type": "full_attention",
+          "mismatch_count": 1995,
+          "max_abs": 0.005859375,
+          "max_abs_index": 623
+        },
+        {
+          "layer_index": 8,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2009,
+          "max_abs": 0.0096435546875,
+          "max_abs_index": 1537
+        },
+        {
+          "layer_index": 9,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2003,
+          "max_abs": 0.007171630859375,
+          "max_abs_index": 1537
+        },
+        {
+          "layer_index": 10,
+          "layer_type": "linear_attention",
+          "mismatch_count": 1995,
+          "max_abs": 0.0234375,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 11,
+          "layer_type": "full_attention",
+          "mismatch_count": 2009,
+          "max_abs": 0.009521484375,
+          "max_abs_index": 1315
+        },
+        {
+          "layer_index": 12,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2007,
+          "max_abs": 0.01171875,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 13,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2008,
+          "max_abs": 0.0079345703125,
+          "max_abs_index": 1799
+        },
+        {
+          "layer_index": 14,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2001,
+          "max_abs": 0.00830078125,
+          "max_abs_index": 928
+        },
+        {
+          "layer_index": 15,
+          "layer_type": "full_attention",
+          "mismatch_count": 1994,
+          "max_abs": 0.0234375,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 16,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2004,
+          "max_abs": 0.03125,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 17,
+          "layer_type": "linear_attention",
+          "mismatch_count": 1995,
+          "max_abs": 0.0234375,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 18,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2005,
+          "max_abs": 0.0234375,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 19,
+          "layer_type": "full_attention",
+          "mismatch_count": 2017,
+          "max_abs": 0.0234375,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 20,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2025,
+          "max_abs": 0.015625,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 21,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2012,
+          "max_abs": 0.015960693359375,
+          "max_abs_index": 143
+        },
+        {
+          "layer_index": 22,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2021,
+          "max_abs": 0.046875,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 23,
+          "layer_type": "full_attention",
+          "mismatch_count": 2020,
+          "max_abs": 0.03125,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 24,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2031,
+          "max_abs": 0.03125,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 25,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2016,
+          "max_abs": 0.0230712890625,
+          "max_abs_index": 735
+        },
+        {
+          "layer_index": 26,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2033,
+          "max_abs": 0.0240478515625,
+          "max_abs_index": 143
+        },
+        {
+          "layer_index": 27,
+          "layer_type": "full_attention",
+          "mismatch_count": 2026,
+          "max_abs": 0.029052734375,
+          "max_abs_index": 1791
+        },
+        {
+          "layer_index": 28,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2026,
+          "max_abs": 0.031219482421875,
+          "max_abs_index": 1057
+        },
+        {
+          "layer_index": 29,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2030,
+          "max_abs": 0.0325927734375,
+          "max_abs_index": 1578
+        },
+        {
+          "layer_index": 30,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2017,
+          "max_abs": 0.028564453125,
+          "max_abs_index": 410
+        },
+        {
+          "layer_index": 31,
+          "layer_type": "full_attention",
+          "mismatch_count": 2027,
+          "max_abs": 0.046875,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 32,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2020,
+          "max_abs": 0.0380859375,
+          "max_abs_index": 55
+        },
+        {
+          "layer_index": 33,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2021,
+          "max_abs": 0.0380859375,
+          "max_abs_index": 55
+        },
+        {
+          "layer_index": 34,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2015,
+          "max_abs": 0.109375,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 35,
+          "layer_type": "full_attention",
+          "mismatch_count": 2024,
+          "max_abs": 0.09375,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 36,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2017,
+          "max_abs": 0.078125,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 37,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2025,
+          "max_abs": 0.171875,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 38,
+          "layer_type": "linear_attention",
+          "mismatch_count": 2010,
+          "max_abs": 0.1875,
+          "max_abs_index": 1269
+        },
+        {
+          "layer_index": 39,
+          "layer_type": "full_attention",
+          "mismatch_count": 2020,
+          "max_abs": 0.328125,
+          "max_abs_index": 1269
+        }
+      ]
+    }
+  },
+  "conclusion": "Cycle 27 reproduces the D64 translation fork: drifted MTP state predicts row0 top1=51 while clean AR-state verifier predicts 220. The same row1 candidate top1 remains 220 on both sessions. Hidden capture shows bit drift from layer 0 row 0, initially tiny (max_abs=0.000244140625), growing through the trunk to row0 layer 39 max_abs=0.328125. This localizes the visible fork to accumulated resident-state drift before the cycle-27 verifier, not final commit copy or local clean-prefix verifier math.",
+  "next_action": "Bisect the accumulated resident-state drift over earlier commits/layers, focusing on why layer-0 recurrent/full-KV bit drift after early accepted rows grows enough to flip final row0 top1 by cycle 27."
+}
