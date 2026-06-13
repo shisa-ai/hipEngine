@@ -36,14 +36,17 @@ PARO and GGUF while native GPU sampling remains incomplete:
 - c>N public requests can use the host sampler by serializing rows through the
   c=1 PARO path. Native c>N stochastic sampling is still future work.
 - `PerRowSamplingParams` / `SamplerParamsBlock` carry the canonical scalar
-  sampler metadata and logit-bias rows for scheduler/native-sampler shape, but
-  generated-token history and native c>N stochastic execution remain S5/S6 work.
+  sampler metadata and logit-bias rows for scheduler/native-sampler shape.
+  `ResidentBatchScheduler` now owns `RowSamplingState` rows, exposes them in
+  decode-work order, and updates generated-token history through
+  `record_generated` / speculative accept paths; native c>N stochastic
+  execution remains S5/S6 work.
 - `lm_head.hip` has a row-wise top-k helper capped at `k <= 8`, useful for
   drafter/verifier diagnostics but not enough for normal user sampling.
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
 is fixed for the host-logits path. Remaining implementation work is
-tokenizer-lowered stop sequences, native c>N state expansion, GPU sampler
+tokenizer-lowered stop sequences, native c>N stochastic execution, GPU sampler
 kernels, exact GPU top-p, and public logprobs responses.
 
 ## Hardware lane for this work
@@ -121,7 +124,7 @@ models should either populate these fields or reject unsupported aliases.
 | `logit_bias` | Public/server/runtime | Token-id keyed bias map before filtering. | Medium |
 | `seed` / `row_seeds` | Public/server/runtime | Stable row RNG seed; `n > 1` rows diverge deterministically. | Low/Medium |
 | `stop` strings | Server post-trim only | Keep post-trim initially; add token-level early stop when stop-token lowering is available. | Medium |
-| `stop_token_ids` | Public/runtime + scheduler partial | Single-token stop IDs finish PARO host-sampled rows; tokenizer-lowered stop sequences remain S4/S5 work. | Medium |
+| `stop_token_ids` | Public/runtime + scheduler state | Single-token stop IDs finish PARO/GGUF host-sampled rows; tokenizer-lowered stop sequences remain S4/S5 work. | Medium |
 | `logprobs` / `top_logprobs` | Rejected or absent | Later response feature; do not block basic sampling. | High |
 
 Compatibility rule: if `temperature <= 0` and the request has no active logit
@@ -366,10 +369,11 @@ that spawns nested Python children.
 c>N support should reuse the same sampler state, but it does not have to be
 fully vectorized at first:
 
-- `ResidentBatchScheduler` should own `RowSamplingState` per request id, or carry
-  enough information for the runner to update it after each token.
-- `SamplerParamsBlock` should be extended or replaced so it can represent all
-  public sampler fields, not only temperature/top-k/top-p/repetition.
+- `ResidentBatchScheduler` owns `RowSamplingState` per request id and returns
+  state tuples aligned with decode work so native/host row selection can see
+  prompt history, generated history, stable row seeds, and step indices.
+- `SamplerParamsBlock` represents all public sampler fields, not only
+  temperature/top-k/top-p/repetition.
 - The first c>N functional path may project rows in batch and sample each logits
   row serially on host.
 - A native c>N path should write selected token ids directly to
@@ -401,17 +405,18 @@ fully vectorized at first:
 | S0: API/schema cleanup | Extend `SamplingParams`, `GenerationRequest`, server request models, `_sampling_key`, and validation. Reject unsupported fields explicitly. | Low | ~100-200 Python/tests | None | **Done for public/server canonical fields.** |
 | S1: greedy-compatible unblock | Allow `temperature <= 0` with inert `top_p`/`top_k`; preserve current graph replay and argmax behavior. | Low | ~50-100 Python/tests | S0 | **Done for PARO and GGUF greedy-equivalent requests.** |
 | S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | **Done for PARO and GGUF c=1 plus serial multi-row host sampling.** |
-| S3: token-history processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | Synthetic-logit processor tests and fixed-seed generator fixtures pass. |
-| S4: token-level stop | Lower stop token IDs where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | Rows finish on EOS/stop-token fixtures without overrun. |
-| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Partial:** canonical sampler metadata is columnar in `SamplerParamsBlock`; generated-token history/native execution still open. |
+| S3: token-history processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | **Done for host sampler:** synthetic-logit processor tests and fixed-seed generator fixtures pass. |
+| S4: token-level stop | Lower stop token IDs where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | **Partial:** single-token `stop_token_ids` finish PARO/GGUF host-sampled rows; tokenizer-lowered stop strings/sequences remain. |
+| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Partial:** canonical sampler metadata and scheduler-owned `RowSamplingState` history are available in decode-work order; native c>N stochastic execution still open. |
 | S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | GPU1 smoke passes CPU-reference filtering and fixed-seed determinism. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | GPU top-p matches CPU retain set on boundary fixtures and removes full-vocab D2H copies. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | OpenAI-compatible response tests pass for selected logprob/top-logprobs cases. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.
-S3 and S4 make the behavior match common client expectations. S6/S7 are
-performance work and should not block functional support.
+S3 is complete for the host sampler and S4 covers explicit token-id stops, but
+tokenizer-lowered stop strings/sequences still need deeper tokenizer integration.
+S6/S7 are performance work and should not block functional host support.
 
 ## Correctness and validation gates
 
@@ -468,18 +473,20 @@ performance work and should not block functional support.
 - Any default-off sampler experiment or fallback flag must be added to
   `docs/REFACTOR.md` with a removal/promotion condition.
 
-## Open questions
+## Resolved decisions and open questions
 
-1. Should `min_p` be public in the first API expansion or only server-compatible
-   via extra fields?
-2. Which logit-bias token-id namespace should the server accept for tokenizer
-   variants: raw token id only, token string aliases, or both?
-3. Should host sampling be available for GGUF immediately, or should PARO land
-   first and GGUF follow after shared sampler extraction?
-4. How much OpenAI `logprobs` compatibility is needed before marking sampled
+Resolved for the current host-sampler milestone:
+
+- `min_p` is public in `SamplingParams` and accepted by the server.
+- `logit_bias` accepts raw token-id keys only; token-string aliases remain a
+  tokenizer-lowering feature.
+- GGUF uses the shared host sampler now instead of waiting for a later port.
+- The public API exposes `stop_token_ids`; OpenAI `stop` strings remain
+  server-side trim-only until tokenizer-lowered stop sequences land.
+
+Still open:
+
+1. How much OpenAI `logprobs` compatibility is needed before marking sampled
    server responses production-ready?
-5. Should fixed-seed GPU sampling match the host RNG exactly, or is stable
+2. Should fixed-seed GPU sampling match the host RNG exactly, or is stable
    GPU-only determinism sufficient for retained native sampling?
-6. Should the public API expose `stop_token_ids`, or should token-level stops
-   remain server/tokenizer-internal until tokenizer plugins define a portable
-   contract?

@@ -16183,6 +16183,52 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
         scheduler.sampler_params_block((r0,))
 
 
+def test_resident_scheduler_sampler_states_track_generated_history() -> None:
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    r0 = scheduler.submit(
+        [10, 11],
+        max_new_tokens=3,
+        sampling=PerRowSamplingParams(temperature=0.7, seed=123),
+        sampling_row_index=0,
+    )
+    r1 = scheduler.submit(
+        [20],
+        max_new_tokens=3,
+        sampling=PerRowSamplingParams(temperature=0.8, seed=123),
+        sampling_row_index=1,
+    )
+    scheduler.admit_pending()
+
+    state0 = scheduler.sampler_state(r0)
+    state1 = scheduler.sampler_state(r1)
+    assert state0.prompt_tokens == (10, 11)
+    assert state0.request_id == r0
+    assert state0.row_index == 0
+    assert state0.generated_tokens == []
+    assert state0.step_index == 0
+    assert state1.row_index == 1
+    assert state0.seed != state1.seed
+
+    forward = scheduler.sampler_params_block((r0, r1))
+    reverse = scheduler.sampler_params_block((r1, r0))
+    assert forward.seeds == (state0.seed, state1.seed)
+    assert reverse.seeds == (state1.seed, state0.seed)
+    assert scheduler.sampler_states_block((r1, r0)) == (state1, state0)
+
+    scheduler.record_generated([GeneratedToken(r0, 100), GeneratedToken(r1, 200)])
+    assert state0.generated_tokens == [100]
+    assert state0.history_tokens == (10, 11, 100)
+    assert state0.step_index == 1
+    assert state1.generated_tokens == [200]
+    assert state1.history_tokens == (20, 200)
+    assert state1.step_index == 1
+
+    scheduler.record_generated([GeneratedToken(r0, 101, finished=True)])
+    with pytest.raises(KeyError, match="sampler state"):
+        scheduler.sampler_state(r0)
+    assert scheduler.sampler_state(r1).generated_tokens == [200]
+
+
 def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
     reclaimed: list[tuple[int, str]] = []
     policy = FixedPagedKVPolicy(block_size=16, total_capacity_tokens=96)

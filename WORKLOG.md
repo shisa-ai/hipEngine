@@ -86599,3 +86599,32 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `31 passed`.
 - `python3 -m pytest tests/test_sampling.py tests/test_server_api.py -q` -> `43 passed`.
+
+## 2026-06-14 - Sampling S5 scheduler row state audit
+
+Performed a completion audit against `docs/SAMPLING.md`.  The full objective is
+not complete: S6 native GPU sampling, S7 exact GPU top-p, S8 public logprobs,
+and tokenizer-lowered stop strings/sequences remain open.  S0-S3 are covered by
+current host-sampler code/tests; S4 is partial for explicit single-token
+`stop_token_ids` on PARO/GGUF host-sampled rows.
+
+Advanced S5 by giving `ResidentBatchScheduler` ownership of `RowSamplingState`
+per request.  `submit()` now initializes scheduler sampler state with prompt
+history, deterministic resolved seed, request id, and row index; sampler params
+blocks use the scheduler-owned seed so seed order is stable across decode-work
+ordering; `sampler_state()` / `sampler_states_block()` expose mutable state in
+request/decode order; `record_generated()` and speculative accept paths update
+generated-token history through the same `_append_generated_token()` path.
+Completed/canceled rows drop their sampler state with the rest of the request
+bookkeeping.
+
+Updated `docs/SAMPLING.md` current-state, c>N, implementation-track, and
+open-question sections to reflect S3 done for host sampling, S4 single-token stop
+coverage, and S5 scheduler-owned row history while keeping native c>N/GPU/logprob
+work listed as incomplete.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_scheduler_sampler_states_track_generated_history -q` -> `2 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_scheduler_sampler_states_track_generated_history tests/test_sampling.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_gguf_sampling.py -q` -> `18 passed`.
+- `git diff --check`.

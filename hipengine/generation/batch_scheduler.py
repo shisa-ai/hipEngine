@@ -17,7 +17,7 @@ from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
-from hipengine.generation.sampling import normalize_logit_bias_pairs
+from hipengine.generation.sampling import RowSamplingState, normalize_logit_bias_pairs
 from hipengine.kvcache import KVTransaction
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
@@ -128,6 +128,8 @@ class SamplerParamsBlock:
         cls,
         request_ids: Sequence[int],
         rows: Mapping[int, PerRowSamplingParams],
+        *,
+        seeds: Mapping[int, int] | None = None,
     ) -> "SamplerParamsBlock":
         ids = tuple(int(request_id) for request_id in request_ids)
         params = tuple(rows[request_id] for request_id in ids)
@@ -142,7 +144,9 @@ class SamplerParamsBlock:
             frequency_penalties=tuple(row.frequency_penalty for row in params),
             logit_bias_rows=tuple(row.logit_bias for row in params),
             seeds=tuple(
-                row.resolved_seed(request_id=request_id, row_index=index)
+                int(seeds[request_id])
+                if seeds is not None and request_id in seeds
+                else row.resolved_seed(request_id=request_id, row_index=index)
                 for index, (request_id, row) in enumerate(zip(ids, params, strict=True))
             ),
             stop_token_rows=tuple(row.stop_tokens for row in params),
@@ -564,7 +568,9 @@ class ResidentBatchScheduler:
         self._completed: dict[int, CompletedRequest] = {}
         self._observability: dict[int, _RequestObservabilityState] = {}
         self._sampling: dict[int, PerRowSamplingParams] = {}
+        self._sampling_states: dict[int, RowSamplingState] = {}
         self._next_request_id = 0
+        self._next_sampling_row_index = 0
         self._clock = time.monotonic if clock is None else clock
         self._reclaim_callback = reclaim_callback
 
@@ -587,14 +593,30 @@ class ResidentBatchScheduler:
         max_new_tokens: int,
         request_id: int | None = None,
         sampling: PerRowSamplingParams | None = None,
+        sampling_row_index: int | None = None,
     ) -> int:
         if self.max_pending_requests is not None and len(self._pending) >= self.max_pending_requests:
             raise ValueError(f"pending request queue is full (max_pending_requests={self.max_pending_requests})")
         rid = self._allocate_request_id() if request_id is None else int(request_id)
         if rid in self.active_batch.requests or any(req.request_id == rid for req in self._pending) or rid in self._completed:
             raise ValueError(f"request_id {rid} already exists")
-        self._pending.append(RequestState.from_tokens(rid, prompt_tokens, max_new_tokens=max_new_tokens))
-        self._sampling[rid] = sampling or PerRowSamplingParams()
+        prompt_row = tuple(int(token) for token in prompt_tokens)
+        if sampling_row_index is None:
+            row_index = self._allocate_sampling_row_index()
+        else:
+            row_index = int(sampling_row_index)
+            self._next_sampling_row_index = max(self._next_sampling_row_index, row_index + 1)
+        if row_index < 0:
+            raise ValueError("sampling_row_index must be non-negative")
+        sampling_params = sampling or PerRowSamplingParams()
+        self._pending.append(RequestState.from_tokens(rid, prompt_row, max_new_tokens=max_new_tokens))
+        self._sampling[rid] = sampling_params
+        self._sampling_states[rid] = RowSamplingState(
+            prompt_tokens=prompt_row,
+            seed=sampling_params.resolved_seed(request_id=rid, row_index=row_index),
+            request_id=rid,
+            row_index=row_index,
+        )
         self._observability[rid] = _RequestObservabilityState(
             submitted_at=self._clock(),
             admission_blocked_reason="capacity" if self.active_batch.active_count >= self.capacity else None,
@@ -769,7 +791,24 @@ class ResidentBatchScheduler:
         for request_id in ids:
             if request_id not in self._sampling:
                 raise KeyError(f"no sampler params for request_id {request_id}")
-        return SamplerParamsBlock.from_rows(ids, self._sampling)
+        return SamplerParamsBlock.from_rows(
+            ids,
+            self._sampling,
+            seeds={request_id: self._sampling_states[request_id].seed for request_id in ids},
+        )
+
+    def sampler_state(self, request_id: int) -> RowSamplingState:
+        """Return the mutable scheduler-owned sampler state for a request."""
+
+        rid = int(request_id)
+        if rid not in self._sampling_states:
+            raise KeyError(f"no sampler state for request_id {rid}")
+        return self._sampling_states[rid]
+
+    def sampler_states_block(self, request_ids: Sequence[int]) -> tuple[RowSamplingState, ...]:
+        """Return sampler states aligned with a native decode work item."""
+
+        return tuple(self.sampler_state(request_id) for request_id in request_ids)
 
     def record_work_duration(self, work: WorkItem, seconds: float) -> None:
         """Attach measured runner time to the request observability rows."""
@@ -1168,9 +1207,17 @@ class ResidentBatchScheduler:
         self._next_request_id += 1
         return rid
 
+    def _allocate_sampling_row_index(self) -> int:
+        row_index = self._next_sampling_row_index
+        self._next_sampling_row_index += 1
+        return row_index
+
     def _append_generated_token(self, token: GeneratedToken) -> CompletedRequest | None:
         request = self.active_batch.requests[token.request_id]
         finish_reason = "stop" if token.finished else "length"
+        sampler_state = self._sampling_states.get(token.request_id)
+        if sampler_state is not None:
+            sampler_state.observe(token.token_id)
         updated = request.append_generated(token.token_id, finished=token.finished)
         self.active_batch.update_request(updated)
         self._update_kv_pages(updated)
@@ -1221,6 +1268,7 @@ class ResidentBatchScheduler:
             observability=observability,
         )
         self._sampling.pop(done.request_id, None)
+        self._sampling_states.pop(done.request_id, None)
         self._completed[done.request_id] = done
         if self._reclaim_callback is not None:
             self._reclaim_callback(done)
