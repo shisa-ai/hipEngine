@@ -86792,3 +86792,56 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path -q` -> `2 passed`.
 - `python3 -m pytest tests/test_server_api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> passed (`78 passed`).
+
+## 2026-06-14 - ROCm 7.14 benchmark diagnostics
+
+After installing ROCm nightly `HIP version: 7.14.60850-1b2a555677`, reran the
+MTP, README topline, and concurrency diagnostics under a clean TheRock env on
+W7900 (`HIP_VISIBLE_DEVICES=0`, `HIPENGINE_HIP_ARCH=gfx1100`,
+`HSA_OVERRIDE_GFX_VERSION=11.0.0`, compiler-version file
+`/tmp/hipengine-hipcc-version-714.txt`). Exact commands are embedded in the new
+compact artifacts below.
+
+MTP:
+- Final public packed PARO trunk plus copied BF16 MTP sidecar
+  (`/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`) failed the fast
+  B=1 D32 exactness gate on `translation` run 1 (`exact_ar_mismatch`), so it is
+  not a drop-in MTP replacement. Artifact:
+  `benchmarks/results/2026-06-14-hipengine-mtp-finalpacked-rocm714-exactness-nohold.json`.
+- The retained older MTP artifact
+  `/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16` stayed
+  exact `9/9` under ROCm 7.14, including `translation`, but speed regressed vs
+  the retained 2026-06-13 row: prompt-mean actual speedup `1.023x -> 0.991x`,
+  cycle wall `14.134 -> 14.595 ms`, verify `12.415 -> 12.855 ms`, proposal
+  `1.700 -> 1.714 ms`, visible/cycle unchanged at `1.617`. Artifact:
+  `benchmarks/results/2026-06-14-hipengine-mtp-b1-oldartifact-rocm714-3run-diagnostic.json`.
+
+README topline diagnostics:
+- PARO final public packed snapshot
+  `/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`
+  with 2 warmups + 5 measured runs: 7.14 vs 7.13 prefill/decode deltas were
+  `512/128 +0.61/+1.09%`, `4K/128 -0.01/+0.60%`,
+  `32K/128 -1.59/-0.23%`, `128K/128 -4.49/-1.06%`. Mixed; keep 7.13 as the
+  retained topline. Artifact:
+  `benchmarks/results/2026-06-14-w7900-rocm714-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`.
+- GGUF Q4_K_S with decode-repack, WMMA prefill, GEMV decode: 7.14 vs 7.13
+  prefill deltas were `-14.18/-12.92/-9.78/-4.38%`; decode deltas were
+  `-1.01/-1.42/-0.08/+0.66%`. Clear prefill regression; keep 7.13 as the
+  retained topline. Artifact:
+  `benchmarks/results/2026-06-14-w7900-rocm714-hipengine-gguf-q4ks-readme-persistent-5run-diagnostic.json`.
+
+Concurrency:
+- Final public packed PARO 512/128 c=1/2/4/8 diagnostic median of 3 runs under
+  ROCm 7.14 measured aggregate decode `116.29 / 113.89 / 159.31 / 188.98`
+  tok/s and per-seq `116.29 / 56.94 / 39.83 / 23.62` tok/s. Relative to the
+  2026-06-13 W7900 diagnostic, aggregate changed
+  `-0.33% / +0.39% / +2.11% / +0.15%`. This refreshes the non-retained
+  concurrency snapshot only. Artifact:
+  `benchmarks/results/2026-06-14-hipengine-qwen35-concurrency-decode-rocm714-w7900/summary.json`.
+
+Docs updated:
+- `README.md` and `benchmarks/README.md`: 7.13 remains the retained W7900
+  topline stack; 7.14 diagnostic called out as mixed/no-promote; concurrency
+  diagnostic refreshed.
+- `benchmarks/CHANGELOG.md`: added ROCm 7.14 no-promote and concurrency refresh
+  entries.

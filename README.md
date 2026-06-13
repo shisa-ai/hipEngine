@@ -140,7 +140,7 @@ With `-ub 512`:
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 hipEngine PARO and GGUF rows use measured code commit `c5c8bab1` with a clean TheRock ROCm 7.13 stack (`HIP version: 7.13.26162-1140233ffe`) and load one resident max-context session for 2 warmups + 5 measured in-session repetitions per shape. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The GGUF AR loader accepts current MTP-bearing GGUF files by ignoring trailing `blk.40.nextn.*` predictor tensors while keeping strict mapping for the 40 executable AR layers.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest retained W7900 hipEngine PARO and GGUF rows use measured code commit `c5c8bab1` with a clean TheRock ROCm 7.13 stack (`HIP version: 7.13.26162-1140233ffe`) and load one resident max-context session for 2 warmups + 5 measured in-session repetitions per shape. A ROCm 7.14 nightly diagnostic was mixed and is not promoted: PARO short-context decode improved slightly, PARO long-context and GGUF prefill regressed, and MTP verifier wall regressed. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The GGUF AR loader accepts current MTP-bearing GGUF files by ignoring trailing `blk.40.nextn.*` predictor tensors while keeping strict mapping for the 40 executable AR layers.
 
 ### Prefill tok/s
 
@@ -237,12 +237,12 @@ smoke-test details.
 
 | Concurrency `c` | hipEngine aggregate | hipEngine per-seq | llama.cpp Vulkan aggregate | llama.cpp per-seq | vLLM OpenAI aggregate | vLLM per-seq |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | **116.68** | **116.68** | 106.47 | 106.47 | 19.39 | 19.39 |
-| 2 | 113.45 | 56.73 | **159.19** | **79.59** | 37.53 | 18.77 |
-| 4 | **156.03** | **39.01** | 70.44 | 17.61 | 72.96 | 18.24 |
-| 8 | **188.69** | **23.59** | 26.26 | 3.28 | 115.96 | 14.49 |
+| 1 | **116.29** | **116.29** | 106.47 | 106.47 | 19.39 | 19.39 |
+| 2 | 113.89 | 56.94 | **159.19** | **79.59** | 37.53 | 18.77 |
+| 4 | **159.31** | **39.83** | 70.44 | 17.61 | 72.96 | 18.24 |
+| 8 | **188.98** | **23.62** | 26.26 | 3.28 | 115.96 | 14.49 |
 
-hipEngine aggregate throughput scales from c1 to c8 by **1.62x**. The `c=2`
+hipEngine aggregate throughput scales from c1 to c8 by **1.63x**. The `c=2`
 aggregate still dips slightly below `c=1`; this is the known small-context
 `c>1` dispatch-bound regime. llama.cpp wins this protocol at c=2, then falls off
 at c4/c8 with this server/Vulkan setup. vLLM now runs via the local source build;
@@ -251,7 +251,7 @@ this no-MTP OpenAI-wall measurement is slower than hipEngine, but it reaches
 19.93/39.07/77.48/125.98 tok/s for c1/c2/c4/c8.
 
 Source artifacts:
-[`hipEngine W7900`](benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json),
+[`hipEngine W7900`](benchmarks/results/2026-06-14-hipengine-qwen35-concurrency-decode-rocm714-w7900/summary.json),
 [`llama.cpp Vulkan W7900`](benchmarks/results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json),
 [`vLLM local build W7900`](benchmarks/results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
 and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
@@ -261,12 +261,12 @@ Replicate hipEngine with:
 
 ```bash
 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/qwen35_concurrency_decode_sweep.py \
-    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+    --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
     --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
-    --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+    --compiler-version-file /tmp/hipengine-hipcc-version-714.txt \
     --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
     --concurrencies 1,2,4,8 --reps 3 \
-    --json benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json
+    --json benchmarks/results/2026-06-14-hipengine-qwen35-concurrency-decode-rocm714-w7900/summary.json
 ```
 
 Replicate llama.cpp Vulkan with:

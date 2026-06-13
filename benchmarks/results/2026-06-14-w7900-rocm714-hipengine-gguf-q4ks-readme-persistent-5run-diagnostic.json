@@ -1,0 +1,209 @@
+{
+  "command": "ROOT=$(python3 -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=\"$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin\" LD_LIBRARY_PATH=\"$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib\" HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" HIP_INCLUDE_PATH=\"$ROOT/include\" HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-714.txt PYTHONPATH=. HIPENGINE_GGUF_DECODE_REPACK=1 timeout 21600 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-714.txt --require-cached-build --json benchmarks/results/2026-06-14-w7900-rocm714-hipengine-gguf-q4ks-readme-persistent-5run.json",
+  "compiler_version_file": "/tmp/hipengine-hipcc-version-714.txt",
+  "compiler_version_first_line": "HIP version: 7.14.60850-1b2a555677",
+  "date": "2026-06-14",
+  "decision": "no_promote_gguf_prefill_regression",
+  "delta_vs_therock713_retained": {
+    "128K/128": {
+      "decode_delta_pct": 0.6638183783783891,
+      "decode_tok_s_old_therock713": 58.0655587359795,
+      "decode_tok_s_rocm714": 58.45100858637703,
+      "prefill_delta_pct": -4.376106053889616,
+      "prefill_tok_s_old_therock713": 995.295038555332,
+      "prefill_tok_s_rocm714": 951.7398721190491
+    },
+    "32K/128": {
+      "decode_delta_pct": -0.08326253297579189,
+      "decode_tok_s_old_therock713": 86.4861487909198,
+      "decode_tok_s_rocm714": 86.41413823276326,
+      "prefill_delta_pct": -9.784100617262236,
+      "prefill_tok_s_old_therock713": 1878.0519614824132,
+      "prefill_tok_s_rocm714": 1694.3014679265068
+    },
+    "4K/128": {
+      "decode_delta_pct": -1.420376307743909,
+      "decode_tok_s_old_therock713": 99.87326339315334,
+      "decode_tok_s_rocm714": 98.45468722214632,
+      "prefill_delta_pct": -12.923434726525397,
+      "prefill_tok_s_old_therock713": 2544.4753701858217,
+      "prefill_tok_s_rocm714": 2215.6417565873417
+    },
+    "512/128": {
+      "decode_delta_pct": -1.0107732564861416,
+      "decode_tok_s_old_therock713": 109.34736225801457,
+      "decode_tok_s_rocm714": 108.24210836363754,
+      "prefill_delta_pct": -14.18427777549116,
+      "prefill_tok_s_old_therock713": 2262.0969054372517,
+      "prefill_tok_s_rocm714": 1941.2347968192423
+    }
+  },
+  "engine": "gguf",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_arch": "gfx1100"
+  },
+  "measured_runs": 5,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The model/session is loaded once for the largest requested shape and reset between repetitions.",
+    "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
+    "Measured decode excludes HIP graph capture time when graph replay is enabled; graph capture is reported per first run of each shape.",
+    "ROCm 7.14 nightly diagnostic only; 7.13 remains the retained README topline stack."
+  ],
+  "performance_claim": false,
+  "persistent_session_load_seconds": 91.19403623789549,
+  "quant": "gguf_q4_k_s",
+  "raw_artifact_moved_to": "/tmp/2026-06-14-w7900-rocm714-hipengine-gguf-q4ks-readme-persistent-5run-raw.json",
+  "schema": 1,
+  "source_commit": "f3c90879",
+  "status": "diagnostic_no_promotion",
+  "summary_by_workload": {
+    "128K/128": {
+      "decode_tok_s": {
+        "count": 5,
+        "max": 58.45963430833242,
+        "mean": 58.43917902090897,
+        "median": 58.45100858637703,
+        "min": 58.395989425702545,
+        "stdev": 0.025875918230236744
+      },
+      "final_token_ids": [
+        1510,
+        1510,
+        1510,
+        1510,
+        1510
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s": {
+        "count": 5,
+        "max": 952.118355658512,
+        "mean": 951.2775950245745,
+        "median": 951.7398721190491,
+        "min": 949.129997438919,
+        "stdev": 1.2316958789905321
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "max": 25.107746124267578,
+        "mean": 25.107746124267578,
+        "median": 25.107746124267578,
+        "min": 25.107746124267578,
+        "stdev": 0.0
+      }
+    },
+    "32K/128": {
+      "decode_tok_s": {
+        "count": 5,
+        "max": 86.53330907479716,
+        "mean": 86.25864780721365,
+        "median": 86.41413823276326,
+        "min": 85.94002447576652,
+        "stdev": 0.2892327350954827
+      },
+      "final_token_ids": [
+        234921,
+        234921,
+        234921,
+        234921,
+        234921
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s": {
+        "count": 5,
+        "max": 1705.4226261534996,
+        "mean": 1688.6734017231154,
+        "median": 1694.3014679265068,
+        "min": 1665.2834242728695,
+        "stdev": 17.763859869865847
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "max": 25.107746124267578,
+        "mean": 25.107746124267578,
+        "median": 25.107746124267578,
+        "min": 25.107746124267578,
+        "stdev": 0.0
+      }
+    },
+    "4K/128": {
+      "decode_tok_s": {
+        "count": 5,
+        "max": 98.64280790082155,
+        "mean": 93.30491182463938,
+        "median": 98.45468722214632,
+        "min": 72.62390485034581,
+        "stdev": 11.562394586858629
+      },
+      "final_token_ids": [
+        570,
+        570,
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s": {
+        "count": 5,
+        "max": 2232.8078952596566,
+        "mean": 2171.372774234244,
+        "median": 2215.6417565873417,
+        "min": 1982.7869664341451,
+        "stdev": 106.2486669868359
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "max": 25.107746124267578,
+        "mean": 25.107746124267578,
+        "median": 25.107746124267578,
+        "min": 25.107746124267578,
+        "stdev": 0.0
+      }
+    },
+    "512/128": {
+      "decode_tok_s": {
+        "count": 5,
+        "max": 108.54991671720852,
+        "mean": 108.1776171398972,
+        "median": 108.24210836363754,
+        "min": 107.83090891277925,
+        "stdev": 0.3298482569889759
+      },
+      "final_token_ids": [
+        220,
+        220,
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s": {
+        "count": 5,
+        "max": 1981.9678788016981,
+        "mean": 1941.313176282816,
+        "median": 1941.2347968192423,
+        "min": 1907.1599014579253,
+        "stdev": 30.54767415999207
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "max": 25.107746124267578,
+        "mean": 25.107746124267578,
+        "median": 25.107746124267578,
+        "min": 25.107746124267578,
+        "stdev": 0.0
+      }
+    }
+  },
+  "warmup_decode_tokens": 1,
+  "warmup_runs": 2,
+  "workloads": [
+    "512/128",
+    "4K/128",
+    "32K/128",
+    "128K/128"
+  ],
+  "worktree_dirty_at_measurement_record": true
+}

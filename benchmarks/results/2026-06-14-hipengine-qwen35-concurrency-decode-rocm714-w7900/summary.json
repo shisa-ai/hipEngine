@@ -1,0 +1,101 @@
+{
+  "command": "ROOT=$(python3 -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=\"$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin\" LD_LIBRARY_PATH=\"$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib\" HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" HIP_INCLUDE_PATH=\"$ROOT/include\" HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-714.txt PYTHONPATH=. timeout 21600 python3 scripts/qwen35_concurrency_decode_sweep.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --compiler-version-file /tmp/hipengine-hipcc-version-714.txt --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --concurrencies 1,2,4,8 --reps 3 --work-dir /tmp/hipengine-concurrency-sweep-rocm714-w7900-20260614 --json benchmarks/results/2026-06-14-hipengine-qwen35-concurrency-decode-rocm714-w7900/summary.json",
+  "compiler_version_file": "/tmp/hipengine-hipcc-version-714.txt",
+  "compiler_version_first_line": "HIP version: 7.14.60850-1b2a555677",
+  "created_at": "2026-06-13T22:10:24.635451+00:00",
+  "delta_vs_2026_06_13_w7900": {
+    "aggregate_delta_pct": {
+      "1": -0.3313230310295644,
+      "2": 0.38503773296439414,
+      "4": 2.1058215046387323,
+      "8": 0.15233913781309058
+    },
+    "baseline_artifact": "benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json"
+  },
+  "host": "gfx1100/RDNA3 via HIP_VISIBLE_DEVICES=0",
+  "kind": "concurrency_decode_throughput_sweep",
+  "methodology": {
+    "aggregate_across_runs": "median",
+    "c1": "scripts/qwen35_paro_bench.py --graph-replay-decode -> throughput.warmed_decode_tok_s",
+    "cN": "scripts/qwen35_batch_retained_bench.py --batch-size N -> measurements.decode_tok_s_{aggregate,per_request}"
+  },
+  "model": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "performance_claim": false,
+  "retained_ready": false,
+  "rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 116.29134829390163,
+      "decode_tok_s_aggregate_runs": [
+        116.29134829390163,
+        116.60709884840138,
+        116.2223583607321
+      ],
+      "decode_tok_s_per_request_median": 116.29134829390163,
+      "decode_tok_s_per_request_runs": [
+        116.29134829390163,
+        116.60709884840138,
+        116.2223583607321
+      ],
+      "path": "paro_bench_graph_replay"
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 113.88839757949154,
+      "decode_tok_s_aggregate_runs": [
+        113.88839757949154,
+        114.10487354985511,
+        113.70793653998652
+      ],
+      "decode_tok_s_per_request_median": 56.94419878974577,
+      "decode_tok_s_per_request_runs": [
+        56.94419878974577,
+        57.05243677492756,
+        56.85396826999326
+      ],
+      "path": "retained_native_batch"
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 159.3111205934863,
+      "decode_tok_s_aggregate_runs": [
+        159.71525972589342,
+        159.3111205934863,
+        157.98499255574973
+      ],
+      "decode_tok_s_per_request_median": 39.82778014837157,
+      "decode_tok_s_per_request_runs": [
+        39.928814931473354,
+        39.82778014837157,
+        39.49624813893743
+      ],
+      "path": "retained_native_batch"
+    },
+    "8": {
+      "concurrency": 8,
+      "decode_tok_s_aggregate_median": 188.97725240820054,
+      "decode_tok_s_aggregate_runs": [
+        190.05305175028724,
+        188.97725240820054,
+        188.55786469902768
+      ],
+      "decode_tok_s_per_request_median": 23.622156551025068,
+      "decode_tok_s_per_request_runs": [
+        23.756631468785905,
+        23.622156551025068,
+        23.56973308737846
+      ],
+      "path": "retained_native_batch"
+    }
+  },
+  "shape": {
+    "decode_tokens": 128,
+    "kv_storage_dtype": "bf16",
+    "max_layers": 40,
+    "prompt_length": 512,
+    "reps": 3,
+    "warmup_decode_tokens": 8
+  },
+  "source_commit": "f3c90879",
+  "worktree_dirty_at_measurement_record": true
+}

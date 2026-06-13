@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-14 (W7900 README PARO packed and GGUF Q4_K_S toplines refreshed under clean TheRock ROCm 7.13, `HIP version: 7.13.26162-1140233ffe`, measured code commit `c5c8bab1`: PARO 5-run median prefill `2708.314 / 2871.122 / 2075.471 / 1054.427 tok/s`, decode `114.724 / 105.468 / 91.922 / 60.216 tok/s`, tracked peak `23.098 / 25.113 / 25.222 / 25.222 GiB`; GGUF Q4_K_S prefill `2262.097 / 2544.475 / 1878.052 / 995.295 tok/s`, decode `109.347 / 99.873 / 86.486 / 58.066 tok/s`, tracked peak `25.108 GiB`. GGUF AR now accepts latest MTP-bearing files by ignoring trailing `blk.40.nextn.*` predictor tensors. Previous MTP/DFlash update: 2026-06-13, 27B dense DFlash accepted 1.231x; 35B-A3B MTP B=1 current best is 1.023x prompt mean / 1.014x total-time, exact `9/9`; fixed B=1 remains current best.)
+Last updated: 2026-06-14 (W7900 README PARO packed and GGUF Q4_K_S toplines remain on clean TheRock ROCm 7.13, `HIP version: 7.13.26162-1140233ffe`, measured code commit `c5c8bab1`: PARO 5-run median prefill `2708.314 / 2871.122 / 2075.471 / 1054.427 tok/s`, decode `114.724 / 105.468 / 91.922 / 60.216 tok/s`, tracked peak `23.098 / 25.113 / 25.222 / 25.222 GiB`; GGUF Q4_K_S prefill `2262.097 / 2544.475 / 1878.052 / 995.295 tok/s`, decode `109.347 / 99.873 / 86.486 / 58.066 tok/s`, tracked peak `25.108 GiB`. ROCm 7.14 nightly diagnostics were mixed and not promoted: PARO short-context decode improved slightly, PARO long-context and GGUF prefill regressed, and MTP verifier wall regressed; concurrency diagnostic refreshed to `116.29 / 113.89 / 159.31 / 188.98` aggregate tok/s for c=1/2/4/8. Previous MTP/DFlash update: 2026-06-13, 27B dense DFlash accepted 1.231x; 35B-A3B MTP B=1 current best is 1.023x prompt mean / 1.014x total-time, exact `9/9`; fixed B=1 remains current best.)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -65,6 +65,13 @@ used a clean TheRock ROCm 7.13 environment. The same stack should be preferred
 for comparable W7900 README rows; the system `/opt/rocm` 7.2 stack is useful as
 a diagnostic, but GGUF prefill is compiler/runtime-sensitive and should not be
 mixed into the retained comparison table.
+
+A follow-up ROCm 7.14 nightly diagnostic (`HIP version:
+7.14.60850-1b2a555677`) is recorded but not promoted: PARO changed within a
+mixed `+1.1%` to `-4.5%` band across the four README shapes, GGUF Q4_K_S prefill
+regressed `-14.2% / -12.9% / -9.8% / -4.4%`, and the retained MTP B=1 artifact
+stayed exact but slowed from `14.134 -> 14.595 ms/cycle`. See the ROCm 7.14
+diagnostic artifacts linked from the changelog.
 
 ```bash
 PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
@@ -501,12 +508,12 @@ wall-throughput; see [`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
 
 | Concurrency `c` | hipEngine agg decode tok/s | hipEngine per-seq tok/s | llama.cpp Vulkan agg tok/s | llama.cpp per-seq tok/s | vLLM OpenAI agg tok/s | vLLM per-seq tok/s |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 116.68 | 116.68 | 106.47 | 106.47 | 19.39 | 19.39 |
-| 2 | 113.45 | 56.73 | 159.19 | 79.59 | 37.53 | 18.77 |
-| 4 | 156.03 | 39.01 | 70.44 | 17.61 | 72.96 | 18.24 |
-| 8 | 188.69 | 23.59 | 26.26 | 3.28 | 115.96 | 14.49 |
+| 1 | 116.29 | 116.29 | 106.47 | 106.47 | 19.39 | 19.39 |
+| 2 | 113.89 | 56.94 | 159.19 | 79.59 | 37.53 | 18.77 |
+| 4 | 159.31 | 39.83 | 70.44 | 17.61 | 72.96 | 18.24 |
+| 8 | 188.98 | 23.62 | 26.26 | 3.28 | 115.96 | 14.49 |
 
-Artifacts: [`hipEngine W7900`](results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json),
+Artifacts: [`hipEngine W7900`](results/2026-06-14-hipengine-qwen35-concurrency-decode-rocm714-w7900/summary.json),
 [`llama.cpp Vulkan W7900`](results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json),
 [`vLLM local build W7900`](results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json).
 The current-code RX 7900 XTX rerun reached c1/c2/c4 but c8 blocked with HIP OOM;
