@@ -86845,3 +86845,29 @@ Docs updated:
   diagnostic refreshed.
 - `benchmarks/CHANGELOG.md`: added ROCm 7.14 no-promote and concurrency refresh
   entries.
+
+## 2026-06-14 - Agentic reasoning-budget defaults and hard-close references
+
+Updated `docs/AGENTIC.md` with concrete P1 reasoning-budget defaults and
+reference-informed hard-close semantics.  Research findings:
+
+- vLLM uses per-request `thinking_token_budget`; at the budget it forces
+  `reasoning_end_str`, which can include a transition phrase before `</think>`.
+- vLLM tokenizes `reasoning_start_str` / `reasoning_end_str` from
+  `ReasoningConfig` and forces configured end-token logits through its thinking
+  budget state holder.
+- llama.cpp exposes `--reasoning-budget` plus `--reasoning-budget-message`,
+  tokenizes message + end tag as forced tokens, uses an explicit
+  IDLE/COUNTING/WAITING_UTF8/FORCING/DONE sampler state machine, and has a manual
+  mid-generation force path.
+
+The hipEngine plan now documents default `reasoning_effort` mappings (`minimal`,
+`low`, `medium`, `high`, `xhigh/max`) to hard think caps, soft-close windows, and
+visible-answer reserves; clamps defaults to `max_tokens`/remaining context; and
+specifies `hard_close="tag_only"` as the conservative default with
+`hard_close_message` / `hard_close_sequence` overrides for vLLM/llama.cpp-style
+transition text.
+
+Validation:
+- `python3 - <<'PY'` coverage check over `docs/AGENTIC.md` -> `1208 lines` and required hard-close/default/reference sections present.
+- `git diff --check -- docs/AGENTIC.md`.

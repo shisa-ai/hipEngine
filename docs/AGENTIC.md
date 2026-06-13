@@ -293,12 +293,140 @@ Public API options:
 - keep current `enable_thinking` / `reasoning_effort` prompt controls;
 - add an optional structured `thinking` object for hard controls, e.g.
   `{ "max_tokens": 2048, "min_answer_tokens": 512, "soft_close_window": 128 }`;
+- accept explicit budget aliases used by other runtimes where practical:
+  `thinking_token_budget`, `thinking.budget_tokens`, and
+  `chat_template_kwargs.thinking_budget`;
 - expose server defaults so agent harnesses can rely on bounded behavior without
   sending every field manually.
 
 The generation layer should lower model-template strings (`</think>`,
 `</think>\n`, etc.) to token sequences using the served tokenizer. Model plugins
 or chat-template metadata should provide candidate close strings.
+
+### Reference behavior
+
+vLLM and llama.cpp both treat reasoning-budget enforcement as token-level decode
+control, not just prompt text:
+
+- vLLM documents `thinking_token_budget` as a per-request sampling parameter. It
+  starts counting at `reasoning_start_str` and, at the budget, forces
+  `reasoning_end_str`; that end string may include a transition phrase before
+  `</think>` for a more natural close
+  ([docs](https://github.com/vllm-project/vllm/blob/470229c37efaf69c86e8bc97482b0b1ff7551c65/docs/features/reasoning_outputs.md#L248-L276)).
+- vLLM's `ReasoningConfig` stores `reasoning_start_str` / `reasoning_end_str`
+  and tokenizes those strings to IDs using the model tokenizer
+  ([source](https://github.com/vllm-project/vllm/blob/470229c37efaf69c86e8bc97482b0b1ff7551c65/vllm/config/reasoning.py#L13-L27),
+  [tokenization](https://github.com/vllm-project/vllm/blob/470229c37efaf69c86e8bc97482b0b1ff7551c65/vllm/config/reasoning.py#L71-L107)).
+- vLLM's budget state holder tracks rows with `thinking_token_budget`, switches
+  to an end-forcing state when the budget is exceeded, and raises the forced end
+  token logits to a very large value
+  ([state](https://github.com/vllm-project/vllm/blob/470229c37efaf69c86e8bc97482b0b1ff7551c65/vllm/v1/sample/thinking_budget_state.py#L34-L58),
+  [budget transition](https://github.com/vllm-project/vllm/blob/470229c37efaf69c86e8bc97482b0b1ff7551c65/vllm/v1/sample/thinking_budget_state.py#L383-L410),
+  [forcing](https://github.com/vllm-project/vllm/blob/470229c37efaf69c86e8bc97482b0b1ff7551c65/vllm/v1/sample/thinking_budget_state.py#L470-L526)).
+- llama.cpp exposes `--reasoning-budget N` and
+  `--reasoning-budget-message MESSAGE`, where the message is injected before the
+  end-of-thinking tag when the budget is exhausted
+  ([CLI](https://github.com/ggerganov/llama.cpp/blob/961e9a3e46ca4cf7e6e86cfceb5b5e32084bf5f0/common/arg.cpp#L3184-L3198),
+  [server README](https://github.com/ggerganov/llama.cpp/blob/961e9a3e46ca4cf7e6e86cfceb5b5e32084bf5f0/tools/server/README.md#L223-L226)).
+- llama.cpp's sampler is an explicit state machine:
+  `IDLE -> COUNTING -> WAITING_UTF8 -> FORCING -> DONE`; in `FORCING` it masks
+  all logits except the next forced token. It also exposes a manual
+  `common_sampler_reasoning_budget_force(...)` path for mid-generation control
+  ([header](https://github.com/ggerganov/llama.cpp/blob/961e9a3e46ca4cf7e6e86cfceb5b5e32084bf5f0/common/reasoning-budget.h#L8-L30),
+  [implementation](https://github.com/ggerganov/llama.cpp/blob/961e9a3e46ca4cf7e6e86cfceb5b5e32084bf5f0/common/reasoning-budget.cpp#L39-L49),
+  [forcing logits](https://github.com/ggerganov/llama.cpp/blob/961e9a3e46ca4cf7e6e86cfceb5b5e32084bf5f0/common/reasoning-budget.cpp#L143-L160),
+  [manual force](https://github.com/ggerganov/llama.cpp/blob/961e9a3e46ca4cf7e6e86cfceb5b5e32084bf5f0/tools/server/server-context.cpp#L2158-L2166)).
+
+hipEngine should follow the same core pattern: tokenize configurable start/end
+strings, count generated reasoning tokens, and hard-force a configurable close
+sequence through the normal decode path when the budget is reached. The vLLM and
+llama.cpp references both support transition text before `</think>`; hipEngine
+should support that as an override, but use a conservative tag-only default for
+agent harnesses unless the operator opts in.
+
+### Default effort mapping
+
+`reasoning_effort` should map to hard defaults even when the client does not
+send explicit budget fields. These are target P1 defaults; the current server
+only renders prompt hints.
+
+| Effort | Hard think cap | Soft-close window | Min visible answer reserve | Intended use |
+| --- | ---: | ---: | ---: | --- |
+| `none` / `off` / `disabled` | 0 | 0 | normal output budget | Pre-close thinking and answer directly. |
+| `minimal` | 256 | 64 | 256 | Tiny arithmetic / one-step tool decisions. |
+| `low` | 512 | 128 | 512 | Coding-agent default when quick tool calls are expected. |
+| `medium` | 4,096 | 512 | 1,024 | Non-trivial debugging or synthesis. |
+| `high` | 16,384 | 1,024 | 2,048 | Deep planning / complex code changes. |
+| `xhigh` / `max` | 32,768 | 2,048 | 4,096 | Rare long-horizon reasoning; still bounded. |
+
+Clamp these defaults to the actual generation budget:
+
+```text
+effective_generation_budget =
+  min(request.max_tokens or server_chat_default, remaining_context)
+
+effective_min_answer =
+  min(table_min_answer, max(0, effective_generation_budget // 2))
+
+effective_think_cap =
+  min(table_hard_think_cap, max(0, effective_generation_budget - effective_min_answer))
+
+effective_soft_close_window =
+  min(table_soft_close_window, effective_think_cap)
+
+soft_close_starts_at =
+  max(0, effective_think_cap - effective_soft_close_window)
+```
+
+Manual request fields override the table before clamping. `xhigh` / `max` is not
+unbounded; users who want unbounded thinking must explicitly disable the hard
+budget or set a larger `thinking.max_tokens` with enough `max_tokens` / context.
+
+### Hard-close sequence and overrides
+
+The default hard close should be deterministic and minimal:
+
+```text
+</think>\n
+```
+
+This minimizes extra hidden tokens and avoids adding model-visible prose that
+could leak into unusual templates. Operators may opt into a transition phrase for
+models that close more cleanly with natural language, matching the vLLM and
+llama.cpp pattern:
+
+```text
+I have reached the reasoning budget and will answer now.</think>\n
+```
+
+Expose these knobs:
+
+```json
+{
+  "thinking": {
+    "enabled": true,
+    "effort": "medium",
+    "max_tokens": 4096,
+    "min_answer_tokens": 1024,
+    "soft_close_window": 512,
+    "hard_close": "tag_only",
+    "hard_close_message": null,
+    "hard_close_sequence": null,
+    "allow_unbounded": false
+  }
+}
+```
+
+Rules:
+
+- `hard_close="tag_only"` forces the tokenizer-lowered close tag sequence only.
+- `hard_close="message_then_tag"` forces `hard_close_message + close_tag`.
+- `hard_close_sequence` is an expert override for the exact string to tokenize
+  and force; it must contain the parser-recognized close marker.
+- If a parser has an intrinsic close marker, validate that the configured hard
+  close sequence contains it; otherwise the server must reject the request.
+- If forced text is emitted outside model decoding for any fallback path, mark it
+  as `synthetic_tokens` and do not commit it silently to resident session state.
 
 ### Close target
 
@@ -538,17 +666,30 @@ Exit gates:
 
 Implement:
 
-- request/server defaults for `max_think_tokens`, `min_answer_tokens`,
-  `hard_think_cap`, and `soft_close_window`;
-- tokenizer lowering for accepted close strings;
+- `reasoning_effort` defaults from the table above, with budget/context clamping;
+- explicit override fields for `max_think_tokens`, `min_answer_tokens`,
+  `hard_think_cap`, `soft_close_window`, `hard_close_message`, and
+  `hard_close_sequence`;
+- compatibility aliases: `thinking_token_budget`, `thinking.budget_tokens`, and
+  `chat_template_kwargs.thinking_budget`;
+- tokenizer lowering for accepted close strings and transition-message strings;
+- parser validation that any configured hard close contains the parser-recognized
+  end marker;
 - soft logit-bias ramp near the budget boundary;
 - hard forced close at cap;
+- manual hard-stop/force hook for cancellation, external controller requests, or
+  stream-time budget pressure;
 - EOS suppression until answer/tool-call starts when configured.
 
 Exit gates:
 
+- default effort fixtures verify low/medium/high/xhigh map to the documented caps
+  after clamping to `max_tokens` and remaining context;
 - deterministic fake-logit fixtures show soft-close bias changes token choice;
-- hard-cap fixtures force the full close sequence;
+- hard-cap fixtures force the full close sequence, including optional transition
+  message + `</think>` when configured;
+- requests whose override close sequence omits the parser close marker are
+  rejected clearly;
 - a reasoning-heavy fixture returns either visible answer/tool-call tokens or
   `thinking_budget_exhausted` with `forced_close=true`;
 - graph fast path is preserved outside controlled tail windows.
@@ -1039,9 +1180,10 @@ Good next logical units, in order:
 
 1. **DecodeState MVP:** add generation-layer phase/token accounting and finish
    details, then thread it through server responses without changing output text.
-2. **Reasoning soft-close MVP:** implement tokenized `</think>` close sequences,
-   soft logit-bias ramp, hard forced close, and answer-token reserve on the
-   host-stepped tail path.
+2. **Reasoning soft-close MVP:** implement effort-default budget mapping,
+   tokenized `</think>` close sequences, optional transition-message override,
+   soft logit-bias ramp, hard forced close, manual force hook, and answer-token
+   reserve on the host-stepped tail path.
 3. **Token diagnostics endpoints:** expose tokenizer/count/fit helpers; useful to
    every harness and low risk to runtime performance.
 4. **Stop DFA promotion + forced-token queue:** move host stop-sequence state
