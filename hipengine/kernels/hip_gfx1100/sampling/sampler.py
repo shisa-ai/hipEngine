@@ -13,6 +13,7 @@ _SOURCE = Path(__file__).with_name("sampler.hip")
 _OUTPUT_NAME = "sampler.so"
 _SYMBOL_PROCESSORS = "hipengine_sampler_apply_processors_f32_rows"
 _SYMBOL_TEMPERATURE = "hipengine_sampler_temperature_f32_rows_i32"
+_SYMBOL_TOPP_TEMPERATURE = "hipengine_sampler_top_p_temperature_f32_rows_i32"
 _SYMBOL_TOPK_TEMPERATURE = "hipengine_sampler_topk_temperature_f32_rows_i32"
 _ALLOWED_THREADS = {64, 128}
 _MAX_TOPK = 64
@@ -188,6 +189,74 @@ def sample_temperature_f32_rows_i32(
         runtime.check(int(err))
 
 
+def sample_top_p_temperature_f32_rows_i32(
+    logits_f32_ptr: int,
+    temperatures_f32_ptr: int,
+    top_ps_f32_ptr: int,
+    min_ps_f32_ptr: int,
+    row_seeds_u64_ptr: int,
+    out_indices_i32_ptr: int,
+    out_logprobs_f32_ptr: int | None,
+    out_candidate_counts_i32_ptr: int | None,
+    rows: int,
+    vocab_size: int,
+    *,
+    step_index: int = 0,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Sample from exact full-vocab top-p/min-p filtered temperature rows.
+
+    This correctness-first standalone S7 kernel sorts finite logits by
+    descending value with lower-token-id ties, applies exact nucleus/min-p
+    retain-one semantics, and writes selected ids/logprobs plus optional retained
+    candidate counts. It is not performance-promoted or routed into generation.
+    """
+
+    _check_rows_vocab(rows, vocab_size)
+    _check_threads(threads)
+    if step_index < 0:
+        raise ValueError("step_index must be non-negative")
+    library = library or build_sampler(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TOPP_TEMPERATURE)
+    fn.argtypes = [
+        ctypes.c_void_p,  # logits f32
+        ctypes.c_void_p,  # temperatures f32
+        ctypes.c_void_p,  # top_ps f32
+        ctypes.c_void_p,  # min_ps f32
+        ctypes.c_void_p,  # row seeds u64
+        ctypes.c_void_p,  # out selected indices i32
+        ctypes.c_void_p,  # out selected logprobs f32 (nullable)
+        ctypes.c_void_p,  # out retained counts i32 (nullable)
+        ctypes.c_int64,   # rows
+        ctypes.c_int64,   # vocab size
+        ctypes.c_uint64,  # step index
+        ctypes.c_int64,   # threads
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(temperatures_f32_ptr),
+        ctypes.c_void_p(top_ps_f32_ptr),
+        ctypes.c_void_p(min_ps_f32_ptr),
+        ctypes.c_void_p(row_seeds_u64_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_candidate_counts_i32_ptr) if out_candidate_counts_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_uint64(step_index),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def sample_topk_temperature_f32_rows_i32(
     logits_f32_ptr: int,
     temperatures_f32_ptr: int,
@@ -272,6 +341,11 @@ def register_sampler_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "sampler", "f32", "temperature_rows_i32"),
         sample_temperature_f32_rows_i32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "sampler", "f32", "top_p_temperature_rows_i32"),
+        sample_top_p_temperature_f32_rows_i32,
         replace=replace,
     )
     register(

@@ -6,6 +6,7 @@ from hipengine.kernels.hip_gfx1100.sampling.sampler import (
     plan_sampler_build,
     register_sampler_kernels,
     sample_temperature_f32_rows_i32,
+    sample_top_p_temperature_f32_rows_i32,
     sample_topk_temperature_f32_rows_i32,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "plan_sampler_build",
     "register_sampler_kernels",
     "sample_temperature_f32_rows_i32",
+    "sample_top_p_temperature_f32_rows_i32",
     "sample_topk_temperature_f32_rows_i32",
 ]

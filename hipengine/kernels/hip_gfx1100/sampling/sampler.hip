@@ -318,6 +318,242 @@ __global__ void sampler_temperature_rows_i32_kernel(
   }
 }
 
+__device__ inline bool sorted_after_previous(float value, int32_t index, bool has_previous, float prev_value, int32_t prev_index) {
+  if (!has_previous) {
+    return true;
+  }
+  return value < prev_value || (value == prev_value && index > prev_index);
+}
+
+__device__ inline bool find_next_sorted_token(
+    const float* __restrict__ logits,
+    int64_t base,
+    int64_t vocab_size,
+    bool has_previous,
+    float prev_value,
+    int32_t prev_index,
+    float* out_value,
+    int32_t* out_index) {
+  float best_value = kNegInf;
+  int32_t best_index = INT32_MAX;
+  for (int64_t i = 0; i < vocab_size; ++i) {
+    const float value = logits[base + i];
+    const int32_t index = static_cast<int32_t>(i);
+    if (isfinite(value) && sorted_after_previous(value, index, has_previous, prev_value, prev_index) &&
+        better_pair_i32(value, index, best_value, best_index)) {
+      best_value = value;
+      best_index = index;
+    }
+  }
+  if (best_index == INT32_MAX) {
+    return false;
+  }
+  *out_value = best_value;
+  *out_index = best_index;
+  return true;
+}
+
+__global__ void sampler_top_p_temperature_rows_i32_kernel(
+    const float* __restrict__ logits,
+    const float* __restrict__ temperatures,
+    const float* __restrict__ top_ps,
+    const float* __restrict__ min_ps,
+    const uint64_t* __restrict__ row_seeds,
+    int32_t* __restrict__ out_indices,
+    float* __restrict__ out_logprobs,
+    int32_t* __restrict__ out_candidate_counts,
+    int64_t rows,
+    int64_t vocab_size,
+    uint64_t step_index) {
+  extern __shared__ unsigned char shared_raw[];
+  float* shared_values = reinterpret_cast<float*>(shared_raw);
+  int32_t* shared_indices = reinterpret_cast<int32_t*>(shared_values + blockDim.x);
+
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t base = row * vocab_size;
+
+  float local_max = kNegInf;
+  int32_t local_index = INT32_MAX;
+  for (int64_t i = tid; i < vocab_size; i += blockDim.x) {
+    const float value = logits[base + i];
+    if (isfinite(value) && better_pair_i32(value, static_cast<int32_t>(i), local_max, local_index)) {
+      local_max = value;
+      local_index = static_cast<int32_t>(i);
+    }
+  }
+  shared_values[tid] = local_max;
+  shared_indices[tid] = local_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride && better_pair_i32(
+            shared_values[tid + stride], shared_indices[tid + stride], shared_values[tid], shared_indices[tid])) {
+      shared_values[tid] = shared_values[tid + stride];
+      shared_indices[tid] = shared_indices[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float row_max = shared_values[0];
+  const int32_t row_argmax = shared_indices[0];
+  if (row_argmax == INT32_MAX) {
+    if (tid == 0) {
+      out_indices[row] = -1;
+      if (out_logprobs != nullptr) {
+        out_logprobs[row] = kNegInf;
+      }
+      if (out_candidate_counts != nullptr) {
+        out_candidate_counts[row] = 0;
+      }
+    }
+    return;
+  }
+
+  const float temperature = temperatures[row];
+  if (!(temperature > 0.0f) || !isfinite(temperature)) {
+    if (tid == 0) {
+      out_indices[row] = row_argmax;
+      if (out_logprobs != nullptr) {
+        out_logprobs[row] = 0.0f;
+      }
+      if (out_candidate_counts != nullptr) {
+        out_candidate_counts[row] = 1;
+      }
+    }
+    return;
+  }
+
+  const float max_scaled = row_max / temperature;
+  float local_sum = 0.0f;
+  for (int64_t i = tid; i < vocab_size; i += blockDim.x) {
+    const float value = logits[base + i];
+    if (isfinite(value)) {
+      local_sum += expf(value / temperature - max_scaled);
+    }
+  }
+  shared_values[tid] = local_sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      shared_values[tid] += shared_values[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float full_weight_sum = shared_values[0];
+  if (tid != 0) {
+    return;
+  }
+  if (!(full_weight_sum > 0.0f) || !isfinite(full_weight_sum)) {
+    out_indices[row] = row_argmax;
+    if (out_logprobs != nullptr) {
+      out_logprobs[row] = 0.0f;
+    }
+    if (out_candidate_counts != nullptr) {
+      out_candidate_counts[row] = 1;
+    }
+    return;
+  }
+
+  const float top_p = top_ps[row];
+  const float min_p = min_ps[row];
+  const float top_p_target = top_p * full_weight_sum;
+  bool has_previous = false;
+  float prev_value = 0.0f;
+  int32_t prev_index = -1;
+  float cumulative_full = 0.0f;
+  int32_t top_p_count = 0;
+  int32_t min_p_count = 0;
+  while (true) {
+    float value = 0.0f;
+    int32_t index = -1;
+    if (!find_next_sorted_token(logits, base, vocab_size, has_previous, prev_value, prev_index, &value, &index)) {
+      break;
+    }
+    const float weight = expf(value / temperature - max_scaled);
+    ++top_p_count;
+    cumulative_full += weight;
+    if (!(min_p > 0.0f) || weight >= min_p) {
+      ++min_p_count;
+    }
+    prev_value = value;
+    prev_index = index;
+    has_previous = true;
+    if (top_p <= 0.0f) {
+      break;
+    }
+    if (top_p < 1.0f && cumulative_full >= top_p_target) {
+      break;
+    }
+  }
+
+  int32_t retained_count = (min_p > 0.0f) ? min_p_count : top_p_count;
+  if (retained_count <= 0) {
+    retained_count = 1;
+  }
+
+  has_previous = false;
+  prev_value = 0.0f;
+  prev_index = -1;
+  float retained_weight_sum = 0.0f;
+  for (int32_t rank = 0; rank < retained_count; ++rank) {
+    float value = 0.0f;
+    int32_t index = -1;
+    if (!find_next_sorted_token(logits, base, vocab_size, has_previous, prev_value, prev_index, &value, &index)) {
+      retained_count = rank;
+      break;
+    }
+    retained_weight_sum += expf(value / temperature - max_scaled);
+    prev_value = value;
+    prev_index = index;
+    has_previous = true;
+  }
+  if (retained_count <= 0 || !(retained_weight_sum > 0.0f) || !isfinite(retained_weight_sum)) {
+    out_indices[row] = row_argmax;
+    if (out_logprobs != nullptr) {
+      out_logprobs[row] = 0.0f;
+    }
+    if (out_candidate_counts != nullptr) {
+      out_candidate_counts[row] = 1;
+    }
+    return;
+  }
+
+  const float threshold = sampler_uniform01(row_seeds[row], step_index, row) * retained_weight_sum;
+  has_previous = false;
+  prev_value = 0.0f;
+  prev_index = -1;
+  float cumulative = 0.0f;
+  int32_t selected_index = row_argmax;
+  float selected_weight = 1.0f;
+  for (int32_t rank = 0; rank < retained_count; ++rank) {
+    float value = 0.0f;
+    int32_t index = -1;
+    if (!find_next_sorted_token(logits, base, vocab_size, has_previous, prev_value, prev_index, &value, &index)) {
+      break;
+    }
+    const float weight = expf(value / temperature - max_scaled);
+    cumulative += weight;
+    selected_index = index;
+    selected_weight = weight;
+    if (threshold <= cumulative) {
+      break;
+    }
+    prev_value = value;
+    prev_index = index;
+    has_previous = true;
+  }
+
+  out_indices[row] = selected_index;
+  if (out_logprobs != nullptr) {
+    out_logprobs[row] = logf(selected_weight) - logf(retained_weight_sum);
+  }
+  if (out_candidate_counts != nullptr) {
+    out_candidate_counts[row] = retained_count;
+  }
+}
+
 __global__ void sampler_apply_processors_rows_kernel(
     const float* __restrict__ logits,
     float* __restrict__ processed,
@@ -387,6 +623,48 @@ bool valid_threads(int64_t threads) {
 }
 
 }  // namespace
+
+extern "C" int hipengine_sampler_top_p_temperature_f32_rows_i32(
+    const float* logits,
+    const float* temperatures,
+    const float* top_ps,
+    const float* min_ps,
+    const uint64_t* row_seeds,
+    int32_t* out_indices,
+    float* out_logprobs,
+    int32_t* out_candidate_counts,
+    int64_t rows,
+    int64_t vocab_size,
+    uint64_t step_index,
+    int64_t threads,
+    hipStream_t stream) {
+  if (logits == nullptr || temperatures == nullptr || top_ps == nullptr || min_ps == nullptr ||
+      row_seeds == nullptr || out_indices == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t smem = static_cast<size_t>(threads) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      sampler_top_p_temperature_rows_i32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      smem,
+      stream,
+      logits,
+      temperatures,
+      top_ps,
+      min_ps,
+      row_seeds,
+      out_indices,
+      out_logprobs,
+      out_candidate_counts,
+      rows,
+      vocab_size,
+      step_index);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_sampler_apply_processors_f32_rows(
     const float* logits,

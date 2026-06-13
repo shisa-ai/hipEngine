@@ -51,14 +51,15 @@ PARO and GGUF while native GPU sampling remains incomplete:
 - `hipengine/kernels/hip_gfx1100/sampling/sampler.hip` adds standalone
   GPU-smoked row-wise native sampler pieces over FP32 logits: finite-clamping
   logits processors for logit bias plus repetition/presence/frequency penalties,
-  full-vocab `top_k=0` temperature sampling, and bounded `1 <= top_k <= 64`
-  sampling. They support per-row temperature, per-row seed, counter-based RNG,
-  selected token id/logprob, and optional bounded-candidate logprobs. They are
-  not yet routed into generation, and exact GPU top-p remains open.
+  full-vocab `top_k=0` temperature sampling, bounded `1 <= top_k <= 64`
+  sampling, and correctness-first exact full-vocab `top_p`/`min_p` filtering.
+  They support per-row temperature, per-row seed, counter-based RNG, selected
+  token id/logprob, retained-count reporting, and optional bounded-candidate
+  logprobs. They are not yet routed into generation.
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
 is fixed for the host-logits path. Remaining implementation work is native GPU
-sampler generation integration and exact GPU top-p.
+sampler generation integration and performance promotion.
 
 ## Hardware lane for this work
 
@@ -361,10 +362,11 @@ A practical first native path can be split into small kernels:
 5. **Output write:** write token id, logprob, and optional top-logprobs summary;
    update device token scalar/batch token vector for the next decode step.
 
-This covers temperature + top-k efficiently. Exact top-p over the full vocab is a
-higher-complexity path because it needs either full sort, threshold selection
-plus cumulative probability, or a multi-pass approximate/retry design that still
-preserves exact retain-one semantics.
+This covers temperature + top-k efficiently. Exact top-p over the full vocab now
+has a standalone correctness-first S7 kernel that sorts by repeated full-vocab
+selection and matches retain-one semantics on boundary fixtures. It is not the
+promoted generation path yet; routing and any performance-oriented sort/select
+replacement still need separate validation.
 
 ### GPU1 bring-up commands
 
@@ -428,16 +430,16 @@ fully vectorized at first:
 | S4: token-level stop | Lower stop token IDs/sequences where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | **Done for host sampler:** single-token IDs and multi-token server stop sequences finish PARO/GGUF host-sampled rows; native c>N/GPU execution still consumes this later. |
 | S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Done for PARO host sampler:** sampled prompt batches use scheduler-owned state, native packed prefill, and serial host-sampled decode; GGUF remains serial by design until it gets a c>N resident scheduler. |
 | S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Partial:** standalone FP32 logits processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` temperature samplers pass GPU1 CPU-reference filtering/logprob parity and fixed-seed determinism. Not yet routed into generation. |
-| S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | GPU top-p matches CPU retain set on boundary fixtures and removes full-vocab D2H copies. |
+| S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | **Partial:** standalone correctness-first GPU top-p/min-p sampler matches CPU retain counts, selected tokens, logprobs, tie order, and fixed-seed determinism on GPU1 boundary fixtures. Not yet routed into generation or performance-promoted. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Done for host-logits server/library paths:** completion/chat response tests pass for selected logprob/top-logprobs cases, completion `echo+logprobs`, and buffered streaming logprobs. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.
 S3, S4, S5, and S8 are complete for the current host-sampler/PARO scheduler
-scope. S6 is partially landed as standalone GPU logits processors plus
-full-vocab and bounded top-k temperature samplers; generation routing and S7
-exact top-p are native GPU performance work and should not block functional host
-support.
+scope. S6 and S7 are partially landed as standalone GPU logits processors plus
+full-vocab, bounded top-k, and exact top-p/min-p temperature samplers. Generation
+routing and performance promotion are native GPU work and should not block
+functional host support.
 
 ## Correctness and validation gates
 

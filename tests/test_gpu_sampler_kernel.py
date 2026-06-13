@@ -11,6 +11,7 @@ from hipengine.kernels.hip_gfx1100.sampling import (
     plan_sampler_build,
     register_sampler_kernels,
     sample_temperature_f32_rows_i32,
+    sample_top_p_temperature_f32_rows_i32,
     sample_topk_temperature_f32_rows_i32,
 )
 from hipengine.kernels.registry import resolve
@@ -60,6 +61,10 @@ def test_sampler_registers_for_gfx1151_alias() -> None:
         is sample_temperature_f32_rows_i32
     )
     assert (
+        resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="top_p_temperature_rows_i32")
+        is sample_top_p_temperature_f32_rows_i32
+    )
+    assert (
         resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="topk_temperature_rows_i32")
         is sample_topk_temperature_f32_rows_i32
     )
@@ -80,6 +85,14 @@ def test_sampler_wrapper_validates_shapes_before_loading_hip() -> None:
         sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=1, vocab_size=16, threads=256)
     with pytest.raises(ValueError, match="step_index"):
         sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=1, vocab_size=16, step_index=-1)
+    with pytest.raises(ValueError, match="rows"):
+        sample_top_p_temperature_f32_rows_i32(0, 0, 0, 0, 0, 0, None, None, rows=0, vocab_size=16)
+    with pytest.raises(ValueError, match="vocab_size"):
+        sample_top_p_temperature_f32_rows_i32(0, 0, 0, 0, 0, 0, None, None, rows=1, vocab_size=0)
+    with pytest.raises(ValueError, match="threads"):
+        sample_top_p_temperature_f32_rows_i32(0, 0, 0, 0, 0, 0, None, None, rows=1, vocab_size=16, threads=256)
+    with pytest.raises(ValueError, match="step_index"):
+        sample_top_p_temperature_f32_rows_i32(0, 0, 0, 0, 0, 0, None, None, rows=1, vocab_size=16, step_index=-1)
     with pytest.raises(ValueError, match="rows"):
         sample_topk_temperature_f32_rows_i32(0, 0, 0, 0, None, None, None, rows=0, vocab_size=16, top_k=4)
     with pytest.raises(ValueError, match="vocab_size"):
@@ -289,6 +302,177 @@ def test_logits_processors_match_host_order() -> None:
         assert np.array_equal(np.isneginf(observed), np.isneginf(expected))
         finite = np.isfinite(expected)
         np.testing.assert_allclose(observed[finite], expected[finite], rtol=0, atol=1e-6)
+    finally:
+        for buf in reversed(bufs):
+            free(buf)
+
+
+def _cpu_top_p_reference(
+    logits: np.ndarray,
+    temperatures: np.ndarray,
+    top_ps: np.ndarray,
+    min_ps: np.ndarray,
+    seeds: np.ndarray,
+    *,
+    step_index: int,
+):
+    rows, _vocab = logits.shape
+    selected = np.full((rows,), -1, dtype=np.int32)
+    selected_logprobs = np.full((rows,), _NEG_INF, dtype=np.float32)
+    retained_counts = np.zeros((rows,), dtype=np.int32)
+
+    for row in range(rows):
+        finite_ids = np.flatnonzero(np.isfinite(logits[row])).astype(np.int64, copy=False)
+        if finite_ids.size == 0:
+            continue
+        order = np.lexsort((finite_ids, -logits[row, finite_ids]))
+        sorted_ids = finite_ids[order]
+        temp = np.float32(temperatures[row])
+        if not np.isfinite(temp) or not (temp > np.float32(0.0)):
+            selected[row] = np.int32(sorted_ids[0])
+            selected_logprobs[row] = np.float32(0.0)
+            retained_counts[row] = np.int32(1)
+            continue
+        scaled = (logits[row, sorted_ids].astype(np.float32) / temp).astype(np.float32)
+        max_scaled = np.float32(scaled[0])
+        weights = np.exp((scaled - max_scaled).astype(np.float32)).astype(np.float32)
+        full_sum = np.float32(weights.sum(dtype=np.float32))
+        top_p = np.float32(top_ps[row])
+        if top_p < np.float32(1.0):
+            if top_p <= np.float32(0.0):
+                keep_count = 1
+            else:
+                keep_count = int(np.searchsorted(np.cumsum(weights / full_sum, dtype=np.float32), top_p, side="left")) + 1
+                keep_count = max(1, min(keep_count, sorted_ids.size))
+            sorted_ids = sorted_ids[:keep_count]
+            weights = weights[:keep_count]
+        min_p = np.float32(min_ps[row])
+        if min_p > np.float32(0.0):
+            mask = weights >= min_p
+            if np.any(mask):
+                sorted_ids = sorted_ids[mask]
+                weights = weights[mask]
+            else:
+                sorted_ids = sorted_ids[:1]
+                weights = weights[:1]
+        retained_counts[row] = np.int32(sorted_ids.size)
+        retained_sum = np.float32(weights.sum(dtype=np.float32))
+        draw = np.float32(_uniform01(int(seeds[row]), step_index, row) * retained_sum)
+        cumulative = np.cumsum(weights, dtype=np.float32)
+        choice = int(np.searchsorted(cumulative, draw, side="right"))
+        if choice >= sorted_ids.size:
+            choice = sorted_ids.size - 1
+        selected[row] = np.int32(sorted_ids[choice])
+        selected_logprobs[row] = np.float32(np.log(np.float32(weights[choice] / retained_sum)))
+
+    return selected, selected_logprobs, retained_counts
+
+
+@pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
+def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> None:
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.backends import hip_target_arch_environment
+    from hipengine.kernels.hip_gfx1100.sampling import build_sampler
+
+    logits = np.array(
+        [
+            [3.0, 2.0, 1.0, 0.0, -1.0, np.nan, -np.inf, 0.5],
+            [4.0, 3.0, 2.0, 1.0, 0.0, -1.0, -2.0, -3.0],
+            [3.0, 2.4, 1.0, 0.0, -2.0, 2.4, -np.inf, np.nan],
+            [2.0, 2.0, 1.0, -1.0, 0.0, -np.inf, np.nan, 0.5],
+        ],
+        dtype=np.float32,
+    )
+    rows, vocab_size = logits.shape
+    temperatures = np.array([1.0, 0.8, 1.0, 1.0], dtype=np.float32)
+    top_ps = np.array([0.7, 0.0, 1.0, 0.8], dtype=np.float32)
+    min_ps = np.array([0.0, 0.0, 0.5, 0.0], dtype=np.float32)
+    seeds = np.array([0x101, 0x202, 0x303, 0x404], dtype=np.uint64)
+    step_index = 13
+    expected = _cpu_top_p_reference(logits, temperatures, top_ps, min_ps, seeds, step_index=step_index)
+
+    compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
+    with hip_target_arch_environment("gfx1100"):
+        lib = build_sampler(load=True, compiler_version=compiler_version)
+
+    bufs = []
+
+    def upload(array: np.ndarray):
+        arr = np.ascontiguousarray(array)
+        buf = malloc(max(arr.nbytes, 4))
+        bufs.append(buf)
+        copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        return buf
+
+    def alloc(nbytes: int):
+        buf = malloc(max(nbytes, 4))
+        bufs.append(buf)
+        return buf
+
+    def download(buf, shape, dtype):
+        out = np.empty(shape, dtype=dtype)
+        copy_device_to_host(host_array_ptr(out), buf, out.nbytes)
+        return out
+
+    try:
+        logits_d = upload(logits)
+        temperatures_d = upload(temperatures)
+        top_ps_d = upload(top_ps)
+        min_ps_d = upload(min_ps)
+        seeds_d = upload(seeds)
+        selected_d = alloc(rows * np.dtype(np.int32).itemsize)
+        selected_logprobs_d = alloc(rows * np.dtype(np.float32).itemsize)
+        retained_counts_d = alloc(rows * np.dtype(np.int32).itemsize)
+
+        sample_top_p_temperature_f32_rows_i32(
+            logits_d.ptr,
+            temperatures_d.ptr,
+            top_ps_d.ptr,
+            min_ps_d.ptr,
+            seeds_d.ptr,
+            selected_d.ptr,
+            selected_logprobs_d.ptr,
+            retained_counts_d.ptr,
+            rows,
+            vocab_size,
+            step_index=step_index,
+            threads=128,
+            library=lib,
+        )
+        first = (
+            download(selected_d, (rows,), np.int32),
+            download(selected_logprobs_d, (rows,), np.float32),
+            download(retained_counts_d, (rows,), np.int32),
+        )
+
+        sample_top_p_temperature_f32_rows_i32(
+            logits_d.ptr,
+            temperatures_d.ptr,
+            top_ps_d.ptr,
+            min_ps_d.ptr,
+            seeds_d.ptr,
+            selected_d.ptr,
+            selected_logprobs_d.ptr,
+            retained_counts_d.ptr,
+            rows,
+            vocab_size,
+            step_index=step_index,
+            threads=128,
+            library=lib,
+        )
+        second = (
+            download(selected_d, (rows,), np.int32),
+            download(selected_logprobs_d, (rows,), np.float32),
+            download(retained_counts_d, (rows,), np.int32),
+        )
+
+        assert np.array_equal(first[0], expected[0])
+        np.testing.assert_allclose(first[1], expected[1], rtol=0, atol=2e-5)
+        assert np.array_equal(first[2], expected[2])
+        assert np.array_equal(first[0], second[0])
+        np.testing.assert_allclose(first[1], second[1], rtol=0, atol=0)
+        assert np.array_equal(first[2], second[2])
     finally:
         for buf in reversed(bufs):
             free(buf)
