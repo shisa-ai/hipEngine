@@ -86058,3 +86058,25 @@ and live ladder no-holds.
 `rg -n "\\bPending\\b" docs/MTP.md` now has no matches.  Remaining `TBD`
 markers are historical budget-shape placeholders, not unresolved items in the
 current break-even sprint table.
+
+## 2026-06-13 - MTP llama.cpp acceptance comparison documented
+
+Added a dedicated `docs/MTP.md` section for the llama.cpp vs hipEngine
+acceptance-rate comparison so the denominator mismatch is explicit.  The
+artifacted llama.cpp sweep reports `draft_n_accepted / draft_n`, while the
+retained hipEngine row reports accepted draft tokens per verifier cycle.  The
+derived B=1 accepted-output-token comparison is therefore about `0.465` for
+llama.cpp (`134/288`) vs `0.381` for hipEngine (`0.617/1.617`), not the raw
+headline `0.964` vs `0.617`.
+
+Also documented that the artifacted llama.cpp perf rows came from the Vulkan
+checkout (`263cc04a5`, `b9596-4`) while the source audit was against the newer
+HIP checkout (`e37abd6b5`, `b9616-1`), and that the llama-server path used the
+Qwen chat template with `thinking = 1` while the retained hipEngine row used raw
+prompts.  Replication commands now cover the artifacted Vulkan sweeps, a
+latest-source rerun pointing at `/home/lhl/llama.cpp/llama.cpp-hip`, the
+hipEngine raw comparison, and the hipEngine `qwen_chat_thinking_on` parity
+check.
+
+Updated `scripts/llamacpp_vulkan_mtp_sweep.py` so new summaries include
+`accepted_per_output` and `draft_per_output` plus a printed `acc/output` column.

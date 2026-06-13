@@ -100,6 +100,165 @@ negative (`0.61x` vs chain `0.76x`) because it spends budget on a depth-1 siblin
 and caps depth where the chain often accepts 3. Keep tree off until the verifier
 wall is lower or acceptance depth changes.
 
+### External llama.cpp Acceptance-Rate Comparison (2026-06-13)
+
+This note exists to prevent an apples-to-oranges acceptance comparison. The
+artifacted llama.cpp sweep reports llama-server's internal draft acceptance
+ratio, while the retained hipEngine row reports accepted draft tokens per MTP
+cycle.
+
+Source audit:
+
+- Latest llama.cpp source checked:
+  `/home/lhl/llama.cpp/llama.cpp-hip`, commit `e37abd6b5`
+  (`b9616-1-ge37abd6b5`).
+- Artifacted llama.cpp sweep source:
+  `/home/lhl/llama.cpp/llama.cpp-vulkan`, commit `263cc04a5`
+  (`b9596-4-g263cc04a5`).
+- The relevant latest-source behavior is unchanged for acceptance accounting:
+  llama-server exports `timings.draft_n` / `timings.draft_n_accepted` from
+  `tools/server/server-context.cpp`, computes accepted draft tokens as
+  `ids.size() - 1` after `common_sampler_sample_and_accept_n(...)`, and the
+  accept loop in `common/sampling.cpp` exact-compares each draft token against
+  the target sampled token. Qwen3.5-MoE MTP still uses optional nextn
+  embed/head tensors with fallback to target `tok_embd`, `output_norm`, and
+  `output` in `src/models/qwen35moe.cpp`.
+
+Metric definitions:
+
+- llama.cpp `accept` in the sweep is
+  `total_draft_accepted / total_draft`. This answers: "of the draft tokens
+  llama.cpp chose to generate, how many were accepted?"
+- hipEngine `acceptance_rate_mean` at B=1 is
+  `avg_accepted_per_cycle_mean`: accepted draft tokens per verifier cycle. This
+  answers: "how many extra visible tokens did each MTP cycle deliver?"
+- For cross-engine density, derive accepted draft share of output:
+  `llama accepted/output = total_draft_accepted / total_predicted`; for
+  hipEngine B=1, `accepted/output ~= accepted_per_cycle / visible_per_cycle`.
+  This changes the headline comparison from `0.964` vs `0.617` to about
+  `0.465` vs `0.381` for B=1.
+
+Measured D32 comparison, using the existing artifacts:
+
+| Device | Engine / mode | Source / render | Mean decode tok/s | Speed row | accept/draft | accepted/output |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| W7900 Vulkan0 | llama.cpp base | GGUF Q4_K_S, chat template thinking-on | `54.23` | `1.000x` vs llama base | n/a | n/a |
+| W7900 Vulkan0 | llama.cpp B1 | same | `43.20` | `0.797x` vs llama base | `0.964` (`134/139`) | `0.465` (`134/288`) |
+| W7900 Vulkan0 | llama.cpp B4 | same | `50.31` | `0.928x` vs llama base | `0.907` (`214/236`) | `0.743` (`214/288`) |
+| W7900/gfx1100 | hipEngine B1 current | PARO+MTP-BF16, raw prompts | `113.39` | `1.023x` prompt-mean / `1.014x` total-time vs hipEngine AR | n/a | `0.381` (`0.617/1.617`) |
+| RX 7900 XTX Vulkan1 | llama.cpp base | GGUF Q4_K_S, chat template thinking-on | `26.98` | `1.000x` vs llama base | n/a | n/a |
+| RX 7900 XTX Vulkan1 | llama.cpp B1 | same | `44.48` | `1.649x` vs llama base | `0.964` (`134/139`) | `0.465` (`134/288`) |
+| RX 7900 XTX Vulkan1 | llama.cpp B4 | same | `51.50` | `1.909x` vs llama base | `0.907` (`214/236`) | `0.743` (`214/288`) |
+| RX 7900 XTX/gfx1100 | hipEngine B1 current | PARO+MTP-BF16, raw prompts | `123.96` | `1.015x` prompt-mean / `1.001x` total-time vs hipEngine AR | n/a | `0.381` (`0.617/1.617`) |
+
+Artifacts:
+
+- llama.cpp W7900: `/tmp/llamacpp-mtp35-sweep-full-32/summary.json`
+- llama.cpp RX 7900 XTX: `/tmp/llamacpp-mtp35-sweep-vk1-32/summary.json`
+- hipEngine W7900:
+  `benchmarks/results/2026-06-13-hipengine-mtp-b1-current-default-3run-retained.json`
+- hipEngine RX 7900 XTX:
+  `/tmp/hipengine-mtp-b1-current-xtx-d32-20260613.json`
+
+Prompt/model caveats before drawing acceptance-quality conclusions:
+
+- The llama.cpp server path is not using hipEngine's retained raw prompt
+  rendering. Server logs show Qwen chat template mode with `thinking = 1`.
+  Prompt eval token counts are correspondingly higher: `code_python` is
+  `30` tokens in llama.cpp vs `20` raw hipEngine tokens, `translation` is
+  `25` vs `15`, and `long_code_review` is `731` vs `721`. Since acceptance is
+  continuation-dependent, compare matched tokenized prompts before attributing
+  the remaining density gap to proposer quality.
+- The model paths differ: llama.cpp uses
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf` with target and MTP draft
+  contexts from the same GGUF, while hipEngine uses
+  `/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16`. If a
+  matched-prompt rerun still shows a material density gap, the next audit is
+  draft-logit parity on identical token IDs, including presence/fallback of
+  `nextn.embed_tokens`, `nextn.shared_head_norm`, and
+  `nextn.shared_head_head`.
+
+Replication commands:
+
+```bash
+# Artifacted llama.cpp Vulkan sweep on W7900 / Vulkan0.
+cd /home/lhl/hipEngine
+python3 scripts/llamacpp_vulkan_mtp_sweep.py \
+  --llama-dir /home/lhl/llama.cpp/llama.cpp-vulkan \
+  --gpu 0 \
+  --max-tokens 32 \
+  --draft-max-values 1,2,3,4 \
+  --out-dir /tmp/llamacpp-mtp35-sweep-full-32
+```
+
+```bash
+# Artifacted llama.cpp Vulkan sweep on RX 7900 XTX / Vulkan1.
+cd /home/lhl/hipEngine
+python3 scripts/llamacpp_vulkan_mtp_sweep.py \
+  --llama-dir /home/lhl/llama.cpp/llama.cpp-vulkan \
+  --gpu 1 \
+  --max-tokens 32 \
+  --draft-max-values 1,2,3,4 \
+  --out-dir /tmp/llamacpp-mtp35-sweep-vk1-32
+```
+
+```bash
+# Latest-source llama.cpp source/perf rerun. The script can point at a different
+# llama-server checkout; confirm backend/device selection before claiming a HIP
+# backend performance row.
+cd /home/lhl/hipEngine
+python3 scripts/llamacpp_vulkan_mtp_sweep.py \
+  --llama-dir /home/lhl/llama.cpp/llama.cpp-hip \
+  --gpu 0 \
+  --max-tokens 32 \
+  --draft-max-values 1,2,3,4 \
+  --out-dir /tmp/llamacpp-mtp35-sweep-hip-latest-32
+```
+
+```bash
+# hipEngine retained raw-prompt B1 comparison.
+cd /home/lhl/hipEngine
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 \
+  HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. \
+  python3 scripts/mtp-bench.py \
+    --mode hipengine-current \
+    --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+    --candidate-budgets 1 \
+    --runs 3 \
+    --max-tokens 32 \
+    --backend hip_gfx1100 \
+    --hip-arch gfx1100 \
+    --chain-attn-mode decode_batched \
+    --graph-mode off \
+    --out /tmp/hipengine-mtp-b1-current-w7900-d32.json
+```
+
+```bash
+# Apples-to-apples prompt-render check against llama.cpp chat-template thinking-on.
+cd /home/lhl/hipEngine
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 \
+  HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. \
+  python3 scripts/mtp-bench.py \
+    --mode hipengine-current \
+    --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+    --candidate-budgets 1 \
+    --runs 3 \
+    --max-tokens 32 \
+    --prompt-render qwen_chat_thinking_on \
+    --backend hip_gfx1100 \
+    --hip-arch gfx1100 \
+    --chain-attn-mode decode_batched \
+    --graph-mode off \
+    --raw-root /tmp/hipengine-mtp-b1-qwen-thinking-on-d32-20260613 \
+    --out /tmp/hipengine-mtp-b1-qwen-thinking-on-d32-20260613.json
+```
+
 ### Retained Wins That Actually Panned Out
 
 This is the impact-sorted short list from the locked `0.758x / 27.8 ms`
