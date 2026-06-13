@@ -1,6 +1,7 @@
 """gfx1100 native sampler kernel wrappers."""
 
 from hipengine.kernels.hip_gfx1100.sampling.sampler import (
+    apply_processors_f32_rows,
     build_sampler,
     plan_sampler_build,
     register_sampler_kernels,
@@ -9,6 +10,7 @@ from hipengine.kernels.hip_gfx1100.sampling.sampler import (
 )
 
 __all__ = [
+    "apply_processors_f32_rows",
     "build_sampler",
     "plan_sampler_build",
     "register_sampler_kernels",

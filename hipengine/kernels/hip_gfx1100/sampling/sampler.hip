@@ -318,11 +318,120 @@ __global__ void sampler_temperature_rows_i32_kernel(
   }
 }
 
+__global__ void sampler_apply_processors_rows_kernel(
+    const float* __restrict__ logits,
+    float* __restrict__ processed,
+    const int32_t* __restrict__ bias_offsets,
+    const int32_t* __restrict__ bias_token_ids,
+    const float* __restrict__ bias_values,
+    const int32_t* __restrict__ history_offsets,
+    const int32_t* __restrict__ history_token_ids,
+    const int32_t* __restrict__ history_counts,
+    const float* __restrict__ repetition_penalties,
+    const float* __restrict__ presence_penalties,
+    const float* __restrict__ frequency_penalties,
+    int64_t rows,
+    int64_t vocab_size) {
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t base = row * vocab_size;
+  for (int64_t token = tid; token < vocab_size; token += blockDim.x) {
+    const float value = logits[base + token];
+    processed[base + token] = isfinite(value) ? value : -INFINITY;
+  }
+  __syncthreads();
+
+  const int32_t bias_begin = bias_offsets[row];
+  const int32_t bias_end = bias_offsets[row + 1];
+  for (int32_t item = bias_begin + tid; item < bias_end; item += blockDim.x) {
+    const int32_t token = bias_token_ids[item];
+    if (token >= 0 && static_cast<int64_t>(token) < vocab_size) {
+      processed[base + token] += bias_values[item];
+    }
+  }
+  __syncthreads();
+
+  const float repetition_penalty = repetition_penalties[row];
+  const float presence_penalty = presence_penalties[row];
+  const float frequency_penalty = frequency_penalties[row];
+  const int32_t history_begin = history_offsets[row];
+  const int32_t history_end = history_offsets[row + 1];
+  for (int32_t item = history_begin + tid; item < history_end; item += blockDim.x) {
+    const int32_t token = history_token_ids[item];
+    if (token < 0 || static_cast<int64_t>(token) >= vocab_size) {
+      continue;
+    }
+    float value = processed[base + token];
+    if (repetition_penalty != 1.0f) {
+      if (value < 0.0f) {
+        value *= repetition_penalty;
+      } else {
+        value /= repetition_penalty;
+      }
+    }
+    if (presence_penalty != 0.0f) {
+      value -= presence_penalty;
+    }
+    if (frequency_penalty != 0.0f) {
+      value -= frequency_penalty * static_cast<float>(history_counts[item]);
+    }
+    processed[base + token] = value;
+  }
+}
+
 bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128;
 }
 
 }  // namespace
+
+extern "C" int hipengine_sampler_apply_processors_f32_rows(
+    const float* logits,
+    float* processed,
+    const int32_t* bias_offsets,
+    const int32_t* bias_token_ids,
+    const float* bias_values,
+    const int32_t* history_offsets,
+    const int32_t* history_token_ids,
+    const int32_t* history_counts,
+    const float* repetition_penalties,
+    const float* presence_penalties,
+    const float* frequency_penalties,
+    int64_t rows,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (logits == nullptr || processed == nullptr || bias_offsets == nullptr || history_offsets == nullptr ||
+      repetition_penalties == nullptr || presence_penalties == nullptr || frequency_penalties == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      sampler_apply_processors_rows_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      logits,
+      processed,
+      bias_offsets,
+      bias_token_ids,
+      bias_values,
+      history_offsets,
+      history_token_ids,
+      history_counts,
+      repetition_penalties,
+      presence_penalties,
+      frequency_penalties,
+      rows,
+      vocab_size);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_sampler_temperature_f32_rows_i32(
     const float* logits,

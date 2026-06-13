@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from hipengine.kernels.hip_gfx1100.sampling import (
+    apply_processors_f32_rows,
     plan_sampler_build,
     register_sampler_kernels,
     sample_temperature_f32_rows_i32,
@@ -51,6 +52,10 @@ def test_sampler_registers_for_gfx1151_alias() -> None:
     register_gfx1151_kernels(replace=True)
 
     assert (
+        resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="processors_rows")
+        is apply_processors_f32_rows
+    )
+    assert (
         resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="temperature_rows_i32")
         is sample_temperature_f32_rows_i32
     )
@@ -61,6 +66,12 @@ def test_sampler_registers_for_gfx1151_alias() -> None:
 
 
 def test_sampler_wrapper_validates_shapes_before_loading_hip() -> None:
+    with pytest.raises(ValueError, match="rows"):
+        apply_processors_f32_rows(0, 0, 0, None, None, 0, None, None, 0, 0, 0, rows=0, vocab_size=16)
+    with pytest.raises(ValueError, match="vocab_size"):
+        apply_processors_f32_rows(0, 0, 0, None, None, 0, None, None, 0, 0, 0, rows=1, vocab_size=0)
+    with pytest.raises(ValueError, match="threads"):
+        apply_processors_f32_rows(0, 0, 0, None, None, 0, None, None, 0, 0, 0, rows=1, vocab_size=16, threads=256)
     with pytest.raises(ValueError, match="rows"):
         sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=0, vocab_size=16)
     with pytest.raises(ValueError, match="vocab_size"):
@@ -143,6 +154,144 @@ def _cpu_reference(logits: np.ndarray, temperatures: np.ndarray, seeds: np.ndarr
         selected_logprobs[row] = logprobs[selected_pos]
 
     return selected, selected_logprobs, top_indices, top_logprobs
+
+
+def _cpu_process_reference(
+    logits: np.ndarray,
+    bias_offsets: np.ndarray,
+    bias_token_ids: np.ndarray,
+    bias_values: np.ndarray,
+    history_offsets: np.ndarray,
+    history_token_ids: np.ndarray,
+    history_counts: np.ndarray,
+    repetition_penalties: np.ndarray,
+    presence_penalties: np.ndarray,
+    frequency_penalties: np.ndarray,
+) -> np.ndarray:
+    rows, vocab = logits.shape
+    processed = logits.astype(np.float32, copy=True)
+    processed[~np.isfinite(processed)] = -np.inf
+    for row in range(rows):
+        for item in range(int(bias_offsets[row]), int(bias_offsets[row + 1])):
+            token = int(bias_token_ids[item])
+            if 0 <= token < vocab:
+                processed[row, token] = np.float32(processed[row, token] + np.float32(bias_values[item]))
+        rep = np.float32(repetition_penalties[row])
+        presence = np.float32(presence_penalties[row])
+        frequency = np.float32(frequency_penalties[row])
+        for item in range(int(history_offsets[row]), int(history_offsets[row + 1])):
+            token = int(history_token_ids[item])
+            if token < 0 or token >= vocab:
+                continue
+            value = np.float32(processed[row, token])
+            if rep != np.float32(1.0):
+                if value < np.float32(0.0):
+                    value = np.float32(value * rep)
+                else:
+                    value = np.float32(value / rep)
+            if presence != np.float32(0.0):
+                value = np.float32(value - presence)
+            if frequency != np.float32(0.0):
+                value = np.float32(value - frequency * np.float32(history_counts[item]))
+            processed[row, token] = value
+    return processed
+
+
+@pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
+def test_logits_processors_match_host_order() -> None:
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.backends import hip_target_arch_environment
+    from hipengine.kernels.hip_gfx1100.sampling import build_sampler
+
+    logits = np.array(
+        [
+            [2.0, -1.0, 0.5, np.nan, 4.0, -3.0, 0.0, 7.0],
+            [1.0, 2.0, 3.0, 4.0, -5.0, np.inf, 0.25, -0.5],
+            [-2.0, 0.0, 2.0, -4.0, 6.0, 8.0, 10.0, -np.inf],
+        ],
+        dtype=np.float32,
+    )
+    rows, vocab_size = logits.shape
+    bias_offsets = np.array([0, 2, 2, 3], dtype=np.int32)
+    bias_token_ids = np.array([0, 2, 4], dtype=np.int32)
+    bias_values = np.array([1.5, -0.25, -3.0], dtype=np.float32)
+    history_offsets = np.array([0, 3, 3, 6], dtype=np.int32)
+    history_token_ids = np.array([0, 1, 99, 0, 4, 7], dtype=np.int32)
+    history_counts = np.array([2, 1, 5, 3, 1, 2], dtype=np.int32)
+    repetition_penalties = np.array([2.0, 1.0, 1.5], dtype=np.float32)
+    presence_penalties = np.array([0.75, 0.0, -0.5], dtype=np.float32)
+    frequency_penalties = np.array([0.25, 0.0, 0.1], dtype=np.float32)
+    expected = _cpu_process_reference(
+        logits,
+        bias_offsets,
+        bias_token_ids,
+        bias_values,
+        history_offsets,
+        history_token_ids,
+        history_counts,
+        repetition_penalties,
+        presence_penalties,
+        frequency_penalties,
+    )
+
+    compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
+    with hip_target_arch_environment("gfx1100"):
+        lib = build_sampler(load=True, compiler_version=compiler_version)
+
+    bufs = []
+
+    def upload(array: np.ndarray):
+        arr = np.ascontiguousarray(array)
+        buf = malloc(max(arr.nbytes, 4))
+        bufs.append(buf)
+        copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        return buf
+
+    def alloc(nbytes: int):
+        buf = malloc(max(nbytes, 4))
+        bufs.append(buf)
+        return buf
+
+    try:
+        logits_d = upload(logits)
+        processed_d = alloc(logits.nbytes)
+        bias_offsets_d = upload(bias_offsets)
+        bias_ids_d = upload(bias_token_ids)
+        bias_values_d = upload(bias_values)
+        history_offsets_d = upload(history_offsets)
+        history_ids_d = upload(history_token_ids)
+        history_counts_d = upload(history_counts)
+        repetition_d = upload(repetition_penalties)
+        presence_d = upload(presence_penalties)
+        frequency_d = upload(frequency_penalties)
+
+        apply_processors_f32_rows(
+            logits_d.ptr,
+            processed_d.ptr,
+            bias_offsets_d.ptr,
+            bias_ids_d.ptr,
+            bias_values_d.ptr,
+            history_offsets_d.ptr,
+            history_ids_d.ptr,
+            history_counts_d.ptr,
+            repetition_d.ptr,
+            presence_d.ptr,
+            frequency_d.ptr,
+            rows,
+            vocab_size,
+            threads=128,
+            library=lib,
+        )
+        observed = np.empty_like(logits)
+        copy_device_to_host(host_array_ptr(observed), processed_d, observed.nbytes)
+
+        assert np.array_equal(np.isneginf(observed), np.isneginf(expected))
+        finite = np.isfinite(expected)
+        np.testing.assert_allclose(observed[finite], expected[finite], rtol=0, atol=1e-6)
+    finally:
+        for buf in reversed(bufs):
+            free(buf)
 
 
 def _cpu_full_vocab_reference(logits: np.ndarray, temperatures: np.ndarray, seeds: np.ndarray, *, step_index: int):

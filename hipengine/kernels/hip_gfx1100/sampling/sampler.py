@@ -11,6 +11,7 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("sampler.hip")
 _OUTPUT_NAME = "sampler.so"
+_SYMBOL_PROCESSORS = "hipengine_sampler_apply_processors_f32_rows"
 _SYMBOL_TEMPERATURE = "hipengine_sampler_temperature_f32_rows_i32"
 _SYMBOL_TOPK_TEMPERATURE = "hipengine_sampler_topk_temperature_f32_rows_i32"
 _ALLOWED_THREADS = {64, 128}
@@ -53,6 +54,79 @@ def build_sampler(
         load=load,
         require_cached=require_cached,
     )
+
+
+def apply_processors_f32_rows(
+    logits_f32_ptr: int,
+    processed_f32_ptr: int,
+    bias_offsets_i32_ptr: int,
+    bias_token_ids_i32_ptr: int | None,
+    bias_values_f32_ptr: int | None,
+    history_offsets_i32_ptr: int,
+    history_token_ids_i32_ptr: int | None,
+    history_counts_i32_ptr: int | None,
+    repetition_penalties_f32_ptr: int,
+    presence_penalties_f32_ptr: int,
+    frequency_penalties_f32_ptr: int,
+    rows: int,
+    vocab_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply sampler logits processors row-wise on FP32 logits.
+
+    ``processed`` receives a finite-clamped copy of ``logits`` followed by
+    logit-bias additions and history penalties in the documented host order:
+    repetition penalty, presence penalty, then frequency penalty. Bias and
+    history inputs use CSR-style ``offsets[rows + 1]`` arrays with compact token
+    id/value or token id/count payloads.
+    """
+
+    _check_rows_vocab(rows, vocab_size)
+    _check_threads(threads)
+    library = library or build_sampler(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PROCESSORS)
+    fn.argtypes = [
+        ctypes.c_void_p,  # logits f32
+        ctypes.c_void_p,  # processed f32
+        ctypes.c_void_p,  # bias offsets i32 [rows+1]
+        ctypes.c_void_p,  # bias token ids i32 (nullable when offsets are empty)
+        ctypes.c_void_p,  # bias values f32 (nullable when offsets are empty)
+        ctypes.c_void_p,  # history offsets i32 [rows+1]
+        ctypes.c_void_p,  # history token ids i32 (nullable when offsets are empty)
+        ctypes.c_void_p,  # history counts i32 (nullable when offsets are empty)
+        ctypes.c_void_p,  # repetition penalties f32 [rows]
+        ctypes.c_void_p,  # presence penalties f32 [rows]
+        ctypes.c_void_p,  # frequency penalties f32 [rows]
+        ctypes.c_int64,   # rows
+        ctypes.c_int64,   # vocab size
+        ctypes.c_int64,   # threads
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(processed_f32_ptr),
+        ctypes.c_void_p(bias_offsets_i32_ptr),
+        ctypes.c_void_p(bias_token_ids_i32_ptr) if bias_token_ids_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(bias_values_f32_ptr) if bias_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(history_offsets_i32_ptr),
+        ctypes.c_void_p(history_token_ids_i32_ptr) if history_token_ids_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(history_counts_i32_ptr) if history_counts_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(repetition_penalties_f32_ptr),
+        ctypes.c_void_p(presence_penalties_f32_ptr),
+        ctypes.c_void_p(frequency_penalties_f32_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def sample_temperature_f32_rows_i32(
@@ -190,6 +264,11 @@ def sample_topk_temperature_f32_rows_i32(
 
 
 def register_sampler_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "sampler", "f32", "processors_rows"),
+        apply_processors_f32_rows,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "sampler", "f32", "temperature_rows_i32"),
         sample_temperature_f32_rows_i32,
